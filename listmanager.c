@@ -3,6 +3,8 @@
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
+#define KILO_QUIT_TIMES 1
+#define CTRL_KEY(k) ((k) & 0x1f)
 
 #include <ctype.h>
 #include <errno.h>
@@ -65,9 +67,6 @@ PGresult * get_data(int n) {
   //int status = parse_ini_file("db.ini");
   parse_ini_file("db.ini");
   
-  /*sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", /
-    "slzatz", "********", "listmanager_p", "xx.xxx.xx.xxx", 5432);*/
-    
   sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
       c.user, c.password, c.dbname, c.hostaddr, c.port);
   conn = PQconnectdb(conninfo);
@@ -80,8 +79,6 @@ PGresult * get_data(int n) {
         do_exit(conn);
     }
   }
-
-
 
     //PGresult *res = PQexec(conn, "SELECT * FROM task LIMIT 5");//<-this works    
     char query[200];
@@ -96,24 +93,9 @@ PGresult * get_data(int n) {
         PQclear(res);
         do_exit(conn);
     }    
-    
-   //int rows = PQntuples(res);
-    
-   // for(int i=0; i<rows; i++) {
-        
-   //     printf("%s %s %s %s %s %s\n", PQgetvalue(res, i, 0), 
-   //         PQgetvalue(res, i, 1), PQgetvalue(res, i, 2), PQgetvalue(res, i, 3), PQgetvalue(res, i, 4), PQgetvalue(res, i, 5));
-   // }    
-
-    //PQclear(res);
-    //PQfinish(conn);
 
     return res;
 }
-#define KILO_VERSION "0.0.1"
-#define KILO_QUIT_TIMES 1
-
-#define CTRL_KEY(k) ((k) & 0x1f)
 
 enum editorKey {
   BACKSPACE = 127,
@@ -148,6 +130,7 @@ enum Command {
 typedef struct erow {
   int size; //the number of characters in the line
   char *chars; //points at the character array of a row - mem assigned by malloc
+  int id; //listmanager db id of the row
 } erow;
 
 struct editorConfig {
@@ -231,6 +214,7 @@ void editorChangeCase();
 void editorRestoreSnapshot(); 
 void editorCreateSnapshot(); 
 int get_filerow(void);
+int get_id(int fr);
 
 int keyfromstring(char *key)
 {
@@ -411,6 +395,36 @@ void editorDelRow(int at) {
   if (E.cy == E.numrows && E.cy > 0) E.cy--; 
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.numrows, E.cx, E.row[at].size); 
+}
+
+void editorInsertRow2(int at, char *s, size_t len, int id) {
+
+  /*E.row is a pointer to an array of erow structures
+  The array of erows that E.row points to needs to have its memory enlarged when
+  you add a row. Note that erow structues are just a size and a char pointer*/
+
+  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
+
+  /*
+  memmove(dest, source, number of bytes to move?)
+  moves the line at at to at+1 and all the other erow structs until the end
+  when you insert into the last row E.numrows==at then no memory is moved
+  apparently ok if there is no E.row[at+1] if number of bytes = 0
+  so below we are moving the row structure currently at *at* to x+1
+  and all the rows below *at* to a new location to make room at *at*
+  to create room for the line that we are inserting
+  */
+
+  memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
+
+  // section below creates an erow struct for the new row
+  E.row[at].size = len;
+  E.row[at].chars = malloc(len + 1);
+  E.row[at].id = id;
+  memcpy(E.row[at].chars, s, len);
+  E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
+  E.numrows++;
+  E.dirty++;
 }
 
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -777,7 +791,7 @@ void editorRefreshScreen() {
     };*/
 
   if (E.row)
-    editorSetMessage("length = %d, E.cx = %d, E.cy = %d, E.filerows = %d", E.row[E.cy].size, E.cx, E.cy, get_filerow());
+    editorSetMessage("length = %d, E.cx = %d, E.cy = %d, E.filerows = %d row id = %d", E.row[E.cy].size, E.cx, E.cy, get_filerow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -1598,6 +1612,12 @@ int get_filerow(void) {
   return E.cy + E.rowoff; ////////
 }
 
+int get_id(int fr) {
+  if(fr==-1) fr = get_filerow();
+  int id = E.row[fr].id;
+  return id;
+}
+
 void editorCreateSnapshot() {
   if ( E.numrows == 0 ) return; //don't create snapshot if there is no text
   for (int j = 0 ; j < E.prev_numrows ; j++ ) {
@@ -2024,7 +2044,6 @@ void initEditor() {
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
   E.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
-  //E.statusmsg_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   E.command[0] = '\0';
@@ -2051,12 +2070,13 @@ int main(int argc, char *argv[]) {
     int rows = PQntuples(res);
     for(int i=0; i<rows; i++) {
       char *z = PQgetvalue(res, i, 3);
-      editorInsertRow(E.numrows, z, strlen(z)); 
-      //E.cx = E.row[E.cy + E.rowoff].size; // put cursor at the end of the line
+      char *zz = PQgetvalue(res, i, 0);
+      int id = atoi(zz);
+      editorInsertRow2(E.numrows, z, strlen(z), id); 
       if(i>=E.screenrows) E.rowoff++;
       else E.cy = i;
       E.cx = E.row[E.cy + E.rowoff].size; // put cursor at the end of the line
-      char *zz = PQgetvalue(res, i, 0);
+      //char *zz = PQgetvalue(res, i, 0);
       editorInsertChar(' ');
       editorInsertChar('(');
       for(int j=0; j<(int)strlen(zz); j++) {
