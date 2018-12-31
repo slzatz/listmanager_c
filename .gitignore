@@ -1,0 +1,7 @@
+listmanager
+*.ini
+*.bat
+config*
+*.swp
+*.bac
+*.bak
