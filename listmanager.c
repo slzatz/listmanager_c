@@ -5,6 +5,8 @@
 #define _GNU_SOURCE
 #define KILO_QUIT_TIMES 1
 #define CTRL_KEY(k) ((k) & 0x1f)
+#define OUTLINE 0
+#define EDIT 1
 
 #include <ctype.h>
 #include <errno.h>
@@ -35,6 +37,8 @@ struct config {
 
 struct config c;
 
+PGconn *conn = NULL;
+
 void do_exit(PGconn *conn) {
     
     PQfinish(conn);
@@ -60,8 +64,28 @@ int parse_ini_file(char * ini_name)
   return 0;
 }
 
-PGresult * get_data(int n) {
+//PGconn *get_conn(void) {
+void get_conn(void) {
   char conninfo[250];
+  //PGconn *connection = NULL;
+  parse_ini_file("db.ini");
+  
+  sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
+          c.user, c.password, c.dbname, c.hostaddr, c.port);
+  conn = PQconnectdb(conninfo);
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  } 
+//  return conn
+}
+PGresult * get_data(int n) {
+  /*char conninfo[250];
   PGconn *conn = NULL;
 
   //int status = parse_ini_file("db.ini");
@@ -79,12 +103,12 @@ PGresult * get_data(int n) {
         do_exit(conn);
     }
   }
-
+*/
     //PGresult *res = PQexec(conn, "SELECT * FROM task LIMIT 5");//<-this works    
     char query[200];
     //sprintf(query, "SELECT * FROM task LIMIT %d", n); //<-this works
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = 'programming' LIMIT %d", n);
+                    "WHERE context.title = 'test' LIMIT %d", n);
     PGresult *res = PQexec(conn, query);    
     
     if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -215,6 +239,7 @@ void editorRestoreSnapshot();
 void editorCreateSnapshot(); 
 int get_filerow(void);
 int get_id(int fr);
+void update_row(void);
 
 int keyfromstring(char *key)
 {
@@ -790,7 +815,8 @@ void editorRefreshScreen() {
       int len;
     };*/
 
-  if (E.row)
+  //if (E.row)
+  if (0)
     editorSetMessage("length = %d, E.cx = %d, E.cy = %d, E.filerows = %d row id = %d", E.row[E.cy].size, E.cx, E.cy, get_filerow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
@@ -971,14 +997,17 @@ void editorProcessKeypress() {
       E.mode = 0;
       if (E.cx > 0) E.cx--;
       // below - if the indent amount == size of line then it's all blanks
-      int n = editorIndentAmount(E.cy);
+      /*int n = editorIndentAmount(E.cy);
       if (n == E.row[E.cy].size) {
         E.cx = 0;
         for (int i = 0; i < n; i++) {
           editorDelChar();
         }
       }
-      editorSetMessage("");
+      editorSetMessage("");*/
+
+      update_row();
+
       return;
 
     default:
@@ -1608,6 +1637,35 @@ void editorProcessKeypress() {
 
 /*** slz additions ***/
 
+void update_row(void) {
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+    char query[300] = {0};
+    char row[200] = {0};
+    int fr = get_filerow();
+    strncpy(row, E.row[fr].chars, E.row[fr].size);
+    //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", E.row[fr].chars, get_id(-1));
+    sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
+    PGresult *res = PQexec(conn, query); 
+    
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        editorSetMessage("UPDATE command failed");
+        PQclear(res);
+        //do_exit(conn);
+    }    
+  editorSetMessage("%s - %s - %d", query, row, E.row[fr].size);
+
+    return;
+}
+
 int get_filerow(void) {
   return E.cy + E.rowoff; ////////
 }
@@ -2065,7 +2123,7 @@ int main(int argc, char *argv[]) {
   // for testing purposes added the else - inserts text for testing purposes 
   // when no file is being read
   else {
-
+    get_conn();
     PGresult *res = get_data(200); 
     int rows = PQntuples(res);
     for(int i=0; i<rows; i++) {
