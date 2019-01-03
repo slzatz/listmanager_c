@@ -19,6 +19,7 @@
 #include <sys/types.h>
 #include <termios.h>
 #include <time.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <libpq-fe.h>
 #include <iniparser.h>
@@ -64,10 +65,8 @@ int parse_ini_file(char * ini_name)
   return 0;
 }
 
-//PGconn *get_conn(void) {
 void get_conn(void) {
   char conninfo[250];
-  //PGconn *connection = NULL;
   parse_ini_file("db.ini");
   
   sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
@@ -82,43 +81,24 @@ void get_conn(void) {
         do_exit(conn);
     }
   } 
-//  return conn
 }
+
 PGresult * get_data(int n) {
-  /*char conninfo[250];
-  PGconn *conn = NULL;
-
-  //int status = parse_ini_file("db.ini");
-  parse_ini_file("db.ini");
-  
-  sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
-      c.user, c.password, c.dbname, c.hostaddr, c.port);
-  conn = PQconnectdb(conninfo);
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-*/
-    //PGresult *res = PQexec(conn, "SELECT * FROM task LIMIT 5");//<-this works    
-    char query[200];
-    //sprintf(query, "SELECT * FROM task LIMIT %d", n); //<-this works
-    sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+  //PGresult *res = PQexec(conn, "SELECT * FROM task LIMIT 5");//<-this works    
+  char query[200];
+  //sprintf(query, "SELECT * FROM task LIMIT %d", n); //<-this works
+  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = 'test' LIMIT %d", n);
-    PGresult *res = PQexec(conn, query);    
+  PGresult *res = PQexec(conn, query);    
     
-    if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
-        printf("No data retrieved\n");        
-        PQclear(res);
-        do_exit(conn);
-    }    
+    printf("No data retrieved\n");        
+    PQclear(res);
+    do_exit(conn);
+  }    
 
-    return res;
+  return res;
 }
 
 enum editorKey {
@@ -154,7 +134,11 @@ enum Command {
 typedef struct erow {
   int size; //the number of characters in the line
   char *chars; //points at the character array of a row - mem assigned by malloc
+
   int id; //listmanager db id of the row
+  bool star;
+  bool completed;
+  
 } erow;
 
 struct editorConfig {
@@ -422,7 +406,7 @@ void editorDelRow(int at) {
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.numrows, E.cx, E.row[at].size); 
 }
 
-void editorInsertRow2(int at, char *s, size_t len, int id) {
+void editorInsertRow2(int at, char *s, size_t len, int id, bool star) {
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
@@ -446,6 +430,7 @@ void editorInsertRow2(int at, char *s, size_t len, int id) {
   E.row[at].size = len;
   E.row[at].chars = malloc(len + 1);
   E.row[at].id = id;
+  E.row[at].star = star;
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.numrows++;
@@ -539,7 +524,8 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar() {
-  erow *row = &E.row[E.cy];
+  //erow *row = &E.row[E.cy];
+  erow *row = &E.row[get_filerow()];
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
@@ -754,7 +740,12 @@ void editorDrawRows(struct abuf *ab) {
           abAppend(ab, "\x1b[0m", 4); //slz return background to normal
           abAppend(ab, &E.row[filerow].chars[E.highlight[1]], len - E.highlight[1]);
         
-      } else abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+      } //else abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+          else {
+            if (E.row[filerow].star) abAppend(ab, "\x1b[1m", 4);
+            abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+            abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+      }
     
     //"\x1b[K" erases the part of the line to the right of the cursor in case the
     // new line i shorter than the old
@@ -815,8 +806,8 @@ void editorRefreshScreen() {
       int len;
     };*/
 
-  //if (E.row)
-  if (0)
+  if (E.row)
+  //if (0)
     editorSetMessage("length = %d, E.cx = %d, E.cy = %d, E.filerows = %d row id = %d", E.row[E.cy].size, E.cx, E.cy, get_filerow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
@@ -826,6 +817,10 @@ void editorRefreshScreen() {
 
 
   editorDrawRows(&ab);
+
+  //editorBoldStarRows
+  //write(STDOUT_FILENO, ab.b, ab.len);
+
   editorDrawStatusBar(&ab);
   editorDrawMessageBar(&ab);
 
@@ -1648,12 +1643,17 @@ void update_row(void) {
     }
   }
 
-    char query[300] = {0};
-    char row[200] = {0};
+    char query[300] = {'\0'};
+    char row[200] = {'\0'};
     int fr = get_filerow();
     strncpy(row, E.row[fr].chars, E.row[fr].size);
     //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", E.row[fr].chars, get_id(-1));
-    sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
+    //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
+    sprintf(query, "UPDATE task SET title=\'%s\', "
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                   row, get_id(-1));
+
     PGresult *res = PQexec(conn, query); 
     
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -2129,8 +2129,9 @@ int main(int argc, char *argv[]) {
     for(int i=0; i<rows; i++) {
       char *z = PQgetvalue(res, i, 3);
       char *zz = PQgetvalue(res, i, 0);
+      bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
       int id = atoi(zz);
-      editorInsertRow2(E.numrows, z, strlen(z), id); 
+      editorInsertRow2(E.numrows, z, strlen(z), id, star); 
       if(i>=E.screenrows) E.rowoff++;
       else E.cy = i;
       E.cx = E.row[E.cy + E.rowoff].size; // put cursor at the end of the line
