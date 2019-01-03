@@ -770,8 +770,8 @@ void editorDrawStatusBar(struct abuf *ab) {
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
     E.filename ? E.filename : "[No Name]", E.numrows,
     E.dirty ? "(modified)" : "");
-  int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
-    E.cy + 1, E.numrows);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
+    E.row[get_filerow()].id, get_filerow() + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   
@@ -821,11 +821,9 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
   abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
-
+  // note that the solution to not redrawing the whole screen
+  // may be to create editorDrawRow(E.cy);
   editorDrawRows(&ab);
-
-  //editorBoldStarRows
-  //write(STDOUT_FILENO, ab.b, ab.len);
 
   editorDrawStatusBar(&ab);
   editorDrawMessageBar(&ab);
@@ -833,8 +831,8 @@ void editorRefreshScreen() {
   // the lines below position the cursor where it should go
   if (E.mode != 2){
   char buf[32];
- // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
- //
+ //Below important: this is how to position the cursor
+ //Will be needed if try to split the screen (not sure I want to do that)
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, E.cx+1);
   abAppend(&ab, buf, strlen(buf));
 }
@@ -2142,14 +2140,17 @@ int main(int argc, char *argv[]) {
       editorInsertRow2(E.numrows, z, strlen(z), id, star, deleted, completed); 
       if(i>=E.screenrows) E.rowoff++;
       else E.cy = i;
+
+      /*
       E.cx = E.row[E.cy + E.rowoff].size; // put cursor at the end of the line
-      //char *zz = PQgetvalue(res, i, 0);
       editorInsertChar(' ');
       editorInsertChar('(');
       for(int j=0; j<(int)strlen(zz); j++) {
         editorInsertChar(*(zz+j));
       }
       editorInsertChar(')');
+      */
+
     }
 
     PQclear(res);
