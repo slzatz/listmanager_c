@@ -88,7 +88,8 @@ PGresult * get_data(int n) {
   char query[200];
   //sprintf(query, "SELECT * FROM task LIMIT %d", n); //<-this works
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = 'test' LIMIT %d", n);
+                    //"WHERE context.title = 'test' LIMIT %d", n);
+                    "WHERE context.title = 'test' ORDER BY task.modified DESC LIMIT %d", n);
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -137,6 +138,7 @@ typedef struct erow {
 
   int id; //listmanager db id of the row
   bool star;
+  bool deleted;
   bool completed;
   
 } erow;
@@ -406,7 +408,7 @@ void editorDelRow(int at) {
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[at].size = %d", at, E.numrows, E.cx, E.row[at].size); 
 }
 
-void editorInsertRow2(int at, char *s, size_t len, int id, bool star) {
+void editorInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed) {
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
@@ -431,6 +433,8 @@ void editorInsertRow2(int at, char *s, size_t len, int id, bool star) {
   E.row[at].chars = malloc(len + 1);
   E.row[at].id = id;
   E.row[at].star = star;
+  E.row[at].deleted = deleted;
+  E.row[at].completed = completed;
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.numrows++;
@@ -742,9 +746,11 @@ void editorDrawRows(struct abuf *ab) {
         
       } //else abAppend(ab, &E.row[filerow].chars[E.coloff], len);
           else {
-            if (E.row[filerow].star) abAppend(ab, "\x1b[1m", 4);
+            if (E.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
+            if (E.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //red
+            if (E.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
             abAppend(ab, &E.row[filerow].chars[E.coloff], len);
-            abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+            //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
       }
     
     //"\x1b[K" erases the part of the line to the right of the cursor in case the
@@ -2130,8 +2136,10 @@ int main(int argc, char *argv[]) {
       char *z = PQgetvalue(res, i, 3);
       char *zz = PQgetvalue(res, i, 0);
       bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+      bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+      bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
       int id = atoi(zz);
-      editorInsertRow2(E.numrows, z, strlen(z), id, star); 
+      editorInsertRow2(E.numrows, z, strlen(z), id, star, deleted, completed); 
       if(i>=E.screenrows) E.rowoff++;
       else E.cy = i;
       E.cx = E.row[E.cy + E.rowoff].size; // put cursor at the end of the line
