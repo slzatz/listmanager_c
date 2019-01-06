@@ -123,8 +123,6 @@ enum Command {
   C_de,
   C_d$,
   C_dd,
-  C_indent,
-  C_unindent,
   C_c$,
   C_gg,
   C_yy
@@ -140,6 +138,7 @@ typedef struct erow {
   bool star;
   bool deleted;
   bool completed;
+  bool dirty;
   
 } erow;
 
@@ -184,8 +183,6 @@ static t_symstruct lookuptable[] = {
   {"dw", C_dw},
   {"de", C_de},
   {"dd", C_dd},
-  {">>", C_indent},
-  {"<<", C_unindent},
   {"gg", C_gg},
   {"yy", C_yy},
   {"d$", C_d$}
@@ -202,8 +199,6 @@ void getcharundercursor();
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
 void editorDelWord();
-void editorIndentRow();
-void editorUnIndentRow();
 int editorIndentAmount(int y);
 void editorMoveCursor(int key);
 void editorBackspace();
@@ -228,6 +223,7 @@ int get_filerow(void);
 int get_filecol(void);
 int get_id(int fr);
 void update_row(void);
+void update_rows(void);
 
 int keyfromstring(char *key)
 {
@@ -362,6 +358,7 @@ int getWindowSize(int *rows, int *cols) {
 /*** row operations ***/
 
 //at is the row number of the row to insert
+// not in use
 void editorInsertRow(int at, char *s, size_t len) {
 
   /*E.row is a pointer to an array of erow structures
@@ -437,18 +434,11 @@ void editorInsertRow2(int at, char *s, size_t len, int id, bool star, bool delet
   E.row[at].star = star;
   E.row[at].deleted = deleted;
   E.row[at].completed = completed;
+  E.row[at].dirty = false;
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   E.numrows++;
-  E.dirty++;
-}
-
-void editorRowAppendString(erow *row, char *s, size_t len) {
-  row->chars = realloc(row->chars, row->size + len + 1);
-  memcpy(&row->chars[row->size], s, len);
-  row->size += len;
-  row->chars[row->size] = '\0';
-  E.dirty++;
+  //E.dirty++;
 }
 
 void editorRowDelChar(erow *row, int at) {
@@ -484,6 +474,7 @@ void editorInsertChar(int c) {
 
   row->size++;
   row->chars[E.cx] = c;
+  row->dirty = true;
   E.dirty++;
   E.cx++;
 }
@@ -550,26 +541,25 @@ void editorDelChar() {
   else if (E.cx == row->size && E.cx) E.cx = row->size - 1; 
 
   E.dirty++;
+  row->dirty = true;
 
 }
 
 void editorBackspace() {
-  if (E.cx == 0 && E.cy == 0) return;
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  int fc = get_filecol();
 
-  if (E.cx > 0) {
+  if (fc == 0) return;
 
-    //memmove(dest, source, number of bytes to move?)
-    memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
-    row->size--;
-    E.cx--;
-  } else {
-    E.cx = E.row[E.cy - 1].size;
-    editorRowAppendString(&E.row[E.cy - 1], row->chars, row->size);
-    editorDelRow(E.cy);
-    if (E.cy != E.numrows - 1) E.cy--; //editorDelRow will decrement if last row
-  }
+  erow *row = &E.row[fr];
+
+  //memmove(dest, source, number of bytes to move?)
+  memmove(&row->chars[E.cx - 1], &row->chars[E.cx], row->size - E.cx + 1);
+  row->size--;
+  E.cx--; //if E.cx goes negative editorScroll should handle it
+ 
   E.dirty++;
+  row->dirty = true;
 }
 
 /*** file i/o ***/
@@ -824,13 +814,19 @@ void editorDrawRow(struct abuf *ab) {
 }
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
+
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
+
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
     E.filename ? E.filename : "[No Name]", E.numrows,
-    E.dirty ? "(modified)" : "");
+    //E.dirty ? "(modified)" : "");
+    row->dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-    E.row[get_filerow()].id, get_filerow() + 1, E.numrows);
+    //E.row[get_filerow()].id, get_filerow() + 1, E.numrows);
+    row->id, fr + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   
@@ -1005,7 +1001,7 @@ void editorMoveCursor(int key) {
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
-  int i, start, end;
+  int start, end;
 
   /* editorReadKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -1028,7 +1024,7 @@ void editorProcessKeypress() {
 
     case CTRL_KEY('q'):
       if (E.dirty && quit_times > 0) {
-        editorSetMessage("WARNING!!! File has unsaved changes. "
+        editorSetMessage("WARNING!!! Database has not been updated. "
           "Press Ctrl-Q %d more times to quit.", quit_times);
         quit_times--;
         return;
@@ -1110,7 +1106,7 @@ void editorProcessKeypress() {
       }
       editorSetMessage("");*/
 
-      update_row();
+      //update_row(); //was used when testing but should go
 
       return;
 
@@ -1459,26 +1455,6 @@ void editorProcessKeypress() {
       editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
-    case C_indent:
-      editorCreateSnapshot();
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_unindent:
-      editorCreateSnapshot();
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorUnIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
     case C_gg:
      E.cx = 0;
      E.cy = E.repeat-1;
@@ -1510,6 +1486,7 @@ void editorProcessKeypress() {
       return;}
 
     if (c == '\r') {
+      /*
       if (E.command[1] == 'w') {
         if (strlen(E.command) > 3) {
           E.filename = strdup(&E.command[3]);
@@ -1521,7 +1498,11 @@ void editorProcessKeypress() {
             editorSetMessage("\"%s\" written", E.filename);
         }
         else editorSetMessage("No file name");
+        */
 
+
+      if (E.command[1] == 'w') {
+        update_rows();
         E.mode = 0;
         E.command[0] = '\0';
       }
@@ -1619,34 +1600,6 @@ void editorProcessKeypress() {
       E.repeat = E.highlight[1] - E.highlight[0] + 1;
       E.cy = E.highlight[0];
       editorYankLine(E.repeat);
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case '>':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case '<':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorUnIndentRow();
-        E.cy++;}
-      E.cy-=i;
       E.command[0] = '\0';
       E.repeat = 0;
       E.mode = 0;
@@ -1752,27 +1705,62 @@ void update_row(void) {
     }
   }
 
-    char query[300] = {'\0'};
-    char row[200] = {'\0'};
-    int fr = get_filerow();
-    strncpy(row, E.row[fr].chars, E.row[fr].size);
-    //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", E.row[fr].chars, get_id(-1));
-    //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
-    sprintf(query, "UPDATE task SET title=\'%s\', "
+  char query[300] = {'\0'};
+  char title[200] = {'\0'};
+  int fr = get_filerow();
+  strncpy(title, E.row[fr].chars, E.row[fr].size);
+  //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", E.row[fr].chars, get_id(-1));
+  //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
+  sprintf(query, "UPDATE task SET title=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
-                   row, get_id(-1));
+                   title, get_id(-1));
 
-    PGresult *res = PQexec(conn, query); 
+  PGresult *res = PQexec(conn, query); 
     
-    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-        editorSetMessage("UPDATE command failed");
-        PQclear(res);
-        //do_exit(conn);
-    }    
-  editorSetMessage("%s - %s - %d", query, row, E.row[fr].size);
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    editorSetMessage("UPDATE command failed");
+    PQclear(res);
+    //do_exit(conn);
+  }    
+  editorSetMessage("%s - %s - %d", query, title, E.row[fr].size);
 
     return;
+}
+
+void update_rows(void) {
+  if (!E.dirty) return;
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  for (int i=0; i < E.numrows;i++) {
+    erow *row = &E.row[i];
+    if (row->dirty) {
+      char query[300] = {'\0'};
+      char title[200] = {'\0'};
+      strncpy(title, row->chars, row->size);
+      sprintf(query, "UPDATE task SET title=\'%s\', "
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                   title, row->id);
+
+      PGresult *res = PQexec(conn, query); 
+    
+      if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        editorSetMessage("UPDATE command failed");
+        PQclear(res);
+      } else row->dirty = false;    
+    }
+  }
+  E.dirty = 0;
+  return;
 }
 
 int get_filerow(void) {
@@ -1860,12 +1848,13 @@ void editorYankString() {
 }
 
 void editorPasteString() {
-  if (E.cy == E.numrows) {
+  int fr = get_filerow();
+  if (fr == E.numrows) {
     editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
 
-  erow *row = &E.row[E.cy];
-  if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
+  erow *row = &E.row[fr];
+  //if (E.cx < 0 || E.cx > row->size) E.cx = row->size;
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
 
@@ -1883,6 +1872,7 @@ void editorPasteString() {
     E.cx++;
   }
   E.dirty++;
+  row->dirty = true;
 }
 
 void editorPasteLine(){
@@ -1894,27 +1884,6 @@ void editorPasteLine(){
     E.cy++;
     editorInsertRow(E.cy, line_buffer[i], len);
   }
-}
-
-void editorIndentRow() {
-  erow *row = &E.row[E.cy];
-  if (row->size == 0) return;
-  //E.cx = 0;
-  E.cx = editorIndentAmount(E.cy);
-  for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
-  E.dirty++;
-}
-
-void editorUnIndentRow() {
-  erow *row = &E.row[E.cy];
-  if (row->size == 0) return;
-  E.cx = 0;
-  for (int i = 0; i < E.indent; i++) {
-    if (row->chars[0] == ' ') {
-      editorDelChar();
-    }
-  }
-  E.dirty++;
 }
 
 int editorIndentAmount(int y) {
@@ -1929,14 +1898,17 @@ int editorIndentAmount(int y) {
 }
 
 void editorDelWord() {
-  erow *row = &E.row[E.cy];
-  if (row->chars[E.cx] < 48) return;
+  int fr = get_filerow();
+  int fc = get_filecol();
+
+  erow *row = &E.row[fr];
+  if (row->chars[fc] < 48) return;
 
   int i,j,x;
-  for (i = E.cx; i > -1; i--){
+  for (i = fc; i > -1; i--){
     if (row->chars[i] < 48) break;
     }
-  for (j = E.cx; j < row->size ; j++) {
+  for (j = fc; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
   E.cx = i+1;
@@ -1945,6 +1917,7 @@ void editorDelWord() {
       editorDelChar();
   }
   E.dirty++;
+  row->dirty = true;
   //editorSetMessage("i = %d, j = %d", i, j ); 
 }
 
