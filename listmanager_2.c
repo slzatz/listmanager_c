@@ -5,7 +5,7 @@
 #define _GNU_SOURCE
 #define KILO_QUIT_TIMES 1
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define OUTLINE 0
+#define OUTLINE 0 //tab should move back and forth between these
 #define EDIT 1
 
 #include <ctype.h>
@@ -273,7 +273,7 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
-int outlineReadKey() {
+int readKey() {
   int nread;
   char c;
 
@@ -778,7 +778,9 @@ void outlineDrawRows(struct abuf *ab) {
    // abAppend(ab, "\x1b[K", 3);  //new testing *****
    // looks like "\x1b[4X" - will erase 4 chars so looks like in
    // erasing lines can't use "...[K" but could calculate "...[nX"
-    abAppend(ab, "\r\n", 2);
+   abAppend(ab, "\r\n", 2); //**********without offset*********************
+   // this is where you would do offset
+   //abAppend(ab, "\r\n\x1b[2C", 6);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
 }
@@ -895,6 +897,7 @@ void outlineRefreshLine() {
   // move the cursor to mid-screen, erase to left and move cursor back to begging of line
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", O.cy+1, O.screencols, O.cy+1, 1);
   abAppend(&ab, buf, strlen(buf));
+  //abAppend(&ab, "\x1b[2C", 4); //*** offset moves cursor right 2 chars*******************************
 
   outlineDrawRow(&ab);
 
@@ -942,6 +945,7 @@ void outlineRefreshScreen() {
   }
 
   abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
+  //abAppend(&ab, "\x1b[2C", 4); //moves cursor right 2 chars ********************************
   outlineDrawRows(&ab);
 
   outlineDrawStatusBar(&ab);
@@ -994,7 +998,7 @@ void outlineMoveCursor(int key) {
 
     case ARROW_RIGHT:
     case 'l':
-      if (row && get_filecol() < row->size - 1)  O.cx++;  //segfaults on opening if you arrow right w/o row
+      //if (row && get_filecol() < row->size - 1)  O.cx++;  //segfaults on opening if you arrow right w/o row
       if (row)  O.cx++;  //segfaults on opening if you arrow right w/o row
       break;
 
@@ -1014,7 +1018,8 @@ void outlineMoveCursor(int key) {
 
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
      row has to be calculated again because this is the new row you've landed on */
-  if(key==ARROW_UP || key==ARROW_DOWN){
+  //if(key==ARROW_UP || key==ARROW_DOWN){
+  if(1){
     fr = get_filerow();
     row = &O.row[fr];
     int rowlen = row ? row->size : 0;
@@ -1024,15 +1029,15 @@ void outlineMoveCursor(int key) {
     else if (get_filecol() >= rowlen) O.cx = rowlen - O.coloff -1;
   }
 }
-// higher level outline function depends on outlineReadKey()
+// higher level outline function depends on readKey()
 void outlineProcessKeypress() {
   static int quit_times = KILO_QUIT_TIMES;
   int start, end;
 
-  /* outlineReadKey brings back one processed character that handles
+  /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  int c = outlineReadKey();
+  int c = readKey();
 
 /*************************************** 
  * This is where you enter insert mode* 
