@@ -83,13 +83,16 @@ void get_conn(void) {
   } 
 }
 
-PGresult * get_data(int n) {
+PGresult *get_data(char *context, int n) {
   //PGresult *res = PQexec(conn, "SELECT * FROM task LIMIT 5");//<-this works    
   char query[200];
   //sprintf(query, "SELECT * FROM task LIMIT %d", n); //<-this works
+  //sprintf(query, "UPDATE task SET title=\'%s\', "
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     //"WHERE context.title = 'test' LIMIT %d", n);
-                    "WHERE context.title = 'test' ORDER BY task.modified DESC LIMIT %d", n);
+                    //"WHERE context.title = 'test' ORDER BY task.modified DESC LIMIT %d", n);
+                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
+
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -154,7 +157,7 @@ struct editorConfig {
   int prev_numrows; // the number of rows of text so last text row is always row numrows
   erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
-  char *filename;
+  char *context;
   char statusmsg[80]; //status msg is a character array max 80 char
   //time_t statusmsg_time;
   struct termios orig_termios;
@@ -461,7 +464,8 @@ void editorInsertChar(int c) {
 
   //erow *row = &E.row[E.cy];
   erow *row = &E.row[E.cy+E.rowoff];
-  if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
+  int fc = get_filecol();
+  //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
   row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
 
   /* moving all the chars at the current x cursor position on char
@@ -470,10 +474,11 @@ void editorInsertChar(int c) {
      memmove(&E.row[at + 1], &E.row[at], sizeof(erow) * (E.numrows - at));
   */
 
-  memmove(&row->chars[E.cx + 1], &row->chars[E.cx], row->size - E.cx); //****was E.cx + 1
+  //memmove(&row->chars[E.cx + 1], &row->chars[E.cx], row->size - E.cx); //****was E.cx + 1
+  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was E.cx + 1
 
   row->size++;
-  row->chars[E.cx] = c;
+  row->chars[fc] = c;
   row->dirty = true;
   E.dirty++;
   E.cx++;
@@ -582,10 +587,10 @@ char *editorRowsToString(int *buflen) {
 
   return buf;
 }
-
-void editorOpen(char *filename) {
-  free(E.filename);
-  E.filename = strdup(filename);
+/*
+void editorOpen(char *context) {
+  free(E.context);
+  E.context = strdup(context);
 
   FILE *fp = fopen(filename, "r");
   if (!fp) die("fopen");
@@ -603,9 +608,10 @@ void editorOpen(char *filename) {
   fclose(fp);
   E.dirty = 0;
 }
+*/
 
-void editorSave() {
-  if (E.filename == NULL) return;
+/*void editorSave() {
+  if (E.context == NULL) return;
   int len;
   char *buf = editorRowsToString(&len);
 
@@ -626,6 +632,7 @@ void editorSave() {
   free(buf);
   editorSetMessage("Can't save! I/O error: %s", strerror(errno));
 }
+*/
 
 /*** append buffer ***/
 
@@ -683,8 +690,8 @@ int editorScroll() {
   }
 
   if (E.cx >= E.screencols) {
-    E.coloff++;
-    E.cx = E.screencols -1;
+    E.coloff = E.coloff + E.cx - E.screencols + 1;
+    E.cx = E.screencols - 1;
     return 1;
   }
   if (E.cx < 0) {
@@ -720,6 +727,13 @@ int editorScroll() {
 // filerow conceptually is the row/column of the written to file text
 void editorDrawRows(struct abuf *ab) {
   int y;
+  //move the cursor to midscreen in each row and erase back to the left
+  char buf[32];
+  for (int j; j < E.screenrows;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, E.screencols);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[1k", 4);
+  }
 
   for (y = 0; y < E.screenrows; y++) {
     int filerow = y + E.rowoff;
@@ -752,7 +766,7 @@ void editorDrawRows(struct abuf *ab) {
     } //else abAppend(ab, &E.row[filerow].chars[E.coloff], len);
         else {
           if (E.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
-          if (E.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //red
+          if (E.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //yellow
           if (E.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
           abAppend(ab, &E.row[filerow].chars[E.coloff], len);
           //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
@@ -761,7 +775,9 @@ void editorDrawRows(struct abuf *ab) {
     //"\x1b[K" erases the part of the line to the right of the cursor in case the
     // new line i shorter than the old
 
-    abAppend(ab, "\x1b[K", 3); 
+   // abAppend(ab, "\x1b[K", 3);  //new testing *****
+   // looks like "\x1b[4X" - will erase 4 chars so looks like in
+   // erasing lines can't use "...[K" but could calculate "...[nX"
     abAppend(ab, "\r\n", 2);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
@@ -807,11 +823,12 @@ void editorDrawRow(struct abuf *ab) {
     //"\x1b[K" erases the part of the line to the right of the cursor in case the
     // new line i shorter than the old
 
-    abAppend(ab, "\x1b[K", 3); 
+   // abAppend(ab, "\x1b[K", 3); //erase whole screen dealt with in refresh line
     
     //abAppend(ab, "\r\n", 2);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
 }
+
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
 
@@ -820,8 +837,8 @@ void editorDrawStatusBar(struct abuf *ab) {
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
-    E.filename ? E.filename : "[No Name]", E.numrows,
+  int len = snprintf(status, sizeof(status), "|||%.20s - %d lines %s",
+    E.context ? E.context : "[No Name]", E.numrows,
     //E.dirty ? "(modified)" : "");
     row->dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
@@ -872,17 +889,17 @@ void editorRefreshLine() {
     editorSetMessage("length = %d, E.cx = %d, E.cy = %d, E.filerows = %d row id = %d", E.row[E.cy].size, E.cx, E.cy, get_filerow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-
-  //int filerow = get_filerow();
   char buf[32];
+
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, 1);
+  // move the cursor to mid-screen, erase to left and move cursor back to begging of line
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", E.cy+1, E.screencols, E.cy+1, 1);
   abAppend(&ab, buf, strlen(buf));
 
-  // note that the solution to not redrawing the whole screen
-  // may be to create editorDrawRow(E.cy);
   editorDrawRow(&ab);
 
+  // move the cursor to the bottom of the screen
+  // to 'draw' status bar and message bar
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows+1, 1);
   abAppend(&ab, buf, strlen(buf));
   editorDrawStatusBar(&ab);
@@ -918,7 +935,13 @@ void editorRefreshScreen() {
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
   abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
+  char buf[32];
+  for (int j=0; j < E.screenrows;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, E.screencols + 1); //erase from cursor to left
+    abAppend(&ab, buf, strlen(buf));
+  }
 
+  abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
   editorDrawRows(&ab);
 
   editorDrawStatusBar(&ab);
@@ -957,8 +980,8 @@ void editorSetMessage(const char *fmt, ...) {
 }
 
 void editorMoveCursor(int key) {
-
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
 
   switch (key) {
     case ARROW_LEFT:
@@ -972,6 +995,7 @@ void editorMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       if (row && get_filecol() < row->size - 1)  E.cx++;  //segfaults on opening if you arrow right w/o row
+      if (row)  E.cx++;  //segfaults on opening if you arrow right w/o row
       break;
 
     case ARROW_UP:
@@ -990,13 +1014,15 @@ void editorMoveCursor(int key) {
 
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
      row has to be calculated again because this is the new row you've landed on */
-
-  row = &E.row[E.cy];
-  int rowlen = row ? row->size : 0;
-  if (rowlen == 0) E.cx = 0;
-  else if (E.mode == 1 && E.cx >= rowlen) E.cx = rowlen;
-  else if (get_filecol() >= rowlen) E.cx = rowlen - E.coloff -1;
-
+  if(key==ARROW_UP || key==ARROW_DOWN){
+    fr = get_filerow();
+    row = &E.row[fr];
+    int rowlen = row ? row->size : 0;
+    if (rowlen == 0) E.cx = 0;
+  //else if (E.mode == 1 && E.cx >= rowlen) E.cx = rowlen;
+    else if (E.mode == 1 && (E.cx+E.coloff) >= rowlen) E.cx = rowlen-E.coloff;
+    else if (get_filecol() >= rowlen) E.cx = rowlen - E.coloff -1;
+  }
 }
 // higher level editor function depends on editorReadKey()
 void editorProcessKeypress() {
@@ -1035,7 +1061,7 @@ void editorProcessKeypress() {
       break;
 
     case CTRL_KEY('s'):
-      editorSave();
+      //editorSave();
       break;
 
     case HOME_KEY:
@@ -1230,7 +1256,9 @@ void editorProcessKeypress() {
       break;
 
     case '0':
-      E.cx = 0;
+      //E.coloff = 0; //unlikely to work
+      //E.cx = 0;
+      E.cx = -E.coloff; //surprisingly seems to work
       E.command[0] = '\0';
       E.repeat = 0;
       return;
@@ -1486,20 +1514,6 @@ void editorProcessKeypress() {
       return;}
 
     if (c == '\r') {
-      /*
-      if (E.command[1] == 'w') {
-        if (strlen(E.command) > 3) {
-          E.filename = strdup(&E.command[3]);
-          editorSave();
-          editorSetMessage("\"%s\" written", E.filename);
-        }
-        else if (E.filename != NULL) {
-            editorSave();
-            editorSetMessage("\"%s\" written", E.filename);
-        }
-        else editorSetMessage("No file name");
-        */
-
 
       if (E.command[1] == 'w') {
         update_rows();
@@ -1507,25 +1521,22 @@ void editorProcessKeypress() {
         E.command[0] = '\0';
       }
 
-      else if (E.command[1] == 'x') {
+      else if (E.command[1] == 'e') {
         if (strlen(E.command) > 3) {
-          E.filename = strdup(&E.command[3]);
-          editorSave();
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
+          E.context = strdup(&E.command[3]);
+          editorSetMessage("\"%s\" will be opened", E.context);
         }
-        else if (E.filename != NULL) {
-          editorSave();
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
-        }
-        else editorSetMessage("No file name");
+        else editorSetMessage("You need to provide a context");
 
         E.mode = 0;
         E.command[0] = '\0';
       }
+      else if (E.command[1] == 'x') {
+        update_rows();
+        write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+        write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+        exit(0);
+      }  
 
       else if (E.command[1] == 'q') {
         if (E.dirty) {
@@ -1537,7 +1548,7 @@ void editorProcessKeypress() {
           else {
             E.mode = 0;
             E.command[0] = '\0';
-            editorSetMessage("No write since last change");
+            editorSetMessage("No db write since last change");
           }
         }
        
@@ -1930,13 +1941,15 @@ void editorDeleteToEndOfLine() {
   }
 
 void editorMoveCursorEOL() {
-  E.cx = E.row[E.cy].size - 1; 
+  int fr = get_filerow();
+  E.cx = E.row[fr].size - 1;  //if E.cx > E.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void editorMoveEndWord2() {
   int j;
-  erow row = E.row[E.cy];
+  int fr = get_filerow();
+  erow row = E.row[fr];
 
   for (j = E.cx + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
@@ -1948,7 +1961,8 @@ void editorMoveEndWord2() {
 void editorMoveNextWord() {
   // below is same is editorMoveEndWord2
   int j;
-  erow row = E.row[E.cy];
+  int fr = get_filerow();
+  erow row = E.row[fr];
 
   for (j = E.cx + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
@@ -1964,7 +1978,8 @@ void editorMoveNextWord() {
 }
 
 void editorMoveBeginningWord() {
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   if (E.cx == 0) return;
   for (;;) {
     if (row->chars[E.cx - 1] < 48) E.cx--;
@@ -1981,7 +1996,8 @@ void editorMoveBeginningWord() {
 }
 
 void editorMoveEndWord() {
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   if (E.cx == row->size - 1) return;
   for (;;) {
     if (row->chars[E.cx + 1] < 48) E.cx++;
@@ -1998,7 +2014,8 @@ void editorMoveEndWord() {
 }
 
 void editorDecorateWord(int c) {
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   char cc;
   if (row->chars[E.cx] < 48) return;
 
@@ -2059,7 +2076,8 @@ void editorDecorateVisual(int c) {
 }
 
 void getWordUnderCursor(){
-  erow *row = &E.row[E.cy];
+  int fr = get_filerow();
+  erow *row = &E.row[fr];
   if (row->chars[E.cx] < 48) return;
 
   int i,j,n,x;
@@ -2186,7 +2204,7 @@ void initEditor() {
   E.prev_numrows = 0; //number of rows of text in snapshot
   E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
-  E.filename = NULL;
+  E.context = NULL;
   E.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -2197,14 +2215,27 @@ void initEditor() {
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
   E.screenrows -= 2;
+  E.screencols /=2;
 }
 
 int main(void) {
   enableRawMode();
   initEditor();
+  int pos = E.screencols + 2;
+  char buf[32];
+  for (int j=1; j < E.screenrows + 1;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, pos);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    //write(STDOUT_FILENO, "\x1b[31;1m|", 8); //31m = red; 1m = bold (only need last 'm')
+    write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+    //below x = 0x78 vertical line and q = 0x71 is horizontal
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+    write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
+    write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
+}
   get_conn();
-  PGresult *res = get_data(200); 
+  PGresult *res = get_data("programming", 200); 
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *z = PQgetvalue(res, i, 3);
