@@ -9,6 +9,7 @@
 #define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 2
+#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 
 #include <ctype.h>
 #include <errno.h>
@@ -28,6 +29,12 @@
 
 /*** defines ***/
 
+//should apply to outline and note
+struct termios orig_termios;
+// the full dimensions of the screen available to outline + note
+int screenrows, screencols;
+
+//should apply to outline and note
 enum outlineKey {
   BACKSPACE = 127,
   ARROW_LEFT = 1000,
@@ -41,6 +48,7 @@ enum outlineKey {
   PAGE_DOWN
 };
 
+//should apply to outline and note
 enum Mode {
   NORMAL = 0,
   INSERT = 1,
@@ -50,6 +58,7 @@ enum Mode {
   REPLACE = 5
 };
 
+//should apply to outline and note
 enum Command {
   C_caw,
   C_cw,
@@ -63,9 +72,32 @@ enum Command {
   C_yy
 };
 
+//both
+//below is for multi-character commands
+//does a lookup to see which enum (representing a corresponding command) was matched
+//so can be used in a case statement
+typedef struct { char *key; int val; } t_symstruct;
+static t_symstruct lookuptable[] = {
+  {"caw", C_caw},
+  {"cw", C_cw},
+  {"daw", C_daw},
+  {"dw", C_dw},
+  {"de", C_de},
+  {"dd", C_dd},
+  {"gg", C_gg},
+  {"yy", C_yy},
+  {"d$", C_d$}
+};
+
+//should apply to both
+char search_string[30] = {'\0'}; //used for '*' and 'n' searches
+// buffers below for yanking
+char *line_buffer[20] = {NULL}; //yanking lines
+char string_buffer[50] = {'\0'}; //yanking chars
+
 /*** data ***/
 
-typedef struct erow {
+typedef struct orow {
   int size; //the number of characters in the line
   char *chars; //points at the character array of a row - mem assigned by malloc
 
@@ -75,22 +107,18 @@ typedef struct erow {
   bool completed;
   bool dirty;
   
-} erow;
-
-struct termios orig_termios;
-
-int screenrows, screencols;
+} orow;
 
 struct outlineConfig {
-  int cx, cy; //cursor x and y position
-  int rowoff; //row the user is currently scrolled to
-  int coloff; //column user is currently scrolled to
+  int cx, cy; //cursor x and y position 
+  int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
+  int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
   int screenrows; //number of rows in the display
   int screencols;  //number of columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
-  erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
+  orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
   int prev_numrows; // the number of rows of text so last text row is always row numrows
-  erow *prev_row; //for undo purposes
+  orow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *context;
   char *filename; // in case try to save the titles
@@ -105,29 +133,10 @@ struct outlineConfig {
 
 struct outlineConfig O;
 
-char search_string[30] = {'\0'}; //used for '*' and 'n' searches
-
-// buffers below for yanking
-char *line_buffer[20] = {NULL}; //yanking lines
-char string_buffer[50] = {'\0'}; //yanking chars
-
+// below not obvious -- will be just a string that include /n/r + escape for moving cursor
 char outline_margin[10];
 
-/*below is for multi-character commands*/
-typedef struct { char *key; int val; } t_symstruct;
-static t_symstruct lookuptable[] = {
-  {"caw", C_caw},
-  {"cw", C_cw},
-  {"daw", C_daw},
-  {"dw", C_dw},
-  {"de", C_de},
-  {"dd", C_dd},
-  {"gg", C_gg},
-  {"yy", C_yy},
-  {"d$", C_d$}
-};
 
-#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 
 /*** prototypes ***/
 
@@ -157,8 +166,8 @@ void outlineFindNextWord();
 void outlineChangeCase();
 void outlineRestoreSnapshot(); 
 void outlineCreateSnapshot(); 
-int get_filerow(void);
-int get_filecol(void);
+int outlineGetFileRow(void);
+int outlineGetFileCol(void);
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
@@ -374,15 +383,15 @@ int getWindowSize(int *rows, int *cols) {
 // not in use
 void outlineInsertRow(int at, char *s, size_t len) {
 
-  /*O.row is a pointer to an array of erow structures
-  The array of erows that O.row points to needs to have its memory enlarged when
-  you add a row. Note that erow structues are just a size and a char pointer*/
+  /*O.row is a pointer to an array of orow structures
+  The array of orows that O.row points to needs to have its memory enlarged when
+  you add a row. Note that orow structues are just a size and a char pointer*/
 
-  O.row = realloc(O.row, sizeof(erow) * (O.numrows + 1));
+  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
 
   /*
   memmove(dest, source, number of bytes to move?)
-  moves the line at at to at+1 and all the other erow structs until the end
+  moves the line at at to at+1 and all the other orow structs until the end
   when you insert into the last row O.numrows==at then no memory is moved
   apparently ok if there is no O.row[at+1] if number of bytes = 0
   so below we are moving the row structure currently at *at* to x+1
@@ -390,9 +399,9 @@ void outlineInsertRow(int at, char *s, size_t len) {
   to create room for the line that we are inserting
   */
 
-  memmove(&O.row[at + 1], &O.row[at], sizeof(erow) * (O.numrows - at));
+  memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
 
-  // section below creates an erow struct for the new row
+  // section below creates an orow struct for the new row
   O.row[at].size = len;
   O.row[at].chars = malloc(len + 1);
   memcpy(O.row[at].chars, s, len);
@@ -401,7 +410,7 @@ void outlineInsertRow(int at, char *s, size_t len) {
   O.dirty++;
 }
 
-void outlineFreeRow(erow *row) {
+void outlineFreeRow(orow *row) {
   free(row->chars);
 }
 
@@ -410,7 +419,7 @@ void outlineDelRow(int at) {
   if (O.numrows == 0) return; // some calls may duplicate this guard
   outlineFreeRow(&O.row[at]);
   if ( O.numrows != 1) { 
-    memmove(&O.row[at], &O.row[at + 1], sizeof(erow) * (O.numrows - at - 1));
+    memmove(&O.row[at], &O.row[at + 1], sizeof(orow) * (O.numrows - at - 1));
   } else {
     O.row = NULL;
   }
@@ -422,15 +431,15 @@ void outlineDelRow(int at) {
 
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed) {
 
-  /*O.row is a pointer to an array of erow structures
-  The array of erows that O.row points to needs to have its memory enlarged when
-  you add a row. Note that erow structues are just a size and a char pointer*/
+  /*O.row is a pointer to an array of orow structures
+  The array of orows that O.row points to needs to have its memory enlarged when
+  you add a row. Note that orow structues are just a size and a char pointer*/
 
-  O.row = realloc(O.row, sizeof(erow) * (O.numrows + 1));
+  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
 
   /*
   memmove(dest, source, number of bytes to move?)
-  moves the line at at to at+1 and all the other erow structs until the end
+  moves the line at at to at+1 and all the other orow structs until the end
   when you insert into the last row O.numrows==at then no memory is moved
   apparently ok if there is no O.row[at+1] if number of bytes = 0
   so below we are moving the row structure currently at *at* to x+1
@@ -438,9 +447,9 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   to create room for the line that we are inserting
   */
 
-  memmove(&O.row[at + 1], &O.row[at], sizeof(erow) * (O.numrows - at));
+  memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
 
-  // section below creates an erow struct for the new row
+  // section below creates an orow struct for the new row
   O.row[at].size = len;
   O.row[at].chars = malloc(len + 1);
   O.row[at].id = id;
@@ -454,7 +463,7 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   //O.dirty++;
 }
 
-void outlineRowDelChar(erow *row, int at) {
+void outlineRowDelChar(orow *row, int at) {
   if (at < 0 || at >= row->size) return;
   // is there any reason to realloc for one character?
   // row->chars = realloc(row->chars, row->size -1); 
@@ -472,16 +481,16 @@ void outlineInsertChar(int c) {
     outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0'
   }
 
-  //erow *row = &O.row[O.cy];
-  erow *row = &O.row[O.cy+O.rowoff];
-  int fc = get_filecol();
+  //orow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy+O.rowoff];
+  int fc = outlineGetFileCol();
   //if (O.cx < 0 || O.cx > row->size) O.cx = row->size; //can either of these be true? ie is check necessary?
   row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
 
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from outlineInsertRow - it's memmove is below
-     memmove(&O.row[at + 1], &O.row[at], sizeof(erow) * (O.numrows - at));
+     memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
   */
 
   //memmove(&row->chars[O.cx + 1], &row->chars[O.cx], row->size - O.cx); //****was O.cx + 1
@@ -499,7 +508,7 @@ void outlineInsertNewline(int direction) {
   if (O.numrows == 0) {
     outlineInsertRow(O.numrows, "", 0); //outlineInsertRow will also insert another '\0'
   }
-  erow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy];
   int i;
   if (O.cx == 0 || O.cx == row->size) {
     i = 0;
@@ -534,8 +543,8 @@ void outlineInsertNewline(int direction) {
 }
 
 void outlineDelChar() {
-  //erow *row = &O.row[O.cy];
-  erow *row = &O.row[get_filerow()];
+  //orow *row = &O.row[O.cy];
+  orow *row = &O.row[outlineGetFileRow()];
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
@@ -559,12 +568,12 @@ void outlineDelChar() {
 }
 
 void outlineBackspace() {
-  int fr = get_filerow();
-  int fc = get_filecol();
+  int fr = outlineGetFileRow();
+  int fc = outlineGetFileCol();
 
   if (fc == 0) return;
 
-  erow *row = &O.row[fr];
+  orow *row = &O.row[fr];
 
   //memmove(dest, source, number of bytes to move?)
   memmove(&row->chars[O.cx - 1], &row->chars[O.cx], row->size - O.cx + 1);
@@ -749,7 +758,7 @@ void outlineDrawRows(struct abuf *ab) {
 
 void outlineDrawRow(struct abuf *ab) {
 
-  int filerow = get_filerow();
+  int filerow = outlineGetFileRow();
   char buf[5];
   snprintf(buf, sizeof(buf), "\x1b[%dC", OUTLINE_LEFT_MARGIN);
   abAppend(ab, buf, 4);
@@ -800,8 +809,8 @@ void outlineDrawRow(struct abuf *ab) {
 //status bar has inverted colors
 void outlineDrawStatusBar(struct abuf *ab) {
 
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
@@ -810,7 +819,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
     //O.dirty ? "(modified)" : "");
     row->dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-    //O.row[get_filerow()].id, get_filerow() + 1, O.numrows);
+    //O.row[outlineGetFileRow()].id, outlineGetFileRow() + 1, O.numrows);
     row->id, fr + 1, O.numrows);
   if (len > O.screencols) len = O.screencols;
   abAppend(ab, status, len);
@@ -854,7 +863,7 @@ void outlineRefreshLine() {
 
   if (O.row)
   //if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, get_filerow(), get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
   char buf[32];
@@ -901,7 +910,7 @@ void outlineRefreshScreen() {
 
   if (O.row)
   //if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, get_filerow(), get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -958,8 +967,8 @@ void outlineSetMessage(const char *fmt, ...) {
 }
 
 void outlineMoveCursor(int key) {
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
 
   switch (key) {
     case ARROW_LEFT:
@@ -967,7 +976,7 @@ void outlineMoveCursor(int key) {
       // note O.cx might be zero but filecol positive because of O.coloff
       // then O.cx goes negative
       // dealt with in EditorScroll
-      if (get_filecol() > 0) O.cx--; 
+      if (outlineGetFileCol() > 0) O.cx--; 
       break;
 
     case ARROW_RIGHT:
@@ -980,12 +989,12 @@ void outlineMoveCursor(int key) {
       // note O.cy might be zero but filerow positive because of O.rowoff
       // then O.cy goes negative
       // dealt with in EditorScroll
-      if (get_filerow() > 0) O.cy--; 
+      if (outlineGetFileRow() > 0) O.cy--; 
       break;
 
     case ARROW_DOWN:
     case 'j':
-      if (get_filerow() < O.numrows - 1) O.cy++;
+      if (outlineGetFileRow() < O.numrows - 1) O.cy++;
       break;
   }
 
@@ -995,7 +1004,7 @@ void outlineMoveCursor(int key) {
   down or up.  Not needed for scrolling left but not checking for that.
   */
   if(key==ARROW_UP || key==ARROW_DOWN){
-    fr = get_filerow();
+    fr = outlineGetFileRow();
     row = &O.row[fr];
   }
   int rowlen = row ? row->size : 0;
@@ -1006,7 +1015,7 @@ void outlineMoveCursor(int key) {
 
   //if in insert mode can be one character beyond the length of the line
   //because you can insert characters. (Insert mode ==1)
-  if (get_filecol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode!=1);
+  if (outlineGetFileCol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode!=1);
     
 }
 
@@ -1705,7 +1714,7 @@ void update_row(void) {
 
   char query[300] = {'\0'};
   char title[200] = {'\0'};
-  int fr = get_filerow();
+  int fr = outlineGetFileRow();
   strncpy(title, O.row[fr].chars, O.row[fr].size);
   //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", O.row[fr].chars, get_id(-1));
   //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
@@ -1739,7 +1748,7 @@ void update_rows(void) {
   }
 
   for (int i=0; i < O.numrows;i++) {
-    erow *row = &O.row[i];
+    orow *row = &O.row[i];
     if (row->dirty) {
       char query[300] = {'\0'};
       char title[200] = {'\0'};
@@ -1761,16 +1770,16 @@ void update_rows(void) {
   return;
 }
 
-int get_filerow(void) {
+int outlineGetFileRow(void) {
   return O.cy + O.rowoff; ////////
 }
 
-int get_filecol(void) {
+int outlineGetFileCol(void) {
   return O.cx + O.coloff; ////////
 }
 
 int get_id(int fr) {
-  if(fr==-1) fr = get_filerow();
+  if(fr==-1) fr = outlineGetFileRow();
   int id = O.row[fr].id;
   return id;
 }
@@ -1780,7 +1789,7 @@ void outlineCreateSnapshot() {
   for (int j = 0 ; j < O.prev_numrows ; j++ ) {
     free(O.prev_row[j].chars);
   }
-  O.prev_row = realloc(O.prev_row, sizeof(erow) * O.numrows );
+  O.prev_row = realloc(O.prev_row, sizeof(orow) * O.numrows );
   for ( int i = 0 ; i < O.numrows ; i++ ) {
     int len = O.row[i].size;
     O.prev_row[i].chars = malloc(len + 1);
@@ -1795,7 +1804,7 @@ void outlineRestoreSnapshot() {
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
   } 
-  O.row = realloc(O.row, sizeof(erow) * O.prev_numrows );
+  O.row = realloc(O.row, sizeof(orow) * O.prev_numrows );
   for (int i = 0 ; i < O.prev_numrows ; i++ ) {
     int len = O.prev_row[i].size;
     O.row[i].chars = malloc(len + 1);
@@ -1807,7 +1816,7 @@ void outlineRestoreSnapshot() {
 }
 
 void outlineChangeCase() {
-  erow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy];
   char d = row->chars[O.cx];
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
@@ -1837,7 +1846,7 @@ void outlineYankLine(int n){
 
 void outlineYankString() {
   int n,x;
-  erow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy];
   for (x = O.highlight[0], n = 0; x < O.highlight[1]+1; x++, n++) {
       string_buffer[n] = row->chars[x];
   }
@@ -1846,12 +1855,12 @@ void outlineYankString() {
 }
 
 void outlinePasteString() {
-  int fr = get_filerow();
+  int fr = outlineGetFileRow();
   if (fr == O.numrows) {
     outlineInsertRow(O.numrows, "", 0); //outlineInsertRow will also insert another '\0'
   }
 
-  erow *row = &O.row[fr];
+  orow *row = &O.row[fr];
   //if (O.cx < 0 || O.cx > row->size) O.cx = row->size;
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
@@ -1859,7 +1868,7 @@ void outlinePasteString() {
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from outlineInsertRow - it's memmove is below
-     memmove(&O.row[at + 1], &O.row[at], sizeof(erow) * (O.numrows - at));
+     memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
   */
 
   memmove(&row->chars[O.cx + len], &row->chars[O.cx], row->size - O.cx); //****was O.cx + 1
@@ -1886,7 +1895,7 @@ void outlinePasteLine(){
 
 int outlineIndentAmount(int y) {
   int i;
-  erow *row = &O.row[y];
+  orow *row = &O.row[y];
   if ( !row || row->size == 0 ) return 0; //row is NULL if the row has been deleted or opening app
 
   for ( i = 0; i < row->size; i++) {
@@ -1896,10 +1905,10 @@ int outlineIndentAmount(int y) {
 }
 
 void outlineDelWord() {
-  int fr = get_filerow();
-  int fc = get_filecol();
+  int fr = outlineGetFileRow();
+  int fc = outlineGetFileCol();
 
-  erow *row = &O.row[fr];
+  orow *row = &O.row[fr];
   if (row->chars[fc] < 48) return;
 
   int i,j,x;
@@ -1920,7 +1929,7 @@ void outlineDelWord() {
 }
 
 void outlineDeleteToEndOfLine() {
-  erow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy];
   row->size = O.cx;
   //Arguably you don't have to reallocate when you reduce the length of chars
   row->chars = realloc(row->chars, O.cx + 1); //added 10042018 - before wasn't reallocating memory
@@ -1928,15 +1937,15 @@ void outlineDeleteToEndOfLine() {
   }
 
 void outlineMoveCursorEOL() {
-  int fr = get_filerow();
+  int fr = outlineGetFileRow();
   O.cx = O.row[fr].size - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void outlineMoveEndWord2() {
   int j;
-  int fr = get_filerow();
-  erow row = O.row[fr];
+  int fr = outlineGetFileRow();
+  orow row = O.row[fr];
 
   for (j = O.cx + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
@@ -1948,8 +1957,8 @@ void outlineMoveEndWord2() {
 void outlineMoveNextWord() {
   // below is same is outlineMoveEndWord2
   int j;
-  int fr = get_filerow();
-  erow row = O.row[fr];
+  int fr = outlineGetFileRow();
+  orow row = O.row[fr];
 
   for (j = O.cx + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
@@ -1965,8 +1974,8 @@ void outlineMoveNextWord() {
 }
 
 void outlineMoveBeginningWord() {
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
   if (O.cx == 0) return;
   for (;;) {
     if (row->chars[O.cx - 1] < 48) O.cx--;
@@ -1983,8 +1992,8 @@ void outlineMoveBeginningWord() {
 }
 
 void outlineMoveEndWord() {
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
   if (O.cx == row->size - 1) return;
   for (;;) {
     if (row->chars[O.cx + 1] < 48) O.cx++;
@@ -2001,8 +2010,8 @@ void outlineMoveEndWord() {
 }
 
 void outlineDecorateWord(int c) {
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
   char cc;
   if (row->chars[O.cx] < 48) return;
 
@@ -2063,8 +2072,8 @@ void outlineDecorateVisual(int c) {
 }
 
 void outlineGetWordUnderCursor(){
-  int fr = get_filerow();
-  erow *row = &O.row[fr];
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
   if (row->chars[O.cx] < 48) return;
 
   int i,j,n,x;
@@ -2094,7 +2103,7 @@ void outlineFindNextWord() {
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for ( int n=0; n < O.numrows; n++ ) {
-    erow *row = &O.row[y];
+    orow *row = &O.row[y];
     z = strstr(&(row->chars[x]), search_string);
     if ( z != NULL ) {
       O.cy = y;
@@ -2112,7 +2121,7 @@ void outlineFindNextWord() {
 /*** slz testing stuff ***/
 
 void getcharundercursor() {
-  erow *row = &O.row[O.cy];
+  orow *row = &O.row[O.cy];
   char d = row->chars[O.cx];
   outlineSetMessage("character under cursor at position %d of %d: %c", O.cx, row->size, d); 
 }
@@ -2121,13 +2130,13 @@ void getcharundercursor() {
 
 /*** init ***/
 
-void initEditor() {
+void initOutline() {
   O.cx = 0; //cursor x position
   O.cy = 0; //cursor y position
   O.rowoff = 0;  //number of rows scrolled off the screen
   O.coloff = 0;  //col the user is currently scrolled to  
   O.numrows = 0; //number of rows of text
-  O.row = NULL; //pointer to the erow structure 'array'
+  O.row = NULL; //pointer to the orow structure 'array'
   O.prev_numrows = 0; //number of rows of text in snapshot
   O.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   O.dirty = 0; //has filed changed since last save
@@ -2150,7 +2159,7 @@ void initEditor() {
 
 int main(void) {
   enableRawMode();
-  initEditor();
+  initOutline();
   int pos = O.screencols + OUTLINE_LEFT_MARGIN + OUTLINE_RIGHT_MARGIN + 1;
   char buf[32];
   for (int j=1; j < O.screenrows + 1;j++) {
