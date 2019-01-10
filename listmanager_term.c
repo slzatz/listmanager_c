@@ -359,9 +359,9 @@ void get_note(int id) {
   }
 
   PQclear(res);
-  editorRefreshScreen();
   E.dirty = 0;
-  note = NULL;
+  editorRefreshScreen();
+  note = NULL; //? not necessary
   return;
 }
 
@@ -1232,8 +1232,12 @@ void outlineDrawStatusBar(struct abuf *ab) {
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
+  char truncated_title[20];
+  strncpy(truncated_title, row->chars, 19);
+  truncated_title[20] = '\0';
+  int len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
     O.context ? O.context : "[No Name]", O.numrows,
+    truncated_title,
     //O.dirty ? "(modified)" : "");
     row->dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
@@ -1264,7 +1268,7 @@ void outlineDrawMessageBar(struct abuf *ab) {
   //"\x1b[K" erases the part of the line to the right of the cursor in case the
   // new line i shorter than the old
 
-  abAppend(ab, "\x1b[K", 3);
+  abAppend(ab, "\x2b[K", 3); //wrong needs to erase from r -> l
   int msglen = strlen(O.statusmsg);
   if (msglen > O.screencols) msglen = O.screencols;
   //if (msglen && time(NULL) - O.statusmsg_time < 1000) //time
@@ -1526,7 +1530,7 @@ void outlineProcessKeypress() {
       break;
 
     case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
+    //case CTRL_KEY('i'):
     case CTRL_KEY('e'):
       outlineCreateSnapshot();
       outlineDecorateWord(c);
@@ -1590,6 +1594,9 @@ void outlineProcessKeypress() {
   switch (c) {
 
     case 'z':
+    case '\t':
+      E.cx = E.cy = 0;
+      E.mode = NORMAL;
       editor_mode = true;
       return;
 
@@ -1780,7 +1787,7 @@ void outlineProcessKeypress() {
       return;
 
     case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
+    //case CTRL_KEY('i'):
     case CTRL_KEY('e'):
       outlineCreateSnapshot();
       outlineDecorateWord(c);
@@ -2095,8 +2102,8 @@ void outlineProcessKeypress() {
       return;
 
     case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
+    //case CTRL_KEY('i'):
+    //case CTRL_KEY('e'):
       outlineCreateSnapshot();
       outlineDecorateVisual(c);
       O.command[0] = '\0';
@@ -2128,6 +2135,44 @@ void outlineProcessKeypress() {
 }
 
 /*** slz additions ***/
+
+void update_note(char *note, int id) {
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300] = {'\0'};
+  //char title[200] = {'\0'};
+  //int fr = outlineGetFileRow();
+  //strncpy(title, O.row[fr].chars, O.row[fr].size);
+
+  sprintf(query, "UPDATE task SET note=\'%s\', "
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                   //note, get_id(-1));
+                   note, id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("UPDATE command failed");
+    PQclear(res);
+    //do_exit(conn);
+  }    
+
+  free(note);
+  E.dirty = 0;
+
+  outlineSetMessage("Updated %d", id);
+
+    return;
+}
 
 void update_row(void) {
 
@@ -2678,10 +2723,18 @@ void editorDrawRows(struct abuf *ab) {
 
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
+
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
+
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
-    E.filename ? E.filename : "[No Name]", E.filerows,
+  char truncated_title[20];
+  strncpy(truncated_title, row->chars, 19);
+  truncated_title[20] = '\0';
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s %s",
+    O.context ? O.context : "[No Name]", O.numrows,
+    truncated_title,
     E.dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
     E.cy + 1, E.filerows);
@@ -2713,7 +2766,7 @@ void editorDrawMessageBar(struct abuf *ab) {
   //"\x1b[K" erases the part of the line to the right of the cursor in case the
   // new line i shorter than the old
 
-  abAppend(ab, "\x1b[K", 3);
+  abAppend(ab, "\x1b[K", 3); //wrong needs from midscreen -> r
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols) msglen = E.screencols;
   //if (msglen && time(NULL) - E.statusmsg_time < 1000) //time
@@ -3372,47 +3425,32 @@ void editorProcessKeypress(void) {
 
     if (c == '\r') {
       if (E.command[1] == 'w') {
-        if (strlen(E.command) > 3) {
-          E.filename = strdup(&E.command[3]);
-          editorSave();
-          editorSetMessage("\"%s\" written", E.filename);
-        }
-        else if (E.filename != NULL) {
-            editorSave();
-            editorSetMessage("\"%s\" written", E.filename);
-        }
-        else editorSetMessage("No file name");
-
-        E.mode = 0;
+        int len;
+        char *note = editorRowsToString(&len);
+        int ofr = outlineGetFileRow();
+        int id = get_id(ofr);
+        update_note(note, id);
+        E.mode = NORMAL;
         E.command[0] = '\0';
       }
 
       else if (E.command[1] == 'x') {
-        if (strlen(E.command) > 3) {
-          E.filename = strdup(&E.command[3]);
-          editorSave();
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
-        }
-        else if (E.filename != NULL) {
-          editorSave();
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
-        }
-        else editorSetMessage("No file name");
-
-        E.mode = 0;
+        int len;
+        char *note = editorRowsToString(&len);
+        int ofr = outlineGetFileRow();
+        int id = get_id(ofr);
+        update_note(note, id);
+        E.mode = NORMAL;
         E.command[0] = '\0';
+        editor_mode = false;
       }
 
       else if (E.command[1] == 'q') {
         if (E.dirty) {
           if (strlen(E.command) == 3 && E.command[2] == '!') {
-            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-            exit(0);
+            E.mode = NORMAL;
+            E.command[0] = '\0';
+            editor_mode = false;
           }  
           else {
             E.mode = 0;
@@ -3422,9 +3460,7 @@ void editorProcessKeypress(void) {
         }
        
         else {
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
+          editor_mode = false;
         }
       }
     }
@@ -4288,8 +4324,8 @@ int main(void) {
 
 }
   get_conn();
-  PGresult *res = get_data("programming", 200); 
-  //PGresult *res = get_data("todo", 200); 
+  //PGresult *res = get_data("programming", 200); 
+  PGresult *res = get_data("todo", 200); 
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *z = PQgetvalue(res, i, 3);
