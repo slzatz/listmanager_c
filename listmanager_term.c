@@ -210,6 +210,7 @@ void outlineRestoreSnapshot();
 void outlineCreateSnapshot(); 
 int outlineGetFileRow(void);
 int outlineGetFileCol(void);
+void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
@@ -325,6 +326,46 @@ PGresult *get_data(char *context, int n) {
   return res;
 }
 
+void get_data2(char *context, int n) {
+  char query[200];
+  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
+
+  PGresult *res = PQexec(conn, query);    
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");        
+    PQclear(res);
+    do_exit(conn);
+  }    
+  
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+
+  outlineRefreshScreen();
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    char *z = PQgetvalue(res, i, 3);
+    char *zz = PQgetvalue(res, i, 0);
+    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    int id = atoi(zz);
+    outlineInsertRow2(O.numrows, z, strlen(z), id, star, deleted, completed); 
+  }
+
+  PQclear(res);
+ // PQfinish(conn);
+
+  O.cx = O.cy = O.rowoff = 0;
+  //O.context = context;
+}
 
 void get_note(int id) {
   char query[100];
@@ -1116,6 +1157,9 @@ int outlineScroll() {
 // "drawing" rows really means updating the ab buffer
 // filerow/filecol are the row/column of the titles regardless of scroll
 void outlineDrawRows(struct abuf *ab) {
+
+  if (!O.row) return; //***************************
+
   int y;
   char offset_lf_ret[10];
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
@@ -1223,6 +1267,8 @@ void outlineDrawRow(struct abuf *ab) {
 
 //status bar has inverted colors
 void outlineDrawStatusBar(struct abuf *ab) {
+
+  if (!O.row) return; //**********************************
 
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
@@ -1778,6 +1824,13 @@ void outlineProcessKeypress() {
       outlineRestoreSnapshot();
       return;
 
+    case '^':
+      //save note to drive
+      //open file
+      system("open http://url");
+      system("chrome http...");
+      return;
+
     case CTRL_KEY('z'):
       //O.smartindent = (O.smartindent == 4) ? 0 : 4;
       //outlineSetMessage("O.smartindent = %d", O.smartindent); 
@@ -1952,6 +2005,7 @@ void outlineProcessKeypress() {
         if (strlen(O.command) > 3) {
           O.context = strdup(&O.command[3]);
           outlineSetMessage("\"%s\" will be opened", O.context);
+          get_data2(O.context, 200);
         }
         else outlineSetMessage("You need to provide a context");
 
