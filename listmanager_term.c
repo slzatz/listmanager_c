@@ -1273,6 +1273,18 @@ void outlineDrawStatusBar(struct abuf *ab) {
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
 
+  // so the below should 1) position the cursor on the status
+  // bar row and midscreen and 2) erase previous statusbar
+  // r -> l and then put the cursor back where it should be
+  // at OUTLINE_LEFT_MARGIN
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
+                             O.screenrows + 1,
+                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             O.screenrows + 1,
+                             OUTLINE_LEFT_MARGIN + 1);
+  abAppend(&ab, buf, strlen(buf));
+
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
   char truncated_title[20];
@@ -1334,18 +1346,19 @@ void outlineRefreshLine() {
   char buf[32];
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+
   // move the cursor to mid-screen, erase to left and move cursor back to begging of line
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", O.cy+1, O.screencols + 3, O.cy+1, 1);
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", O.cy+1, 
   O.screencols + OUTLINE_LEFT_MARGIN, O.cy+1, 1);
   abAppend(&ab, buf, strlen(buf));
-  //abAppend(&ab, "\x1b[2C", 4); //in outlineDrawRow
 
   outlineDrawRow(&ab);
 
   // move the cursor to the bottom of the screen
   // to 'draw' status bar and message bar
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenrows+1, 1);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenrows+1, 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", O.screenrows + 1, 
+           OUTLINE_LEFT_MARGIN + 1); //erase from cursor to left
   abAppend(&ab, buf, strlen(buf));
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
@@ -2774,10 +2787,17 @@ void editorDrawRows(struct abuf *ab) {
 
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
-
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
 
+  // so the below should 1) position the cursor on the editor status
+  // bar row at the correct indent
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 1,
+                                            EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
   char truncated_title[20];
@@ -2812,16 +2832,16 @@ void editorDrawStatusBar(struct abuf *ab) {
 }
 
 void editorDrawMessageBar(struct abuf *ab) {
-  /*void editorSetMessage(const char *fmt, ...) is where the message is created/set*/
+  // Position cursor on last row and mid-screen
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 2,
+                                            EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
 
-  //"\x1b[K" erases the part of the line to the right of the cursor in case the
-  // new line i shorter than the old
-
-  abAppend(ab, "\x1b[K", 3); //wrong needs from midscreen -> r
+  abAppend(ab, "\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(E.statusmsg);
   if (msglen > E.screencols) msglen = E.screencols;
-  //if (msglen && time(NULL) - E.statusmsg_time < 1000) //time
-    abAppend(ab, E.statusmsg, msglen);
+  abAppend(ab, E.statusmsg, msglen);
 }
 
 void editorRefreshScreen(void) {
@@ -2851,19 +2871,18 @@ void editorRefreshScreen(void) {
 
   // the lines below position the cursor where it should go
   if (E.mode != 2){
-  char buf[32];
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1,
-  //                                          (E.cx - E.coloff) + 1);
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, E.cx + EDITOR_LEFT_MARGIN + 1);
-  abAppend(&ab, buf, strlen(buf));
-}
+    char buf[32];
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, E.cx + EDITOR_LEFT_MARGIN + 1);
+    abAppend(&ab, buf, strlen(buf));
+  }
+
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
 
-  abFree(&ab); //**************************************
+  abFree(&ab); 
 }
+
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
@@ -4330,8 +4349,8 @@ void initOutline() {
 void initEditor(void) {
   E.cx = 0; //cursor x position
   E.cy = 0; //cursor y position
-  E.rowoff = 0;  //row the user is currently scrolled to  
-  E.coloff = 0;  //col the user is currently scrolled to  
+  E.rowoff = 0;  //the number of rows at the top scrolled off the screen
+  //E.coloff = 0;  //should always be zero because of line wrap
   E.filerows = 0; //number of rows (lines) of text delineated by a return
   E.row = NULL; //pointer to the erow structure 'array'
   E.prev_filerows = 0; //number of rows of text in snapshot
