@@ -339,24 +339,21 @@ void get_note(int id) {
     do_exit(conn);
   }    
   
-  //char *buf = malloc(totlen);
   char *note = PQgetvalue(res, 0, 0);
 
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
-  E.row = NULL; //***************
+  E.row = NULL; 
   E.filerows = 0;
-  char *pch = NULL;
-  pch = strtok(note, "\n\r");
-  if (pch==NULL) {} //editorInsertRow(0, "<no note>", 9); 
-  else {
-    while (pch != NULL) {
-      editorInsertRow(E.filerows, pch, strlen(pch));
-      pch = strtok(NULL, "\n");
+
+  //note strsep handles multiple \n\n and strtok did not
+  char *found;
+  while ((found = strsep(&note, "\n")) !=NULL) {
+      editorInsertRow(E.filerows, found, strlen(found));
     }
-  }
+  
 
   PQclear(res);
   E.dirty = 0;
@@ -2733,7 +2730,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   strncpy(truncated_title, row->chars, 19);
   truncated_title[20] = '\0';
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s %s",
-    O.context ? O.context : "[No Name]", O.numrows,
+    O.context ? O.context : "[No Name]", E.filerows,
     truncated_title,
     E.dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
