@@ -347,7 +347,7 @@ void get_data2(char *context, int n) {
   O.row = NULL; 
   O.numrows = 0;
 
-  outlineRefreshScreen();
+  //outlineRefreshScreen();
 
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
@@ -359,6 +359,8 @@ void get_data2(char *context, int n) {
     int id = atoi(zz);
     outlineInsertRow2(O.numrows, z, strlen(z), id, star, deleted, completed); 
   }
+
+  outlineRefreshScreen();
 
   PQclear(res);
  // PQfinish(conn);
@@ -1027,7 +1029,8 @@ char *editorRowsToString(int *buflen) {
     totlen += E.row[j].size + 1;
   *buflen = totlen;
 
-  char *buf = malloc(totlen);
+  //char *buf = malloc(totlen);
+  char *buf = calloc(totlen, sizeof(char)); //if you don't initialize to zero using calloc, bad things seem to happen for some reason.
   char *p = buf;
   for (j = 0; j < E.filerows; j++) {
     memcpy(p, E.row[j].chars, E.row[j].size);
@@ -1283,7 +1286,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
                              O.screencols + OUTLINE_LEFT_MARGIN,
                              O.screenrows + 1,
                              OUTLINE_LEFT_MARGIN + 1);
-  abAppend(&ab, buf, strlen(buf));
+  abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
@@ -2211,7 +2214,7 @@ void update_note(char *note, int id) {
     }
   }
 
-  char query[300] = {'\0'};
+  char query[2000] = {'\0'};
   //char title[200] = {'\0'};
   //int fr = outlineGetFileRow();
   //strncpy(title, O.row[fr].chars, O.row[fr].size);
@@ -2226,18 +2229,66 @@ void update_note(char *note, int id) {
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("UPDATE command failed");
-    PQclear(res);
+   // PQclear(res);
     //do_exit(conn);
   }    
 
+  PQclear(res);
   free(note);
   E.dirty = 0;
 
   outlineSetMessage("Updated %d", id);
 
-    return;
+  return;
 }
 
+void update_note2() {
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  int len;
+  char *note = editorRowsToString(&len);
+  int ofr = outlineGetFileRow();
+  int id = get_id(ofr);
+
+  //char query[1000] = {'\0'};
+  //char title[200] = {'\0'};
+  //int fr = outlineGetFileRow();
+  //strncpy(title, O.row[fr].chars, O.row[fr].size);
+
+  char *query = malloc(len + 100);
+
+  sprintf(query, "UPDATE task SET note=\'%s\', "
+  //sprintf(query, "UPDATE task SET note=%s, "
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                   //note, get_id(-1));
+                   note, id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("UPDATE command failed");
+   // PQclear(res);
+    //do_exit(conn);
+  }    
+  
+  free(query);
+  PQclear(res);
+  free(note);
+  E.dirty = 0;
+
+  outlineSetMessage("Updated %d", id);
+
+  return;
+}
 void update_row(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -2264,12 +2315,13 @@ void update_row(void) {
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("UPDATE command failed");
-    PQclear(res);
+    //PQclear(res);
     //do_exit(conn);
   }    
-  outlineSetMessage("%s - %s - %d", query, title, O.row[fr].size);
 
-    return;
+  PQclear(res);
+  outlineSetMessage("%s - %s - %d", query, title, O.row[fr].size);
+  return;
 }
 
 void update_rows(void) {
@@ -2733,6 +2785,7 @@ void editorDrawRows(struct abuf *ab) {
       int lines = E.row[filerow].size/E.screencols;
       if (E.row[filerow].size%E.screencols) lines++;
       if (lines == 0) lines = 1;
+      if (E.row[filerow].chars[0] == '\r') E.row[filerow].chars[0] = '\0';
       if ((y + lines) > E.screenrows) {
           for (n=0; n < (E.screenrows - y);n++) {
             abAppend(ab, "@", 2);
@@ -2795,7 +2848,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 1,
                                             EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
@@ -2836,7 +2889,7 @@ void editorDrawMessageBar(struct abuf *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 2,
                                             EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(E.statusmsg);
@@ -3125,6 +3178,7 @@ void editorProcessKeypress(void) {
 
     case 'z':
       editor_mode = false;
+      E.cx = E.cy = 0;
       return;
 
     case 'i':
@@ -3495,11 +3549,14 @@ void editorProcessKeypress(void) {
 
     if (c == '\r') {
       if (E.command[1] == 'w') {
+        /*
         int len;
         char *note = editorRowsToString(&len);
         int ofr = outlineGetFileRow();
         int id = get_id(ofr);
         update_note(note, id);
+        */
+        update_note2();
         E.mode = NORMAL;
         E.command[0] = '\0';
       }
