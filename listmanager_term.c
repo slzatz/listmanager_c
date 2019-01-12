@@ -1029,8 +1029,8 @@ char *editorRowsToString(int *buflen) {
     totlen += E.row[j].size + 1;
   *buflen = totlen;
 
-  //char *buf = malloc(totlen);
-  char *buf = calloc(totlen, sizeof(char)); //if you don't initialize to zero using calloc, bad things seem to happen for some reason.
+  char *buf = malloc(totlen + 1);
+  //char *buf = calloc(totlen, sizeof(char)); // worked because it made sure c string terminated with '\0' but not necessary.
   char *p = buf;
   for (j = 0; j < E.filerows; j++) {
     memcpy(p, E.row[j].chars, E.row[j].size);
@@ -1038,6 +1038,7 @@ char *editorRowsToString(int *buflen) {
     *p = '\n';
     p++;
   }
+  *p = '\0'; //does not work if this is missing
   return buf;
 }
 
