@@ -132,7 +132,6 @@ struct outlineConfig {
   int screencols;  //number of columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
   orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
-  int prev_numrows; // the number of rows of text so last text row is always row numrows
   orow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *context;
@@ -206,14 +205,13 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineRestoreSnapshot(); 
-void outlineCreateSnapshot(); 
 int outlineGetFileRow(void);
 int outlineGetFileCol(void);
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
+void update_rows2(void);
 
 //editor Prototypes
 void editorSetMessage(const char *fmt, ...);
@@ -589,9 +587,18 @@ void outlineDelRow(int at) {
 
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed) {
 
-  /*O.row is a pointer to an array of orow structures
-  The array of orows that O.row points to needs to have its memory enlarged when
-  you add a row. Note that orow structues are just a size and a char pointer*/
+  /*O.row is a pointer to an array of database row structures
+  The array of rows that O.row points to needs to have its memory enlarged when
+  you add a row. Note that db row structures now include:
+
+  size of the title
+  title (should be changed to title but still called `chars` in the orow structure)
+  id
+  star
+  deleted
+  completed
+  dirty
+  */
 
   O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
 
@@ -1526,8 +1533,8 @@ void outlineProcessKeypress() {
   switch (c) {
 
     case '\r':
-      outlineCreateSnapshot();
-      outlineInsertNewline(1);
+      //outlineInsertNewline(1);
+      //this should save that title
       break;
 
     case CTRL_KEY('q'):
@@ -1556,12 +1563,10 @@ void outlineProcessKeypress() {
       break;
 
     case BACKSPACE:
-      outlineCreateSnapshot();
       outlineBackspace();
       break;
 
     case DEL_KEY:
-      outlineCreateSnapshot();
       outlineDelChar();
       break;
 
@@ -1592,7 +1597,6 @@ void outlineProcessKeypress() {
     case CTRL_KEY('b'):
     //case CTRL_KEY('i'):
     case CTRL_KEY('e'):
-      outlineCreateSnapshot();
       outlineDecorateWord(c);
       break;
 
@@ -1619,7 +1623,6 @@ void outlineProcessKeypress() {
       return;
 
     default:
-      outlineCreateSnapshot();
       outlineInsertChar(c);
       return;
  
@@ -1674,7 +1677,6 @@ void outlineProcessKeypress() {
       break;
 
     case 's':
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) outlineDelChar();
       O.command[0] = '\0';
       O.repeat = 0;
@@ -1683,7 +1685,6 @@ void outlineProcessKeypress() {
       return;
 
     case 'x':
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) outlineDelChar();
       O.command[0] = '\0';
       O.repeat = 0;
@@ -1694,7 +1695,6 @@ void outlineProcessKeypress() {
       return;
 
     case '~':
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) outlineChangeCase();
       O.command[0] = '\0';
       O.repeat = 0;
@@ -1771,9 +1771,14 @@ void outlineProcessKeypress() {
       return;
 
     case 'o':
-      outlineCreateSnapshot();
       O.cx = 0;
-      outlineInsertNewline(1);
+      //outlineInsertNewline(1);
+     
+     // void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
+      outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+      O.cx = O.cy = O.rowoff = 0;
+      //need to insert_new_row
+      //could just be when you save a row where id=-1 then you insert the row rather than update the row
       O.mode = 1;
       O.command[0] = '\0';
       O.repeat = 0;
@@ -1781,7 +1786,6 @@ void outlineProcessKeypress() {
       return;
 
     case 'O':
-      outlineCreateSnapshot();
       O.cx = 0;
       outlineInsertNewline(0);
       O.mode = 1;
@@ -1821,7 +1825,6 @@ void outlineProcessKeypress() {
       return;
 
     case 'p':  
-      outlineCreateSnapshot();
       if (strlen(string_buffer)) outlinePasteString();
       else outlinePasteLine();
       O.command[0] = '\0';
@@ -1838,7 +1841,7 @@ void outlineProcessKeypress() {
       return;
 
     case 'u':
-      outlineRestoreSnapshot();
+      //outlineRestoreSnapshot();
       return;
 
     case '^':
@@ -1856,7 +1859,6 @@ void outlineProcessKeypress() {
     case CTRL_KEY('b'):
     //case CTRL_KEY('i'):
     case CTRL_KEY('e'):
-      outlineCreateSnapshot();
       outlineDecorateWord(c);
       return;
 
@@ -1896,14 +1898,12 @@ void outlineProcessKeypress() {
   switch (keyfromstring(O.command)) {
     
     case C_daw:
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) outlineDelWord();
       O.command[0] = '\0';
       O.repeat = 0;
       return;
 
     case C_dw:
-      outlineCreateSnapshot();
       for (int j = 0; j < O.repeat; j++) {
         start = O.cx;
         outlineMoveEndWord2();
@@ -1916,7 +1916,6 @@ void outlineProcessKeypress() {
       return;
 
     case C_de:
-      outlineCreateSnapshot();
       start = O.cx;
       outlineMoveEndWord(); //correct one to use to emulate vim
       end = O.cx;
@@ -1931,7 +1930,6 @@ void outlineProcessKeypress() {
       if (O.numrows != 0) {
         int r = O.numrows - O.cy;
         O.repeat = (r >= O.repeat) ? O.repeat : r ;
-        outlineCreateSnapshot();
         outlineYankLine(O.repeat);
         for (int i = 0; i < O.repeat ; i++) outlineDelRow(O.cy);
       }
@@ -1941,7 +1939,6 @@ void outlineProcessKeypress() {
       return;
 
     case C_d$:
-      outlineCreateSnapshot();
       outlineDeleteToEndOfLine();
       if (O.numrows != 0) {
         int r = O.numrows - O.cy;
@@ -1956,7 +1953,6 @@ void outlineProcessKeypress() {
 
     //tested with repeat on one line
     case C_cw:
-      outlineCreateSnapshot();
       for (int j = 0; j < O.repeat; j++) {
         start = O.cx;
         outlineMoveEndWord();
@@ -1972,7 +1968,6 @@ void outlineProcessKeypress() {
 
     //tested with repeat on one line
     case C_caw:
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) outlineDelWord();
       O.command[0] = '\0';
       O.repeat = 0;
@@ -2013,7 +2008,7 @@ void outlineProcessKeypress() {
     if (c == '\r') {
 
       if (O.command[1] == 'w') {
-        update_rows();
+        update_rows2();
         O.mode = 0;
         O.command[0] = '\0';
       }
@@ -2091,7 +2086,6 @@ void outlineProcessKeypress() {
 
     case 'x':
       if (O.numrows != 0) {
-        outlineCreateSnapshot();
         O.repeat = O.highlight[1] - O.highlight[0] + 1;
         O.cy = O.highlight[0];
         outlineYankLine(O.repeat);
@@ -2144,7 +2138,6 @@ void outlineProcessKeypress() {
       return;
 
     case 'x':
-      outlineCreateSnapshot();
       O.repeat = O.highlight[1] - O.highlight[0] + 1;
       O.cx = O.highlight[0];
       outlineYankString(); 
@@ -2172,7 +2165,6 @@ void outlineProcessKeypress() {
     case CTRL_KEY('b'):
     //case CTRL_KEY('i'):
     //case CTRL_KEY('e'):
-      outlineCreateSnapshot();
       outlineDecorateVisual(c);
       O.command[0] = '\0';
       O.repeat = 0;
@@ -2191,7 +2183,6 @@ void outlineProcessKeypress() {
       return;
     }
   } else if (O.mode == REPLACE) {
-      outlineCreateSnapshot();
       for (int i = 0; i < O.repeat; i++) {
         outlineDelChar();
         outlineInsertChar(c);
@@ -2360,6 +2351,135 @@ void update_rows(void) {
   return;
 }
 
+void insert_row(int ofr) {
+
+ char query[800];
+  
+ sprintf(query, "INSERT INTO task ("
+                                   //"tid, "
+                                   "priority, "
+                                   "title, "
+                                   //"tag, "
+                                   //"folder_tid, "
+                                   "context_tid, "
+                                   //"duetime, "
+                                   "star, "
+                                   //"added, "
+                                   //"completed, "
+                                   //"duedate, "
+                                   "note, "
+                                   //"repeat, "
+                                   "deleted, "
+                                   "created, "
+                                   "modified, "
+                                   "startdate " 
+                                   //"remind) "
+                                   ") VALUES ("
+                                   //"%s," //tid, 
+                                   " %d," //priority
+                                   " \'%s\',"//title)
+                                   //%s //tag 
+                                   //%s //folder_tid
+                                   " %d," //context_tid 
+                                   //%s, //duetime
+                                   " %s," //star 
+                                   //%s //added 
+                                   //"%s," //completed 
+                                   //"%s," //duedate 
+                                   " \'%s\'," //note
+                                   //s% //repeat
+                                   " %s," //deleted
+                                   " %s," //created 
+                                   " %s," //modified
+                                   " %s" //startdate
+                                   //%s //remind
+                                   ") RETURNING id;",
+                                     
+                                   //tid, 
+                                   3, //priority, 
+                                   "Testing 2019-01-13 Steve", //title, 
+                                   //tag, 
+                                   //folder_tid,
+                                   9, //context_tid, 
+                                   //duetime, 
+                                   "True", //star, 
+                                   //added, 
+                                   //completed, 
+                                   //duedate, 
+                                   "<This is a new note>", //note, 
+                                   //repeat, 
+                                   "False", //deleted 
+                                   "LOCALTIMESTAMP - interval '5 hours'", //created, 
+                                   "LOCALTIMESTAMP - interval '5 hours'", //modified 
+                                   "CURRENT_DATE" //startdate  
+                                   //remind
+                                   );
+                                     
+                            
+    
+  printf(query);
+    
+  printf("\n");
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
+
+    printf("INSERT command failed\n");
+    printf("PQresStatus: %s\n", PQresStatus(PQresultStatus(res)));
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    return;
+
+  orow *row = &O.row[ofr];
+  row->id = atoi(PQgetvalue(res, 0, 0));
+  row->dirty = false;
+        
+  PQclear(res);
+    
+  return;
+}
+
+}
+
+void update_rows2(void) {
+  if (!O.dirty) return;
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  for (int i=0; i < O.numrows;i++) {
+    orow *row = &O.row[i];
+    if (row->dirty) {
+      char query[300] = {'\0'};
+      char title[200] = {'\0'};
+      strncpy(title, row->chars, row->size);
+      if (row->id != -1) {
+        sprintf(query, "UPDATE task SET title=\'%s\', "
+                       "modified=LOCALTIMESTAMP - interval '5 hours' "
+                       "WHERE id=%d",
+                        title, row->id);
+        PGresult *res = PQexec(conn, query); 
+    
+        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+          outlineSetMessage("UPDATE command failed");
+          PQclear(res);
+        } else {
+          row->dirty = false;    
+          PQclear(res);
+        }  
+      } else insert_row(i);
+  }
+  O.dirty = 0;
+  return;
+  }
+}
+
 int outlineGetFileRow(void) {
   return O.cy + O.rowoff; ////////
 }
@@ -2372,37 +2492,6 @@ int get_id(int fr) {
   if(fr==-1) fr = outlineGetFileRow();
   int id = O.row[fr].id;
   return id;
-}
-
-void outlineCreateSnapshot() {
-  if ( O.numrows == 0 ) return; //don't create snapshot if there is no text
-  for (int j = 0 ; j < O.prev_numrows ; j++ ) {
-    free(O.prev_row[j].chars);
-  }
-  O.prev_row = realloc(O.prev_row, sizeof(orow) * O.numrows );
-  for ( int i = 0 ; i < O.numrows ; i++ ) {
-    int len = O.row[i].size;
-    O.prev_row[i].chars = malloc(len + 1);
-    O.prev_row[i].size = len;
-    memcpy(O.prev_row[i].chars, O.row[i].chars, len);
-    O.prev_row[i].chars[len] = '\0';
-  }
-  O.prev_numrows = O.numrows;
-}
-
-void outlineRestoreSnapshot() {
-  for (int j = 0 ; j < O.numrows ; j++ ) {
-    free(O.row[j].chars);
-  } 
-  O.row = realloc(O.row, sizeof(orow) * O.prev_numrows );
-  for (int i = 0 ; i < O.prev_numrows ; i++ ) {
-    int len = O.prev_row[i].size;
-    O.row[i].chars = malloc(len + 1);
-    O.row[i].size = len;
-    memcpy(O.row[i].chars, O.prev_row[i].chars, len);
-    O.row[i].chars[len] = '\0';
-  }
-  O.numrows = O.prev_numrows;
 }
 
 void outlineChangeCase() {
@@ -4384,8 +4473,6 @@ void initOutline() {
   O.coloff = 0;  //col the user is currently scrolled to  
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
-  O.prev_numrows = 0; //number of rows of text in snapshot
-  O.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   O.dirty = 0; //has filed changed since last save
   O.context = NULL;
   O.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -4453,7 +4540,7 @@ int main(void) {
 }
   get_conn();
   //PGresult *res = get_data("programming", 200); 
-  PGresult *res = get_data("todo", 200); 
+  PGresult *res = get_data("test", 200); 
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *z = PQgetvalue(res, i, 3);
