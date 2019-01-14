@@ -32,6 +32,20 @@
 
 int EDITOR_LEFT_MARGIN;
 
+/*
+No Context 1
+financial 2
+health 3
+industry 4
+not work 7
+programming 8
+test 10
+work 11
+facts 6
+journal 5
+todo 9
+*/
+
 //should apply to outline and note
 struct termios orig_termios;
 // the full dimensions of the screen available to outline + note
@@ -368,6 +382,15 @@ void get_data2(char *context, int n) {
 }
 
 void get_note(int id) {
+  for (int j = 0 ; j < E.filerows ; j++ ) {
+    free(E.row[j].chars);
+  } 
+  free(E.row);
+  E.row = NULL; 
+  E.filerows = 0;
+
+  if (id ==-1) return;
+
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id);
 
@@ -377,10 +400,10 @@ void get_note(int id) {
 
     printf("No data retrieved\n");        
     PQclear(res);
-    do_exit(conn);
+    //do_exit(conn);
   }    
   
-  char *note = PQgetvalue(res, 0, 0);
+  //char *note = PQgetvalue(res, 0, 0); //*************
 
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
@@ -390,6 +413,8 @@ void get_note(int id) {
   E.filerows = 0;
 
   //note strsep handles multiple \n\n and strtok did not
+  char *note;
+  note = strdup(PQgetvalue(res, 0, 0)); //******************
   char *found;
   while ((found = strsep(&note, "\n")) !=NULL) {
       editorInsertRow(E.filerows, found, strlen(found));
@@ -1334,7 +1359,14 @@ void outlineDrawMessageBar(struct abuf *ab) {
   //"\x1b[K" erases the part of the line to the right of the cursor in case the
   // new line i shorter than the old
 
-  abAppend(ab, "\x2b[K", 3); //wrong needs to erase from r -> l
+  //abAppend(ab, "\x1b[K", 3); //wrong needs to erase from r -> l
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
+                             O.screenrows + 2,
+                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             O.screenrows + 2,
+                             OUTLINE_LEFT_MARGIN + 1);
+  abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.statusmsg);
   if (msglen > O.screencols) msglen = O.screencols;
   //if (msglen && time(NULL) - O.statusmsg_time < 1000) //time
@@ -1498,7 +1530,7 @@ void outlineMoveCursor(int key) {
     fr = outlineGetFileRow();
     row = &O.row[fr];
     int id = O.row[fr].id;
-    get_note(id); //********************************************
+    get_note(id); //if id == -1 does not try to retrieve not ********************************************
     //editorProcessNote():
   }
   int rowlen = row ? row->size : 0;
@@ -1771,12 +1803,14 @@ void outlineProcessKeypress() {
       return;
 
     case 'o':
-      O.cx = 0;
+      //O.cx = 0;
       //outlineInsertNewline(1);
      
      // void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
       outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
       O.cx = O.cy = O.rowoff = 0;
+      outlineScroll();
+      outlineRefreshScreen();  //probably should drop refreshing just a line
       //need to insert_new_row
       //could just be when you save a row where id=-1 then you insert the row rather than update the row
       O.mode = 1;
@@ -2353,7 +2387,10 @@ void update_rows(void) {
 
 void insert_row(int ofr) {
 
+ orow *row = &O.row[ofr];
  char query[800];
+ char title[200] = {'\0'};
+ strncpy(title, row->chars, row->size);
   
  sprintf(query, "INSERT INTO task ("
                                    //"tid, "
@@ -2397,10 +2434,11 @@ void insert_row(int ofr) {
                                      
                                    //tid, 
                                    3, //priority, 
-                                   "Testing 2019-01-13 Steve", //title, 
+                                   //"Testing 2019-01-13 Steve", //title, 
+                                   title, //title, 
                                    //tag, 
                                    //folder_tid,
-                                   9, //context_tid, 
+                                   10, //context_tid, 10=test
                                    //duetime, 
                                    "True", //star, 
                                    //added, 
@@ -2417,9 +2455,7 @@ void insert_row(int ofr) {
                                      
                             
     
-  printf(query);
     
-  printf("\n");
   PGresult *res = PQexec(conn, query); 
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
@@ -2429,16 +2465,14 @@ void insert_row(int ofr) {
     printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
     return;
+  }
 
-  orow *row = &O.row[ofr];
   row->id = atoi(PQgetvalue(res, 0, 0));
   row->dirty = false;
         
   PQclear(res);
     
   return;
-}
-
 }
 
 void update_rows2(void) {
