@@ -3113,8 +3113,6 @@ void editorMoveCursor(int key) {
 
   int fr = editorGetFileRow();
   int fc = editorGetFileCol();
-  //int lines;
-  //erow *row = &E.row[fr];
 
   switch (key) {
     case ARROW_LEFT:
@@ -3129,7 +3127,6 @@ void editorMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       ;
-      //int fc = editorGetFileCol();
       int row_size = E.row[fr].size;
       int line_in_row = 1 + fc/E.screencols; //counting from one
       int total_lines = row_size/E.screencols;
@@ -3148,21 +3145,7 @@ void editorMoveCursor(int key) {
         E.cx = row_column[1];
       }
       break;
-      /*
-      if (fr > 0) {
-        lines = editorGetFileCol()/E.screencols;
-        int more_lines = E.row[fr - 1].size/E.screencols;
-        if (E.row[fr - 1].size%E.screencols) more_lines++;
-        if (more_lines == 0) more_lines = 1;
-        E.cy = E.cy - lines - more_lines;
-        if (0){
-        //if (E.cy < 0) {
-          E.rowoff+=E.cy;
-          E.cy = 0;
-        }
-      }
-      break;
-*/
+
     case ARROW_DOWN:
     case 'j':
       if (fr < E.filerows - 1) {
@@ -3173,9 +3156,10 @@ void editorMoveCursor(int key) {
       break;
   }
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
-     row has to be calculated again because this is the new row you've landed on 
-     Also deals with trying to move cursor to right beyond length of line.
-     E.mode == 1 is insert mode in the code below*/
+     and also deals with instances when the right arrow can go beyond the 
+     length of the line.  Takes into account whether in E.mode == INSERT
+     where E.cx can be equal to the length of the line
+  */
 
   int line_char_count = editorGetLineCharCount(); 
   if (line_char_count == 0) E.cx = 0;
@@ -3184,6 +3168,7 @@ void editorMoveCursor(int key) {
     }
   else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
 }
+
 // higher level editor function depends on readKey()
 void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
@@ -3991,7 +3976,10 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
   int incremental_lines = (E.row[fr].size >= fc) ? fc/E.screencols : E.row[fr].size/E.screencols;
   screenline = screenline + incremental_lines - E.rowoff;
-  int screencol = (E.row[fr].size > fc) ? fc%E.screencols : E.row[fr].size%E.screencols;
+
+  // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
+  // this can put E.cx one farther right than it should be but editorMoveCursor checks and moves it back if not in insert mode
+  int screencol = (E.row[fr].size > fc) ? fc%E.screencols : E.row[fr].size%E.screencols; 
   row_column[0] = screenline;
   row_column[1] = screencol;
 
