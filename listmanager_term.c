@@ -150,8 +150,8 @@ struct outlineConfig {
   int dirty; //file changes since last save
   char *context;
   char *filename; // in case try to save the titles
-  char statusmsg[80]; //status msg is a character array max 80 char
-  //time_t statusmsg_time;
+  char message[80]; //status msg is a character array max 80 char
+  //time_t message_time;
   //struct termios orig_termios;
   int highlight[2];
   int mode;
@@ -174,8 +174,8 @@ struct editorConfig {
   erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *filename;
-  char statusmsg[120]; //status msg is a character array max 80 char
-  //time_t statusmsg_time;
+  char message[120]; //status msg is a character array max 80 char
+  //time_t message_time;
   struct termios orig_termios;
   int highlight[2];
   int mode;
@@ -188,13 +188,9 @@ struct editorConfig {
 
 struct editorConfig E;
 
-// below not obvious -- will be just a string that include /n/r + escape for moving cursor
-//char outline_margin[10];
-//char editor_margin[10];
 
-/*** prototypes ***/
+/*** outline prototypes ***/
 
-//outline Prototypes
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen();
 void outlineRefreshLine();
@@ -264,6 +260,7 @@ int editorGetLineCharCount (void);
 int editorGetScreenLineFromFileRow(int fr);
 int *editorGetScreenPosFromFilePos(int fr, int fc);
 void editorInsertRow(int fr, char *s, size_t len); 
+
 // config struct for reading db.ini file
 
 struct config {
@@ -360,8 +357,6 @@ void get_data2(char *context, int n) {
   O.row = NULL; 
   O.numrows = 0;
 
-  //outlineRefreshScreen();
-
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *z = PQgetvalue(res, i, 3);
@@ -373,7 +368,7 @@ void get_data2(char *context, int n) {
     outlineInsertRow2(O.numrows, z, strlen(z), id, star, deleted, completed); 
   }
 
-  outlineRefreshScreen();
+  outlineRefreshScreen(); //?necessary
 
   PQclear(res);
  // PQfinish(conn);
@@ -404,8 +399,6 @@ void get_note(int id) {
     //do_exit(conn);
   }    
   
-  //char *note = PQgetvalue(res, 0, 0); //*************
-
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
   } 
@@ -418,8 +411,8 @@ void get_note(int id) {
   note = strdup(PQgetvalue(res, 0, 0)); //******************
   char *found;
   while ((found = strsep(&note, "\n")) !=NULL) {
-      editorInsertRow(E.filerows, found, strlen(found));
-    }
+    editorInsertRow(E.filerows, found, strlen(found));
+  }
   
 
   PQclear(res);
@@ -1363,9 +1356,9 @@ void outlineDrawMessageBar(struct abuf *ab) {
                              O.screenrows + 2,
                              OUTLINE_LEFT_MARGIN + 1);
   abAppend(ab, buf, strlen(buf));
-  int msglen = strlen(O.statusmsg);
+  int msglen = strlen(O.message);
   if (msglen > O.screencols) msglen = O.screencols;
-  abAppend(ab, O.statusmsg, msglen);
+  abAppend(ab, O.message, msglen);
 }
 
 void outlineRefreshLine() {
@@ -1381,7 +1374,7 @@ void outlineRefreshLine() {
     outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-  char buf[32];
+  char buf[20];
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
 
@@ -1401,14 +1394,16 @@ void outlineRefreshLine() {
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
 
-  // the lines below position the cursor where it should go
-  if (O.mode != 2){
- //Below important: this is how to position the cursor
- //Will be needed if try to split the screen (not sure I want to do that)
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx+1);
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);//*************
   abAppend(&ab, buf, strlen(buf));
-}
+
+  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  // below restores the cursor position based on O.cx and O.cy + margin
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);//*************
+  abAppend(&ab, buf, strlen(buf));
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
@@ -1433,16 +1428,15 @@ void outlineRefreshScreen() {
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
   //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
-  //Below erase screen from middle to left; shouldn't be necessary for note windows
-  char buf[32];
+  //Below erase screen from middle to left - `1K` below is cursor to left erasing
+  char buf[20];
   for (int j=0; j < O.screenrows;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, 
-    O.screencols + OUTLINE_LEFT_MARGIN); //erase from cursor to left
+    O.screencols + OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
   }
 
-  //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
-  //abAppend(&ab, "\x1b[2C", 4); //moves cursor right 2 chars ********************************
+  // put cursor at upper left after erasing
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, OUTLINE_LEFT_MARGIN + 1); 
 
   abAppend(&ab, buf, strlen(buf));
@@ -1451,15 +1445,14 @@ void outlineRefreshScreen() {
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
 
-  // the lines below position the cursor where it should go
-  if (O.mode != 2){
-  char buf[32];
- //Below important: this is how to position the cursor
- //Will be needed if try to split the screen (not sure I want to do that)
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx+3);//*************
+  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
   abAppend(&ab, buf, strlen(buf));
-}
+
+  // below restores the cursor position based on O.cx and O.cy + margin
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
+  abAppend(&ab, buf, strlen(buf));
+
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.b, ab.len);
@@ -1479,9 +1472,9 @@ void outlineSetMessage(const char *fmt, ...) {
   /* vsnprint from <stdio.h> writes to the character string str
      vsnprint(char *str,size_t size, const char *format, va_list ap)*/
 
-  vsnprintf(O.statusmsg, sizeof(O.statusmsg), fmt, ap);
+  vsnprintf(O.message, sizeof(O.message), fmt, ap);
   va_end(ap); //free a va_list
-  //O.statusmsg_time = time(NULL);
+  //O.message_time = time(NULL);
 }
 
 void outlineMoveCursor(int key) {
@@ -2345,6 +2338,7 @@ void update_row(void) {
   return;
 }
 
+// doesn't address new items that need to be inserted
 void update_rows(void) {
   if (!O.dirty) return;
 
@@ -2360,6 +2354,9 @@ void update_rows(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
+      // having to set whole arrays to 0000 suggests just need to terminate one or both
+      // whole problem is that I believe row->size doesn't pick up terminating 000
+      // so should just be title[row->size + 1] = '\0';
       char query[300] = {'\0'};
       char title[200] = {'\0'};
       strncpy(title, row->chars, row->size);
@@ -2470,6 +2467,7 @@ void insert_row(int ofr) {
   return;
 }
 
+// updates changed titles and inserts new items
 void update_rows2(void) {
   if (!O.dirty) return;
 
@@ -2485,6 +2483,9 @@ void update_rows2(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
+      // having to set whole arrays to 0000 suggests just need to terminate one or both
+      // whole problem is that I believe row->size doesn't pick up terminating 000
+      // so should just be title[row->size + 1] = '\0';
       char query[300] = {'\0'};
       char title[200] = {'\0'};
       strncpy(title, row->chars, row->size);
@@ -3034,9 +3035,9 @@ void editorDrawMessageBar(struct abuf *ab) {
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
-  int msglen = strlen(E.statusmsg);
+  int msglen = strlen(E.message);
   if (msglen > E.screencols) msglen = E.screencols;
-  abAppend(ab, E.statusmsg, msglen);
+  abAppend(ab, E.message, msglen);
 }
 
 void editorRefreshScreen(void) {
@@ -3091,9 +3092,9 @@ void editorSetMessage(const char *fmt, ...) {
   /* vsnprint from <stdio.h> writes to the character string str
      vsnprint(char *str,size_t size, const char *format, va_list ap)*/
 
-  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  vsnprintf(E.message, sizeof(E.message), fmt, ap);
   va_end(ap); //free a va_list
-  //E.statusmsg_time = time(NULL);
+  //E.message_time = time(NULL);
 }
 
 void editorMoveCursor(int key) {
@@ -4554,7 +4555,7 @@ void initOutline() {
   O.row = NULL; //pointer to the orow structure 'array'
   O.dirty = 0; //has filed changed since last save
   O.context = NULL;
-  O.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
+  O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   O.command[0] = '\0';
@@ -4563,11 +4564,7 @@ void initOutline() {
   //if (getWindowSize(&O.screenrows, &O.screencols) == -1) die("getWindowSize");
   if (getWindowSize(&screenrows, &screencols) == -1) die("getWindowSize");
   O.screenrows = screenrows - 2;
-  //O.screencols = -3 + screencols/2;
   O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
-
-  //snprintf(outline_margin, sizeof(outline_margin), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
-  //abAppend(ab, "\r\n\x1b[2C", 6); //moves cursor X spaces right
 }
 
 void initEditor(void) {
@@ -4581,8 +4578,8 @@ void initEditor(void) {
   E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
-  E.statusmsg[0] = '\0'; //very bottom of screen; ex. -- INSERT --
-  //E.statusmsg_time = 0;
+  E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
+  //E.message_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   E.command[0] = '\0';
@@ -4595,8 +4592,6 @@ void initEditor(void) {
   E.screenrows = screenrows - 2;
   E.screencols = -5 + screencols/2;
   EDITOR_LEFT_MARGIN = screencols/2 + 3;
-
-  //snprintf(editor_margin, sizeof(editor_margin), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 }
 
 int main(void) {
@@ -4648,7 +4643,7 @@ int main(void) {
     } else {
       int scroll = outlineScroll();
       if (scroll) outlineRefreshScreen(); 
-      else outlineRefreshLine();
+      else outlineRefreshLine();//almost certainly this was a premature optimization
       outlineProcessKeypress();
     }
   }
