@@ -262,6 +262,7 @@ int editorGetFileRowByLine (int y); //get_filerow_by_line
 int editorGetFileRow(void); //get_filerow
 int editorGetLineCharCount (void); 
 int editorGetScreenLineFromFileRow(int fr);
+int *editorGetScreenPosFromFilePos(int fr, int fc);
 void editorInsertRow(int fr, char *s, size_t len); 
 // config struct for reading db.ini file
 
@@ -2845,6 +2846,22 @@ void outlineFindNextWord() {
 this function deals with that */
 void editorScroll(void) {
   if (!E.row) return;
+
+  if (E.cy > E.screenrows -1){
+    E.cy--;
+    E.rowoff++;
+  }
+
+  if (E.cy < 0) {
+     E.rowoff+=E.cy;
+     E.cy = 0;
+  }
+  //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
+  //I believe vim also doesn't want partial lines at the top so balancing both concepts
+  //The lines you can view at the top and the bottom of the screen are 
+  //even if that means you scroll more than you have to to show complete lines at the top.
+
+
   int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
   if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
   //if (E.cy >= E.screenrows) {
@@ -2857,13 +2874,19 @@ void editorScroll(void) {
     delta = (delta > first_row_lines) ? delta : first_row_lines; //
     E.rowoff += delta;
     E.cy-=delta;
+    }
+  /*
+  if (E.cy > E.screenrows -1){
+    E.cy--;
+    E.rowoff++;
   }
+
   if (E.cy < 0) {
      E.rowoff+=E.cy;
      E.cy = 0;
   }
 
-  /*if (E.cy < E.rowoff) {
+  if (E.cy < E.rowoff) {
     E.rowoff = E.cy;
   }
   if (E.cy >= E.rowoff + E.screenrows) {  
@@ -2964,8 +2987,13 @@ void editorDrawRows(struct abuf *ab) {
 
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
-  int fr = outlineGetFileRow();
-  orow *row = &O.row[fr];
+
+  if (!E.row || !O.row) return; //**********************************
+
+  int efr = editorGetFileRow();
+  //erow *erow = &E.row[efr];
+  int ofr = outlineGetFileRow();
+  orow *orow = &O.row[ofr];
 
   // so the below should 1) position the cursor on the editor status
   // bar row at the correct indent
@@ -2978,14 +3006,15 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
   char truncated_title[20];
-  strncpy(truncated_title, row->chars, 19);
+  strncpy(truncated_title, orow->chars, 19);
   truncated_title[20] = '\0';
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s %s",
     O.context ? O.context : "[No Name]", E.filerows,
     truncated_title,
     E.dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
-    E.cy + 1, E.filerows);
+    //E.cy + 1, E.filerows);
+    efr + 1, E.filerows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   
@@ -3029,7 +3058,7 @@ void editorRefreshScreen(void) {
       int len;
     };*/
   if (E.row)
-    editorSetMessage("length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d, E.rowoff = %d, 0th = %d", editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, E.rowoff, editorGetFileRowByLine(0)); 
+    editorSetMessage("E.rowoff = %d, length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
   else
     editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
 
@@ -3083,8 +3112,9 @@ void editorMoveCursor(int key) {
   if (!E.row) return; //could also be !E.filerows
 
   int fr = editorGetFileRow();
-  int lines;
-  erow *row = &E.row[fr];
+  int fc = editorGetFileCol();
+  //int lines;
+  //erow *row = &E.row[fr];
 
   switch (key) {
     case ARROW_LEFT:
@@ -3099,7 +3129,7 @@ void editorMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       ;
-      int fc = editorGetFileCol();
+      //int fc = editorGetFileCol();
       int row_size = E.row[fr].size;
       int line_in_row = 1 + fc/E.screencols; //counting from one
       int total_lines = row_size/E.screencols;
@@ -3113,6 +3143,13 @@ void editorMoveCursor(int key) {
     case ARROW_UP:
     case 'k':
       if (fr > 0) {
+        int *row_column = editorGetScreenPosFromFilePos(fr - 1, fc);
+        E.cy = row_column[0];
+        E.cx = row_column[1];
+      }
+      break;
+      /*
+      if (fr > 0) {
         lines = editorGetFileCol()/E.screencols;
         int more_lines = E.row[fr - 1].size/E.screencols;
         if (E.row[fr - 1].size%E.screencols) more_lines++;
@@ -3125,21 +3162,14 @@ void editorMoveCursor(int key) {
         }
       }
       break;
-
+*/
     case ARROW_DOWN:
     case 'j':
-      ;
-      // note that we are counting the initial line of a row as the 0th line
-      int line = editorGetFileCol()/E.screencols;
-      
-      //the below is one less than the number of lines
-      lines =  row->size/E.screencols;
-      if (row->size && row->size%E.screencols == 0) lines--;
-
       if (fr < E.filerows - 1) {
-        int increment = lines - line + 1;
-        E.cy += increment; 
-      } 
+        int *row_column = editorGetScreenPosFromFilePos(fr + 1, fc);
+        E.cy = row_column[0];
+        E.cx = row_column[1];
+      }
       break;
   }
   /* Below deals with moving cursor up and down from longer rows to shorter rows 
@@ -3928,7 +3958,8 @@ int editorGetFileRowByLine (int y){
   return n;
 }
 
-// returns E.cy for a given filerow - right now just used for 'G'
+// returns E.cy for a given filerow - right now just used for 'G' and for some reason editorFindNextWord
+// I think this assumes that E.cx is zero
 int editorGetScreenLineFromFileRow (int fr){
   int screenline = -1;
   int n = 0;
@@ -3944,9 +3975,32 @@ int editorGetScreenLineFromFileRow (int fr){
 
 }
 
+//below tested on down arrow not sure about up arrow
+//somewhere need to test that fr not >= E.filerows
+int *editorGetScreenPosFromFilePos(int fr, int fc){
+  static int row_column[2]; //if not use static then it's a variable local to function
+  int screenline = 0;
+  int n = 0;
+  int rowlines;
+
+  for (n=0;n < fr;n++) {
+    rowlines = E.row[n].size/E.screencols + 1;
+    if (E.row[n].size && E.row[n].size%E.screencols == 0) rowlines--;
+    screenline+= rowlines;
+  }
+
+  int incremental_lines = (E.row[fr].size >= fc) ? fc/E.screencols : E.row[fr].size/E.screencols;
+  screenline = screenline + incremental_lines - E.rowoff;
+  int screencol = (E.row[fr].size > fc) ? fc%E.screencols : E.row[fr].size%E.screencols;
+  row_column[0] = screenline;
+  row_column[1] = screencol;
+
+  return row_column;
+}
+
 int editorGetFileCol(void) {
   int n = 0;
-  int y = E.cy;
+  int y = E.cy + E.rowoff;
   int fr = editorGetFileRow();
   for (;;) {
     if (y == 0) break;
@@ -3959,6 +4013,20 @@ int editorGetFileCol(void) {
   return col;
 }
 
+int editorGetFileCol2(int fr) {
+  int n = 0;
+  int y = E.cy;
+  //int fr = editorGetFileRow();
+  for (;;) {
+    if (y == 0) break;
+    y--;
+    if (editorGetFileRowByLine(y) < fr) break;
+    n++;
+  }
+
+  int col = E.cx + n*E.screencols; 
+  return col;
+}
 int editorGetLineCharCount(void) {
 
   int fc = editorGetFileCol();
