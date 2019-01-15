@@ -1351,16 +1351,11 @@ void outlineDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-  abAppend(ab, "\r\n", 2);
 }
 
 void outlineDrawMessageBar(struct abuf *ab) {
-  /*void outlineSetMessage(const char *fmt, ...) is where the message is created/set*/
 
-  //"\x1b[K" erases the part of the line to the right of the cursor in case the
-  // new line i shorter than the old
-
-  //abAppend(ab, "\x1b[K", 3); //wrong needs to erase from r -> l
+  // Erase from mid-screen to the left and then place cursor left margin
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenrows + 2,
@@ -1370,8 +1365,7 @@ void outlineDrawMessageBar(struct abuf *ab) {
   abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.statusmsg);
   if (msglen > O.screencols) msglen = O.screencols;
-  //if (msglen && time(NULL) - O.statusmsg_time < 1000) //time
-    abAppend(ab, O.statusmsg, msglen);
+  abAppend(ab, O.statusmsg, msglen);
 }
 
 void outlineRefreshLine() {
@@ -2991,12 +2985,10 @@ void editorDrawStatusBar(struct abuf *ab) {
   if (!E.row || !O.row) return; //**********************************
 
   int efr = editorGetFileRow();
-  //erow *erow = &E.row[efr];
   int ofr = outlineGetFileRow();
   orow *orow = &O.row[ofr];
 
-  // so the below should 1) position the cursor on the editor status
-  // bar row at the correct indent
+  // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 1,
                                             EDITOR_LEFT_MARGIN + 1); 
@@ -3008,10 +3000,11 @@ void editorDrawStatusBar(struct abuf *ab) {
   char truncated_title[20];
   strncpy(truncated_title, orow->chars, 19);
   truncated_title[20] = '\0';
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s %s",
+  int len = snprintf(status, sizeof(status), "%.20s - %d line %s %s",
     O.context ? O.context : "[No Name]", E.filerows,
     truncated_title,
     E.dirty ? "(modified)" : "");
+    //"*");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
     //E.cy + 1, E.filerows);
     efr + 1, E.filerows);
@@ -3031,10 +3024,6 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-  char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-  abAppend(ab, offset_lf_ret, 7);
-  //abAppend(ab, "\r\n", 2);
 }
 
 void editorDrawMessageBar(struct abuf *ab) {
