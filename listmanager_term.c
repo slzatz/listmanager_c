@@ -1292,7 +1292,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   char status[80], rstatus[80];
   char truncated_title[20];
   strncpy(truncated_title, row->chars, 19);
-  truncated_title[20] = '\0';
+  truncated_title[19] = '\0';
   int len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
     O.context ? O.context : "[No Name]", O.numrows,
     truncated_title,
@@ -2799,33 +2799,7 @@ void editorScroll(void) {
     E.rowoff += delta;
     E.cy-=delta;
     }
-  /*
-  if (E.cy > E.screenrows -1){
-    E.cy--;
-    E.rowoff++;
-  }
 
-  if (E.cy < 0) {
-     E.rowoff+=E.cy;
-     E.cy = 0;
-  }
-
-  if (E.cy < E.rowoff) {
-    E.rowoff = E.cy;
-  }
-  if (E.cy >= E.rowoff + E.screenrows) {  
-    E.rowoff = E.cy - E.screenrows + 1;
-  }
-  if (E.cx < E.coloff) {
-    E.coloff = E.cx;
-  }
-  if (E.cx >= E.coloff + E.screencols) {
-    E.coloff = E.cx - E.screencols + 1;
-  }*/
-}
-// "drawing" rows really means updating the ab buffer
-// filerow conceptually is the row/column of the written to file text
-// NOTE: when you can't display a whole file line in a multiline you go to the next file line: not implemented yet!!
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
   int len, n;
@@ -4483,7 +4457,7 @@ void initOutline() {
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
   //O.context = NULL;
-  O.context = "health";
+  O.context = "test";
   O.show_deleted = true;
   O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -4541,36 +4515,16 @@ int main(void) {
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
     write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
     write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-
 }
 
   get_conn();
   get_data3(200);
   
-/*  
-  get_conn();
-  //PGresult *res = get_data("programming", 200); 
-  PGresult *res = get_data("test", 200); 
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    char *z = PQgetvalue(res, i, 3);
-    char *zz = PQgetvalue(res, i, 0);
-    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    int id = atoi(zz);
-    outlineInsertRow2(O.numrows, z, strlen(z), id, star, deleted, completed); 
-  }
-
-  PQclear(res);
- // PQfinish(conn);
- */
+ // PQfinish(conn); // this should happen when exiting
 
   O.cx = O.cy = O.rowoff = 0;
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   outlineSetMessage("rows: %d  cols: %d", O.screenrows, O.screencols); //for display screen dimens
-
-  outlineRefreshScreen(); 
 
   while (1) {
     if (editor_mode){
