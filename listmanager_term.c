@@ -225,6 +225,7 @@ void update_rows(void);
 void update_rows2(void);
 void toggle_completed(void);
 void toggle_deleted(void);
+void toggle_star(void);
 
 //editor Prototypes
 void editorSetMessage(const char *fmt, ...);
