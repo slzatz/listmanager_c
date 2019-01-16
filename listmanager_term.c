@@ -73,9 +73,10 @@ enum Mode {
   NORMAL = 0,
   INSERT = 1,
   COMMAND_LINE = 2,
-  VISUAL_LINE = 3,
+  VISUAL_LINE = 3, //outline mode does not have VISUAL_LINE
   VISUAL = 4,
-  REPLACE = 5
+  REPLACE = 5,
+  DATABASE = 6
 };
 
 //should apply to outline and note
@@ -222,6 +223,8 @@ int get_id(int fr);
 void update_row(void);
 void update_rows(void);
 void update_rows2(void);
+void toggle_completed(void);
+void toggle_deleted(void);
 
 //editor Prototypes
 void editorSetMessage(const char *fmt, ...);
@@ -1419,8 +1422,8 @@ void outlineRefreshScreen() {
       int len;
     };*/
 
-  if (O.row)
-  //if (0)
+  //if (O.row)
+  if (0)
     outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
@@ -1446,14 +1449,20 @@ void outlineRefreshScreen() {
   outlineDrawMessageBar(&ab);
 
   //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-  abAppend(&ab, buf, strlen(buf));
-
+  if (O.mode!=DATABASE) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
+    abAppend(&ab, buf, strlen(buf));
+    abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
+  }
+  else { 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy+1, 1); //blue
+    abAppend(&ab, buf, strlen(buf));
+}
   // below restores the cursor position based on O.cx and O.cy + margin
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
   abAppend(&ab, buf, strlen(buf));
 
-  abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
+  abAppend(&ab, "\x1b[0m", 4); //return background to normal
 
   write(STDOUT_FILENO, ab.b, ab.len);
 
@@ -1676,19 +1685,25 @@ void outlineProcessKeypress() {
 
   switch (c) {
 
-    case 'z':
+    //case 'z':
     case '\t':
       E.cx = E.cy = 0;
       E.mode = NORMAL;
       editor_mode = true;
       return;
 
+    case 'z':
+      O.cx = 0; //intentionally leave O.cy whereever it is
+      O.mode = DATABASE;
+      O.command[0] = '\0';
+      O.repeat = 0;
+      return;
 
     case 'i':
       //This probably needs to be generalized when a letter is a single char command
       //but can also appear in multi-character commands too
       if (O.command[0] == '\0') { 
-        O.mode = 1;
+        O.mode = INSERT;
         O.command[0] = '\0';
         O.repeat = 0;
         outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -2089,50 +2104,34 @@ void outlineProcessKeypress() {
    * visual line mode O.mode = 3
    ********************************************/
 
-  } else if (O.mode == VISUAL_LINE) {
+  } else if (O.mode == DATABASE) {
 
 
     switch (c) {
 
     case ARROW_UP:
     case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
     case 'h':
-    case 'j':
-    case 'k':
     case 'l':
       outlineMoveCursor(c);
-      O.highlight[1] = O.cy;
       return;
 
     case 'x':
-      if (O.numrows != 0) {
-        O.repeat = O.highlight[1] - O.highlight[0] + 1;
-        O.cy = O.highlight[0];
-        outlineYankLine(O.repeat);
-
-        for (int i = 0; i < O.repeat; i++) outlineDelRow(O.cy);
-      }
       O.cx = 0;
       O.command[0] = '\0';
       O.repeat = 0;
-      O.mode = 0;
-      outlineSetMessage("");
+      toggle_completed();
       return;
 
-    case 'y':  
-      O.repeat = O.highlight[1] - O.highlight[0] + 1;
-      O.cy = O.highlight[0];
-      outlineYankLine(O.repeat);
+    case 'd':
+      O.cx = 0;
       O.command[0] = '\0';
       O.repeat = 0;
-      O.mode = 0;
-      outlineSetMessage("");
+      toggle_deleted();
       return;
 
     case '\x1b':
-      O.mode = 0;
+      O.mode = NORMAL;
       O.command[0] = '\0';
       O.repeat = 0;
       outlineSetMessage("");
@@ -2303,6 +2302,90 @@ void update_note2() {
 
   return;
 }
+
+void toggle_completed(void) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300];
+  int id = get_id(-1);
+  if (row->completed) 
+     sprintf(query, "UPDATE task SET completed=NULL, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+  else 
+     sprintf(query, "UPDATE task SET completed=CURRENT_DATE, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Toggle completed failed - %s", PQresultErrorMessage(res));
+  }
+  else {
+    outlineSetMessage("Toggle completed succeeded");
+    row->completed = !row->completed;
+  }
+  PQclear(res);
+  return;
+}
+
+
+void toggle_deleted(void) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300];
+  int id = get_id(-1);
+  if (row->deleted) 
+     sprintf(query, "UPDATE task SET deleted=False, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+  else 
+     sprintf(query, "UPDATE task SET deleted=True, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
+  }
+  else {
+    outlineSetMessage("Toggle deleted succeeded");
+    row->deleted = !row->deleted;
+  }
+  PQclear(res);
+  return;
+}
+
 void update_row(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -4641,9 +4724,13 @@ int main(void) {
       editorRefreshScreen();
       editorProcessKeypress();
     } else {
+      outlineScroll();
+      outlineRefreshScreen();
+      /*
       int scroll = outlineScroll();
       if (scroll) outlineRefreshScreen(); 
       else outlineRefreshLine();//almost certainly this was a premature optimization
+      */
       outlineProcessKeypress();
     }
   }
