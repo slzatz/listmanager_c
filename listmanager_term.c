@@ -51,7 +51,6 @@ struct termios orig_termios;
 // the full dimensions of the screen available to outline + note
 int screenrows, screencols;
 
-//char *note = NULL;
 bool editor_mode;
 
 //should apply to outline and note
@@ -152,12 +151,12 @@ struct outlineConfig {
   char *context;
   char *filename; // in case try to save the titles
   char message[80]; //status msg is a character array max 80 char
-  //time_t message_time;
-  //struct termios orig_termios;
   int highlight[2];
   int mode;
   char command[20]; //needs to accomodate file name ?malloc heap array
   int repeat;
+  bool show_deleted;
+  bool show_completed;
 };
 
 struct outlineConfig O;
@@ -177,7 +176,6 @@ struct editorConfig {
   char *filename;
   char message[120]; //status msg is a character array max 80 char
   //time_t message_time;
-  struct termios orig_termios;
   int highlight[2];
   int mode;
   char command[20]; //needs to accomodate file name ?malloc heap array
@@ -196,8 +194,6 @@ void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen();
 void outlineRefreshLine();
 //void getcharundercursor();
-void outlineDecorateWord(int c);
-void outlineDecorateVisual(int c);
 void outlineDelWord();
 int outlineIndentAmount(int y);
 void outlineMoveCursor(int key);
@@ -223,6 +219,7 @@ int get_id(int fr);
 void update_row(void);
 void update_rows(void);
 void update_rows2(void);
+void update_note2(void); 
 void toggle_completed(void);
 void toggle_deleted(void);
 void toggle_star(void);
@@ -373,6 +370,69 @@ void get_data2(char *context, int n) {
   }
 
   outlineRefreshScreen(); //?necessary
+
+  PQclear(res);
+ // PQfinish(conn);
+
+  O.cx = O.cy = O.rowoff = 0;
+  //O.context = context;
+}
+
+void get_data3(int n) {
+  char query[400];
+  if (!O.show_deleted) {
+  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+                    "WHERE context.title = \'%s\', "
+                    " task.deleted = %s, "
+                    " task.completed = %s, "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    O.context,
+                    "False",
+                    "NULL",
+                    n);
+  }
+  else {
+
+  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+                    "WHERE context.title = \'%s\' "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    O.context,
+                    n);
+  }
+
+  PGresult *res = PQexec(conn, query);    
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");        
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }    
+  
+  if (O.numrows) {
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+  }
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    char *title = PQgetvalue(res, i, 3);
+    char *zz = PQgetvalue(res, i, 0);
+    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    int id = atoi(zz);
+    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+  }
+
+
+  //outlineRefreshScreen(); //?necessary - doesn't seem to be
+
 
   PQclear(res);
  // PQfinish(conn);
@@ -558,58 +618,11 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline row operations ***/
 
-//at is the row number of the row to insert
-// not in use
-void outlineInsertRow(int at, char *s, size_t len) {
-
-  /*O.row is a pointer to an array of orow structures
-  The array of orows that O.row points to needs to have its memory enlarged when
-  you add a row. Note that orow structues are just a size and a char pointer*/
-
-  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
-
-  /*
-  memmove(dest, source, number of bytes to move?)
-  moves the line at at to at+1 and all the other orow structs until the end
-  when you insert into the last row O.numrows==at then no memory is moved
-  apparently ok if there is no O.row[at+1] if number of bytes = 0
-  so below we are moving the row structure currently at *at* to x+1
-  and all the rows below *at* to a new location to make room at *at*
-  to create room for the line that we are inserting
-  */
-
-  memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
-
-  // section below creates an orow struct for the new row
-  O.row[at].size = len;
-  O.row[at].chars = malloc(len + 1);
-  memcpy(O.row[at].chars, s, len);
-  O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
-  O.numrows++;
-  O.dirty++;
-}
-
 void outlineFreeRow(orow *row) {
   free(row->chars);
 }
 
-void outlineDelRow(int at) {
-  //outlineSetMessage("Row to delete = %d; O.numrows = %d", at, O.numrows); 
-  if (O.numrows == 0) return; // some calls may duplicate this guard
-  outlineFreeRow(&O.row[at]);
-  if ( O.numrows != 1) { 
-    memmove(&O.row[at], &O.row[at + 1], sizeof(orow) * (O.numrows - at - 1));
-  } else {
-    O.row = NULL;
-  }
-  O.numrows--;
-  if (O.cy == O.numrows && O.cy > 0) O.cy--; 
-  O.dirty++;
-  //outlineSetMessage("Row deleted = %d; O.numrows after deletion = %d O.cx = %d O.row[at].size = %d", at, O.numrows, O.cx, O.row[at].size); 
-}
-
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed) {
-
   /*O.row is a pointer to an array of database row structures
   The array of rows that O.row points to needs to have its memory enlarged when
   you add a row. Note that db row structures now include:
@@ -648,7 +661,6 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   memcpy(O.row[at].chars, s, len);
   O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   O.numrows++;
-  //O.dirty++;
 }
 
 void outlineRowDelChar(orow *row, int at) {
@@ -658,7 +670,6 @@ void outlineRowDelChar(orow *row, int at) {
   //have to realloc when adding but I guess no need to realloc for one character
   memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
   row->size--;
-  O.dirty++;
 }
 
 /*** outline operations ***/
@@ -666,7 +677,8 @@ void outlineInsertChar(int c) {
 
   // O.cy == O.numrows == 0 when you start program or delete all lines
   if ( O.numrows == 0 ) {
-    outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0'
+    //outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0'
+    return;
   }
 
   //orow *row = &O.row[O.cy];
@@ -687,47 +699,7 @@ void outlineInsertChar(int c) {
   row->size++;
   row->chars[fc] = c;
   row->dirty = true;
-  O.dirty++;
   O.cx++;
-}
-
-/* uses VLA */
-void outlineInsertNewline(int direction) {
-  if (O.numrows == 0) {
-    outlineInsertRow(O.numrows, "", 0); //outlineInsertRow will also insert another '\0'
-  }
-  orow *row = &O.row[O.cy];
-  int i;
-  if (O.cx == 0 || O.cx == row->size) {
-    i = 0;
-    char spaces[i + 1]; //VLA
-    for (int j=0; j<i; j++) {
-      spaces[j] = ' ';
-    }
-    spaces[i] = '\0';
-    O.cy+=direction;
-    outlineInsertRow(O.cy, spaces, i);
-    O.cx = i;
-    
-      
-  }
-  else {
-    outlineInsertRow(O.cy + 1, &row->chars[O.cx], row->size - O.cx);
-    row = &O.row[O.cy];
-    row->size = O.cx;
-    row->chars[row->size] = '\0';
-    i = 0;
-    O.cy++;
-    row = &O.row[O.cy];
-    O.cx = 0;
-    for (;;){
-      if (row->chars[0] != ' ') break;
-      outlineDelChar();
-    }
-
-  for ( int j=0; j < i; j++ ) outlineInsertChar(' ');
-  O.cx = i;
-  }
 }
 
 void outlineDelChar() {
@@ -750,7 +722,6 @@ void outlineDelChar() {
   }
   else if (O.cx == row->size && O.cx) O.cx = row->size - 1; 
 
-  O.dirty++;
   row->dirty = true;
 
 }
@@ -768,7 +739,6 @@ void outlineBackspace() {
   row->size--;
   O.cx--; //if O.cx goes negative outlineScroll should handle it
  
-  O.dirty++;
   row->dirty = true;
 }
 
@@ -804,7 +774,6 @@ void outlineSave() {
       if (write(fd, buf, len) == len) {
         close(fd);
         free(buf);
-        O.dirty = 0;
         outlineSetMessage("%d bytes written to disk", len);
         return;
       }
@@ -1327,10 +1296,8 @@ void outlineDrawStatusBar(struct abuf *ab) {
   int len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
     O.context ? O.context : "[No Name]", O.numrows,
     truncated_title,
-    //O.dirty ? "(modified)" : "");
     row->dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-    //O.row[outlineGetFileRow()].id, outlineGetFileRow() + 1, O.numrows);
     row->id, fr + 1, O.numrows);
   if (len > O.screencols) len = O.screencols;
   abAppend(ab, status, len);
@@ -1445,7 +1412,6 @@ void outlineRefreshScreen() {
 
   abAppend(&ab, buf, strlen(buf));
   outlineDrawRows(&ab);
-
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
 
@@ -1545,7 +1511,6 @@ void outlineMoveCursor(int key) {
 
 // higher level outline function depends on readKey()
 void outlineProcessKeypress() {
-  static int quit_times = KILO_QUIT_TIMES;
   int start, end;
 
   /* readKey brings back one processed character that handles
@@ -1563,24 +1528,7 @@ void outlineProcessKeypress() {
   switch (c) {
 
     case '\r':
-      //outlineInsertNewline(1);
-      //this should save that title
-      break;
-
-    case CTRL_KEY('q'):
-      if (O.dirty && quit_times > 0) {
-        outlineSetMessage("WARNING!!! Database has not been updated. "
-          "Press Ctrl-Q %d more times to quit.", quit_times);
-        quit_times--;
-        return;
-      }
-      write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-      write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-      exit(0);
-      break;
-
-    case CTRL_KEY('s'):
-      //outlineSave();
+      update_rows();
       break;
 
     case HOME_KEY:
@@ -1600,23 +1548,6 @@ void outlineProcessKeypress() {
       outlineDelChar();
       break;
 
-    case PAGE_UP:
-    case PAGE_DOWN:
-      
-      if (c == PAGE_UP) {
-        O.cy = O.rowoff;
-      } else if (c == PAGE_DOWN) {
-        O.cy = O.rowoff + O.screenrows - 1;
-        if (O.cy > O.numrows) O.cy = O.numrows;
-      }
-
-        int times = O.screenrows;
-        while (times--){
-          outlineMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-          } 
-      
-      break;
-
     case ARROW_UP:
     case ARROW_DOWN:
     case ARROW_LEFT:
@@ -1624,32 +1555,13 @@ void outlineProcessKeypress() {
       outlineMoveCursor(c);
       break;
 
-    case CTRL_KEY('b'):
-    //case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
-      outlineDecorateWord(c);
-      break;
-
     case CTRL_KEY('z'):
-      //O.smartindent = (O.smartindent == 1) ? 0 : 1;
-      //outlineSetMessage("O.smartindent = %d", O.smartindent); 
+      // not in use
       break;
 
     case '\x1b':
-      O.mode = 0;
+      O.mode = NORMAL;
       if (O.cx > 0) O.cx--;
-      // below - if the indent amount == size of line then it's all blanks
-      /*int n = outlineIndentAmount(O.cy);
-      if (n == O.row[O.cy].size) {
-        O.cx = 0;
-        for (int i = 0; i < n; i++) {
-          outlineDelChar();
-        }
-      }
-      outlineSetMessage("");*/
-
-      //update_row(); //was used when testing but should go
-
       return;
 
     default:
@@ -1657,10 +1569,9 @@ void outlineProcessKeypress() {
       return;
  
  } 
-  quit_times = KILO_QUIT_TIMES;
 
 /*************************************** 
- * This is where you enter normal mode* 
+ * This is where you enter NORMAL mode* 
  * O.mode = 0
  ***************************************/
 
@@ -1691,6 +1602,10 @@ void outlineProcessKeypress() {
       E.cx = E.cy = 0;
       E.mode = NORMAL;
       editor_mode = true;
+      return;
+
+    case '\r':
+      update_rows();
       return;
 
     case 'z':
@@ -1799,34 +1714,23 @@ void outlineProcessKeypress() {
       break;
 
     case 'I':
-      O.cx = outlineIndentAmount(O.cy);
+      O.cx = 0;
       O.mode = 1;
       O.command[0] = '\0';
       O.repeat = 0;
       outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       return;
 
-    case 'o':
-      //O.cx = 0;
-      //outlineInsertNewline(1);
+    case 'N':
      
-     // void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
+     // void outlineInsertRow2(int at, char *s, size_t len, 
+     // int id, bool star, bool deleted, bool completed); 
       outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+
       O.cx = O.cy = O.rowoff = 0;
       outlineScroll();
-      outlineRefreshScreen();  //probably should drop refreshing just a line
-      //need to insert_new_row
-      //could just be when you save a row where id=-1 then you insert the row rather than update the row
-      O.mode = 1;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'O':
-      O.cx = 0;
-      outlineInsertNewline(0);
-      O.mode = 1;
+      outlineRefreshScreen();  //? necessary
+      O.mode = INSERT;
       O.command[0] = '\0';
       O.repeat = 0;
       outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -1840,22 +1744,14 @@ void outlineProcessKeypress() {
       return;
   
     case ':':
-      O.mode = 2;
+      O.mode = COMMAND_LINE;
       O.command[0] = ':';
       O.command[1] = '\0';
       outlineSetMessage(":"); 
       return;
 
-    case 'V':
-      O.mode = 3;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.highlight[0] = O.highlight[1] = O.cy;
-      outlineSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
-      return;
-
     case 'v':
-      O.mode = 4;
+      O.mode = VISUAL;
       O.command[0] = '\0';
       O.repeat = 0;
       O.highlight[0] = O.highlight[1] = O.cx;
@@ -1864,7 +1760,6 @@ void outlineProcessKeypress() {
 
     case 'p':  
       if (strlen(string_buffer)) outlinePasteString();
-      else outlinePasteLine();
       O.command[0] = '\0';
       O.repeat = 0;
       return;
@@ -1879,7 +1774,7 @@ void outlineProcessKeypress() {
       return;
 
     case 'u':
-      //outlineRestoreSnapshot();
+      //could be used to update solr - would use U
       return;
 
     case '^':
@@ -1890,14 +1785,7 @@ void outlineProcessKeypress() {
       return;
 
     case CTRL_KEY('z'):
-      //O.smartindent = (O.smartindent == 4) ? 0 : 4;
-      //outlineSetMessage("O.smartindent = %d", O.smartindent); 
-      return;
-
-    case CTRL_KEY('b'):
-    //case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
-      outlineDecorateWord(c);
+      //not in use
       return;
 
     case ARROW_UP:
@@ -1913,13 +1801,8 @@ void outlineProcessKeypress() {
       O.repeat = 0;
       return;
 
-// for testing purposes I am using CTRL-h in normal mode
-    case CTRL_KEY('h'):
-      //outlineMarkupLink(); 
-      return;
-
     case '\x1b':
-    // Leave in O.mode = 0 -> normal mode
+    // Leave in NORMAL mode
       O.command[0] = '\0';
       O.repeat = 0;
       return;
@@ -1964,27 +1847,8 @@ void outlineProcessKeypress() {
       O.repeat = 0;
       return;
 
-    case C_dd:
-      if (O.numrows != 0) {
-        int r = O.numrows - O.cy;
-        O.repeat = (r >= O.repeat) ? O.repeat : r ;
-        outlineYankLine(O.repeat);
-        for (int i = 0; i < O.repeat ; i++) outlineDelRow(O.cy);
-      }
-      O.cx = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
     case C_d$:
       outlineDeleteToEndOfLine();
-      if (O.numrows != 0) {
-        int r = O.numrows - O.cy;
-        O.repeat--;
-        O.repeat = (r >= O.repeat) ? O.repeat : r ;
-        //outlineYankLine(O.repeat); //b/o 2 step won't really work right
-        for (int i = 0; i < O.repeat ; i++) outlineDelRow(O.cy);
-      }
       O.command[0] = '\0';
       O.repeat = 0;
       return;
@@ -2020,12 +1884,6 @@ void outlineProcessKeypress() {
      O.repeat = 0;
      return;
 
-   case C_yy:  
-     outlineYankLine(O.repeat);
-     O.command[0] = '\0';
-     O.repeat = 0;
-     return;
-
     default:
       return;
 
@@ -2045,6 +1903,8 @@ void outlineProcessKeypress() {
 
     if (c == '\r') {
 
+    //This should be turned into switch statement
+
       if (O.command[1] == 'w') {
         update_rows2();
         O.mode = 0;
@@ -2063,14 +1923,23 @@ void outlineProcessKeypress() {
         O.command[0] = '\0';
       }
       else if (O.command[1] == 'x') {
-        update_rows();
+        update_rows2();
         write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
         write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
         exit(0);
       }  
 
       else if (O.command[1] == 'q') {
-        if (O.dirty) {
+        bool unsaved_changes = false;
+        for (int i=0;i<O.numrows;i++) {
+          orow *row = &O.row[i];
+          if (row->dirty) {
+            unsaved_changes = true;
+            break;
+          }
+        }
+
+        if (unsaved_changes) {
           if (strlen(O.command) == 3 && O.command[2] == '!') {
             write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
             write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
@@ -2089,6 +1958,20 @@ void outlineProcessKeypress() {
           exit(0);
         }
       }
+      else if (O.command[1] == 's') {
+        O.show_deleted = !O.show_deleted;
+        O.show_completed = !O.show_completed;
+        get_data3(200);
+      }
+      else if (O.command[1] == 'c') {
+        if (strlen(O.command) > 3) {
+          O.context = strdup(&O.command[3]);
+          outlineSetMessage("\"%s\" will be opened", O.context);
+          // need to either write generic update_row that updates everything
+          // or update_row_context -- tempted to start there
+        }
+        else outlineSetMessage("You need to provide a context");
+      }
     }
 
     else {
@@ -2101,8 +1984,9 @@ void outlineProcessKeypress() {
       }
       outlineSetMessage(O.command);
     }
+
   /********************************************
-   * visual line mode O.mode = 3
+   * DATABASE mode 
    ********************************************/
 
   } else if (O.mode == DATABASE) {
@@ -2131,11 +2015,38 @@ void outlineProcessKeypress() {
       toggle_deleted();
       return;
 
+    case '*':
+      O.cx = 0;
+      O.command[0] = '\0';
+      O.repeat = 0;
+      toggle_star();
+      return;
+
+    case 'r':
+      O.cx = 0;
+      O.command[0] = '\0';
+      O.repeat = 0;
+      get_data3(200);
+      return;
+
+    case '\r':
+      update_rows();
+      return;
+
     case '\x1b':
       O.mode = NORMAL;
       O.command[0] = '\0';
       O.repeat = 0;
       outlineSetMessage("");
+      return;
+
+    case 'i':
+      if (O.command[0] == '\0') { 
+        O.mode = INSERT;
+        O.command[0] = '\0';
+        O.repeat = 0;
+        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      }
       return;
 
     default:
@@ -2178,16 +2089,6 @@ void outlineProcessKeypress() {
       O.repeat = O.highlight[1] - O.highlight[0] + 1;
       O.cx = O.highlight[0];
       outlineYankString();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 0;
-      outlineSetMessage("");
-      return;
-
-    case CTRL_KEY('b'):
-    //case CTRL_KEY('i'):
-    //case CTRL_KEY('e'):
-      outlineDecorateVisual(c);
       O.command[0] = '\0';
       O.repeat = 0;
       O.mode = 0;
@@ -2256,7 +2157,7 @@ void update_note(char *note, int id) {
   return;
 }
 
-void update_note2() {
+void update_note2(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2271,11 +2172,6 @@ void update_note2() {
   char *note = editorRowsToString(&len);
   int ofr = outlineGetFileRow();
   int id = get_id(ofr);
-
-  //char query[1000] = {'\0'};
-  //char title[200] = {'\0'};
-  //int fr = outlineGetFileRow();
-  //strncpy(title, O.row[fr].chars, O.row[fr].size);
 
   char *query = malloc(len + 100);
 
@@ -2387,6 +2283,47 @@ void toggle_deleted(void) {
   return;
 }
 
+void toggle_star(void) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300];
+  int id = get_id(-1);
+  if (row->deleted) 
+     sprintf(query, "UPDATE task SET star=False, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+  else 
+     sprintf(query, "UPDATE task SET star=True, " 
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Toggle star failed - %s", PQresultErrorMessage(res));
+  }
+  else {
+    outlineSetMessage("Toggle star succeeded");
+    row->deleted = !row->deleted;
+  }
+  PQclear(res);
+  return;
+}
+
 void update_row(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -2424,7 +2361,6 @@ void update_row(void) {
 
 // doesn't address new items that need to be inserted
 void update_rows(void) {
-  if (!O.dirty) return;
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2457,7 +2393,6 @@ void update_rows(void) {
       } else row->dirty = false;    
     }
   }
-  O.dirty = 0;
   return;
 }
 
@@ -2553,7 +2488,6 @@ void insert_row(int ofr) {
 
 // updates changed titles and inserts new items
 void update_rows2(void) {
-  if (!O.dirty) return;
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2589,7 +2523,6 @@ void update_rows2(void) {
         }  
       } else insert_row(i);
   }
-  O.dirty = 0;
   return;
   }
 }
@@ -2648,13 +2581,11 @@ void outlineYankString() {
 }
 
 void outlinePasteString() {
+  if (O.numrows == 0) return;
+
   int fr = outlineGetFileRow();
-  if (fr == O.numrows) {
-    outlineInsertRow(O.numrows, "", 0); //outlineInsertRow will also insert another '\0'
-  }
 
   orow *row = &O.row[fr];
-  //if (O.cx < 0 || O.cx > row->size) O.cx = row->size;
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
 
@@ -2671,30 +2602,7 @@ void outlinePasteString() {
     row->chars[O.cx] = string_buffer[i];
     O.cx++;
   }
-  O.dirty++;
   row->dirty = true;
-}
-
-void outlinePasteLine(){
-  if ( O.numrows == 0 ) outlineInsertRow(0, "", 0);
-  for (int i=0; i < 10; i++) {
-    if (line_buffer[i] == NULL) break;
-
-    int len = strlen(line_buffer[i]);
-    O.cy++;
-    outlineInsertRow(O.cy, line_buffer[i], len);
-  }
-}
-
-int outlineIndentAmount(int y) {
-  int i;
-  orow *row = &O.row[y];
-  if ( !row || row->size == 0 ) return 0; //row is NULL if the row has been deleted or opening app
-
-  for ( i = 0; i < row->size; i++) {
-    if (row->chars[i] != ' ') break;}
-
-  return i;
 }
 
 void outlineDelWord() {
@@ -2716,7 +2624,6 @@ void outlineDelWord() {
   for (x = 0 ; x < j-i; x++) {
       outlineDelChar();
   }
-  O.dirty++;
   row->dirty = true;
   //outlineSetMessage("i = %d, j = %d", i, j ); 
 }
@@ -2800,68 +2707,6 @@ void outlineMoveEndWord() {
   }
 
   O.cx = j - 1;
-}
-
-void outlineDecorateWord(int c) {
-  int fr = outlineGetFileRow();
-  orow *row = &O.row[fr];
-  char cc;
-  if (row->chars[O.cx] < 48) return;
-
-  int i, j;
-
-  /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
-
-  for (i = O.cx - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
-  }
-
-  for (j = O.cx + 1; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
-  }
-  
-  if (row->chars[i] != '*' && row->chars[i] != '`'){
-    cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
-    O.cx = i + 1;
-    outlineInsertChar(cc);
-    O.cx = j + 1;
-    outlineInsertChar(cc);
-
-    if (c == CTRL_KEY('b')) {
-      O.cx = i + 1;
-      outlineInsertChar('*');
-      O.cx = j + 2;
-      outlineInsertChar('*');
-    }
-  } else {
-    O.cx = i;
-    outlineDelChar();
-    O.cx = j-1;
-    outlineDelChar();
-
-    if (c == CTRL_KEY('b')) {
-      O.cx = i - 1;
-      outlineDelChar();
-      O.cx = j - 2;
-      outlineDelChar();
-    }
-  }
-}
-
-void outlineDecorateVisual(int c) {
-  O.cx = O.highlight[0];
-  if (c == CTRL_KEY('b')) {
-    outlineInsertChar('*');
-    outlineInsertChar('*');
-    O.cx = O.highlight[1]+3;
-    outlineInsertChar('*');
-    outlineInsertChar('*');
-  } else {
-    char cc = (c ==CTRL_KEY('i')) ? '*' : '`';
-    outlineInsertChar(cc);
-    O.cx = O.highlight[1]+2;
-    outlineInsertChar(cc);
-  }
 }
 
 void outlineGetWordUnderCursor(){
@@ -4637,11 +4482,13 @@ void initOutline() {
   O.coloff = 0;  //col the user is currently scrolled to  
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
-  O.dirty = 0; //has filed changed since last save
-  O.context = NULL;
+  //O.context = NULL;
+  O.context = "health";
+  O.show_deleted = true;
+  O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
-  O.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
+  O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   O.command[0] = '\0';
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
@@ -4696,6 +4543,11 @@ int main(void) {
     write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
 }
+
+  get_conn();
+  get_data3(200);
+  
+/*  
   get_conn();
   //PGresult *res = get_data("programming", 200); 
   PGresult *res = get_data("test", 200); 
@@ -4712,6 +4564,7 @@ int main(void) {
 
   PQclear(res);
  // PQfinish(conn);
+ */
 
   O.cx = O.cy = O.rowoff = 0;
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
