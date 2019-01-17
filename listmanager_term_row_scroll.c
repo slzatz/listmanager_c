@@ -11,6 +11,7 @@
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
+#define ABUF_INIT {NULL, 0}
 
 #include <ctype.h>
 #include <errno.h>
@@ -138,6 +139,13 @@ typedef struct erow {
   char *chars; //points at the character array of a row - mem assigned by malloc
 } erow;
 
+/*** append buffer used for writing to the screen***/
+
+struct abuf {
+  char *b;
+  int len;
+};
+
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
@@ -191,18 +199,15 @@ struct editorConfig E;
 /*** outline prototypes ***/
 
 void outlineSetMessage(const char *fmt, ...);
-void outlineRefreshScreen();
-void outlineRefreshLine();
+void outlineRefreshScreen(void);
 //void getcharundercursor();
 void outlineDelWord();
-int outlineIndentAmount(int y);
 void outlineMoveCursor(int key);
-void outlineBackspace();
-void outlineDelChar();
-void outlineDeleteToEndOfLine();
+void outlineBackspace(void);
+void outlineDelChar(void);
+void outlineDeleteToEndOfLine(void);
 void outlineYankLine(int n);
-void outlinePasteLine();
-void outlinePasteString();
+void outlinePasteString(void);
 void outlineYankString();
 void outlineMoveCursorEOL();
 void outlineMoveBeginningWord();
@@ -215,6 +220,8 @@ void outlineChangeCase();
 int outlineGetFileRow(void);
 int outlineGetFileCol(void);
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
+void outlineDrawRows(struct abuf *ab);
+void outlineScroll(void); 
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
@@ -702,7 +709,7 @@ void outlineInsertChar(int c) {
   O.cx++;
 }
 
-void outlineDelChar() {
+void outlineDelChar(void) {
   //orow *row = &O.row[O.cy];
   orow *row = &O.row[outlineGetFileRow()];
 
@@ -726,7 +733,7 @@ void outlineDelChar() {
 
 }
 
-void outlineBackspace() {
+void outlineBackspace(void) {
   int fr = outlineGetFileRow();
   int fc = outlineGetFileCol();
 
@@ -1086,13 +1093,13 @@ void editorSave(void) {
 }
 
 /*** append buffer ***/
-
+/*
 struct abuf {
   char *b;
   int len;
 };
-
-#define ABUF_INIT {NULL, 0}
+*/
+//#define ABUF_INIT {NULL, 0}
 
 void abAppend(struct abuf *ab, const char *s, int len) {
 
@@ -1122,39 +1129,29 @@ void abFree(struct abuf *ab) {
   free(ab->b);
 }
 
-/*** output ***/
-//handles the scrolling that happens when filerow/filecol > screenrows/screencols
-int outlineScroll() {
-//returning 1 means need to update whole screen
-//returning 0 means you just need to update the current row
-//probably an optimization that should have been tested
+// Adjusts O.cx and O.cy for O.coloff and O.rowoff
+void outlineScroll(void) {
 
-  if(!O.row) return 0;
+  if(!O.row) return;
 
   if (O.cy >= O.screenrows) {
     O.rowoff++;
     O.cy = O.screenrows - 1;
-    return 1;
   } 
 
   if (O.cy < 0) {
     O.rowoff+=O.cy;
     O.cy = 0;
-    return 1;
   }
 
   if (O.cx >= O.screencols) {
     O.coloff = O.coloff + O.cx - O.screencols + 1;
     O.cx = O.screencols - 1;
-    return 0;
   }
   if (O.cx < 0) {
     O.coloff+=O.cx;
     O.cx = 0;
-    return 0;
   }
-
-  return 0;
 }
 
 // "drawing" rows really means updating the ab buffer
@@ -1178,7 +1175,7 @@ void outlineDrawRows(struct abuf *ab) {
     // below means when you scrolled far because of a long line
     // then you are going to draw nothing as opposed to negative characters
     // the line is very necessary or we segfault
-    if (len < 0) len = 0; 
+    //if (len < 0) len = 0; //**************not tested
 
     // below says that if a line is long you only draw what fits on the screen
     if (len > O.screencols) len = O.screencols;
@@ -1198,68 +1195,11 @@ void outlineDrawRows(struct abuf *ab) {
           if (O.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
           //abAppend(ab, &O.row[filerow].chars[O.coloff], len);
           abAppend(ab, &O.row[filerow].chars[(filerow == O.cy + O.rowoff) ? O.coloff : 0], len);
-
-          //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
     }
     
-    //"\x1b[K" erases the part of the line to the right of the cursor in case the
-    // new line i shorter than the old
-
-   // abAppend(ab, "\x1b[K", 3);  //new testing *****
-   // looks like "\x1b[4X" - will erase 4 chars so looks like in
-   // erasing lines can't use "...[K" but could calculate "...[nX"
-    //abAppend(ab, "\r\n", 2);//*******************************
-   // this is where you do offset
-   //abAppend(ab, "\r\n\x1b[2C", 6);
     abAppend(ab, offset_lf_ret, 6);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
-}
-
-void outlineDrawRow(struct abuf *ab) {
-
-  int filerow = outlineGetFileRow();
-  char buf[5];
-  snprintf(buf, sizeof(buf), "\x1b[%dC", OUTLINE_LEFT_MARGIN);
-  abAppend(ab, buf, 4);
-  //abAppend(&ab, "\x1b[2C", 4); //*moves cursor right 2 chars*******************************
-
-  // len is how many characters of a given line will be seen given
-  // that a long line may have caused the display to scroll
-  int len = O.row[filerow].size - O.coloff;
-
-  // below means when you scrolled far because of a long line
-  // then you are going to draw nothing as opposed to negative characters
-  // the line is very necessary or we segfault
-   if (len < 0) len = 0; 
-
-   // below says that if a line is long you only draw what fits on the screen
-   if (len > O.screencols) len = O.screencols;
-      
-        
-   if (O.mode == VISUAL && filerow == O.cy + O.rowoff) {
-       abAppend(ab, &O.row[filerow].chars[O.coloff], O.highlight[0] - O.coloff);
-       abAppend(ab, "\x1b[48;5;242m", 11);
-       abAppend(ab, &O.row[filerow].chars[O.highlight[0]], O.highlight[1]
-                                                             - O.highlight[0]);
-       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-       abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1] + O.coloff);
-        
-   } else {
-         if (O.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
-         if (O.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //red
-         if (O.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
-         abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-            //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-      }
-    
-    //"\x1b[K" erases the part of the line to the right of the cursor in case the
-    // new line i shorter than the old
-
-   // abAppend(ab, "\x1b[K", 3); //erase whole screen dealt with in refresh line
-    
-    //abAppend(ab, "\r\n", 2);
-    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
 }
 
 //status bar has inverted colors
@@ -1326,79 +1266,7 @@ void outlineDrawMessageBar(struct abuf *ab) {
   abAppend(ab, O.message, msglen);
 }
 
-void outlineRefreshLine() {
-  //outlineScroll();
-
-  /*  struct abuf {
-      char *b;
-      int len;
-    };*/
-
- // if (O.row)
-   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
-
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-  char buf[20];
-
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-
-  // move the cursor to mid-screen, erase to left and move cursor back to begging of line
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", O.cy+1, 
-  O.screencols + OUTLINE_LEFT_MARGIN, O.cy+1, 1);
-  abAppend(&ab, buf, strlen(buf));
-
-  outlineDrawRow(&ab);
-
-  // move the cursor to the bottom of the screen
-  // to 'draw' status bar and message bar
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenrows+1, 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", O.screenrows + 1, 
-           OUTLINE_LEFT_MARGIN + 1); //erase from cursor to left
-  abAppend(&ab, buf, strlen(buf));
-  outlineDrawStatusBar(&ab);
-  outlineDrawMessageBar(&ab);
-
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
-  if (O.mode!=DATABASE) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-    abAppend(&ab, buf, strlen(buf));
-    abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
-  }
-  else { 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy+1, 1); //blue
-    abAppend(&ab, buf, strlen(buf));
-}
-  // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
-  abAppend(&ab, buf, strlen(buf));
-
-  abAppend(&ab, "\x1b[0m", 4); //return background to normal
-
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab);
-
-/*
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
-  abAppend(&ab, buf, strlen(buf));
-
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-  abAppend(&ab, buf, strlen(buf));
-
-  // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
-  abAppend(&ab, buf, strlen(buf));
-  abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
-
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab);
-  */
-}
-
-void outlineRefreshScreen() {
+void outlineRefreshScreen(void) {
   //outlineScroll();
 
   /*  struct abuf {
@@ -1503,18 +1371,19 @@ void outlineMoveCursor(int key) {
       break;
   }
 
-  /* 
-  The lines below deal with the possibility that the cursor may have moved
-  beyond the length of the row whether you were scrolling right or scrolling
-  down or up.  Not needed for scrolling left but not checking for that.
-  */
+  //get note
   if(key==ARROW_UP || key==ARROW_DOWN){
     fr = outlineGetFileRow();
     row = &O.row[fr];
     int id = O.row[fr].id;
     get_note(id); //if id == -1 does not try to retrieve not ********************************************
-    //editorProcessNote():
   }
+
+  /* 
+  The lines below deal with the possibility that the cursor may have moved
+  beyond the length of the row whether you were scrolling right or scrolling
+  down or up.  Not needed for scrolling left but not checking for that.
+  */
   int rowlen = row ? row->size : 0;
   if (rowlen == 0) {
     O.cx = 0;
@@ -1523,7 +1392,7 @@ void outlineMoveCursor(int key) {
 
   //if in insert mode can be one character beyond the length of the line
   //because you can insert characters. (Insert mode ==1)
-  if (outlineGetFileCol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode!=1);
+  if (outlineGetFileCol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode != INSERT);
     
 }
 
@@ -2094,7 +1963,7 @@ void outlineProcessKeypress() {
       outlineYankString(); 
 
       for (int i = 0; i < O.repeat; i++) {
-        outlineDelChar(O.cx);
+        outlineDelChar();
       }
 
       O.command[0] = '\0';
@@ -2598,7 +2467,7 @@ void outlineYankString() {
   string_buffer[n] = '\0';
 }
 
-void outlinePasteString() {
+void outlinePasteString(void) {
   if (O.numrows == 0) return;
 
   int fr = outlineGetFileRow();
@@ -2646,7 +2515,7 @@ void outlineDelWord() {
   //outlineSetMessage("i = %d, j = %d", i, j ); 
 }
 
-void outlineDeleteToEndOfLine() {
+void outlineDeleteToEndOfLine(void) {
   orow *row = &O.row[O.cy];
   row->size = O.cx;
   //Arguably you don't have to reallocate when you reduce the length of chars
@@ -4553,11 +4422,6 @@ int main(void) {
     } else {
       outlineScroll();
       outlineRefreshScreen();
-      if (0) { 
-      int scroll = outlineScroll();
-      if (scroll) outlineRefreshScreen(); 
-      else outlineRefreshLine();//almost certainly this was a premature optimization
-     }
       outlineProcessKeypress();
     }
   }
