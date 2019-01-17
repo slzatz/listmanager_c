@@ -1337,9 +1337,12 @@ void outlineSetMessage(const char *fmt, ...) {
   //O.message_time = time(NULL);
 }
 
+//Note: outlineMoveCursor worries about moving cursor beyond the size of the row
+//OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
+  int id;
 
   switch (key) {
     case ARROW_LEFT:
@@ -1353,47 +1356,33 @@ void outlineMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
+      if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT);
       break;
 
     case ARROW_UP:
     case 'k':
-      // note O.cy might be zero but filerow positive because of O.rowoff
-      // then O.cy goes negative
-      // dealt with in EditorScroll
+      // note O.cy might be zero before but filerow positive because of O.rowoff
+      // so it still makes sense to move cursor up and then O.cy goes negative
+      // also if scrolled so O.rowoff != 0 and do gg - ? what happens
+      // dealt with in outlineScroll
       if (outlineGetFileRow() > 0) O.cy--; 
       O.cx = O.coloff = 0;
+      fr = outlineGetFileRow();
+      row = &O.row[fr];
+      id = O.row[fr].id;
+      get_note(id); //if id == -1 does not try to retrieve note ********************************************
       break;
 
     case ARROW_DOWN:
     case 'j':
       if (outlineGetFileRow() < O.numrows - 1) O.cy++;
       O.cx = O.coloff = 0;
+      fr = outlineGetFileRow();
+      row = &O.row[fr];
+      id = O.row[fr].id;
+      get_note(id); //if id == -1 does not try to retrieve note ********************************************
       break;
   }
-
-  //get note
-  if(key==ARROW_UP || key==ARROW_DOWN){
-    fr = outlineGetFileRow();
-    row = &O.row[fr];
-    int id = O.row[fr].id;
-    get_note(id); //if id == -1 does not try to retrieve not ********************************************
-  }
-
-  /* 
-  The lines below deal with the possibility that the cursor may have moved
-  beyond the length of the row whether you were scrolling right or scrolling
-  down or up.  Not needed for scrolling left but not checking for that.
-  */
-  int rowlen = row ? row->size : 0;
-  if (rowlen == 0) {
-    O.cx = 0;
-    return;
-  }
-
-  //if in insert mode can be one character beyond the length of the line
-  //because you can insert characters. (Insert mode ==1)
-  if (outlineGetFileCol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode != INSERT);
-    
 }
 
 // higher level outline function depends on readKey()
@@ -1454,7 +1443,6 @@ void outlineProcessKeypress() {
     default:
       outlineInsertChar(c);
       return;
- 
  } 
 
 /*************************************** 
@@ -1486,7 +1474,7 @@ void outlineProcessKeypress() {
 
     //case 'z':
     case '\t':
-      E.cx = E.cy = 0;
+      E.cx = E.cy = E.rowoff = 0;
       E.mode = NORMAL;
       editor_mode = true;
       return;
@@ -1665,10 +1653,20 @@ void outlineProcessKeypress() {
       return;
 
     case '^':
+    ;
       //save note to drive
       //open file
-      system("open http://url");
-      system("chrome http...");
+      //system("open http://url");
+      //system("chrome http...");
+      char s[25];
+      int fr = outlineGetFileRow();
+      orow *row = &O.row[fr];
+      snprintf(s, sizeof(s), "./view_html.py %d", row->id);
+      system(s);
+      write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+      outlineRefreshScreen();
+      editorRefreshScreen();
+      //system("./view_html.py");
       return;
 
     case CTRL_KEY('z'):
@@ -1765,8 +1763,8 @@ void outlineProcessKeypress() {
       return;
 
     case C_gg:
-     O.cx = 0;
-     O.cy = O.repeat-1;
+     O.cx = O.rowoff = 0;
+     O.cy = O.repeat-1; //this needs to take into account O.rowoff
      O.command[0] = '\0';
      O.repeat = 0;
      return;
@@ -2666,12 +2664,12 @@ void editorScroll(void) {
   if (E.cy < 0) {
      E.rowoff+=E.cy;
      E.cy = 0;
+     if (editorGetFileRow() == 0) E.rowoff = 0; //? necessary really not sure
   }
   //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
   //I believe vim also doesn't want partial lines at the top so balancing both concepts
   //The lines you can view at the top and the bottom of the screen are 
   //even if that means you scroll more than you have to to show complete lines at the top.
-
 
   int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
   if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
@@ -2735,12 +2733,12 @@ void editorDrawRows(struct abuf *ab) {
         if ((E.row[filerow].size - n*E.screencols) > E.screencols) len = E.screencols;
         else len = E.row[filerow].size - n*E.screencols;
 
-        if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
+        if (E.mode == VISUAL_LINE && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
             abAppend(ab, "\x1b[48;5;242m", 11);
             abAppend(ab, &E.row[filerow].chars[start], len);
             abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         
-        } else if (E.mode == 4 && filerow == editorGetFileRow()) {
+        } else if (E.mode == VISUAL && filerow == editorGetFileRow()) {
             //if ((E.highlight[0] > start) && (E.highlight[0] < start + len)) {
             if ((E.highlight[0] >= start) && (E.highlight[0] < start + len)) {
             abAppend(ab, &E.row[filerow].chars[start], E.highlight[0] - start);
@@ -2839,7 +2837,7 @@ void editorRefreshScreen(void) {
       int len;
     };*/
   if (E.row)
-    editorSetMessage("E.rowoff = %d, length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
+    editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
   else
     editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
 
@@ -3526,7 +3524,7 @@ void editorProcessKeypress(void) {
    * visual line mode E.mode = 3
    ********************************************/
 
-  } else if (E.mode == 3) {
+  } else if (E.mode == VISUAL_LINE) {
 
 
     switch (c) {
@@ -3609,7 +3607,7 @@ void editorProcessKeypress(void) {
     }
 
  // visual mode
-  } else if (E.mode == 4) {
+  } else if (E.mode == VISUAL) {
 
     switch (c) {
 
@@ -3757,7 +3755,13 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
   int incremental_lines = (E.row[fr].size >= fc) ? fc/E.screencols : E.row[fr].size/E.screencols;
   screenline = screenline + incremental_lines - E.rowoff;
-
+  // below seems like a total kluge and (barely tested) but actually seems to work
+  //- ? should be in editorScroll - I did try to put a version in editorScroll but
+  // it didn't work and I didn't investigate why so here it will remain at least  for the moment
+  if (screenline<=0 && fr==0) {
+    E.rowoff = 0; 
+    screenline = 0;
+    }
   // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
   // this can put E.cx one farther right than it should be but editorMoveCursor checks and moves it back if not in insert mode
   int screencol = (E.row[fr].size > fc) ? fc%E.screencols : E.row[fr].size%E.screencols; 
@@ -3769,7 +3773,7 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
 int editorGetFileCol(void) {
   int n = 0;
-  int y = E.cy + E.rowoff;
+  int y = E.cy;// + E.rowoff;
   int fr = editorGetFileRow();
   for (;;) {
     if (y == 0) break;
