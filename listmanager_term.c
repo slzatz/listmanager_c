@@ -1187,13 +1187,15 @@ void outlineDrawRows(struct abuf *ab) {
         abAppend(ab, &O.row[filerow].chars[O.coloff], len);
         abAppend(ab, "\x1b[0m", 4); //slz return background to normal
       
-    } else if (O.mode == 4 && filerow == O.cy) {
-        abAppend(ab, &O.row[filerow].chars[0], O.highlight[0] - O.coloff);
+    } else if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { /////////
+        //abAppend(ab, &O.row[filerow].chars[0], O.highlight[0] - O.coloff);
+        abAppend(ab, &O.row[filerow].chars[O.coloff], O.highlight[0] - O.coloff);
         abAppend(ab, "\x1b[48;5;242m", 11);
         abAppend(ab, &O.row[filerow].chars[O.highlight[0]], O.highlight[1]
-                                              - O.highlight[0] - O.coloff);
+                                            //  - O.highlight[0] - O.coloff);
+                                              - O.highlight[0]);
         abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-        abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1]);
+        abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1] + O.coloff);
       
     } //else abAppend(ab, &O.row[filerow].chars[O.coloff], len);
         else {
@@ -1754,7 +1756,7 @@ void outlineProcessKeypress() {
       O.mode = VISUAL;
       O.command[0] = '\0';
       O.repeat = 0;
-      O.highlight[0] = O.highlight[1] = O.cx;
+      O.highlight[0] = O.highlight[1] = O.cx + O.coloff; //this needs to be get_filecol not O.cx
       outlineSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
       return;
 
@@ -1914,7 +1916,7 @@ void outlineProcessKeypress() {
       else if (O.command[1] == 'e') {
         if (strlen(O.command) > 3) {
           O.context = strdup(&O.command[3]);
-          outlineSetMessage("\"%s\" will be opened", O.context);
+          outlineSetMessage("\'%s\' will be opened", O.context);
           get_data2(O.context, 200);
         }
         else outlineSetMessage("You need to provide a context");
@@ -2067,12 +2069,12 @@ void outlineProcessKeypress() {
     case 'k':
     case 'l':
       outlineMoveCursor(c);
-      O.highlight[1] = O.cx;
+      O.highlight[1] = O.cx + O.coloff; //this needs to be getFileCol
       return;
 
     case 'x':
       O.repeat = O.highlight[1] - O.highlight[0] + 1;
-      O.cx = O.highlight[0];
+      O.cx = O.highlight[0] - O.coloff;
       outlineYankString(); 
 
       for (int i = 0; i < O.repeat; i++) {
@@ -2087,7 +2089,7 @@ void outlineProcessKeypress() {
 
     case 'y':  
       O.repeat = O.highlight[1] - O.highlight[0] + 1;
-      O.cx = O.highlight[0];
+      O.cx = O.highlight[0] - O.coloff;
       outlineYankString();
       O.command[0] = '\0';
       O.repeat = 0;
@@ -2799,6 +2801,7 @@ void editorScroll(void) {
     E.rowoff += delta;
     E.cy-=delta;
     }
+}
 
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
