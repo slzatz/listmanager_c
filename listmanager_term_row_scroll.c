@@ -536,6 +536,57 @@ void get_note(int id) {
   return;
 }
 
+void view_html(int id) {
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  Py_Initialize();
+  pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "view_html"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = Py_BuildValue("i", id); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+            outlineSetMessage("Successfully rendered the note in html");
+          }
+          else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              outlineSetMessage("Was not able to render the note in html!");
+          }
+      }
+      else {
+          if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: view_html!");
+      }
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+  }
+  else {
+      PyErr_Print();
+      outlineSetMessage("Was not able to find the module: view_html!");
+  }
+  if (Py_FinalizeEx() < 0) {
+  }
+}
 void solr_find(char *search_terms) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -560,8 +611,7 @@ void solr_find(char *search_terms) {
               if (!pValue) {
                   Py_DECREF(pArgs);
                   Py_DECREF(pModule);
-                  fprintf(stderr, "Cannot convert argument\n");
-                  //return 1;
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
@@ -609,22 +659,19 @@ void solr_find(char *search_terms) {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
               PyErr_Print();
-              fprintf(stderr,"Call failed\n");
-              //return 1;
+              outlineSetMessage("Problem retrieving ids from solr!");
           }
       }
       else {
-          if (PyErr_Occurred())
-              PyErr_Print();
-          fprintf(stderr, "Cannot find function");
+          if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: solr_find!");
       }
       Py_XDECREF(pFunc);
       Py_DECREF(pModule);
   }
   else {
       PyErr_Print();
-      fprintf(stderr, "Failed to load");
-      //return 1;
+      outlineSetMessage("Was not able to find the module: view_html!");
   }
   if (Py_FinalizeEx() < 0) {
       //return 120;
@@ -1576,6 +1623,7 @@ void outlineProcessKeypress() {
     case '\x1b':
       O.mode = NORMAL;
       if (O.cx > 0) O.cx--;
+      outlineSetMessage("");
       return;
 
     default:
@@ -1792,19 +1840,15 @@ void outlineProcessKeypress() {
 
     case '^':
     ;
-      //save note to drive
-      //open file
-      //system("open http://url");
-      //system("chrome http...");
-      char s[25];
+
       int fr = outlineGetFileRow();
       orow *row = &O.row[fr];
-      snprintf(s, sizeof(s), "./view_html.py %d", row->id);
-      system(s);
+      view_html(row->id);
+      /* not getting error messages with qutebrowser so below not necessary (for the moment)
       write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
       outlineRefreshScreen();
       editorRefreshScreen();
-      //system("./view_html.py");
+      */
       return;
 
     case CTRL_KEY('z'):
@@ -2389,6 +2433,9 @@ void update_row(void) {
 // doesn't address new items that need to be inserted
 void update_rows(void) {
 
+  int updated_rows[20];
+  int n = 0; //number of updated rows
+
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
@@ -2417,10 +2464,25 @@ void update_rows(void) {
       if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         outlineSetMessage("UPDATE command failed");
         PQclear(res);
-      } else row->dirty = false;    
+      } else {
+      row->dirty = false;    
+      updated_rows[n] = row->id;
+      n++;
+      }
     }
   }
-  return;
+  char msg[200];
+  char *put;
+  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  put = &msg[strlen(msg)];
+
+  for (int j=0; j < n;j++) {
+    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
+  }
+
+  int slen = strlen(msg);
+  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
+  outlineSetMessage("%s",  msg);
 }
 
 void insert_row(int ofr) {
