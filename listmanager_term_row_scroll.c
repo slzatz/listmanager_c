@@ -565,12 +565,17 @@ void solr_find(char *search_terms) {
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
-              //printf("Length of list: %d\n", PyList_Size(pValue));
               Py_ssize_t size; 
-              //printf("Third item of list: %s\n", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, 2), &size));
               int len = PyList_Size(pValue);
 
-              char query[1000];
+              /*
+              We want to create a query that looks like:
+              SELECT * FROM task 
+              WHERE task.id IN (1234, 5678, , 9012) 
+              ORDER BY task.id = 1234 DESC, task.id = 5678 DESC, task.id = 9012 DESC
+              */
+
+              char query[2000];
               char *put;
               strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
               put = &query[strlen(query)];
@@ -578,13 +583,21 @@ void solr_find(char *search_terms) {
               for (int i=0; i<len;i++) {
                 put += snprintf(put, sizeof(query) - (put - query), "%s, ", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size));
               }
-              len = strlen(query);
-              query[len-2] = ')';
-              query[len-1] = '\0';
-              /*
-              WHERE task.id IN (%(id_1)s, %(id_2)s, %(id_3)s, %(id_4)s) 
-              ORDER BY task.id = %(id_24)s DESC, task.id = %(id_25)s DESC, task.id = %(id_26)s DESC, task.id = %(id_27)s DESC
-              */
+
+              int slen = strlen(query);
+              query[slen-2] = ')'; //last IN id has a trailing space and comma 
+              query[slen-1] = '\0';
+
+              put = &query[strlen(query)];
+              put += snprintf(put, sizeof(query) - (put - query), "%s", " ORDER BY ");
+
+              for (int i=0; i<len;i++) {
+                put += snprintf(put, sizeof(query) - (put - query), "task.id = %s DESC, ", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size));
+              }
+
+              slen = strlen(query);
+              query[slen-2] = '\0'; //have extra comma space
+
               Py_DECREF(pValue);
 
              //this is where you would do the search
