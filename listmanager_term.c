@@ -1,8 +1,8 @@
 /***  includes ***/
 
 #define _DEFAULT_SOURCE
-#define _BSD_SOURCE
-#define _GNU_SOURCE
+//#define _BSD_SOURCE
+//#define _GNU_SOURCE
 #define KILO_QUIT_TIMES 1
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define OUTLINE_ACTIVE 0 //tab should move back and forth between these
@@ -11,7 +11,9 @@
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
+#define ABUF_INIT {NULL, 0}
 
+#include <Python.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -138,6 +140,13 @@ typedef struct erow {
   char *chars; //points at the character array of a row - mem assigned by malloc
 } erow;
 
+/*** append buffer used for writing to the screen***/
+
+struct abuf {
+  char *b;
+  int len;
+};
+
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
@@ -191,18 +200,15 @@ struct editorConfig E;
 /*** outline prototypes ***/
 
 void outlineSetMessage(const char *fmt, ...);
-void outlineRefreshScreen();
-void outlineRefreshLine();
+void outlineRefreshScreen(void);
 //void getcharundercursor();
 void outlineDelWord();
-int outlineIndentAmount(int y);
 void outlineMoveCursor(int key);
-void outlineBackspace();
-void outlineDelChar();
-void outlineDeleteToEndOfLine();
+void outlineBackspace(void);
+void outlineDelChar(void);
+void outlineDeleteToEndOfLine(void);
 void outlineYankLine(int n);
-void outlinePasteLine();
-void outlinePasteString();
+void outlinePasteString(void);
 void outlineYankString();
 void outlineMoveCursorEOL();
 void outlineMoveBeginningWord();
@@ -215,6 +221,8 @@ void outlineChangeCase();
 int outlineGetFileRow(void);
 int outlineGetFileCol(void);
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
+void outlineDrawRows(struct abuf *ab);
+void outlineScroll(void); 
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
@@ -441,6 +449,48 @@ void get_data3(int n) {
   //O.context = context;
 }
 
+void get_data4(char *query) {
+  PGresult *res = PQexec(conn, query);    
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");        
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }    
+  
+  if (O.numrows) {
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+  }
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    char *title = PQgetvalue(res, i, 3);
+    char *zz = PQgetvalue(res, i, 0);
+    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    int id = atoi(zz);
+    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+  }
+
+
+  //outlineRefreshScreen(); //?necessary - doesn't seem to be
+
+
+  PQclear(res);
+ // PQfinish(conn);
+
+  O.cx = O.cy = O.rowoff = 0;
+  //O.context = context;
+}
+
 void get_note(int id) {
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
@@ -486,6 +536,148 @@ void get_note(int id) {
   return;
 }
 
+void view_html(int id) {
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  Py_Initialize();
+  pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "view_html"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = Py_BuildValue("i", id); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+            outlineSetMessage("Successfully rendered the note in html");
+          }
+          else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              outlineSetMessage("Was not able to render the note in html!");
+          }
+      }
+      else {
+          if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: view_html!");
+      }
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+  }
+  else {
+      PyErr_Print();
+      outlineSetMessage("Was not able to find the module: view_html!");
+  }
+  if (Py_FinalizeEx() < 0) {
+  }
+}
+void solr_find(char *search_terms) {
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  Py_Initialize();
+  pName = PyUnicode_DecodeFSDefault("solr_find"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "solr_find"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = Py_BuildValue("s", search_terms); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+              Py_ssize_t size; 
+              int len = PyList_Size(pValue);
+
+              /*
+              We want to create a query that looks like:
+              SELECT * FROM task 
+              WHERE task.id IN (1234, 5678, , 9012) 
+              ORDER BY task.id = 1234 DESC, task.id = 5678 DESC, task.id = 9012 DESC
+              */
+
+              char query[2000];
+              char *put;
+              strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
+              put = &query[strlen(query)];
+
+              for (int i=0; i<len;i++) {
+                put += snprintf(put, sizeof(query) - (put - query), "%s, ", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size));
+              }
+
+              int slen = strlen(query);
+              query[slen-2] = ')'; //last IN id has a trailing space and comma 
+              query[slen-1] = '\0';
+
+              put = &query[strlen(query)];
+              put += snprintf(put, sizeof(query) - (put - query), "%s", " ORDER BY ");
+
+              for (int i=0; i<len;i++) {
+                put += snprintf(put, sizeof(query) - (put - query), "task.id = %s DESC, ", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size));
+              }
+
+              slen = strlen(query);
+              query[slen-2] = '\0'; //have extra comma space
+
+              Py_DECREF(pValue);
+
+             //this is where you would do the search
+             get_data4(query);
+
+
+          }
+          else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              outlineSetMessage("Problem retrieving ids from solr!");
+          }
+      }
+      else {
+          if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: solr_find!");
+      }
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+  }
+  else {
+      PyErr_Print();
+      outlineSetMessage("Was not able to find the module: view_html!");
+  }
+  if (Py_FinalizeEx() < 0) {
+      //return 120;
+  }
+  //return 0;
+}
 int keyfromstring(char *key)
 {
     int i;
@@ -702,7 +894,7 @@ void outlineInsertChar(int c) {
   O.cx++;
 }
 
-void outlineDelChar() {
+void outlineDelChar(void) {
   //orow *row = &O.row[O.cy];
   orow *row = &O.row[outlineGetFileRow()];
 
@@ -726,7 +918,7 @@ void outlineDelChar() {
 
 }
 
-void outlineBackspace() {
+void outlineBackspace(void) {
   int fr = outlineGetFileRow();
   int fc = outlineGetFileCol();
 
@@ -1086,13 +1278,13 @@ void editorSave(void) {
 }
 
 /*** append buffer ***/
-
+/*
 struct abuf {
   char *b;
   int len;
 };
-
-#define ABUF_INIT {NULL, 0}
+*/
+//#define ABUF_INIT {NULL, 0}
 
 void abAppend(struct abuf *ab, const char *s, int len) {
 
@@ -1122,39 +1314,29 @@ void abFree(struct abuf *ab) {
   free(ab->b);
 }
 
-/*** output ***/
-//handles the scrolling that happens when filerow/filecol > screenrows/screencols
-int outlineScroll() {
-//returning 1 means need to update whole screen
-//returning 0 means you just need to update the current row
-//probably an optimization that should have been tested
+// Adjusts O.cx and O.cy for O.coloff and O.rowoff
+void outlineScroll(void) {
 
-  if(!O.row) return 0;
+  if(!O.row) return;
 
   if (O.cy >= O.screenrows) {
     O.rowoff++;
     O.cy = O.screenrows - 1;
-    return 1;
   } 
 
   if (O.cy < 0) {
     O.rowoff+=O.cy;
     O.cy = 0;
-    return 1;
   }
 
   if (O.cx >= O.screencols) {
     O.coloff = O.coloff + O.cx - O.screencols + 1;
     O.cx = O.screencols - 1;
-    return 1;
   }
   if (O.cx < 0) {
     O.coloff+=O.cx;
     O.cx = 0;
-    return 1;
   }
-
-  return 0;
 }
 
 // "drawing" rows really means updating the ab buffer
@@ -1172,102 +1354,37 @@ void outlineDrawRows(struct abuf *ab) {
 
     // len is how many characters of a given line will be seen given
     // that a long line may have caused the display to scroll
-    int len = O.row[filerow].size - O.coloff;
+    //int len = O.row[filerow].size - O.coloff;
+    int len = O.row[filerow].size;
 
     // below means when you scrolled far because of a long line
     // then you are going to draw nothing as opposed to negative characters
     // the line is very necessary or we segfault
-    if (len < 0) len = 0; 
+    //if (len < 0) len = 0; //**************not tested
 
     // below says that if a line is long you only draw what fits on the screen
     if (len > O.screencols) len = O.screencols;
     
-    if (O.mode == 3 && filerow >= O.highlight[0] && filerow <= O.highlight[1]) {
-        abAppend(ab, "\x1b[48;5;242m", 11);
-        abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-        abAppend(ab, "\x1b[0m", 4); //slz return background to normal
       
-    } else if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { /////////
-        //abAppend(ab, &O.row[filerow].chars[0], O.highlight[0] - O.coloff);
+    if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { /////////
         abAppend(ab, &O.row[filerow].chars[O.coloff], O.highlight[0] - O.coloff);
         abAppend(ab, "\x1b[48;5;242m", 11);
         abAppend(ab, &O.row[filerow].chars[O.highlight[0]], O.highlight[1]
-                                            //  - O.highlight[0] - O.coloff);
                                               - O.highlight[0]);
         abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1] + O.coloff);
       
-    } //else abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-        else {
+    } else {
           if (O.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
           if (O.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //yellow
           if (O.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
-          abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-          //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+          //abAppend(ab, &O.row[filerow].chars[O.coloff], len);
+          abAppend(ab, &O.row[filerow].chars[(filerow == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
     
-    //"\x1b[K" erases the part of the line to the right of the cursor in case the
-    // new line i shorter than the old
-
-   // abAppend(ab, "\x1b[K", 3);  //new testing *****
-   // looks like "\x1b[4X" - will erase 4 chars so looks like in
-   // erasing lines can't use "...[K" but could calculate "...[nX"
-    //abAppend(ab, "\r\n", 2);//*******************************
-   // this is where you do offset
-   //abAppend(ab, "\r\n\x1b[2C", 6);
     abAppend(ab, offset_lf_ret, 6);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
-}
-
-void outlineDrawRow(struct abuf *ab) {
-
-  int filerow = outlineGetFileRow();
-  char buf[5];
-  snprintf(buf, sizeof(buf), "\x1b[%dC", OUTLINE_LEFT_MARGIN);
-  abAppend(ab, buf, 4);
-  //abAppend(&ab, "\x1b[2C", 4); //*moves cursor right 2 chars*******************************
-
-  // len is how many characters of a given line will be seen given
-  // that a long line may have caused the display to scroll
-  int len = O.row[filerow].size - O.coloff;
-
-  // below means when you scrolled far because of a long line
-  // then you are going to draw nothing as opposed to negative characters
-  // the line is very necessary or we segfault
-   if (len < 0) len = 0; 
-
-   // below says that if a line is long you only draw what fits on the screen
-   if (len > O.screencols) len = O.screencols;
-      
-   if (O.mode == 3 && filerow >= O.highlight[0] && filerow <= O.highlight[1]) {
-       abAppend(ab, "\x1b[48;5;242m", 11);
-       abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-        
-   } else if (O.mode == 4 && filerow == O.cy) {
-       abAppend(ab, &O.row[filerow].chars[0], O.highlight[0] - O.coloff);
-       abAppend(ab, "\x1b[48;5;242m", 11);
-       abAppend(ab, &O.row[filerow].chars[O.highlight[0]], O.highlight[1]
-                                                - O.highlight[0] - O.coloff);
-       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-       abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1]);
-        
-   } else {
-         if (O.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
-         if (O.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //red
-         if (O.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
-         abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-            //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-      }
-    
-    //"\x1b[K" erases the part of the line to the right of the cursor in case the
-    // new line i shorter than the old
-
-   // abAppend(ab, "\x1b[K", 3); //erase whole screen dealt with in refresh line
-    
-    //abAppend(ab, "\r\n", 2);
-    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
 }
 
 //status bar has inverted colors
@@ -1334,57 +1451,7 @@ void outlineDrawMessageBar(struct abuf *ab) {
   abAppend(ab, O.message, msglen);
 }
 
-void outlineRefreshLine() {
-  //outlineScroll();
-
-  /*  struct abuf {
-      char *b;
-      int len;
-    };*/
-
-  if (O.row)
-  //if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
-
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-  char buf[20];
-
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-
-  // move the cursor to mid-screen, erase to left and move cursor back to begging of line
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", O.cy+1, 
-  O.screencols + OUTLINE_LEFT_MARGIN, O.cy+1, 1);
-  abAppend(&ab, buf, strlen(buf));
-
-  outlineDrawRow(&ab);
-
-  // move the cursor to the bottom of the screen
-  // to 'draw' status bar and message bar
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenrows+1, 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", O.screenrows + 1, 
-           OUTLINE_LEFT_MARGIN + 1); //erase from cursor to left
-  abAppend(&ab, buf, strlen(buf));
-  outlineDrawStatusBar(&ab);
-  outlineDrawMessageBar(&ab);
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);//*************
-  abAppend(&ab, buf, strlen(buf));
-
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-  abAppend(&ab, buf, strlen(buf));
-
-  // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);//*************
-  abAppend(&ab, buf, strlen(buf));
-  abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
-
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab);
-}
-
-void outlineRefreshScreen() {
+void outlineRefreshScreen(void) {
   //outlineScroll();
 
   /*  struct abuf {
@@ -1455,9 +1522,12 @@ void outlineSetMessage(const char *fmt, ...) {
   //O.message_time = time(NULL);
 }
 
+//Note: outlineMoveCursor worries about moving cursor beyond the size of the row
+//OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
+  int id;
 
   switch (key) {
     case ARROW_LEFT:
@@ -1471,44 +1541,33 @@ void outlineMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
+      if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT);
       break;
 
     case ARROW_UP:
     case 'k':
-      // note O.cy might be zero but filerow positive because of O.rowoff
-      // then O.cy goes negative
-      // dealt with in EditorScroll
+      // note O.cy might be zero before but filerow positive because of O.rowoff
+      // so it still makes sense to move cursor up and then O.cy goes negative
+      // also if scrolled so O.rowoff != 0 and do gg - ? what happens
+      // dealt with in outlineScroll
       if (outlineGetFileRow() > 0) O.cy--; 
+      O.cx = O.coloff = 0;
+      fr = outlineGetFileRow();
+      row = &O.row[fr];
+      id = O.row[fr].id;
+      get_note(id); //if id == -1 does not try to retrieve note ********************************************
       break;
 
     case ARROW_DOWN:
     case 'j':
       if (outlineGetFileRow() < O.numrows - 1) O.cy++;
+      O.cx = O.coloff = 0;
+      fr = outlineGetFileRow();
+      row = &O.row[fr];
+      id = O.row[fr].id;
+      get_note(id); //if id == -1 does not try to retrieve note ********************************************
       break;
   }
-
-  /* 
-  The lines below deal with the possibility that the cursor may have moved
-  beyond the length of the row whether you were scrolling right or scrolling
-  down or up.  Not needed for scrolling left but not checking for that.
-  */
-  if(key==ARROW_UP || key==ARROW_DOWN){
-    fr = outlineGetFileRow();
-    row = &O.row[fr];
-    int id = O.row[fr].id;
-    get_note(id); //if id == -1 does not try to retrieve not ********************************************
-    //editorProcessNote():
-  }
-  int rowlen = row ? row->size : 0;
-  if (rowlen == 0) {
-    O.cx = 0;
-    return;
-  }
-
-  //if in insert mode can be one character beyond the length of the line
-  //because you can insert characters. (Insert mode ==1)
-  if (outlineGetFileCol() >= rowlen) O.cx = rowlen - O.coloff - (O.mode!=1);
-    
 }
 
 // higher level outline function depends on readKey()
@@ -1564,12 +1623,12 @@ void outlineProcessKeypress() {
     case '\x1b':
       O.mode = NORMAL;
       if (O.cx > 0) O.cx--;
+      outlineSetMessage("");
       return;
 
     default:
       outlineInsertChar(c);
       return;
- 
  } 
 
 /*************************************** 
@@ -1601,7 +1660,7 @@ void outlineProcessKeypress() {
 
     //case 'z':
     case '\t':
-      E.cx = E.cy = 0;
+      E.cx = E.cy = E.rowoff = 0;
       E.mode = NORMAL;
       editor_mode = true;
       return;
@@ -1780,14 +1839,24 @@ void outlineProcessKeypress() {
       return;
 
     case '^':
-      //save note to drive
-      //open file
-      system("open http://url");
-      system("chrome http...");
+    ;
+
+      int fr = outlineGetFileRow();
+      orow *row = &O.row[fr];
+      view_html(row->id);
+      /* not getting error messages with qutebrowser so below not necessary (for the moment)
+      write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+      outlineRefreshScreen();
+      editorRefreshScreen();
+      */
       return;
 
     case CTRL_KEY('z'):
+    case '#':
       //not in use
+      solr_find("micropython");
+      outlineRefreshScreen();
+      outlineSetMessage("Howdy");
       return;
 
     case ARROW_UP:
@@ -1880,8 +1949,8 @@ void outlineProcessKeypress() {
       return;
 
     case C_gg:
-     O.cx = 0;
-     O.cy = O.repeat-1;
+     O.cx = O.rowoff = 0;
+     O.cy = O.repeat-1; //this needs to take into account O.rowoff
      O.command[0] = '\0';
      O.repeat = 0;
      return;
@@ -2078,7 +2147,7 @@ void outlineProcessKeypress() {
       outlineYankString(); 
 
       for (int i = 0; i < O.repeat; i++) {
-        outlineDelChar(O.cx);
+        outlineDelChar();
       }
 
       O.command[0] = '\0';
@@ -2364,6 +2433,9 @@ void update_row(void) {
 // doesn't address new items that need to be inserted
 void update_rows(void) {
 
+  int updated_rows[20];
+  int n = 0; //number of updated rows
+
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
@@ -2392,10 +2464,25 @@ void update_rows(void) {
       if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         outlineSetMessage("UPDATE command failed");
         PQclear(res);
-      } else row->dirty = false;    
+      } else {
+      row->dirty = false;    
+      updated_rows[n] = row->id;
+      n++;
+      }
     }
   }
-  return;
+  char msg[200];
+  char *put;
+  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  put = &msg[strlen(msg)];
+
+  for (int j=0; j < n;j++) {
+    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
+  }
+
+  int slen = strlen(msg);
+  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
+  outlineSetMessage("%s",  msg);
 }
 
 void insert_row(int ofr) {
@@ -2582,7 +2669,7 @@ void outlineYankString() {
   string_buffer[n] = '\0';
 }
 
-void outlinePasteString() {
+void outlinePasteString(void) {
   if (O.numrows == 0) return;
 
   int fr = outlineGetFileRow();
@@ -2630,7 +2717,7 @@ void outlineDelWord() {
   //outlineSetMessage("i = %d, j = %d", i, j ); 
 }
 
-void outlineDeleteToEndOfLine() {
+void outlineDeleteToEndOfLine(void) {
   orow *row = &O.row[O.cy];
   row->size = O.cx;
   //Arguably you don't have to reallocate when you reduce the length of chars
@@ -2781,12 +2868,12 @@ void editorScroll(void) {
   if (E.cy < 0) {
      E.rowoff+=E.cy;
      E.cy = 0;
+     if (editorGetFileRow() == 0) E.rowoff = 0; //? necessary really not sure
   }
   //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
   //I believe vim also doesn't want partial lines at the top so balancing both concepts
   //The lines you can view at the top and the bottom of the screen are 
   //even if that means you scroll more than you have to to show complete lines at the top.
-
 
   int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
   if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
@@ -2850,12 +2937,12 @@ void editorDrawRows(struct abuf *ab) {
         if ((E.row[filerow].size - n*E.screencols) > E.screencols) len = E.screencols;
         else len = E.row[filerow].size - n*E.screencols;
 
-        if (E.mode == 3 && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
+        if (E.mode == VISUAL_LINE && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
             abAppend(ab, "\x1b[48;5;242m", 11);
             abAppend(ab, &E.row[filerow].chars[start], len);
             abAppend(ab, "\x1b[0m", 4); //slz return background to normal
         
-        } else if (E.mode == 4 && filerow == editorGetFileRow()) {
+        } else if (E.mode == VISUAL && filerow == editorGetFileRow()) {
             //if ((E.highlight[0] > start) && (E.highlight[0] < start + len)) {
             if ((E.highlight[0] >= start) && (E.highlight[0] < start + len)) {
             abAppend(ab, &E.row[filerow].chars[start], E.highlight[0] - start);
@@ -2954,7 +3041,7 @@ void editorRefreshScreen(void) {
       int len;
     };*/
   if (E.row)
-    editorSetMessage("E.rowoff = %d, length = %d, E.cx = %d, E.cy = %d, filerow = %d, filecol = %d, size = %d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
+    editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
   else
     editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
 
@@ -3641,7 +3728,7 @@ void editorProcessKeypress(void) {
    * visual line mode E.mode = 3
    ********************************************/
 
-  } else if (E.mode == 3) {
+  } else if (E.mode == VISUAL_LINE) {
 
 
     switch (c) {
@@ -3724,7 +3811,7 @@ void editorProcessKeypress(void) {
     }
 
  // visual mode
-  } else if (E.mode == 4) {
+  } else if (E.mode == VISUAL) {
 
     switch (c) {
 
@@ -3872,7 +3959,13 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
   int incremental_lines = (E.row[fr].size >= fc) ? fc/E.screencols : E.row[fr].size/E.screencols;
   screenline = screenline + incremental_lines - E.rowoff;
-
+  // below seems like a total kluge and (barely tested) but actually seems to work
+  //- ? should be in editorScroll - I did try to put a version in editorScroll but
+  // it didn't work and I didn't investigate why so here it will remain at least  for the moment
+  if (screenline<=0 && fr==0) {
+    E.rowoff = 0; 
+    screenline = 0;
+    }
   // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
   // this can put E.cx one farther right than it should be but editorMoveCursor checks and moves it back if not in insert mode
   int screencol = (E.row[fr].size > fc) ? fc%E.screencols : E.row[fr].size%E.screencols; 
@@ -3884,7 +3977,7 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
 int editorGetFileCol(void) {
   int n = 0;
-  int y = E.cy + E.rowoff;
+  int y = E.cy;// + E.rowoff;
   int fr = editorGetFileRow();
   for (;;) {
     if (y == 0) break;
@@ -4537,11 +4630,6 @@ int main(void) {
     } else {
       outlineScroll();
       outlineRefreshScreen();
-      /*
-      int scroll = outlineScroll();
-      if (scroll) outlineRefreshScreen(); 
-      else outlineRefreshLine();//almost certainly this was a premature optimization
-      */
       outlineProcessKeypress();
     }
   }
