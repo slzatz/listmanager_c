@@ -1,11 +1,8 @@
 #!bin/python
 
 '''This works with call_solr.c
-
   ./call_solr solr get_ids micropython
-
   call_solr was compiled with:
-
   gcc call_solr.c -I/usr/include/python3.7m -L/usr/include/python3.7m -lpython3.7m -o call_solr2
 
   There is also a solr_sqla.py created to look at the sql after you retrieve the solr ids
