@@ -1,8 +1,8 @@
 /***  includes ***/
 
 #define _DEFAULT_SOURCE
-#define _BSD_SOURCE
-#define _GNU_SOURCE
+//#define _BSD_SOURCE
+//#define _GNU_SOURCE
 #define KILO_QUIT_TIMES 1
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define OUTLINE_ACTIVE 0 //tab should move back and forth between these
@@ -13,6 +13,7 @@
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define ABUF_INIT {NULL, 0}
 
+#include <Python.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -448,6 +449,48 @@ void get_data3(int n) {
   //O.context = context;
 }
 
+void get_data4(char *query) {
+  PGresult *res = PQexec(conn, query);    
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");        
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }    
+  
+  if (O.numrows) {
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+  }
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    char *title = PQgetvalue(res, i, 3);
+    char *zz = PQgetvalue(res, i, 0);
+    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    int id = atoi(zz);
+    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+  }
+
+
+  //outlineRefreshScreen(); //?necessary - doesn't seem to be
+
+
+  PQclear(res);
+ // PQfinish(conn);
+
+  O.cx = O.cy = O.rowoff = 0;
+  //O.context = context;
+}
+
 void get_note(int id) {
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
@@ -493,6 +536,88 @@ void get_note(int id) {
   return;
 }
 
+void solr_find(char *search_terms) {
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  Py_Initialize();
+  pName = PyUnicode_DecodeFSDefault("solr_find"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "solr_find"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = Py_BuildValue("s", search_terms); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  fprintf(stderr, "Cannot convert argument\n");
+                  //return 1;
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+              //printf("Length of list: %d\n", PyList_Size(pValue));
+              Py_ssize_t size; 
+              //printf("Third item of list: %s\n", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, 2), &size));
+              int len = PyList_Size(pValue);
+
+              char query[1000];
+              char *put;
+              strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
+              put = &query[strlen(query)];
+
+              for (int i=0; i<len;i++) {
+                put += snprintf(put, sizeof(query) - (put - query), "%s, ", PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size));
+              }
+              len = strlen(query);
+              query[len-2] = ')';
+              query[len-1] = '\0';
+              /*
+              WHERE task.id IN (%(id_1)s, %(id_2)s, %(id_3)s, %(id_4)s) 
+              ORDER BY task.id = %(id_24)s DESC, task.id = %(id_25)s DESC, task.id = %(id_26)s DESC, task.id = %(id_27)s DESC
+              */
+              Py_DECREF(pValue);
+
+             //this is where you would do the search
+             get_data4(query);
+
+
+          }
+          else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              fprintf(stderr,"Call failed\n");
+              //return 1;
+          }
+      }
+      else {
+          if (PyErr_Occurred())
+              PyErr_Print();
+          fprintf(stderr, "Cannot find function");
+      }
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+  }
+  else {
+      PyErr_Print();
+      fprintf(stderr, "Failed to load");
+      //return 1;
+  }
+  if (Py_FinalizeEx() < 0) {
+      //return 120;
+  }
+  //return 0;
+}
 int keyfromstring(char *key)
 {
     int i;
@@ -1670,7 +1795,11 @@ void outlineProcessKeypress() {
       return;
 
     case CTRL_KEY('z'):
+    case '#':
       //not in use
+      solr_find("micropython");
+      outlineRefreshScreen();
+      outlineSetMessage("Howdy");
       return;
 
     case ARROW_UP:
