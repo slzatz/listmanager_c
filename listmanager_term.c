@@ -48,6 +48,21 @@ journal 5
 todo 9
 */
 
+const char *context[] = {
+                        "",
+                        "No Context",
+                        "financial",
+                        "health",
+                        "industry",
+                        "journal",
+                        "facts 6",
+                        "not work",
+                        "programming",
+                        "todo",
+                        "test",
+                        "work"
+                       }; 
+
 //should apply to outline and note
 struct termios orig_termios;
 // the full dimensions of the screen available to outline + note
@@ -1584,599 +1599,612 @@ void outlineProcessKeypress() {
  * O.mode = 1
  ***************************************/
 
-  if (O.mode == INSERT){
+  switch (O.mode) { 
+    case INSERT:  
 
-  switch (c) {
+      switch (c) {
 
-    case '\r':
-      update_rows();
-      break;
+        case '\r':
+          update_rows();
+          break;
 
-    case HOME_KEY:
-      O.cx = 0;
-      break;
+        case HOME_KEY:
+          O.cx = 0;
+          break;
 
-    case END_KEY:
-      if (O.cy < O.numrows)
-        O.cx = O.row[O.cy].size;
-      break;
+        case END_KEY:
+          if (O.cy < O.numrows)
+            O.cx = O.row[O.cy].size;
+          break;
 
-    case BACKSPACE:
-      outlineBackspace();
-      break;
+        case BACKSPACE:
+          outlineBackspace();
+          break;
 
-    case DEL_KEY:
-      outlineDelChar();
-      break;
+        case DEL_KEY:
+          outlineDelChar();
+          break;
 
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-      outlineMoveCursor(c);
-      break;
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+          outlineMoveCursor(c);
+          break;
 
-    case CTRL_KEY('z'):
-      // not in use
-      break;
+        case CTRL_KEY('z'):
+          // not in use
+          break;
 
-    case '\x1b':
-      O.mode = NORMAL;
-      if (O.cx > 0) O.cx--;
-      outlineSetMessage("");
-      return;
+        case '\x1b':
+          O.mode = NORMAL;
+          if (O.cx > 0) O.cx--;
+          outlineSetMessage("");
+          return;
 
-    default:
-      outlineInsertChar(c);
-      return;
- } 
+        default:
+          outlineInsertChar(c);
+          return;
+      } //end of inner switch(c) under outer case INSERT 
+      return; //////end outer case INSERT
 
-/*************************************** 
- * This is where you enter NORMAL mode* 
- * O.mode = 0
- ***************************************/
-
- } else if (O.mode == NORMAL){
+    case NORMAL:  
  
-  /*leading digit is a multiplier*/
-  if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
-    if ( O.repeat == 0 ){
+      /*leading digit is a multiplier*/
+      if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
+        if ( O.repeat == 0 ){
 
-      //if c = 48 => 0 then it falls through to 0 move to beginning of line
-      if ( c != 48 ) { 
-        O.repeat = c - 48;
-        return;
-      }  
-
-    } else { 
-      O.repeat = O.repeat*10 + c - 48;
-      return;
-    }
-  }
-
-  if ( O.repeat == 0 ) O.repeat = 1;
-
-  switch (c) {
-
-    //case 'z':
-    case '\t':
-      E.cx = E.cy = E.rowoff = 0;
-      E.mode = NORMAL;
-      editor_mode = true;
-      return;
-
-    case '\r':
-      update_rows();
-      return;
-
-    case 'z':
-      O.cx = 0; //intentionally leave O.cy whereever it is
-      O.mode = DATABASE;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case 'i':
-      //This probably needs to be generalized when a letter is a single char command
-      //but can also appear in multi-character commands too
-      if (O.command[0] == '\0') { 
-        O.mode = INSERT;
-        O.command[0] = '\0';
-        O.repeat = 0;
-        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-      }
-      break;
-
-    case 's':
-      for (int i = 0; i < O.repeat; i++) outlineDelChar();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 1;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-      return;
-
-    case 'x':
-      for (int i = 0; i < O.repeat; i++) outlineDelChar();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-    
-    case 'r':
-      O.mode = REPLACE; //REPLACE_MODE = 5
-      return;
-
-    case '~':
-      for (int i = 0; i < O.repeat; i++) outlineChangeCase();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case 'a':
-      if (O.command[0] == '\0') { 
-        O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
-        outlineMoveCursor(ARROW_RIGHT);
-        O.command[0] = '\0';
-        O.repeat = 0;
-        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-      }
-      break;
-
-    case 'A':
-      outlineMoveCursorEOL();
-      O.mode = INSERT; //needs to be here for movecursor to work at EOLs
-      outlineMoveCursor(ARROW_RIGHT);
-      O.command[0] = '\0';
-      O.repeat = 0;
-      //O.mode = 1;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'w':
-      if (O.command[0] == '\0') { 
-        outlineMoveNextWord();
-        O.command[0] = '\0';
-        O.repeat = 0;
-        return;
-      }
-      break;
-
-    case 'b':
-      outlineMoveBeginningWord();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case 'e':
-      if (O.command[0] == '\0') { 
-        outlineMoveEndWord();
-        O.command[0] = '\0';
-        O.repeat = 0;
-        return;
-        }
-      break;
-
-    case '0':
-      //O.coloff = 0; //unlikely to work
-      //O.cx = 0;
-      O.cx = -O.coloff; //surprisingly seems to work
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case '$':
-      if (O.command[0] == '\0') { 
-        outlineMoveCursorEOL();
-        O.command[0] = '\0';
-        O.repeat = 0;
-        return;
-      }
-      break;
-
-    case 'I':
-      O.cx = 0;
-      O.mode = 1;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'N':
-     
-     // void outlineInsertRow2(int at, char *s, size_t len, 
-     // int id, bool star, bool deleted, bool completed); 
-      outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
-
-      O.cx = O.cy = O.rowoff = 0;
-      outlineScroll();
-      outlineRefreshScreen();  //? necessary
-      O.mode = INSERT;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'G':
-      O.cx = 0;
-      O.cy = O.numrows-1;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-  
-    case ':':
-      O.mode = COMMAND_LINE;
-      O.command[0] = ':';
-      O.command[1] = '\0';
-      outlineSetMessage(":"); 
-      return;
-
-    case 'v':
-      O.mode = VISUAL;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.highlight[0] = O.highlight[1] = O.cx + O.coloff; //this needs to be get_filecol not O.cx
-      outlineSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
-      return;
-
-    case 'p':  
-      if (strlen(string_buffer)) outlinePasteString();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case '*':  
-      outlineGetWordUnderCursor();
-      outlineFindNextWord(); 
-      return;
-
-    case 'n':
-      outlineFindNextWord();
-      return;
-
-    case 'u':
-      //could be used to update solr - would use U
-      return;
-
-    case '^':
-    ;
-
-      int fr = outlineGetFileRow();
-      orow *row = &O.row[fr];
-      view_html(row->id);
-      /* not getting error messages with qutebrowser so below not necessary (for the moment)
-      write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-      outlineRefreshScreen();
-      editorRefreshScreen();
-      */
-      return;
-
-    case CTRL_KEY('z'):
-    case '#':
-      //not in use
-      solr_find("micropython");
-      outlineRefreshScreen();
-      outlineSetMessage("Howdy");
-      return;
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case 'h':
-    case 'j':
-    case 'k':
-    case 'l':
-      outlineMoveCursor(c);
-      O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-      O.repeat = 0;
-      return;
-
-    case '\x1b':
-    // Leave in NORMAL mode
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-  }
-
-  // don't want a default case just want it to fall through
-  // if it doesn't match switch above
-  // presumption is it's a multicharacter command
-
-  int n = strlen(O.command);
-  O.command[n] = c;
-  O.command[n+1] = '\0';
-
-  switch (keyfromstring(O.command)) {
-    
-    case C_daw:
-      for (int i = 0; i < O.repeat; i++) outlineDelWord();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case C_dw:
-      for (int j = 0; j < O.repeat; j++) {
-        start = O.cx;
-        outlineMoveEndWord2();
-        end = O.cx;
-        O.cx = start;
-        for (int j = 0; j < end - start + 2; j++) outlineDelChar();
-      }
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case C_de:
-      start = O.cx;
-      outlineMoveEndWord(); //correct one to use to emulate vim
-      end = O.cx;
-      O.cx = start; 
-      for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-      O.cx = (start < O.row[O.cy].size) ? start : O.row[O.cy].size -1;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    case C_d$:
-      outlineDeleteToEndOfLine();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      return;
-
-    //tested with repeat on one line
-    case C_cw:
-      for (int j = 0; j < O.repeat; j++) {
-        start = O.cx;
-        outlineMoveEndWord();
-        end = O.cx;
-        O.cx = start;
-        for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-      }
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 1;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    //tested with repeat on one line
-    case C_caw:
-      for (int i = 0; i < O.repeat; i++) outlineDelWord();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 1;
-      outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case C_gg:
-     O.cx = O.rowoff = 0;
-     O.cy = O.repeat-1; //this needs to take into account O.rowoff
-     O.command[0] = '\0';
-     O.repeat = 0;
-     return;
-
-    default:
-      return;
-
-    } 
-
-  /************************************   
-   *command line mode below O.mode = 2*
-   ************************************/
-
-  } else if (O.mode == COMMAND_LINE) {
-
-    if (c == '\x1b') {
-      O.mode = 0;
-      O.command[0] = '\0';
-      outlineSetMessage(""); 
-      return;}
-
-    if (c == '\r') {
-
-    //This should be turned into switch statement
-
-      if (O.command[1] == 'w') {
-        update_rows2();
-        O.mode = 0;
-        O.command[0] = '\0';
-      }
-
-      else if (O.command[1] == 'e') {
-        if (strlen(O.command) > 3) {
-          O.context = strdup(&O.command[3]);
-          outlineSetMessage("\'%s\' will be opened", O.context);
-          get_data2(O.context, 200);
-        }
-        else outlineSetMessage("You need to provide a context");
-
-        O.mode = 0;
-        O.command[0] = '\0';
-      }
-      else if (O.command[1] == 'x') {
-        update_rows2();
-        write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-        write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-        exit(0);
-      }  
-
-      else if (O.command[1] == 'q') {
-        bool unsaved_changes = false;
-        for (int i=0;i<O.numrows;i++) {
-          orow *row = &O.row[i];
-          if (row->dirty) {
-            unsaved_changes = true;
-            break;
-          }
-        }
-
-        if (unsaved_changes) {
-          if (strlen(O.command) == 3 && O.command[2] == '!') {
-            write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-            write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-            exit(0);
+          //if c = 48 => 0 then it falls through to 0 move to beginning of line
+          if ( c != 48 ) { 
+            O.repeat = c - 48;
+            return;
           }  
-          else {
+
+        } else { 
+          O.repeat = O.repeat*10 + c - 48;
+          return;
+        }
+      }
+
+      if ( O.repeat == 0 ) O.repeat = 1;
+
+      switch (c) {
+
+        //case 'z':
+        case '\t':
+          E.cx = E.cy = E.rowoff = 0;
+          E.mode = NORMAL;
+          editor_mode = true;
+          return;
+
+        case '\r':
+          update_rows();
+          return;
+
+        case 'z':
+          O.cx = 0; //intentionally leave O.cy whereever it is
+          O.mode = DATABASE;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case 'i':
+          //This probably needs to be generalized when a letter is a single char command
+          //but can also appear in multi-character commands too
+          if (O.command[0] == '\0') { 
+            O.mode = INSERT;
+            O.command[0] = '\0';
+            O.repeat = 0;
+            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+          }
+          break;
+
+        case 's':
+          for (int i = 0; i < O.repeat; i++) outlineDelChar();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.mode = 1;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+          return;
+
+        case 'x':
+          for (int i = 0; i < O.repeat; i++) outlineDelChar();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+        
+        case 'r':
+          O.mode = REPLACE; //REPLACE_MODE = 5
+          return;
+
+        case '~':
+          for (int i = 0; i < O.repeat; i++) outlineChangeCase();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case 'a':
+          if (O.command[0] == '\0') { 
+            O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+            outlineMoveCursor(ARROW_RIGHT);
+            O.command[0] = '\0';
+            O.repeat = 0;
+            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+          }
+          break;
+
+        case 'A':
+          outlineMoveCursorEOL();
+          O.mode = INSERT; //needs to be here for movecursor to work at EOLs
+          outlineMoveCursor(ARROW_RIGHT);
+          O.command[0] = '\0';
+          O.repeat = 0;
+          //O.mode = 1;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        case 'w':
+          if (O.command[0] == '\0') { 
+            outlineMoveNextWord();
+            O.command[0] = '\0';
+            O.repeat = 0;
+            return;
+          }
+          break;
+
+        case 'b':
+          outlineMoveBeginningWord();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case 'e':
+          if (O.command[0] == '\0') { 
+            outlineMoveEndWord();
+            O.command[0] = '\0';
+            O.repeat = 0;
+            return;
+            }
+          break;
+
+        case '0':
+          //O.coloff = 0; //unlikely to work
+          //O.cx = 0;
+          O.cx = -O.coloff; //surprisingly seems to work
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case '$':
+          if (O.command[0] == '\0') { 
+            outlineMoveCursorEOL();
+            O.command[0] = '\0';
+            O.repeat = 0;
+            return;
+          }
+          break;
+
+        case 'I':
+          O.cx = 0;
+          O.mode = 1;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        case 'N':
+         
+         // void outlineInsertRow2(int at, char *s, size_t len, 
+         // int id, bool star, bool deleted, bool completed); 
+          outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+
+          O.cx = O.cy = O.rowoff = 0;
+          outlineScroll();
+          outlineRefreshScreen();  //? necessary
+          O.mode = INSERT;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        case 'G':
+          O.cx = 0;
+          O.cy = O.numrows-1;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+      
+        case ':':
+          O.mode = COMMAND_LINE;
+          O.command[0] = ':';
+          O.command[1] = '\0';
+          outlineSetMessage(":"); 
+          return;
+
+        case 'v':
+          O.mode = VISUAL;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.highlight[0] = O.highlight[1] = O.cx + O.coloff; //this needs to be get_filecol not O.cx
+          outlineSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+          return;
+
+        case 'p':  
+          if (strlen(string_buffer)) outlinePasteString();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case '*':  
+          outlineGetWordUnderCursor();
+          outlineFindNextWord(); 
+          return;
+
+        case 'n':
+          outlineFindNextWord();
+          return;
+
+        case 'u':
+          //could be used to update solr - would use U
+          return;
+
+        case '^':
+        ;
+
+          int fr = outlineGetFileRow();
+          orow *row = &O.row[fr];
+          view_html(row->id);
+          /* not getting error messages with qutebrowser so below not necessary (for the moment)
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          outlineRefreshScreen();
+          editorRefreshScreen();
+          */
+          return;
+
+        case CTRL_KEY('z'):
+        case '#':
+          //not in use
+          solr_find("micropython");
+          outlineRefreshScreen();
+          outlineSetMessage("Howdy");
+          return;
+
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          outlineMoveCursor(c);
+          O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          O.repeat = 0;
+          return;
+
+        case '\x1b':
+        // Leave in NORMAL mode
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+      }// end of inner switch(c) in outer swith NORMAL
+
+      // don't want a default case just want it to fall through
+      // if it doesn't match switch above
+      // presumption is it's a multicharacter command
+
+      int n = strlen(O.command);
+      O.command[n] = c;
+      O.command[n+1] = '\0';
+
+      switch (keyfromstring(O.command)) {
+        
+        case C_daw:
+          for (int i = 0; i < O.repeat; i++) outlineDelWord();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case C_dw:
+          for (int j = 0; j < O.repeat; j++) {
+            start = O.cx;
+            outlineMoveEndWord2();
+            end = O.cx;
+            O.cx = start;
+            for (int j = 0; j < end - start + 2; j++) outlineDelChar();
+          }
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case C_de:
+          start = O.cx;
+          outlineMoveEndWord(); //correct one to use to emulate vim
+          end = O.cx;
+          O.cx = start; 
+          for (int j = 0; j < end - start + 1; j++) outlineDelChar();
+          O.cx = (start < O.row[O.cy].size) ? start : O.row[O.cy].size -1;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        case C_d$:
+          outlineDeleteToEndOfLine();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+
+        //tested with repeat on one line
+        case C_cw:
+          for (int j = 0; j < O.repeat; j++) {
+            start = O.cx;
+            outlineMoveEndWord();
+            end = O.cx;
+            O.cx = start;
+            for (int j = 0; j < end - start + 1; j++) outlineDelChar();
+          }
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.mode = 1;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        //tested with repeat on one line
+        case C_caw:
+          for (int i = 0; i < O.repeat; i++) outlineDelWord();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.mode = 1;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        case C_gg:
+         O.cx = O.rowoff = 0;
+         O.cy = O.repeat-1; //this needs to take into account O.rowoff
+         O.command[0] = '\0';
+         O.repeat = 0;
+         return;
+
+        default:
+          return;
+
+      } //end of keyfromswitch inner switch under outer case NORMAL 
+      return; // end of outer case NORMAL
+
+    case COMMAND_LINE:
+
+      if (c == '\x1b') {
+        O.mode = 0;
+        O.command[0] = '\0';
+        outlineSetMessage(""); 
+        return;
+      }
+
+      if (c == '\r') {
+
+      //This should be turned into switch statement
+        switch(O.command[1]) {
+          case 'w':
+            update_rows2();
             O.mode = 0;
             O.command[0] = '\0';
-            outlineSetMessage("No db write since last change");
-          }
+            return;
+
+           case 'e':
+             if (strlen(O.command) > 3) {
+               O.context = strdup(&O.command[3]);
+               outlineSetMessage("\'%s\' will be opened", O.context);
+               get_data2(O.context, 200);
+             }
+             else outlineSetMessage("You need to provide a context");
+
+             O.mode = 0;
+             O.command[0] = '\0';
+             return;
+
+           case 'x':
+             update_rows2();
+             write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+             write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+             exit(0);
+             return;
+
+           case 'q':
+             ;
+             bool unsaved_changes = false;
+             for (int i=0;i<O.numrows;i++) {
+               orow *row = &O.row[i];
+               if (row->dirty) {
+                 unsaved_changes = true;
+                 break;
+               }
+             } 
+
+             if (unsaved_changes) {
+               if (strlen(O.command) == 3 && O.command[2] == '!') {
+                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+                 write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+                 exit(0);
+               }  
+               else {
+                 O.mode = 0;
+                 O.command[0] = '\0';
+                 outlineSetMessage("No db write since last change");
+               }
+             }
+         
+             else {
+               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+               write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+               exit(0);
+             }
+
+             return;
+
+           case 's':
+             O.show_deleted = !O.show_deleted;
+             O.show_completed = !O.show_completed;
+             get_data3(200);
+        
+             return;
+
+           case 'c':
+             if (strlen(O.command) > 3) {
+               O.context = strdup(&O.command[3]);
+               outlineSetMessage("\"%s\" will be opened", O.context);
+               // need to either write generic update_row that updates everything
+               // or update_row_context -- tempted to start there
+               // update_context(char * context)
+             }
+             else outlineSetMessage("You need to provide a context");
+
+             return;
+        }; //end of inner switch of outer case COMMAND_LINE
+      } // end of if
+      else {
+        int n = strlen(O.command);
+        if (c == DEL_KEY || c == BACKSPACE) {
+          O.command[n-1] = '\0';
+        } else {
+          O.command[n] = c;
+          O.command[n+1] = '\0';
         }
-       
-        else {
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
-        }
-      }
-      else if (O.command[1] == 's') {
-        O.show_deleted = !O.show_deleted;
-        O.show_completed = !O.show_completed;
-        get_data3(200);
-      }
-      else if (O.command[1] == 'c') {
-        if (strlen(O.command) > 3) {
-          O.context = strdup(&O.command[3]);
-          outlineSetMessage("\"%s\" will be opened", O.context);
-          // need to either write generic update_row that updates everything
-          // or update_row_context -- tempted to start there
-        }
-        else outlineSetMessage("You need to provide a context");
-      }
-    }
+        outlineSetMessage(O.command);
+      } // DO NOT REMOVE
 
-    else {
-      int n = strlen(O.command);
-      if (c == DEL_KEY || c == BACKSPACE) {
-        O.command[n-1] = '\0';
-      } else {
-        O.command[n] = c;
-        O.command[n+1] = '\0';
-      }
-      outlineSetMessage(O.command);
-    }
+      return; //end of outer case COMMAND_LINE
 
-  /********************************************
-   * DATABASE mode 
-   ********************************************/
+    case DATABASE:
 
-  } else if (O.mode == DATABASE) {
+      switch (c) {
 
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case 'h':
+        case 'l':
+          outlineMoveCursor(c);
+          return;
 
-    switch (c) {
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case 'h':
-    case 'l':
-      outlineMoveCursor(c);
-      return;
-
-    case 'x':
-      O.cx = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      toggle_completed();
-      return;
-
-    case 'd':
-      O.cx = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      toggle_deleted();
-      return;
-
-    case '*':
-      O.cx = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      toggle_star();
-      return;
-
-    case 'r':
-      O.cx = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      get_data3(200);
-      return;
-
-    case '\r':
-      update_rows();
-      return;
-
-    case '\x1b':
-      O.mode = NORMAL;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      outlineSetMessage("");
-      return;
-
-    case 'i':
-      if (O.command[0] == '\0') { 
-        O.mode = INSERT;
+      case 'x':
+        O.cx = 0;
         O.command[0] = '\0';
         O.repeat = 0;
-        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      }
-      return;
+        toggle_completed();
+        return;
 
-    default:
-      return;
-    }
+      case 'd':
+        O.cx = 0;
+        O.command[0] = '\0';
+        O.repeat = 0;
+        toggle_deleted();
+        return;
 
-/* visual mode == 4 VISUAL_MODE*/
-  } else if (O.mode == VISUAL) {
+      case '*':
+        O.cx = 0;
+        O.command[0] = '\0';
+        O.repeat = 0;
+        toggle_star();
+        return;
 
-    switch (c) {
+      case 'r':
+        O.cx = 0;
+        O.command[0] = '\0';
+        O.repeat = 0;
+        get_data3(200);
+        return;
 
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case 'h':
-    case 'j':
-    case 'k':
-    case 'l':
-      outlineMoveCursor(c);
-      O.highlight[1] = O.cx + O.coloff; //this needs to be getFileCol
-      return;
+      case '\r':
+        update_rows();
+        return;
 
-    case 'x':
-      O.repeat = O.highlight[1] - O.highlight[0] + 1;
-      O.cx = O.highlight[0] - O.coloff;
-      outlineYankString(); 
+      case '\x1b':
+        O.mode = NORMAL;
+        O.command[0] = '\0';
+        O.repeat = 0;
+        outlineSetMessage("");
+        return;
 
-      for (int i = 0; i < O.repeat; i++) {
-        outlineDelChar();
-      }
+      case 'i':
+        if (O.command[0] == '\0') { 
+          O.mode = INSERT;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+        }
+        return;
+      
+      case 'o':
+        O.command[0] = ' ';
+        O.command[1] = 'e';
+        O.command[2] = ' ';
+        O.command[3] = '\0';
+        O.mode = COMMAND_LINE;
+        outlineSetMessage(""); 
+        return;
 
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 0;
-      outlineSetMessage("");
-      return;
+      default:
+        return;
+      } // end of inner switch(c) in outer case DATABASLE
 
-    case 'y':  
-      O.repeat = O.highlight[1] - O.highlight[0] + 1;
-      O.cx = O.highlight[0] - O.coloff;
-      outlineYankString();
-      O.command[0] = '\0';
-      O.repeat = 0;
-      O.mode = 0;
-      outlineSetMessage("");
-      return;
+      return; //end of outer case DATABASE
 
-    case '\x1b':
-      O.mode = 0;
-      O.command[0] = '\0';
-      O.repeat = 0;
-      outlineSetMessage("");
-      return;
+    case VISUAL:
+  
+      switch (c) {
+  
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          outlineMoveCursor(c);
+          O.highlight[1] = O.cx + O.coloff; //this needs to be getFileCol
+          return;
+  
+        case 'x':
+          O.repeat = O.highlight[1] - O.highlight[0] + 1;
+          O.cx = O.highlight[0] - O.coloff;
+          outlineYankString(); 
+  
+          for (int i = 0; i < O.repeat; i++) {
+            outlineDelChar();
+          }
+  
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.mode = 0;
+          outlineSetMessage("");
+          return;
+  
+        case 'y':  
+          O.repeat = O.highlight[1] - O.highlight[0] + 1;
+          O.cx = O.highlight[0] - O.coloff;
+          outlineYankString();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          O.mode = 0;
+          outlineSetMessage("");
+          return;
+  
+        case '\x1b':
+          O.mode = 0;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("");
+          return;
+  
+        default:
+          return;
+      } //end of inner switch(c) in outer case VISUAL
 
-    default:
-      return;
-    }
-  } else if (O.mode == REPLACE) {
+      return; //end of case VISUAL
+
+    case REPLACE: 
       for (int i = 0; i < O.repeat; i++) {
         outlineDelChar();
         outlineInsertChar(c);
@@ -2184,7 +2212,9 @@ void outlineProcessKeypress() {
       O.repeat = 0;
       O.command[0] = '\0';
       O.mode = 0;
-  }
+
+      return; //////// end of outer case REPLACE
+  } //End of outer switch(O.mode)
 }
 
 /*** slz additions ***/
@@ -2271,6 +2301,42 @@ void update_note2(void) {
   return;
 }
 
+void update_context(char * context) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET context_tid = %s, " 
+                 "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                    context,
+                    id);
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Setting context to %s failed", context);
+  }
+  else {
+    outlineSetMessage("Setting context to %s succeeded", context);
+    row->completed = !row->completed;
+  }
+  PQclear(res);
+}
+
 void toggle_completed(void) {
 
   orow *row;
@@ -2309,7 +2375,6 @@ void toggle_completed(void) {
     row->completed = !row->completed;
   }
   PQclear(res);
-  return;
 }
 
 
