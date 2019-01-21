@@ -177,7 +177,8 @@ struct outlineConfig {
   char message[80]; //status msg is a character array max 80 char
   int highlight[2];
   int mode;
-  char command[20]; //needs to accomodate file name ?malloc heap array
+  char command[20]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
+  char command_line[20]; //for commands on the command line doesn't include ':' where that applies; also used for DATABASE commands
   int repeat;
   bool show_deleted;
   bool show_completed;
@@ -1649,6 +1650,13 @@ void outlineProcessKeypress() {
       return; //////end outer case INSERT
 
     case NORMAL:  
+
+        if (c == '\x1b') {
+        // Leave in NORMAL mode and reset so you can issue new command
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+        }  
  
       /*leading digit is a multiplier*/
       if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
@@ -1668,6 +1676,8 @@ void outlineProcessKeypress() {
 
       if ( O.repeat == 0 ) O.repeat = 1;
 
+      if (O.command[0] == '\0') { 
+
       switch (c) {
 
         //case 'z':
@@ -1684,21 +1694,16 @@ void outlineProcessKeypress() {
         case 'z':
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
-          O.command[0] = '\0';
+          //O.command[0] = '\0';
           O.repeat = 0;
           return;
 
         case 'i':
-          //This probably needs to be generalized when a letter is a single char command
-          //but can also appear in multi-character commands too
-          if (O.command[0] == '\0') { 
-            O.mode = INSERT;
-            O.command[0] = '\0';
-            O.repeat = 0;
-            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          O.mode = INSERT;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
-          }
-          break;
 
         case 's':
           for (int i = 0; i < O.repeat; i++) outlineDelChar();
@@ -1725,15 +1730,12 @@ void outlineProcessKeypress() {
           return;
 
         case 'a':
-          if (O.command[0] == '\0') { 
-            O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
-            outlineMoveCursor(ARROW_RIGHT);
-            O.command[0] = '\0';
-            O.repeat = 0;
-            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+          outlineMoveCursor(ARROW_RIGHT);
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
-          }
-          break;
 
         case 'A':
           outlineMoveCursorEOL();
@@ -1746,13 +1748,10 @@ void outlineProcessKeypress() {
           return;
 
         case 'w':
-          if (O.command[0] == '\0') { 
-            outlineMoveNextWord();
-            O.command[0] = '\0';
-            O.repeat = 0;
-            return;
-          }
-          break;
+          outlineMoveNextWord();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
 
         case 'b':
           outlineMoveBeginningWord();
@@ -1761,13 +1760,10 @@ void outlineProcessKeypress() {
           return;
 
         case 'e':
-          if (O.command[0] == '\0') { 
-            outlineMoveEndWord();
-            O.command[0] = '\0';
-            O.repeat = 0;
+          outlineMoveEndWord();
+          O.command[0] = '\0';
+          O.repeat = 0;
             return;
-            }
-          break;
 
         case '0':
           //O.coloff = 0; //unlikely to work
@@ -1778,13 +1774,10 @@ void outlineProcessKeypress() {
           return;
 
         case '$':
-          if (O.command[0] == '\0') { 
-            outlineMoveCursorEOL();
-            O.command[0] = '\0';
-            O.repeat = 0;
-            return;
-          }
-          break;
+          outlineMoveCursorEOL();
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
 
         case 'I':
           O.cx = 0;
@@ -1818,8 +1811,9 @@ void outlineProcessKeypress() {
       
         case ':':
           O.mode = COMMAND_LINE;
-          O.command[0] = ':';
-          O.command[1] = '\0';
+          //O.command[0] = ':';
+          O.command[0] = '\0';
+          O.command_line[0] = '\0';
           outlineSetMessage(":"); 
           return;
 
@@ -1884,16 +1878,13 @@ void outlineProcessKeypress() {
           O.repeat = 0;
           return;
 
-        case '\x1b':
-        // Leave in NORMAL mode
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
       }// end of inner switch(c) in outer swith NORMAL
 
       // don't want a default case just want it to fall through
       // if it doesn't match switch above
       // presumption is it's a multicharacter command
+
+      } // end of if statement - if (O.command[0] == 0)
 
       int n = strlen(O.command);
       O.command[n] = c;
@@ -1978,30 +1969,30 @@ void outlineProcessKeypress() {
       if (c == '\x1b') {
         O.mode = 0;
         O.command[0] = '\0';
+        O.command_line[0] = '\0'; //////////////////// ************************
         outlineSetMessage(""); 
         return;
       }
 
       if (c == '\r') {
 
-      //This should be turned into switch statement
-        switch(O.command[1]) {
+        switch(O.command_line[0]) { //should be changed to switch(O.command_line[0]
           case 'w':
             update_rows2();
             O.mode = 0;
-            O.command[0] = '\0';
+            O.command_line[0] = '\0';
             return;
 
            case 'e':
-             if (strlen(O.command) > 3) {
-               O.context = strdup(&O.command[3]);
+             if (strlen(O.command_line) > 2) {
+               O.context = strdup(&O.command_line[2]);
                outlineSetMessage("\'%s\' will be opened", O.context);
                get_data2(O.context, 200);
              }
              else outlineSetMessage("You need to provide a context");
 
-             O.mode = 0;
-             O.command[0] = '\0';
+             O.mode = NORMAL;
+             O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
              return;
 
            case 'x':
@@ -2023,14 +2014,14 @@ void outlineProcessKeypress() {
              } 
 
              if (unsaved_changes) {
-               if (strlen(O.command) == 3 && O.command[2] == '!') {
+               if (strlen(O.command_line) == 2 && O.command[1] == '!') {
                  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                  write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
                  exit(0);
                }  
                else {
-                 O.mode = 0;
-                 O.command[0] = '\0';
+                 O.mode = NORMAL;
+                 //O.command[0] = '\0'; //should be set when coming in to COMMAND_LINE mode
                  outlineSetMessage("No db write since last change");
                }
              }
@@ -2051,8 +2042,8 @@ void outlineProcessKeypress() {
              return;
 
            case 'c':
-             if (strlen(O.command) > 3) {
-               O.context = strdup(&O.command[3]);
+             if (strlen(O.command_line) > 2) {
+               O.context = strdup(&O.command_line[2]);
                outlineSetMessage("\"%s\" will be opened", O.context);
                // need to either write generic update_row that updates everything
                // or update_row_context -- tempted to start there
@@ -2064,14 +2055,14 @@ void outlineProcessKeypress() {
         }; //end of inner switch of outer case COMMAND_LINE
       } // end of if
       else {
-        int n = strlen(O.command);
+        int n = strlen(O.command_line);
         if (c == DEL_KEY || c == BACKSPACE) {
-          O.command[n-1] = '\0';
+          O.command_line[n-1] = '\0';
         } else {
-          O.command[n] = c;
-          O.command[n+1] = '\0';
+          O.command_line[n] = c;
+          O.command_line[n+1] = '\0';
         }
-        outlineSetMessage(O.command);
+        outlineSetMessage(":%s", O.command_line);
       } // DO NOT REMOVE
 
       return; //end of outer case COMMAND_LINE
@@ -2089,28 +2080,28 @@ void outlineProcessKeypress() {
 
       case 'x':
         O.cx = 0;
-        O.command[0] = '\0';
+        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_completed();
         return;
 
       case 'd':
         O.cx = 0;
-        O.command[0] = '\0';
+        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_deleted();
         return;
 
       case '*':
         O.cx = 0;
-        O.command[0] = '\0';
+        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_star();
         return;
 
       case 'r':
         O.cx = 0;
-        O.command[0] = '\0';
+        //O.command[0] = '\0';
         O.repeat = 0;
         get_data3(200);
         return;
@@ -2121,25 +2112,30 @@ void outlineProcessKeypress() {
 
       case '\x1b':
         O.mode = NORMAL;
-        O.command[0] = '\0';
-        O.repeat = 0;
+        //O.command[0] = '\0';
+        //O.repeat = 0;
         outlineSetMessage("");
         return;
 
-      case 'i':
-        if (O.command[0] == '\0') { 
-          O.mode = INSERT;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        }
+      case 'i': //insert
+        O.mode = INSERT;
+        //O.command[0] = '\0';
+        //O.repeat = 0;
+        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
         return;
       
-      case 'o':
-        O.command[0] = ' ';
-        O.command[1] = 'e';
-        O.command[2] = ' ';
-        O.command[3] = '\0';
+      case 'o': //open
+        O.command_line[0] = 'e'; // should be changed to 'o' and a new 'o' command placed in COMMAND_LINE
+        O.command_line[1] = ' ';
+        O.command_line[2] = '\0';
+        O.mode = COMMAND_LINE;
+        outlineSetMessage(""); 
+        return;
+
+      case 'c': //context
+        O.command_line[0] = 'c';
+        O.command[1] = ' ';
+        O.command[2] = '\0';
         O.mode = COMMAND_LINE;
         outlineSetMessage(""); 
         return;
