@@ -1693,6 +1693,10 @@ void outlineProcessKeypress() {
         case '\t':
           E.cx = E.cy = E.rowoff = 0;
           E.mode = NORMAL;
+          // might have last been in item_info_display mode
+          // or possibly was changed in another program (unlikely)
+          // if it's a performance issue can revisit - doubt it will be
+          get_note(get_id(-1)); 
           editor_mode = true;
           return;
 
@@ -2313,35 +2317,45 @@ void display_item_info(int id) {
   char *title = PQgetvalue(res, 0, 3);
   char *zz = PQgetvalue(res, 0, 0);
   char *star = (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false";
-  bool deleted = (*PQgetvalue(res, 0, 14) == 't') ? true: false;
-  bool completed = (*PQgetvalue(res, 0, 10)) ? true: false;
-  //int id = atoi(zz);
+  char *deleted = (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false";
+  char *completed = (*PQgetvalue(res, 0, 10)) ? "true": "false";
+  char *modified = PQgetvalue(res, 0, 16);
+  char *added = PQgetvalue(res, 0, 9);
 
   editorInsertRow(E.filerows, " ", 1);
 
   char str[100];
-  sprintf(str,"id: %s", zz);
+  sprintf(str,"\x1b[1mid:\x1b[0m %s", zz);
   editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"title: %s", title);
+  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", title);
   editorInsertRow(E.filerows, str, strlen(str));
-  //editorInsertRow(E.filerows, title, strlen(title));
-  sprintf(str,"star: %s", star);
+  sprintf(str,"\x1b[1mstar:\x1b[0m %s", star);
   editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"%d", deleted);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", deleted);
   editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"%d", completed);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", completed);
   editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", modified);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1madded:\x1b[0m %s", added);
+  editorInsertRow(E.filerows, str, strlen(str));
+  editorInsertRow(E.filerows, " ", 1);
+  editorInsertRow(E.filerows, " ", 1);
 
   //note strsep handles multiple \n\n and strtok did not
-  /*
   char *note;
-  note = strdup(PQgetvalue(res, 0, 0)); // ******************
+  note = strdup(PQgetvalue(res, 0, 12)); // ******************
   char *found;
-  while ((found = strsep(&note, "\n")) !=NULL) {
+  //while ((found = strsep(&note, "\n")) !=NULL) {
+  //  editorInsertRow(E.filerows, found, strlen(found));
+  //}
+
+  for (int k=0; k < 4; k++) {
+
+    if ((found = strsep(&note, "\n")) ==NULL) break; 
     editorInsertRow(E.filerows, found, strlen(found));
   }
   note = NULL; //? not necessary
-  */
 
   PQclear(res);
   E.dirty = 0;
@@ -2405,10 +2419,11 @@ void update_note2(void) {
 
   //VLA
   //char note[len + 1];
-  char note[len]; // I think len may include the trailing zero so its not the length you get from strlen(s)
+  char note[len + 1]; // I think len may include the trailing zero so its not the length you get from strlen(s)
   //memset(note, 0, (len + 1)*sizeof(char));
   //strncpy(note, text, len + 1);
-  strncpy(note, text, len);
+  strncpy(note, text, len + 1);
+  note[len] = '\0';
 
   //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
   // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
@@ -2658,6 +2673,8 @@ void update_row(void) {
 }
 
 // doesn't address new items that need to be inserted
+// uses fixed title array and does {'\0'} - doesn't need to
+// see update_rows2
 void update_rows(void) {
 
   int updated_rows[20];
@@ -2837,6 +2854,7 @@ int insert_row(int ofr) {
 }
 
 // updates changed titles and inserts new items
+// spurioius characters fixed
 void update_rows2(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
@@ -2853,15 +2871,8 @@ void update_rows2(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
-
-      //don't know the length of the query when we start although could calculate it after creating escaped_title
-      char query[300] = {'\0'}; 
-
-      //VLA doesn't work here for some reason
-      //You can't initialize VLAs and seems to need initialization
+      //VLA
       char title[row->size + 1];
-      //memset(title, 0, (row->size + 1)*sizeof(char));
-      //char title[200] = {'\0'};
       strncpy(title, row->chars, row->size + 1);
 
       //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
@@ -2872,18 +2883,17 @@ void update_rows2(void) {
           ;
       //VLA
       char escaped_title[cnt];
-      //memset(escaped_title, 0, cnt);
       char *out = escaped_title;
       const char *in = str;
       while (*in) {
           *out++ = *in;
           if (*in == 39) *out++ = 39;
-          //if (*in == 133) *out++ = 32;
-
           in++;
       }
 
       *out = '\0';
+
+      char *query = malloc(cnt + 100);
 
       if (row->id != -1) {
         sprintf(query, "UPDATE task SET title=\'%s\', "
@@ -2895,7 +2905,6 @@ void update_rows2(void) {
         PGresult *res = PQexec(conn, query); 
     
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-          //outlineSetMessage("UPDATE command failed");
           outlineSetMessage(PQerrorMessage(conn));
           PQclear(res);
           return;
@@ -2903,9 +2912,10 @@ void update_rows2(void) {
           row->dirty = false;    
           updated_rows[n] = row->id;
           n++;
+          free(query);
           PQclear(res);
         }  
-      } else { ///////////////////////////////////////
+      } else { 
         int id  = insert_row(i);
         updated_rows[n] = id;
         if (id !=-1) n++;
