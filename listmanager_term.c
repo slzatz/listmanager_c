@@ -12,6 +12,7 @@
 //#define EDITOR_LEFT_MARGIN 55
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define ABUF_INIT {NULL, 0}
+#define DEBUG 0
 
 #include <Python.h>
 #include <ctype.h>
@@ -1995,6 +1996,18 @@ void outlineProcessKeypress() {
              O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
              return;
 
+           case 'o':
+
+             if (strlen(O.command_line) > 4) {
+               O.context = strdup(&O.command_line[1]);
+               outlineSetMessage("\'%s\' will be opened", O.context);
+               get_data2(O.context, 200);
+             }
+             else outlineSetMessage("You need to provide a context");
+
+             O.mode = NORMAL;
+             O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+             return;
            case 'x':
              update_rows2();
              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -2014,7 +2027,7 @@ void outlineProcessKeypress() {
              } 
 
              if (unsaved_changes) {
-               if (strlen(O.command_line) == 2 && O.command[1] == '!') {
+               if (strlen(O.command_line) == 2 && O.command_line[1] == '!') {
                  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                  write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
                  exit(0);
@@ -2062,6 +2075,7 @@ void outlineProcessKeypress() {
           O.command_line[n] = c;
           O.command_line[n+1] = '\0';
         }
+        if (O.command_line[0] == 'o') outlineSetMessage("open %s", &O.command_line[1]);
         outlineSetMessage(":%s", O.command_line);
       } // DO NOT REMOVE
 
@@ -2266,30 +2280,68 @@ void update_note2(void) {
   }
 
   int len;
-  char *note = editorRowsToString(&len);
+  char *text = editorRowsToString(&len);
+
+
+
+  //VLA
+  //char note[len + 1];
+  char note[len]; // I think len may include the trailing zero so its not the length you get from strlen(s)
+  //memset(note, 0, (len + 1)*sizeof(char));
+  //strncpy(note, text, len + 1);
+  strncpy(note, text, len);
+
+  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  const char *str = note;
+  int cnt = strlen(str)+1;
+   for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+          ;
+  //VLA
+  char escaped_note[cnt];
+  //memset(escaped_note, 0, cnt*sizeof(char));
+  char *out = escaped_note;
+  const char *in = str;
+  while (*in) {
+      *out++ = *in;
+      if (*in == 39) *out++ = 39;
+      //if (*in == 133) *out++ = 32;
+
+      in++;
+  }
+
+  *out = '\0';
+
+
+
+
+
+
+
   int ofr = outlineGetFileRow();
   int id = get_id(ofr);
 
-  char *query = malloc(len + 100);
+  char *query = malloc(cnt + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
   //sprintf(query, "UPDATE task SET note=%s, "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
                    //note, get_id(-1));
-                   note, id);
+                   escaped_note, id);
 
   PGresult *res = PQexec(conn, query); 
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("UPDATE command failed");
+    //editorSetMessage("UPDATE command failed");
+    editorSetMessage(PQerrorMessage(conn));
    // PQclear(res);
     //do_exit(conn);
-  }    
+  } else editorSetMessage("Note update succeeeded");    
   
   free(query);
   PQclear(res);
-  free(note);
+  free(text);
   E.dirty = 0;
 
   outlineSetMessage("Updated %d", id);
@@ -2509,29 +2561,61 @@ void update_rows(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
-      // having to set whole arrays to 0000 suggests just need to terminate one or both
-      // whole problem is that I believe row->size doesn't pick up terminating 000
-      // so should just be title[row->size + 1] = '\0';
-      char query[300] = {'\0'};
+
+      //don't know the length of the query when we start although could calculate it after creating escaped_title
+      char query[300] = {'\0'}; 
+
+      //VLA doesn't work here for some reason
+      //You can't initialize VLAs and seems to need initialization
+      //char title[row->size + 1];
       char title[200] = {'\0'};
       strncpy(title, row->chars, row->size);
+
+      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+      const char *str = title;
+      int cnt = strlen(str)+1;
+      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+          ;
+      //VLA
+      char escaped_title[cnt];
+      char *out = escaped_title;
+      const char *in = str;
+      while (*in) {
+          *out++ = *in;
+          if (*in == 39) *out++ = 39;
+          in++;
+      }
+
+      *out = '\0';
+
       sprintf(query, "UPDATE task SET title=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
-                   title, row->id);
+                   //title, row->id);
+                   escaped_title, row->id);
 
       PGresult *res = PQexec(conn, query); 
     
       if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         outlineSetMessage("UPDATE command failed");
+        //outlineSetMessage(PQerrorMessage(conn));
         PQclear(res);
+        return;
       } else {
-      row->dirty = false;    
-      updated_rows[n] = row->id;
-      n++;
+        row->dirty = false;    
+        updated_rows[n] = row->id;
+        n++;
+        PQclear(res);
       }
     }
   }
+
+  if (n == 0) {
+    outlineSetMessage("There were no rows to update");
+    return;
+  }
+
   char msg[200];
   char *put;
   strncpy(msg, "Rows successfully updated: ", sizeof(msg));
@@ -2546,13 +2630,15 @@ void update_rows(void) {
   outlineSetMessage("%s",  msg);
 }
 
-void insert_row(int ofr) {
+int insert_row(int ofr) {
 
  orow *row = &O.row[ofr];
  char query[800];
  char title[200] = {'\0'};
  strncpy(title, row->chars, row->size);
-  
+ 
+
+ //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
  sprintf(query, "INSERT INTO task ("
                                    //"tid, "
                                    "priority, "
@@ -2573,9 +2659,9 @@ void insert_row(int ofr) {
                                    "startdate " 
                                    //"remind) "
                                    ") VALUES ("
-                                   //"%s," //tid, 
+                                   //"%s," //tid 
                                    " %d," //priority
-                                   " \'%s\',"//title)
+                                   " \'%s\',"//title
                                    //%s //tag 
                                    //%s //folder_tid
                                    " %d," //context_tid 
@@ -2625,7 +2711,7 @@ void insert_row(int ofr) {
     printf("PQresStatus: %s\n", PQresStatus(PQresultStatus(res)));
     printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
-    return;
+    return -1;
   }
 
   row->id = atoi(PQgetvalue(res, 0, 0));
@@ -2633,11 +2719,13 @@ void insert_row(int ofr) {
         
   PQclear(res);
     
-  return;
+  return row->id;
 }
 
 // updates changed titles and inserts new items
 void update_rows2(void) {
+  int n = 0; //number of updated rows
+  int updated_rows[20];
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2651,30 +2739,84 @@ void update_rows2(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
-      // having to set whole arrays to 0000 suggests just need to terminate one or both
-      // whole problem is that I believe row->size doesn't pick up terminating 000
-      // so should just be title[row->size + 1] = '\0';
-      char query[300] = {'\0'};
-      char title[200] = {'\0'};
-      strncpy(title, row->chars, row->size);
+
+      //don't know the length of the query when we start although could calculate it after creating escaped_title
+      char query[300] = {'\0'}; 
+
+      //VLA doesn't work here for some reason
+      //You can't initialize VLAs and seems to need initialization
+      char title[row->size + 1];
+      //memset(title, 0, (row->size + 1)*sizeof(char));
+      //char title[200] = {'\0'};
+      strncpy(title, row->chars, row->size + 1);
+
+      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+      const char *str = title;
+      int cnt = strlen(str)+1;
+      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+          ;
+      //VLA
+      char escaped_title[cnt];
+      //memset(escaped_title, 0, cnt);
+      char *out = escaped_title;
+      const char *in = str;
+      while (*in) {
+          *out++ = *in;
+          if (*in == 39) *out++ = 39;
+          //if (*in == 133) *out++ = 32;
+
+          in++;
+      }
+
+      *out = '\0';
+
       if (row->id != -1) {
         sprintf(query, "UPDATE task SET title=\'%s\', "
-                       "modified=LOCALTIMESTAMP - interval '5 hours' "
-                       "WHERE id=%d",
-                        title, row->id);
+                     "modified=LOCALTIMESTAMP - interval '5 hours' "
+                     "WHERE id=%d",
+                     //title, row->id);
+                     escaped_title, row->id);
+
         PGresult *res = PQexec(conn, query); 
     
         if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-          outlineSetMessage("UPDATE command failed");
+          //outlineSetMessage("UPDATE command failed");
+          outlineSetMessage(PQerrorMessage(conn));
           PQclear(res);
+          return;
         } else {
           row->dirty = false;    
+          updated_rows[n] = row->id;
+          n++;
           PQclear(res);
         }  
-      } else insert_row(i);
+      } else { ///////////////////////////////////////
+        int id  = insert_row(i);
+        updated_rows[n] = id;
+        if (id !=-1) n++;
+      }  
+    }
   }
+
+  if (n == 0) {
+    outlineSetMessage("There were no rows to update");
+    return;
+  }
+
+  char msg[200];
+  char *put;
+  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  put = &msg[strlen(msg)];
+
+  for (int j=0; j < n;j++) {
+    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
+  }
+
+  int slen = strlen(msg);
+  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
+  outlineSetMessage("%s",  msg);
   return;
-  }
 }
 
 int outlineGetFileRow(void) {
@@ -3101,11 +3243,12 @@ void editorRefreshScreen(void) {
       char *b;
       int len;
     };*/
-  if (E.row)
-    editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
-  else
-    editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
-
+  if (DEBUG) {
+    if (E.row)
+      editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
+    else
+      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
+  }
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
