@@ -2109,6 +2109,12 @@ void outlineProcessKeypress() {
                O.command_line[0] = '\0';
                return;
 
+             case 'f':
+               solr_find(&O.command_line[1]);
+               outlineSetMessage("Will search items for \'%s\'", &O.command_line[1]);
+               O.mode = NORMAL;
+               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+
              default:
                return;
           }; //end of inner inner switch of outer case COMMAND_LINE
@@ -2123,7 +2129,8 @@ void outlineProcessKeypress() {
             O.command_line[n+1] = '\0';
           }
           if (O.command_line[0] == 'o') outlineSetMessage("open %s", &O.command_line[1]);
-          outlineSetMessage(":%s", O.command_line);
+          else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
+          else outlineSetMessage(":%s", O.command_line);
         } // DO NOT REMOVE - becomes end of inner switch
 
       return; //end of outer case COMMAND_LINE
@@ -2214,6 +2221,15 @@ void outlineProcessKeypress() {
         O.command[2] = '\0';
         O.mode = COMMAND_LINE;
         outlineSetMessage(""); 
+        return;
+
+      case 'f': //find
+        O.command_line[0] = 'f';
+        //solr_find("micropython");
+        O.command_line[1] = '\0';
+        O.mode = COMMAND_LINE;
+        outlineSetMessage("What do you want to find?"); 
+        //outlineRefreshScreen();
         return;
 
       default:
