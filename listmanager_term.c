@@ -84,7 +84,8 @@ enum outlineKey {
   HOME_KEY,
   END_KEY,
   PAGE_UP,
-  PAGE_DOWN
+  PAGE_DOWN,
+  SHIFT_TAB
 };
 
 //should apply to outline and note
@@ -807,6 +808,7 @@ int readKey() {
           case 'D': return ARROW_LEFT; //<esc>[D
           case 'H': return HOME_KEY; // <esc>[H - this one is being issued
           case 'F': return END_KEY;  // <esc>[F - this one is being issued
+          case 'Z': return SHIFT_TAB; //<esc>[Z
       }
     }
 
@@ -1615,47 +1617,43 @@ void outlineProcessKeypress() {
 
   int c = readKey();
 
-/*************************************** 
- * This is where you enter insert mode* 
- * O.mode = 1
- ***************************************/
-
   switch (O.mode) { 
+
     case INSERT:  
 
       switch (c) {
 
         case '\r':
           update_rows();
-          break;
+          return;
 
         case HOME_KEY:
           O.cx = 0;
-          break;
+          return;
 
         case END_KEY:
           if (O.cy < O.numrows)
             O.cx = O.row[O.cy].size;
-          break;
+          return;
 
         case BACKSPACE:
           outlineBackspace();
-          break;
+          return;
 
         case DEL_KEY:
           outlineDelChar();
-          break;
+          return;
 
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
           outlineMoveCursor(c);
-          break;
+          return;
 
         case CTRL_KEY('z'):
           // not in use
-          break;
+          return;
 
         case '\x1b':
           O.mode = NORMAL;
@@ -1666,8 +1664,9 @@ void outlineProcessKeypress() {
         default:
           outlineInsertChar(c);
           return;
-      } //end of inner switch(c) under outer case INSERT 
-      return; //////end outer case INSERT
+
+      } 
+      return; //end outer case INSERT
 
     case NORMAL:  
 
@@ -1700,7 +1699,6 @@ void outlineProcessKeypress() {
 
       switch (c) {
 
-        //case 'z':
         case '\t':
           E.cx = E.cy = E.rowoff = 0;
           E.mode = NORMAL;
@@ -1715,7 +1713,8 @@ void outlineProcessKeypress() {
           update_rows();
           return;
 
-        case 'z':
+        //case 'z':
+        case SHIFT_TAB:
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
           //O.command[0] = '\0';
@@ -2188,7 +2187,8 @@ void outlineProcessKeypress() {
         update_rows();
         return;
 
-      case '\x1b':
+      case SHIFT_TAB:
+      //case '\x1b':
         O.mode = NORMAL;
         //O.command[0] = '\0';
         //O.repeat = 0;
@@ -3507,10 +3507,6 @@ void editorProcessKeypress(void) {
 
   int c = readKey();
 
-/*************************************** 
- * This is where you enter insert mode* 
- * E.mode = 1
- ***************************************/
   switch (E.mode) {
 
     case INSERT:
@@ -3641,7 +3637,8 @@ void editorProcessKeypress(void) {
     
       switch (c) {
     
-        case 'z':
+        case SHIFT_TAB:
+        //case 'z':
           editor_mode = false;
           E.cx = E.cy = 0;
           return;
@@ -4004,67 +4001,80 @@ void editorProcessKeypress(void) {
 
     case COMMAND_LINE:
 
-      if (c == '\x1b') {
-        E.mode = 0;
-        E.command[0] = '\0';
-        editorSetMessage(""); 
-        return;}
-  
-      if (c == '\r') {
-        if (E.command[1] == 'w') {
-          /*
-          int len;
-          char *note = editorRowsToString(&len);
-          int ofr = outlineGetFileRow();
-          int id = get_id(ofr);
-          update_note(note, id);
-          */
-          update_note2();
-          E.mode = NORMAL;
+      switch (c) {
+
+        case '\x1b':
+
+          E.mode = 0;
           E.command[0] = '\0';
-        }
+          editorSetMessage(""); 
+
+          return;
   
-        else if (E.command[1] == 'x') {
-          int len;
-          char *note = editorRowsToString(&len);
-          int ofr = outlineGetFileRow();
-          int id = get_id(ofr);
-          update_note(note, id);
-          E.mode = NORMAL;
-          E.command[0] = '\0';
-          editor_mode = false;
-        }
+        case '\r':
+
+          switch (E.command[1]) {
+
+            case 'w':
+              /*
+              int len;
+              char *note = editorRowsToString(&len);
+              int ofr = outlineGetFileRow();
+              int id = get_id(ofr);
+              update_note(note, id);
+              */
+              update_note2();
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+
+              return;
   
-        else if (E.command[1] == 'q') {
-          if (E.dirty) {
-            if (strlen(E.command) == 3 && E.command[2] == '!') {
+            case 'x':
+              ;
+              int len;
+              char *note = editorRowsToString(&len);
+              int ofr = outlineGetFileRow();
+              int id = get_id(ofr);
+              update_note(note, id);
               E.mode = NORMAL;
               E.command[0] = '\0';
               editor_mode = false;
-            }  
-            else {
-              E.mode = 0;
-              E.command[0] = '\0';
-              editorSetMessage("No write since last change");
-            }
-          }
-         
-          else {
-            editor_mode = false;
-          }
-        }
-      }
+
+              return;
   
-      else {
-        int n = strlen(E.command);
-        if (c == DEL_KEY || c == BACKSPACE) {
-          E.command[n-1] = '\0';
-        } else {
-          E.command[n] = c;
-          E.command[n+1] = '\0';
-        }
-        editorSetMessage(E.command);
-      }
+            case 'q':
+              if (E.dirty) {
+                if (strlen(E.command) == 3 && E.command[2] == '!') {
+                  E.mode = NORMAL;
+                  E.command[0] = '\0';
+                  editor_mode = false;
+                } else {
+                  E.mode = 0;
+                  E.command[0] = '\0';
+                  editorSetMessage("No write since last change");
+                }
+              } else {
+                editor_mode = false;
+              }
+              
+              return;
+
+          } //leave for inner inner switch
+     
+          return;
+  
+        default:
+          ;
+          int n = strlen(E.command);
+          if (c == DEL_KEY || c == BACKSPACE) {
+            E.command[n-1] = '\0';
+          } else {
+            E.command[n] = c;
+            E.command[n+1] = '\0';
+          }
+
+          editorSetMessage(E.command);
+      } 
   
       return;
 
