@@ -98,6 +98,15 @@ enum Mode {
   DATABASE = 6
 };
 
+char *mode_text[] = {
+                        "NORMAL",
+                        "INSERT",
+                        "COMMAND LINE",
+                        "VISUAL_LINE",
+                        "VISUAL",
+                        "REPLACE",
+                        "DATABASE"
+                       }; 
 //should apply to outline and note
 enum Command {
   C_caw,
@@ -1441,8 +1450,10 @@ void outlineDrawStatusBar(struct abuf *ab) {
     O.context ? O.context : "[No Name]", O.numrows,
     truncated_title,
     row->dirty ? "(modified)" : "");
-  int rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-    row->id, fr + 1, O.numrows);
+  //nt rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
+  //  row->id, fr + 1, O.numrows);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
+    mode_text[O.mode], row->id, fr + 1, O.numrows);
   if (len > O.screencols) len = O.screencols;
   abAppend(ab, status, len);
   
@@ -1870,14 +1881,6 @@ void outlineProcessKeypress() {
           */
           return;
 
-        case CTRL_KEY('z'):
-        case '#':
-          //not in use
-          solr_find("micropython");
-          outlineRefreshScreen();
-          outlineSetMessage("Howdy");
-          return;
-
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
@@ -2225,11 +2228,9 @@ void outlineProcessKeypress() {
 
       case 'f': //find
         O.command_line[0] = 'f';
-        //solr_find("micropython");
         O.command_line[1] = '\0';
         O.mode = COMMAND_LINE;
         outlineSetMessage("What do you want to find?"); 
-        //outlineRefreshScreen();
         return;
 
       default:
@@ -3510,715 +3511,714 @@ void editorProcessKeypress(void) {
  * This is where you enter insert mode* 
  * E.mode = 1
  ***************************************/
+  switch (E.mode) {
 
-  if (E.mode == 1){
+    case INSERT:
 
-  switch (c) {
-
-    case '\r':
-      editorCreateSnapshot();
-      E.cx = 0;
-      editorInsertNewline(1);
-      break;
-
-    case CTRL_KEY('q'):
-      if (E.dirty && quit_times > 0) {
-        editorSetMessage("WARNING!!! File has unsaved changes. "
-          "Press Ctrl-Q %d more times to quit.", quit_times);
-        quit_times--;
-        return;
-      }
-      write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-      write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-      exit(0);
-      break;
-
-    case CTRL_KEY('s'):
-      editorSave();
-      break;
-
-    case HOME_KEY:
-      E.cx = 0;
-      break;
-
-    case END_KEY:
-      if (E.cy < E.filerows)
-        E.cx = E.row[E.cy].size;
-      break;
-
-    case BACKSPACE:
-      editorCreateSnapshot();
-      editorBackspace();
-      break;
-
-    case DEL_KEY:
-      editorCreateSnapshot();
-      editorDelChar();
-      break;
-
-    case PAGE_UP:
-    case PAGE_DOWN:
-      
-      if (c == PAGE_UP) {
-        E.cy = E.rowoff;
-      } else if (c == PAGE_DOWN) {
-        E.cy = E.rowoff + E.screenrows - 1;
-        if (E.cy > E.filerows) E.cy = E.filerows;
-      }
-
-        int times = E.screenrows;
-        while (times--){
-          editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-          } 
-      
-      break;
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-      editorMoveCursor(c);
-      break;
-
-    case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
-      editorCreateSnapshot();
-      editorDecorateWord(c);
-      break;
-
-    case CTRL_KEY('z'):
-      E.smartindent = (E.smartindent == 1) ? 0 : 1;
-      editorSetMessage("E.smartindent = %d", E.smartindent); 
-      break;
-
-    case '\x1b':
-      E.mode = 0;
-      E.continuation = 0; // right now used by backspace in multi-line filerow
-      if (E.cx > 0) E.cx--;
-      // below - if the indent amount == size of line then it's all blanks
-      int n = editorIndentAmount(editorGetFileRow());
-      if (n == E.row[editorGetFileRow()].size) {
-        E.cx = 0;
-        for (int i = 0; i < n; i++) {
-          editorDelChar();
-        }
-      }
-      editorSetMessage("");
-      return;
-
-    default:
-      editorCreateSnapshot();
-      editorInsertChar(c);
-      return;
- 
- } 
-  quit_times = KILO_QUIT_TIMES;
-
-/*************************************** 
- * This is where you enter normal mode* 
- * E.mode = 0
- ***************************************/
-
- } else if (E.mode == 0){
- 
-  /*leading digit is a multiplier*/
-  if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
-    if ( E.repeat == 0 ){
-
-      //if c = 48 => 0 then it falls through to 0 move to beginning of line
-      if ( c != 48 ) { 
-        E.repeat = c - 48;
-        return;
-      }  
-
-    } else { 
-      E.repeat = E.repeat*10 + c - 48;
-      return;
-    }
-  }
-
-  if ( E.repeat == 0 ) E.repeat = 1;
-
-  switch (c) {
-
-    case 'z':
-      editor_mode = false;
-      E.cx = E.cy = 0;
-      return;
-
-    case 'i':
-      //This probably needs to be generalized when a letter is a single char command
-      //but can also appear in multi-character commands too
-      if (E.command[0] == '\0') { 
-        E.mode = 1;
-        E.command[0] = '\0';
-        E.repeat = 0;
-        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-      }
-      break;
-
-    case 's':
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) editorDelChar();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-      return;
-
-    case 'x':
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) editorDelChar();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
+      switch (c) {
     
-    case 'r':
-      E.mode = 5;
-      return;
-
-    case '~':
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) editorChangeCase();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case 'a':
-      if (E.command[0] == '\0') { 
-        E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
-        editorMoveCursor(ARROW_RIGHT);
-        E.command[0] = '\0';
-        E.repeat = 0;
-        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-      }
-      break;
-
-    case 'A':
-      editorMoveCursorEOL();
-      E.mode = 1; //needs to be here for movecursor to work at EOLs
-      editorMoveCursor(ARROW_RIGHT);
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'w':
-      if (E.command[0] == '\0') { 
-        editorMoveNextWord();
-        E.command[0] = '\0';
-        E.repeat = 0;
-        return;
-      }
-      break;
-
-    case 'b':
-      editorMoveBeginningWord();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case 'e':
-      if (E.command[0] == '\0') { 
-        editorMoveEndWord();
-        E.command[0] = '\0';
-        E.repeat = 0;
-        return;
-        }
-      break;
-
-    case '0':
-      //E.cx = 0;
-      editorMoveCursorBOL();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case '$':
-      if (E.command[0] == '\0') { 
-        editorMoveCursorEOL();
-        E.command[0] = '\0';
-        E.repeat = 0;
-        return;
-      }
-      break;
-
-    case 'I':
-      editorMoveCursorBOL();
-      //E.cx = editorIndentAmount(E.cy);
-      E.cx = editorIndentAmount(editorGetFileRow());
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'o':
-      editorCreateSnapshot();
-      E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
-      editorInsertNewline(1);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'O':
-      editorCreateSnapshot();
-      E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
-      editorInsertNewline(0);
-      E.mode = 1;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case 'G':
-      E.cx = 0;
-      E.cy = editorGetScreenLineFromFileRow(E.filerows-1);
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-  
-    case ':':
-      E.mode = 2;
-      E.command[0] = ':';
-      E.command[1] = '\0';
-      editorSetMessage(":"); 
-      return;
-
-    case 'V':
-      E.mode = 3;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.highlight[0] = E.highlight[1] = editorGetFileRow();
-      editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
-      return;
-
-    case 'v':
-      E.mode = 4;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.highlight[0] = E.highlight[1] = editorGetFileCol();
-      editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
-      return;
-
-    case 'p':  
-      editorCreateSnapshot();
-      if (strlen(string_buffer)) editorPasteString();
-      else editorPasteLine();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case '*':  
-      getWordUnderCursor();
-      editorFindNextWord(); 
-      return;
-
-    case 'n':
-      editorFindNextWord();
-      return;
-
-    case 'u':
-      editorRestoreSnapshot();
-      return;
-
-    case CTRL_KEY('z'):
-      E.smartindent = (E.smartindent == 4) ? 0 : 4;
-      editorSetMessage("E.smartindent = %d", E.smartindent); 
-      return;
-
-    case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
-      editorCreateSnapshot();
-      editorDecorateWord(c);
-      return;
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case 'h':
-    case 'j':
-    case 'k':
-    case 'l':
-      editorMoveCursor(c);
-      E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-      E.repeat = 0;
-      return;
-
-// for testing purposes I am using CTRL-h in normal mode
-    case CTRL_KEY('h'):
-      editorMarkupLink(); 
-      return;
-
-    case '\x1b':
-    // Leave in E.mode = 0 -> normal mode
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-  }
-
-  // don't want a default case just want it to fall through
-  // if it doesn't match switch above
-  // presumption is it's a multicharacter command
-
-  int n = strlen(E.command);
-  E.command[n] = c;
-  E.command[n+1] = '\0';
-
-  switch (keyfromstring(E.command)) {
+        case '\r':
+          editorCreateSnapshot();
+          E.cx = 0;
+          editorInsertNewline(1);
+          break;
     
-    case C_daw:
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) editorDelWord();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_dw:
-      editorCreateSnapshot();
-      for (int j = 0; j < E.repeat; j++) {
-        start = E.cx;
-        editorMoveEndWord2();
-        end = E.cx;
-        E.cx = start;
-        for (int j = 0; j < end - start + 2; j++) editorDelChar();
-      }
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_de:
-      editorCreateSnapshot();
-      start = E.cx;
-      editorMoveEndWord(); //correct one to use to emulate vim
-      end = E.cx;
-      E.cx = start; 
-      for (int j = 0; j < end - start + 1; j++) editorDelChar();
-      E.cx = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_dd:
-      ;
-      int fr = editorGetFileRow();
-      if (E.filerows != 0) {
-        //int r = E.filerows - E.cy;
-        int r = E.filerows - fr;
-        E.repeat = (r >= E.repeat) ? E.repeat : r ;
-        editorCreateSnapshot();
-        editorYankLine(E.repeat);
-        for (int i = 0; i < E.repeat ; i++) editorDelRow(fr);
-      }
-      E.cx = 0;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_d$:
-      editorCreateSnapshot();
-      editorDeleteToEndOfLine();
-      if (E.filerows != 0) {
-        int r = E.filerows - E.cy;
-        E.repeat--;
-        E.repeat = (r >= E.repeat) ? E.repeat : r ;
-        //editorYankLine(E.repeat); //b/o 2 step won't really work right
-        for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
-      }
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    //tested with repeat on one line
-    case C_cw:
-      editorCreateSnapshot();
-      for (int j = 0; j < E.repeat; j++) {
-        start = E.cx;
-        editorMoveEndWord();
-        end = E.cx;
-        E.cx = start;
-        for (int j = 0; j < end - start + 1; j++) editorDelChar();
-      }
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    //tested with repeat on one line
-    case C_caw:
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) editorDelWord();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 1;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      return;
-
-    case C_indent:
-      editorCreateSnapshot();
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_unindent:
-      editorCreateSnapshot();
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorUnIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      return;
-
-    case C_gg:
-     E.cx = 0;
-     E.cy = E.repeat-1;
-     E.command[0] = '\0';
-     E.repeat = 0;
-     return;
-
-   case C_yy:  
-     editorYankLine(E.repeat);
-     E.command[0] = '\0';
-     E.repeat = 0;
-     return;
-
-    default:
-      return;
-
-    } 
-
-  /************************************   
-   *command line mode below E.mode = 2*
-   ************************************/
-
-  } else if (E.mode == 2) {
-
-    if (c == '\x1b') {
-      E.mode = 0;
-      E.command[0] = '\0';
-      editorSetMessage(""); 
-      return;}
-
-    if (c == '\r') {
-      if (E.command[1] == 'w') {
-        /*
-        int len;
-        char *note = editorRowsToString(&len);
-        int ofr = outlineGetFileRow();
-        int id = get_id(ofr);
-        update_note(note, id);
-        */
-        update_note2();
-        E.mode = NORMAL;
-        E.command[0] = '\0';
-      }
-
-      else if (E.command[1] == 'x') {
-        int len;
-        char *note = editorRowsToString(&len);
-        int ofr = outlineGetFileRow();
-        int id = get_id(ofr);
-        update_note(note, id);
-        E.mode = NORMAL;
-        E.command[0] = '\0';
-        editor_mode = false;
-      }
-
-      else if (E.command[1] == 'q') {
-        if (E.dirty) {
-          if (strlen(E.command) == 3 && E.command[2] == '!') {
-            E.mode = NORMAL;
-            E.command[0] = '\0';
-            editor_mode = false;
-          }  
-          else {
-            E.mode = 0;
-            E.command[0] = '\0';
-            editorSetMessage("No write since last change");
+        case CTRL_KEY('q'):
+          if (E.dirty && quit_times > 0) {
+            editorSetMessage("WARNING!!! File has unsaved changes. "
+              "Press Ctrl-Q %d more times to quit.", quit_times);
+            quit_times--;
+            return;
           }
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+          exit(0);
+          break;
+    
+        case CTRL_KEY('s'):
+          editorSave();
+          break;
+    
+        case HOME_KEY:
+          E.cx = 0;
+          break;
+    
+        case END_KEY:
+          if (E.cy < E.filerows)
+            E.cx = E.row[E.cy].size;
+          break;
+    
+        case BACKSPACE:
+          editorCreateSnapshot();
+          editorBackspace();
+          break;
+    
+        case DEL_KEY:
+          editorCreateSnapshot();
+          editorDelChar();
+          break;
+    
+        case PAGE_UP:
+        case PAGE_DOWN:
+          
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.filerows) E.cy = E.filerows;
+          }
+    
+            int times = E.screenrows;
+            while (times--){
+              editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+              } 
+          
+          break;
+    
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+          editorMoveCursor(c);
+          break;
+    
+        case CTRL_KEY('b'):
+        case CTRL_KEY('i'):
+        case CTRL_KEY('e'):
+          editorCreateSnapshot();
+          editorDecorateWord(c);
+          break;
+    
+        case CTRL_KEY('z'):
+          E.smartindent = (E.smartindent == 1) ? 0 : 1;
+          editorSetMessage("E.smartindent = %d", E.smartindent); 
+          break;
+    
+        case '\x1b':
+          E.mode = 0;
+          E.continuation = 0; // right now used by backspace in multi-line filerow
+          if (E.cx > 0) E.cx--;
+          // below - if the indent amount == size of line then it's all blanks
+          int n = editorIndentAmount(editorGetFileRow());
+          if (n == E.row[editorGetFileRow()].size) {
+            E.cx = 0;
+            for (int i = 0; i < n; i++) {
+              editorDelChar();
+            }
+          }
+          editorSetMessage("");
+          return;
+    
+        default:
+          editorCreateSnapshot();
+          editorInsertChar(c);
+          return;
+     
+      } //end inner switch for outer case NORMAL 
+      quit_times = KILO_QUIT_TIMES;
+
+      return;
+
+    case NORMAL:
+ 
+      /*leading digit is a multiplier*/
+      if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
+        if ( E.repeat == 0 ){
+    
+          //if c = 48 => 0 then it falls through to 0 move to beginning of line
+          if ( c != 48 ) { 
+            E.repeat = c - 48;
+            return;
+          }  
+    
+        } else { 
+          E.repeat = E.repeat*10 + c - 48;
+          return;
         }
-       
-        else {
+      }
+    
+      if ( E.repeat == 0 ) E.repeat = 1;
+    
+      switch (c) {
+    
+        case 'z':
+          editor_mode = false;
+          E.cx = E.cy = 0;
+          return;
+    
+        case 'i':
+          //This probably needs to be generalized when a letter is a single char command
+          //but can also appear in multi-character commands too
+          if (E.command[0] == '\0') { 
+            E.mode = 1;
+            E.command[0] = '\0';
+            E.repeat = 0;
+            editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+          }
+          break;
+    
+        case 's':
+          editorCreateSnapshot();
+          for (int i = 0; i < E.repeat; i++) editorDelChar();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 1;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+          return;
+    
+        case 'x':
+          editorCreateSnapshot();
+          for (int i = 0; i < E.repeat; i++) editorDelChar();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+        
+        case 'r':
+          E.mode = 5;
+          return;
+    
+        case '~':
+          editorCreateSnapshot();
+          for (int i = 0; i < E.repeat; i++) editorChangeCase();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case 'a':
+          if (E.command[0] == '\0') { 
+            E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
+            editorMoveCursor(ARROW_RIGHT);
+            E.command[0] = '\0';
+            E.repeat = 0;
+            editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+          }
+          break;
+    
+        case 'A':
+          editorMoveCursorEOL();
+          E.mode = 1; //needs to be here for movecursor to work at EOLs
+          editorMoveCursor(ARROW_RIGHT);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 1;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        case 'w':
+          if (E.command[0] == '\0') { 
+            editorMoveNextWord();
+            E.command[0] = '\0';
+            E.repeat = 0;
+            return;
+          }
+          break;
+    
+        case 'b':
+          editorMoveBeginningWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case 'e':
+          if (E.command[0] == '\0') { 
+            editorMoveEndWord();
+            E.command[0] = '\0';
+            E.repeat = 0;
+            return;
+            }
+          break;
+    
+        case '0':
+          //E.cx = 0;
+          editorMoveCursorBOL();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case '$':
+          if (E.command[0] == '\0') { 
+            editorMoveCursorEOL();
+            E.command[0] = '\0';
+            E.repeat = 0;
+            return;
+          }
+          break;
+    
+        case 'I':
+          editorMoveCursorBOL();
+          //E.cx = editorIndentAmount(E.cy);
+          E.cx = editorIndentAmount(editorGetFileRow());
+          E.mode = 1;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        case 'o':
+          editorCreateSnapshot();
+          E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
+          editorInsertNewline(1);
+          E.mode = 1;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        case 'O':
+          editorCreateSnapshot();
+          E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
+          editorInsertNewline(0);
+          E.mode = 1;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        case 'G':
+          E.cx = 0;
+          E.cy = editorGetScreenLineFromFileRow(E.filerows-1);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+      
+        case ':':
+          E.mode = 2;
+          E.command[0] = ':';
+          E.command[1] = '\0';
+          editorSetMessage(":"); 
+          return;
+    
+        case 'V':
+          E.mode = 3;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.highlight[0] = E.highlight[1] = editorGetFileRow();
+          editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
+          return;
+    
+        case 'v':
+          E.mode = 4;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.highlight[0] = E.highlight[1] = editorGetFileCol();
+          editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+          return;
+    
+        case 'p':  
+          editorCreateSnapshot();
+          if (strlen(string_buffer)) editorPasteString();
+          else editorPasteLine();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case '*':  
+          getWordUnderCursor();
+          editorFindNextWord(); 
+          return;
+    
+        case 'n':
+          editorFindNextWord();
+          return;
+    
+        case 'u':
+          editorRestoreSnapshot();
+          return;
+    
+        case CTRL_KEY('z'):
+          E.smartindent = (E.smartindent == 4) ? 0 : 4;
+          editorSetMessage("E.smartindent = %d", E.smartindent); 
+          return;
+    
+        case CTRL_KEY('b'):
+        case CTRL_KEY('i'):
+        case CTRL_KEY('e'):
+          editorCreateSnapshot();
+          editorDecorateWord(c);
+          return;
+    
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          editorMoveCursor(c);
+          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          E.repeat = 0;
+          return;
+    
+    // for testing purposes I am using CTRL-h in normal mode
+        case CTRL_KEY('h'):
+          editorMarkupLink(); 
+          return;
+    
+        case '\x1b':
+        // Leave in E.mode = 0 -> normal mode
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+      }
+    
+      // don't want a default case just want it to fall through
+      // if it doesn't match switch above
+      // presumption is it's a multicharacter command
+    
+      int n = strlen(E.command);
+      E.command[n] = c;
+      E.command[n+1] = '\0';
+    
+      switch (keyfromstring(E.command)) {
+        
+        case C_daw:
+          editorCreateSnapshot();
+          for (int i = 0; i < E.repeat; i++) editorDelWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_dw:
+          editorCreateSnapshot();
+          for (int j = 0; j < E.repeat; j++) {
+            start = E.cx;
+            editorMoveEndWord2();
+            end = E.cx;
+            E.cx = start;
+            for (int j = 0; j < end - start + 2; j++) editorDelChar();
+          }
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_de:
+          editorCreateSnapshot();
+          start = E.cx;
+          editorMoveEndWord(); //correct one to use to emulate vim
+          end = E.cx;
+          E.cx = start; 
+          for (int j = 0; j < end - start + 1; j++) editorDelChar();
+          E.cx = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_dd:
+          ;
+          int fr = editorGetFileRow();
+          if (E.filerows != 0) {
+            //int r = E.filerows - E.cy;
+            int r = E.filerows - fr;
+            E.repeat = (r >= E.repeat) ? E.repeat : r ;
+            editorCreateSnapshot();
+            editorYankLine(E.repeat);
+            for (int i = 0; i < E.repeat ; i++) editorDelRow(fr);
+          }
+          E.cx = 0;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_d$:
+          editorCreateSnapshot();
+          editorDeleteToEndOfLine();
+          if (E.filerows != 0) {
+            int r = E.filerows - E.cy;
+            E.repeat--;
+            E.repeat = (r >= E.repeat) ? E.repeat : r ;
+            //editorYankLine(E.repeat); //b/o 2 step won't really work right
+            for (int i = 0; i < E.repeat ; i++) editorDelRow(E.cy);
+          }
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        //tested with repeat on one line
+        case C_cw:
+          editorCreateSnapshot();
+          for (int j = 0; j < E.repeat; j++) {
+            start = E.cx;
+            editorMoveEndWord();
+            end = E.cx;
+            E.cx = start;
+            for (int j = 0; j < end - start + 1; j++) editorDelChar();
+          }
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 1;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        //tested with repeat on one line
+        case C_caw:
+          editorCreateSnapshot();
+          for (int i = 0; i < E.repeat; i++) editorDelWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 1;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+    
+        case C_indent:
+          editorCreateSnapshot();
+          for ( i = 0; i < E.repeat; i++ ) {
+            editorIndentRow();
+            E.cy++;}
+          E.cy-=i;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_unindent:
+          editorCreateSnapshot();
+          for ( i = 0; i < E.repeat; i++ ) {
+            editorUnIndentRow();
+            E.cy++;}
+          E.cy-=i;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+    
+        case C_gg:
+         E.cx = 0;
+         E.cy = E.repeat-1;
+         E.command[0] = '\0';
+         E.repeat = 0;
+         return;
+    
+       case C_yy:  
+         editorYankLine(E.repeat);
+         E.command[0] = '\0';
+         E.repeat = 0;
+         return;
+    
+        default:
+          return;
+    
+      } 
+
+      return;
+
+    case COMMAND_LINE:
+
+      if (c == '\x1b') {
+        E.mode = 0;
+        E.command[0] = '\0';
+        editorSetMessage(""); 
+        return;}
+  
+      if (c == '\r') {
+        if (E.command[1] == 'w') {
+          /*
+          int len;
+          char *note = editorRowsToString(&len);
+          int ofr = outlineGetFileRow();
+          int id = get_id(ofr);
+          update_note(note, id);
+          */
+          update_note2();
+          E.mode = NORMAL;
+          E.command[0] = '\0';
+        }
+  
+        else if (E.command[1] == 'x') {
+          int len;
+          char *note = editorRowsToString(&len);
+          int ofr = outlineGetFileRow();
+          int id = get_id(ofr);
+          update_note(note, id);
+          E.mode = NORMAL;
+          E.command[0] = '\0';
           editor_mode = false;
         }
+  
+        else if (E.command[1] == 'q') {
+          if (E.dirty) {
+            if (strlen(E.command) == 3 && E.command[2] == '!') {
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              editor_mode = false;
+            }  
+            else {
+              E.mode = 0;
+              E.command[0] = '\0';
+              editorSetMessage("No write since last change");
+            }
+          }
+         
+          else {
+            editor_mode = false;
+          }
+        }
       }
-    }
-
-    else {
-      int n = strlen(E.command);
-      if (c == DEL_KEY || c == BACKSPACE) {
-        E.command[n-1] = '\0';
-      } else {
-        E.command[n] = c;
-        E.command[n+1] = '\0';
+  
+      else {
+        int n = strlen(E.command);
+        if (c == DEL_KEY || c == BACKSPACE) {
+          E.command[n-1] = '\0';
+        } else {
+          E.command[n] = c;
+          E.command[n+1] = '\0';
+        }
+        editorSetMessage(E.command);
       }
-      editorSetMessage(E.command);
-    }
-  /********************************************
-   * visual line mode E.mode = 3
-   ********************************************/
-
-  } else if (E.mode == VISUAL_LINE) {
-
-
-    switch (c) {
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case 'h':
-    case 'j':
-    case 'k':
-    case 'l':
-      editorMoveCursor(c);
-      E.highlight[1] = editorGetFileRow();
+  
       return;
 
-    case 'x':
-      if (E.filerows != 0) {
-        editorCreateSnapshot();
-        E.repeat = E.highlight[1] - E.highlight[0] + 1;
-        E.cy = E.highlight[0]; // this isn't right because E.highlight[0] and [1] are now rows
-        editorYankLine(E.repeat);
+    case VISUAL_LINE:
 
-        for (int i = 0; i < E.repeat; i++) editorDelRow(E.highlight[0]);
-      }
-      E.cx = 0;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case 'y':  
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      editorYankLine(E.repeat);
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case '>':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case '<':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cy = E.highlight[0];
-      for ( i = 0; i < E.repeat; i++ ) {
-        editorUnIndentRow();
-        E.cy++;}
-      E.cy-=i;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
-
-    case '\x1b':
-      E.mode = 0;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      editorSetMessage("");
-      return;
-
-    default:
-      return;
-    }
-
- // visual mode
-  } else if (E.mode == VISUAL) {
-
-    switch (c) {
-
-    case ARROW_UP:
-    case ARROW_DOWN:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case 'h':
-    case 'j':
-    case 'k':
-    case 'l':
-      editorMoveCursor(c);
-      E.highlight[1] = editorGetFileCol();
-      return;
-
-    case 'x':
-      editorCreateSnapshot();
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cx = E.highlight[0]%E.screencols; //need to position E.cx
-      editorYankString(); 
-
-      for (int i = 0; i < E.repeat; i++) {
-        editorDelChar();
+      switch (c) {
+    
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          editorMoveCursor(c);
+          E.highlight[1] = editorGetFileRow();
+          return;
+    
+        case 'x':
+          if (E.filerows != 0) {
+            editorCreateSnapshot();
+            E.repeat = E.highlight[1] - E.highlight[0] + 1;
+            E.cy = E.highlight[0]; // this isn't right because E.highlight[0] and [1] are now rows
+            editorYankLine(E.repeat);
+    
+            for (int i = 0; i < E.repeat; i++) editorDelRow(E.highlight[0]);
+          }
+          E.cx = 0;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case 'y':  
+          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          E.cy = E.highlight[0];
+          editorYankLine(E.repeat);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case '>':
+          editorCreateSnapshot();
+          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          E.cy = E.highlight[0];
+          for ( i = 0; i < E.repeat; i++ ) {
+            editorIndentRow();
+            E.cy++;}
+          E.cy-=i;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case '<':
+          editorCreateSnapshot();
+          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          E.cy = E.highlight[0];
+          for ( i = 0; i < E.repeat; i++ ) {
+            editorUnIndentRow();
+            E.cy++;}
+          E.cy-=i;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case '\x1b':
+          E.mode = 0;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("");
+          return;
+    
+        default:
+          return;
       }
 
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
       return;
 
-    case 'y':  
-      E.repeat = E.highlight[1] - E.highlight[0] + 1;
-      E.cx = E.highlight[0];
-      editorYankString();
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
+    case VISUAL:
+
+      switch (c) {
+    
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          editorMoveCursor(c);
+          E.highlight[1] = editorGetFileCol();
+          return;
+    
+        case 'x':
+          editorCreateSnapshot();
+          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          E.cx = E.highlight[0]%E.screencols; //need to position E.cx
+          editorYankString(); 
+    
+          for (int i = 0; i < E.repeat; i++) {
+            editorDelChar();
+          }
+    
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case 'y':  
+          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          E.cx = E.highlight[0];
+          editorYankString();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case CTRL_KEY('b'):
+        case CTRL_KEY('i'):
+        case CTRL_KEY('e'):
+          editorCreateSnapshot();
+          editorDecorateVisual(c);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = 0;
+          editorSetMessage("");
+          return;
+    
+        case '\x1b':
+          E.mode = 0;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("");
+          return;
+    
+        default:
+          return;
+      }
+    
       return;
 
-    case CTRL_KEY('b'):
-    case CTRL_KEY('i'):
-    case CTRL_KEY('e'):
-      editorCreateSnapshot();
-      editorDecorateVisual(c);
-      E.command[0] = '\0';
-      E.repeat = 0;
-      E.mode = 0;
-      editorSetMessage("");
-      return;
+    case REPLACE:
 
-    case '\x1b':
-      E.mode = 0;
-      E.command[0] = '\0';
-      E.repeat = 0;
-      editorSetMessage("");
-      return;
-
-    default:
-      return;
-    }
-  } else if (E.mode == 5) {
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) {
         editorDelChar();
@@ -4227,9 +4227,10 @@ void editorProcessKeypress(void) {
       E.repeat = 0;
       E.command[0] = '\0';
       E.mode = 0;
-  }
-}
+      return;
 
+  }  //keep and use for switch
+} 
 /*** slz additions ***/
 int editorGetFileRow(void) {
   int screenrow = -1;
