@@ -147,7 +147,7 @@ static t_symstruct lookuptable[] = {
 char search_string[30] = {'\0'}; //used for '*' and 'n' searches
 // buffers below for yanking
 char *line_buffer[20] = {NULL}; //yanking lines
-char string_buffer[50] = {'\0'}; //yanking chars
+char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
 
 /*** data ***/
 
@@ -1215,6 +1215,27 @@ void editorDelChar(void) {
   E.dirty++;
 }
 
+void editorDelChar2(int fr, int fc) {
+  erow *row = &E.row[fr];
+
+  /* row size = 1 means there is 1 char; size 0 means 0 chars */
+  /* Note that row->size does not count the terminating '\0' char*/
+  // note below order important because row->size undefined if E.filerows = 0 because E.row is NULL
+  if (E.filerows == 0 || row->size == 0 ) return; 
+
+  memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
+  row->size--;
+
+  if (E.filerows == 1 && row->size == 0) {
+    E.filerows = 0;
+    free(E.row);
+    //editorFreeRow(&E.row[fr]);
+    E.row = NULL;
+  }
+  //else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // not sure what to do about this
+
+  E.dirty++;
+}
 void editorBackspace(void) {
   if (E.cx == 0 && E.cy == 0) return;
   int fc = editorGetFileCol();
@@ -1378,6 +1399,7 @@ void outlineScroll(void) {
 // "drawing" rows really means updating the ab buffer
 // filerow/filecol are the row/column of the titles regardless of scroll
 void outlineDrawRows(struct abuf *ab) {
+  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
 
   if (!O.row) return; //***************************
 
@@ -1387,35 +1409,35 @@ void outlineDrawRows(struct abuf *ab) {
 
   for (y = 0; y < O.screenrows; y++) {
     int filerow = y + O.rowoff;
-
-    // len is how many characters of a given line will be seen given
-    // that a long line may have caused the display to scroll
-    //int len = O.row[filerow].size - O.coloff;
-    int len = O.row[filerow].size;
-
-    // below means when you scrolled far because of a long line
-    // then you are going to draw nothing as opposed to negative characters
-    // the line is very necessary or we segfault
-    //if (len < 0) len = 0; //**************not tested
+    orow *row = &O.row[filerow];
 
     // below says that if a line is long you only draw what fits on the screen
-    if (len > O.screencols) len = O.screencols;
+    //if (len > O.screencols) len = O.screencols;
+    int len = (row->size > O.screencols) ? O.screencols : row->size;
     
-      
-    if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { /////////
-        abAppend(ab, &O.row[filerow].chars[O.coloff], O.highlight[0] - O.coloff);
-        abAppend(ab, "\x1b[48;5;242m", 11);
-        abAppend(ab, &O.row[filerow].chars[O.highlight[0]], O.highlight[1]
-                                              - O.highlight[0]);
-        abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-        abAppend(ab, &O.row[filerow].chars[O.highlight[1]], len - O.highlight[1] + O.coloff);
+    if (row->star) abAppend(ab, "\x1b[1m", 4); //bold
+
+    if (row->completed && row->deleted) abAppend(ab, "\x1b[32m", 5); //green
+    else if (row->completed) abAppend(ab, "\x1b[33m", 5); //yellow
+    else if (row->deleted) abAppend(ab, "\x1b[31m", 5); //red
+
+    // below - only will get visual highlighting if it's the active row and 
+    //then also deals with column offset
+    if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { 
+            
+       // below in case E.highlight[1] < E.highlight[0]
+      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
+      j =!k;
+      abAppend(ab, &(row->chars[O.coloff]), O.highlight[j] - O.coloff);
+      abAppend(ab, "\x1b[48;5;242m", 11);
+      abAppend(ab, &(row->chars[O.highlight[j]]), O.highlight[k]
+                                             - O.highlight[j]);
+      abAppend(ab, "\x1b[49m", 5); //slz return background to normal
+      abAppend(ab, &(row->chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
       
     } else {
-          if (O.row[filerow].star) abAppend(ab, "\x1b[1m", 4); //bold
-          if (O.row[filerow].completed) abAppend(ab, "\x1b[33m", 5); //yellow
-          if (O.row[filerow].deleted) abAppend(ab, "\x1b[31m", 5); //red
-          //abAppend(ab, &O.row[filerow].chars[O.coloff], len);
-          abAppend(ab, &O.row[filerow].chars[(filerow == O.cy + O.rowoff) ? O.coloff : 0], len);
+        // below means that the only row that is scrolled is the row that is active
+        abAppend(ab, &O.row[filerow].chars[(filerow == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
     
     abAppend(ab, offset_lf_ret, 6);
@@ -1522,8 +1544,9 @@ void outlineRefreshScreen(void) {
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
 
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are chained (note only use training 'm'
-  if (O.mode!=DATABASE) {
+  //[y;xH positions cursor and [1m is bold [31m is red and here they are
+  //chained (note syntax requires only trailing 'm')
+  if (O.mode != DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
     abAppend(&ab, buf, strlen(buf));
     abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
@@ -2150,26 +2173,23 @@ void outlineProcessKeypress() {
 
       case 'x':
         O.cx = 0;
-        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_completed();
         return;
 
       case 'd':
         O.cx = 0;
-        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_deleted();
         return;
 
       case '*':
         O.cx = 0;
-        //O.command[0] = '\0';
         O.repeat = 0;
         toggle_star();
         return;
 
-      case 's': //this should be in DATABASE mode
+      case 's': 
         O.show_deleted = !O.show_deleted;
         O.show_completed = !O.show_completed;
         get_data3(200);
@@ -2178,7 +2198,6 @@ void outlineProcessKeypress() {
 
       case 'r':
         O.cx = 0;
-        //O.command[0] = '\0';
         O.repeat = 0;
         get_data3(200);
         return;
@@ -2188,21 +2207,9 @@ void outlineProcessKeypress() {
         return;
 
       case SHIFT_TAB:
-      //case '\x1b':
         O.mode = NORMAL;
-        //O.command[0] = '\0';
-        //O.repeat = 0;
         outlineSetMessage("");
         return;
-
-      /*
-      case 'i': //insert
-        O.mode = INSERT;
-        //O.command[0] = '\0';
-        //O.repeat = 0;
-        outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        return;
-      */
 
       case 'i': //display item info
         ;
@@ -3237,6 +3244,7 @@ void editorScroll(void) {
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
   int len, n;
+  int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char offset_lf_ret[20];
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
   //int filerow = 0;
@@ -3255,7 +3263,6 @@ void editorDrawRows(struct abuf *ab) {
       //and probably there is a better way to do it
       if (y) abAppend(ab, "\x1b[31m~~\x1b[K", 10); 
       else abAppend(ab, "\x1b[K", 3); 
-      //abAppend(ab, "\r\n", 2);
       abAppend(ab, offset_lf_ret, 7);
       y++;
 
@@ -3269,36 +3276,63 @@ void editorDrawRows(struct abuf *ab) {
           for (n=0; n < (E.screenrows - y);n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
-           // abAppend(ab, "\r\n", 2); ///////////////////////////////////////////
             abAppend(ab, offset_lf_ret, 7);
           }
       break;
       }      
 
       for (n=0; n<lines;n++) {
+        erow *row = &E.row[filerow];
         y++;
         int start = n*E.screencols;
         if ((E.row[filerow].size - n*E.screencols) > E.screencols) len = E.screencols;
         else len = E.row[filerow].size - n*E.screencols;
 
-        if (E.mode == VISUAL_LINE && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
+        //if (E.mode == VISUAL_LINE && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
+        if (E.mode == VISUAL_LINE) { 
+
+          // below in case E.highlight[1] < E.highlight[0]
+          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
+          j =!k;
+         
+          if (filerow >= E.highlight[j] && filerow <= E.highlight[k]) {
             abAppend(ab, "\x1b[48;5;242m", 11);
             abAppend(ab, &E.row[filerow].chars[start], len);
-            abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-        
+            abAppend(ab, "\x1b[49m", 5); //return background to normal
+          } else abAppend(ab, &(row->chars[start]), len);
+
         } else if (E.mode == VISUAL && filerow == editorGetFileRow()) {
-            //if ((E.highlight[0] > start) && (E.highlight[0] < start + len)) {
-            if ((E.highlight[0] >= start) && (E.highlight[0] < start + len)) {
-            abAppend(ab, &E.row[filerow].chars[start], E.highlight[0] - start);
+
+          // below in case E.highlight[1] < E.highlight[0]
+          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
+          j =!k;
+
+          if ((E.highlight[j] >= start) && (E.highlight[j] < start + len)) {
+            abAppend(ab, &(row->chars[start]), E.highlight[j] - start);
             abAppend(ab, "\x1b[48;5;242m", 11);
-            abAppend(ab, &E.row[filerow].chars[E.highlight[0]], E.highlight[1]
-                                                - E.highlight[0]);
-            abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-            abAppend(ab, &E.row[filerow].chars[E.highlight[1]], start + len - E.highlight[1]);
-            } else abAppend(ab, &E.row[filerow].chars[start], len);
+            if ((E.highlight[k] - start) > len) {
+              abAppend(ab, &(row->chars[E.highlight[j]]), len - (E.highlight[j] - start));
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+          } else {
+            abAppend(ab, &(row->chars[E.highlight[j]]), E.highlight[k] - E.highlight[j]);
+            abAppend(ab, "\x1b[49m", 5); //return background to normal
+            abAppend(ab, &(row->chars[E.highlight[k]]), start + len - E.highlight[k]);
+          }
+          } else if ((E.highlight[j] < start) && (E.highlight[k] > start)) {
+              abAppend(ab, "\x1b[48;5;242m", 11);
+            if ((E.highlight[k] - start) > len) {
+              abAppend(ab, &(row->chars[start]), len);
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+            } else {  
+              abAppend(ab, &(row->chars[start]), E.highlight[k] - start);
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+              abAppend(ab, &(row->chars[E.highlight[k]]), start + len - E.highlight[k]);
+            }  
+              
+          } else abAppend(ab, &(row->chars[start]), len);
 
         
-        } else abAppend(ab, &E.row[filerow].chars[start], len);
+        } else abAppend(ab, &(row->chars[start]), len);
     
       //"\x1b[K" erases the part of the line to the right of the cursor in case the
       // new line i shorter than the old
@@ -3638,7 +3672,6 @@ void editorProcessKeypress(void) {
       switch (c) {
     
         case SHIFT_TAB:
-        //case 'z':
           editor_mode = false;
           E.cx = E.cy = 0;
           return;
@@ -3781,14 +3814,14 @@ void editorProcessKeypress(void) {
           return;
       
         case ':':
-          E.mode = 2;
+          E.mode = COMMAND_LINE;
           E.command[0] = ':';
           E.command[1] = '\0';
           editorSetMessage(":"); 
           return;
     
         case 'V':
-          E.mode = 3;
+          E.mode = VISUAL_LINE;
           E.command[0] = '\0';
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = editorGetFileRow();
@@ -3796,7 +3829,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'v':
-          E.mode = 4;
+          E.mode = VISUAL;
           E.command[0] = '\0';
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = editorGetFileCol();
@@ -4179,14 +4212,19 @@ void editorProcessKeypress(void) {
     
         case 'x':
           editorCreateSnapshot();
-          E.repeat = E.highlight[1] - E.highlight[0] + 1;
-          E.cx = E.highlight[0]%E.screencols; //need to position E.cx
-          editorYankString(); 
+          E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
+          //editorYankString();  /// *** causing segfault
+
+          // the delete below requies positioning the cursor
+          int fc = (E.highlight[1] > E.highlight[0]) ? E.highlight[0] : E.highlight[1];
+          int fr = editorGetFileRow();
     
           for (int i = 0; i < E.repeat; i++) {
-            editorDelChar();
+            editorDelChar2(fr, fc);
           }
-    
+          int *row_column = editorGetScreenPosFromFilePos(fr, fc-1);
+          E.cy = row_column[0];
+          E.cx = row_column[1];
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
