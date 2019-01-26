@@ -64,7 +64,8 @@ char *context[] = {
                         "work"
                        }; 
 
-int NN = 0; //which context is being displayed on message line (if any) NN==0 means not in use
+int context_tid; //used mainly for doing inserts of new rows
+int NN = 0; //which context is being displayed on message line (if none then NN==0)
 
 //should apply to outline and note
 struct termios orig_termios;
@@ -582,7 +583,12 @@ void get_note(int id) {
 
   return;
 }
-
+bool starts_with(const char *str, const char *pre)
+{
+    size_t lenpre = strlen(pre),
+           lenstr = strlen(str);
+    return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
+}
 void view_html(int id) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -2077,15 +2083,24 @@ void outlineProcessKeypress() {
              case 'o': //originates in DATABASES mode but uses COMMAND_LINE code
                if (NN) {
                  O.context = context[NN];
-               } else {
-                 if (strlen(O.command_line) > 4) {
-                   O.context = strdup(&O.command_line[1]);
-                 } else {
-                   outlineSetMessage("You need to provide a context!");
-                   NN = 0;
-                   O.command_line[1] = '\0';
-                   return;
+               } else if (strlen(O.command_line) > 3) {
+                 bool success = false;
+                 size_t lenpre = strlen(&O.command_line[1]);
+                 for (int k = 1; k < 12; k++) { 
+                   size_t lenstr = strlen(context[k]);
+                   if ((lenstr < lenpre ? false : strncmp(&O.command_line[1], context[k], lenpre) == 0)) {
+                     strcpy(&O.command_line[1], context[k]);
+                     O.context = context[k];
+                     success = true;
+                     break;
+                   }
                  }
+                 if (!success) return;
+               } else {
+                 outlineSetMessage("You need to provide a context!");
+                 NN = 0;
+                 O.command_line[1] = '\0';
+                 return;
                }
                outlineSetMessage("\'%s\' will be opened", O.context);
                get_data3(200); //was get_data2
@@ -2867,7 +2882,7 @@ int insert_row(int ofr) {
                                    " %d," //context_tid 
                                    //%s, //duetime
                                    " %s," //star 
-                                   //%s //added 
+                                   "%s," //added 
                                    //"%s," //completed 
                                    //"%s," //duedate 
                                    " \'%s\'," //note
@@ -2888,7 +2903,7 @@ int insert_row(int ofr) {
                                    10, //context_tid, 10=test
                                    //duetime, 
                                    "True", //star, 
-                                   //added, 
+                                   "CURRENT_DATE", //starttime
                                    //completed, 
                                    //duedate, 
                                    "<This is a new note>", //note, 
