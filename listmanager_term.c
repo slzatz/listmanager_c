@@ -2045,14 +2045,14 @@ void outlineProcessKeypress() {
           return;
 
         case ARROW_UP:
-        case 'k':
+        //case 'k':
             if (NN == 11) NN = 1;
             else NN++;
             outlineSetMessage(context[NN]);
             return;
 
         case ARROW_DOWN:
-        case 'j':
+        //case 'j':
             if (NN < 2) NN = 11;
             else NN--;
             outlineSetMessage(context[NN]);
@@ -2098,7 +2098,6 @@ void outlineProcessKeypress() {
                  if (!success) return;
                } else {
                  outlineSetMessage("You need to provide a context!");
-                 NN = 0;
                  O.command_line[1] = '\0';
                  return;
                }
@@ -2262,6 +2261,7 @@ void outlineProcessKeypress() {
         O.command_line[0] = 'o'; // should be changed to 'o' and a new 'o' command placed in COMMAND_LINE
         O.command_line[1] = '\0';
         O.mode = COMMAND_LINE;
+        NN = 0;
         outlineSetMessage("What context do you want to open?"); 
         return;
 
