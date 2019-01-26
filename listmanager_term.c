@@ -183,11 +183,11 @@ struct outlineConfig {
   int screencols;  //number of columns in the display
   int numrows; // the number of rows of text so last text row is always row numrows
   orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
-  orow *prev_row; //for undo purposes
+  //orow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *context;
   char *filename; // in case try to save the titles
-  char message[80]; //status msg is a character array max 80 char
+  char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
   char command[20]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
@@ -422,9 +422,9 @@ void get_data3(int n) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\', "
-                    " task.deleted = %s, "
-                    " task.completed = %s, "
+                    "WHERE context.title = \'%s\' "
+                    "AND (task.deleted = %s "
+                    "OR task.completed = %s) "
                     "ORDER BY task.modified DESC LIMIT %d",
                     O.context,
                     "False",
@@ -450,14 +450,12 @@ void get_data3(int n) {
     do_exit(conn);
   }    
   
-  if (O.numrows) {
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
   } 
   free(O.row);
   O.row = NULL; 
   O.numrows = 0;
-  }
 
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
@@ -525,14 +523,17 @@ void get_data4(char *query) {
 }
 
 void get_note(int id) {
+  if (id ==-1) return;
+
+//commenting out did not help
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
+    //E.row[j].chars = NULL; //////////////////////// didn't help
   } 
+
   free(E.row);
   E.row = NULL; 
   E.filerows = 0;
-
-  if (id ==-1) return;
 
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id);
@@ -545,29 +546,40 @@ void get_note(int id) {
     PQclear(res);
     //do_exit(conn);
   }    
-  
-  /*
+/*  
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
   E.filerows = 0;
-  */
-
+*/
   //note strsep handles multiple \n\n and strtok did not
   char *note;
-  note = strdup(PQgetvalue(res, 0, 0)); //******************
+  note = strdup(PQgetvalue(res, 0, 0)); // ******************
   char *found;
   while ((found = strsep(&note, "\n")) !=NULL) {
     editorInsertRow(E.filerows, found, strlen(found));
   }
-  
-
+/*
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+    editorInsertRow(E.filerows, "Norm", 4);
+*/
   PQclear(res);
   E.dirty = 0;
   editorRefreshScreen();
-  note = NULL; //? not necessary
+  free(note);
+  //free(found); //didn't prevent segfault
+  //note = NULL; //? not necessary
+
   return;
 }
 
@@ -855,13 +867,14 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   The array of rows that O.row points to needs to have its memory enlarged when
   you add a row. Note that db row structures now include:
 
-  size of the title
-  title (should be changed to title but still called `chars` in the orow structure)
-  id
-  star
-  deleted
-  completed
-  dirty
+  int size; //the number of characters in the line
+  char *chars; //pointer to the character array of the item title
+
+  int id; //listmanager db id of the row
+  bool star;
+  bool deleted;
+  bool completed;
+  bool dirty;
   */
 
   O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
@@ -881,14 +894,16 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   // section below creates an orow struct for the new row
   O.row[at].size = len;
   O.row[at].chars = malloc(len + 1);
+  memcpy(O.row[at].chars, s, len);
   O.row[at].id = id;
   O.row[at].star = star;
   O.row[at].deleted = deleted;
   O.row[at].completed = completed;
   O.row[at].dirty = false;
-  memcpy(O.row[at].chars, s, len);
+  //memcpy(O.row[at].chars, s, len);
   O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   O.numrows++;
+
 }
 
 void outlineRowDelChar(orow *row, int at) {
@@ -1409,6 +1424,7 @@ void outlineDrawRows(struct abuf *ab) {
 
   for (y = 0; y < O.screenrows; y++) {
     int filerow = y + O.rowoff;
+    if (filerow > O.numrows - 1) return;
     orow *row = &O.row[filerow];
 
     // below says that if a line is long you only draw what fits on the screen
@@ -1467,10 +1483,17 @@ void outlineDrawStatusBar(struct abuf *ab) {
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
-  char truncated_title[20];
-  strncpy(truncated_title, row->chars, 19);
-  truncated_title[19] = '\0';
-  int len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
+
+//  char truncated_title[20];
+//  strncpy(truncated_title, row->chars, 19);
+//  truncated_title[19] = '\0'; // if title is shorter than 19, should be fine
+
+  int len = (row->size < 20) ? row->size : 19;
+  char *truncated_title = malloc(len + 1);
+  memcpy(truncated_title, row->chars, len);
+  truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
+
+  len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
     O.context ? O.context : "[No Name]", O.numrows,
     truncated_title,
     row->dirty ? "(modified)" : "");
@@ -1480,6 +1503,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
     mode_text[O.mode], row->id, fr + 1, O.numrows);
   if (len > O.screencols) len = O.screencols;
   abAppend(ab, status, len);
+
   
   /* add spaces until you just have enough room
      left to print the status message  */
@@ -1494,6 +1518,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
+  free(truncated_title);
 }
 
 void outlineDrawMessageBar(struct abuf *ab) {
@@ -1597,13 +1622,13 @@ void outlineMoveCursor(int key) {
       // then O.cx goes negative
       // dealt with in EditorScroll
       if (outlineGetFileCol() > 0) O.cx--; 
-      break;
+      return;
 
     case ARROW_RIGHT:
     case 'l':
       if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
       if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT);
-      break;
+      return;
 
     case ARROW_UP:
     case 'k':
@@ -1617,7 +1642,7 @@ void outlineMoveCursor(int key) {
       row = &O.row[fr];
       id = O.row[fr].id;
       get_note(id); //if id == -1 does not try to retrieve note ********************************************
-      break;
+      return;
 
     case ARROW_DOWN:
     case 'j':
@@ -1627,7 +1652,7 @@ void outlineMoveCursor(int key) {
       row = &O.row[fr];
       id = O.row[fr].id;
       get_note(id); //if id == -1 does not try to retrieve note ********************************************
-      break;
+      return;
   }
 }
 
@@ -2063,7 +2088,7 @@ void outlineProcessKeypress() {
                  }
                }
                outlineSetMessage("\'%s\' will be opened", O.context);
-               get_data2(O.context, 200);
+               get_data3(200); //was get_data2
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
@@ -2441,13 +2466,18 @@ void update_note2(void) {
   int len;
   char *text = editorRowsToString(&len);
 
+  /*
+
+  Valgrind just does not seem to like strncpy and no one else seems to like it as well
   //VLA
-  //char note[len + 1];
   char note[len + 1]; // I think len may include the trailing zero so its not the length you get from strlen(s)
-  //memset(note, 0, (len + 1)*sizeof(char));
-  //strncpy(note, text, len + 1);
   strncpy(note, text, len + 1);
   note[len] = '\0';
+  */
+
+  char *note = malloc(len + 1);
+  memcpy(note, text, len);
+  note[len] = '\0'; 
 
   //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
   // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
@@ -2491,6 +2521,7 @@ void update_note2(void) {
     //do_exit(conn);
   } else editorSetMessage("Note update succeeeded");    
   
+  free(note);
   free(query);
   PQclear(res);
   free(text);
@@ -2574,6 +2605,7 @@ void toggle_completed(void) {
   else {
     outlineSetMessage("Toggle completed succeeded");
     row->completed = !row->completed;
+    row->dirty = true;
   }
   PQclear(res);
 }
@@ -2615,6 +2647,7 @@ void toggle_deleted(void) {
   else {
     outlineSetMessage("Toggle deleted succeeded");
     row->deleted = !row->deleted;
+    row->dirty = true;
   }
   PQclear(res);
   return;
@@ -2637,7 +2670,7 @@ void toggle_star(void) {
 
   char query[300];
   int id = get_id(-1);
-  if (row->deleted) 
+  if (row->star) 
      sprintf(query, "UPDATE task SET star=False, " 
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
@@ -2655,7 +2688,8 @@ void toggle_star(void) {
   }
   else {
     outlineSetMessage("Toggle star succeeded");
-    row->deleted = !row->deleted;
+    row->star = !row->star;
+    row->dirty = true;
   }
   PQclear(res);
   return;
@@ -2672,10 +2706,19 @@ void update_row(void) {
     }
   }
 
-  char query[300] = {'\0'};
-  char title[200] = {'\0'};
+  //char query[300] = {'\0'};
+  //char title[200] = {'\0'};
   int fr = outlineGetFileRow();
-  strncpy(title, O.row[fr].chars, O.row[fr].size);
+  
+  orow *row = &O.row[fr];
+  //strncpy(title, O.row[fr].chars, O.row[fr].size); //valgrind
+
+  char *title = malloc(row->size + 1);
+  memcpy(title, row->chars, row->size);
+  title[row->size] = '\0'; 
+
+  char *query = malloc(row->size + 100);
+
   //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", O.row[fr].chars, get_id(-1));
   //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
   sprintf(query, "UPDATE task SET title=\'%s\', "
@@ -2692,6 +2735,8 @@ void update_row(void) {
   }    
 
   PQclear(res);
+  free(query);
+  free(title);
   outlineSetMessage("%s - %s - %d", query, title, O.row[fr].size);
   return;
 }
@@ -2895,9 +2940,19 @@ void update_rows2(void) {
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
     if (row->dirty) {
+
+      int len = row->size;
+      char *title = malloc(len + 1);
+      memcpy(title, row->chars, len);
+      title[len] = '\0';
+
+      /*
       //VLA
       char title[row->size + 1];
       strncpy(title, row->chars, row->size + 1);
+      title[row->size] = '\0'; 
+      */
+
 
       //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
       // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
@@ -2937,6 +2992,7 @@ void update_rows2(void) {
           updated_rows[n] = row->id;
           n++;
           free(query);
+          free(title);
           PQclear(res);
         }  
       } else { 
@@ -3358,7 +3414,7 @@ void editorDrawStatusBar(struct abuf *ab) {
 
   int efr = editorGetFileRow();
   int ofr = outlineGetFileRow();
-  orow *orow = &O.row[ofr];
+  orow *row = &O.row[ofr];
 
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
@@ -3369,10 +3425,16 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
-  char truncated_title[20];
-  strncpy(truncated_title, orow->chars, 19);
-  truncated_title[20] = '\0';
-  int len = snprintf(status, sizeof(status), "%.20s - %d line %s %s",
+  //char truncated_title[20];
+  //strncpy(truncated_title, orow->chars, 19);
+  //truncated_title[20] = '\0'; // <- that should have been 19
+
+  int len = (row->size < 20) ? row->size : 19;
+  char *truncated_title = malloc(len + 1);
+  memcpy(truncated_title, row->chars, len);
+  truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
+
+  len = snprintf(status, sizeof(status), "%.20s - %d line %s %s",
     O.context ? O.context : "[No Name]", E.filerows,
     truncated_title,
     E.dirty ? "(modified)" : "");
@@ -3396,6 +3458,7 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
+  free(truncated_title);
 }
 
 void editorDrawMessageBar(struct abuf *ab) {
@@ -3438,7 +3501,7 @@ void editorRefreshScreen(void) {
   editorDrawMessageBar(&ab);
 
   // the lines below position the cursor where it should go
-  if (E.mode != 2){
+  if (E.mode != COMMAND_LINE){
     char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, E.cx + EDITOR_LEFT_MARGIN + 1);
     abAppend(&ab, buf, strlen(buf));
@@ -4946,8 +5009,8 @@ void initOutline() {
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
   //O.context = NULL;
-  O.context = "test";
-  O.show_deleted = true;
+  O.context = "not work";
+  O.show_deleted = false;
   O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
@@ -5007,13 +5070,13 @@ int main(void) {
 }
 
   get_conn();
-  get_data3(200); //? brings back deleted/completed-type data
+  get_data3(90); //? brings back deleted/completed-type data
   
  // PQfinish(conn); // this should happen when exiting
 
   O.cx = O.cy = O.rowoff = 0;
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
-  outlineSetMessage("rows: %d  cols: %d", O.screenrows, O.screencols); //for display screen dimens
+  outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenrows, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
 
   while (1) {
     if (editor_mode){
