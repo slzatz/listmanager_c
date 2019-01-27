@@ -419,7 +419,13 @@ void get_data2(char *context, int n) {
 }
 
 // get_data3 only one at moment capable of restricting to not deleted and not complete
-void get_data3(int n) {
+// want to restore what we had in get_data2 and pass context
+
+//void get_data2(char *context, int n) {
+//  char query[200];
+//  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+//                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
+void get_data3(char *context, int n) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
@@ -427,7 +433,7 @@ void get_data3(int n) {
                     "AND (task.deleted = %s "
                     "OR task.completed = %s) "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    O.context,
+                    context,
                     "False",
                     "NULL",
                     n);
@@ -437,7 +443,7 @@ void get_data3(int n) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    O.context,
+                    context,
                     n);
   }
 
@@ -451,6 +457,8 @@ void get_data3(int n) {
     do_exit(conn);
   }    
   
+  //O.context = context; probably better to do it on COMMAND_LINE
+
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
   } 
@@ -905,7 +913,7 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   O.row[at].star = star;
   O.row[at].deleted = deleted;
   O.row[at].completed = completed;
-  O.row[at].dirty = false;
+  O.row[at].dirty = (id != -1) ? false : true;
   //memcpy(O.row[at].chars, s, len);
   O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   O.numrows++;
@@ -1991,6 +1999,7 @@ void outlineProcessKeypress() {
           return;
 
         case C_d$:
+        case C_dd: //note not standard definition but seems right for outline
           outlineDeleteToEndOfLine();
           O.command[0] = '\0';
           O.repeat = 0;
@@ -2081,28 +2090,31 @@ void outlineProcessKeypress() {
                return;
 
              case 'o': //originates in DATABASES mode but uses COMMAND_LINE code
+               ;
+               char *new_context;
                if (NN) {
-                 O.context = context[NN];
+                 new_context = context[NN];
                } else if (strlen(O.command_line) > 3) {
                  bool success = false;
-                 size_t lenpre = strlen(&O.command_line[1]);
                  for (int k = 1; k < 12; k++) { 
-                   size_t lenstr = strlen(context[k]);
-                   if ((lenstr < lenpre ? false : strncmp(&O.command_line[1], context[k], lenpre) == 0)) {
+                   if (strncmp(&O.command_line[1], context[k], 3) == 0) {
                      strcpy(&O.command_line[1], context[k]);
-                     O.context = context[k];
+                     new_context = context[k];
                      success = true;
                      break;
                    }
                  }
+
                  if (!success) return;
+
                } else {
                  outlineSetMessage("You need to provide a context!");
                  O.command_line[1] = '\0';
                  return;
                }
                outlineSetMessage("\'%s\' will be opened", O.context);
-               get_data3(200); //was get_data2
+               get_data3(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
+               O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
@@ -2144,13 +2156,6 @@ void outlineProcessKeypress() {
                  exit(0);
                }
 
-               return;
-
-             case 's': //this should be in DATABASE mode
-               O.show_deleted = !O.show_deleted;
-               O.show_completed = !O.show_completed;
-               get_data3(200);
-          
                return;
 
              case 'c': //originates in DATABASES mode but uses COMMAND_LINE code
@@ -2231,14 +2236,14 @@ void outlineProcessKeypress() {
       case 's': 
         O.show_deleted = !O.show_deleted;
         O.show_completed = !O.show_completed;
-        get_data3(200);
+        get_data3(O.context, 200);
           
         return;
 
       case 'r':
         O.cx = 0;
         O.repeat = 0;
-        get_data3(200);
+        get_data3(O.context, 200);
         return;
 
       case '\r':
@@ -2847,11 +2852,40 @@ void update_rows(void) {
 
 int insert_row(int ofr) {
 
- orow *row = &O.row[ofr];
- char query[800];
- char title[200] = {'\0'};
- strncpy(title, row->chars, row->size);
- 
+  orow *row = &O.row[ofr];
+  char query[800];
+
+  //char title[200] = {'\0'};
+  //strncpy(title, row->chars, row->size);
+
+  int len = row->size;
+  char *title = malloc(len + 1);
+  memcpy(title, row->chars, len);
+  title[len] = '\0';
+
+  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  const char *str = title;
+  int cnt = strlen(str)+1;
+  for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates at the end of the string where *p == 0
+          ;
+  //VLA
+  char escaped_title[cnt];
+  char *out = escaped_title;
+  const char *in = str;
+  while (*in) {
+    *out++ = *in;
+    if (*in == 39) *out++ = 39;
+      in++;
+    }
+
+ int context_tid = 1; //just in case there isn't a match but there has to be
+ for (int k = 1; k < 12; k++) { 
+   if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
+     context_tid = k;
+     break;
+   }
+ }
 
  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
  sprintf(query, "INSERT INTO task ("
@@ -2863,7 +2897,7 @@ int insert_row(int ofr) {
                                    "context_tid, "
                                    //"duetime, "
                                    "star, "
-                                   //"added, "
+                                   "added, "
                                    //"completed, "
                                    //"duedate, "
                                    "note, "
@@ -2896,11 +2930,10 @@ int insert_row(int ofr) {
                                      
                                    //tid, 
                                    3, //priority, 
-                                   //"Testing 2019-01-13 Steve", //title, 
-                                   title, //title, 
+                                   escaped_title, 
                                    //tag, 
                                    //folder_tid,
-                                   10, //context_tid, 10=test
+                                   context_tid, 
                                    //duetime, 
                                    "True", //star, 
                                    "CURRENT_DATE", //starttime
@@ -2932,6 +2965,7 @@ int insert_row(int ofr) {
   row->id = atoi(PQgetvalue(res, 0, 0));
   row->dirty = false;
         
+  free(title);
   PQclear(res);
     
   return row->id;
@@ -4127,13 +4161,6 @@ void editorProcessKeypress(void) {
           switch (E.command[1]) {
 
             case 'w':
-              /*
-              int len;
-              char *note = editorRowsToString(&len);
-              int ofr = outlineGetFileRow();
-              int id = get_id(ofr);
-              update_note(note, id);
-              */
               update_note2();
               E.mode = NORMAL;
               E.command[0] = '\0';
@@ -5085,7 +5112,7 @@ int main(void) {
 }
 
   get_conn();
-  get_data3(90); //? brings back deleted/completed-type data
+  get_data3(O.context, 200); //? brings back deleted/completed-type data
   
  // PQfinish(conn); // this should happen when exiting
 
