@@ -49,8 +49,9 @@ journal 5
 todo 9
 */
 
+// need one of these to be search and check for that and/or just use "No Context"
 char *context[] = {
-                        "",
+                        "", //maybe should be "search" - we'll see
                         "No Context",
                         "financial",
                         "health",
@@ -122,7 +123,12 @@ enum Command {
   C_unindent,
   C_c$,
   C_gg,
-  C_yy
+  C_yy,
+
+  C_fin,
+  C_find,
+  C_new,
+  C_edit
 };
 
 //both
@@ -141,7 +147,12 @@ static t_symstruct lookuptable[] = {
   {"<<", C_unindent},
   {"gg", C_gg},
   {"yy", C_yy},
-  {"d$", C_d$}
+  {"d$", C_d$},
+
+  {"fin", C_fin},
+  {"find", C_find},
+  {"new", C_new},
+  {"edit ", C_edit}
 };
 
 //should apply to both
@@ -520,26 +531,20 @@ void get_data4(char *query) {
     outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
   }
 
-
-  //outlineRefreshScreen(); //?necessary - doesn't seem to be
-
-
   PQclear(res);
  // PQfinish(conn);
 
   O.cx = O.cy = O.rowoff = 0;
-  //O.context = context;
+  //O.context = context; //simplest thing to try may be O.context = "No Context" or O.context = context[0];
 }
 
 void get_note(int id) {
   if (id ==-1) return;
 
-//commenting out did not help
+  // free the E.row[j].chars
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
-    //E.row[j].chars = NULL; //////////////////////// didn't help
   } 
-
   free(E.row);
   E.row = NULL; 
   E.filerows = 0;
@@ -551,18 +556,11 @@ void get_note(int id) {
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
-    printf("No data retrieved\n");        
+    outlineSetMessage("Problem retrieving note\n");        
     PQclear(res);
     //do_exit(conn);
   }    
-/*  
-  for (int j = 0 ; j < E.filerows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-  free(E.row);
-  E.row = NULL; 
-  E.filerows = 0;
-*/
+
   //note strsep handles multiple \n\n and strtok did not
   char *note;
   note = strdup(PQgetvalue(res, 0, 0)); // ******************
@@ -570,18 +568,6 @@ void get_note(int id) {
   while ((found = strsep(&note, "\n")) !=NULL) {
     editorInsertRow(E.filerows, found, strlen(found));
   }
-/*
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-    editorInsertRow(E.filerows, "Norm", 4);
-*/
   PQclear(res);
   E.dirty = 0;
   editorRefreshScreen();
@@ -748,6 +734,28 @@ int keyfromstring(char *key)
     }
 
     //nothing should match -1
+    return -1;
+}
+
+int keyfromstring2(char *key) //for commands like find nemo - that consist of a command a space and further info
+{
+    int i;
+    char *new_key;
+    char *ptr_2_space = strchr(key, ' ');
+    if (ptr_2_space) {
+      int pos = ptr_2_space - key;
+      new_key = strndup(key, pos);
+      new_key[pos] = '\0'; }
+    else new_key = key;
+
+    for (i=0; i <  NKEYS; i++) {
+        if (strcmp(lookuptable[i].key, new_key) == 0)
+          return lookuptable[i].val;
+    }
+
+    //nothing should match -1
+
+    free(new_key);
     return -1;
 }
 /*** terminal ***/
@@ -1762,6 +1770,12 @@ void outlineProcessKeypress() {
       switch (c) {
 
         case '\t':
+          O.cx = 0; //intentionally leave O.cy whereever it is
+          O.mode = DATABASE;
+          //O.command[0] = '\0';
+          O.repeat = 0;
+          return;
+          /*
           E.cx = E.cy = E.rowoff = 0;
           E.mode = NORMAL;
           // might have last been in item_info_display mode
@@ -1770,7 +1784,7 @@ void outlineProcessKeypress() {
           get_note(get_id(-1)); 
           editor_mode = true;
           return;
-
+          */
         case '\r':
           update_rows();
           return;
@@ -2078,6 +2092,15 @@ void outlineProcessKeypress() {
               return;
 
              case 'e':
+               E.cx = E.cy = E.rowoff = 0;
+               E.mode = NORMAL;
+               // might have last been in item_info_display mode
+               // or possibly was changed in another program (unlikely)
+               // if it's a performance issue can revisit - doubt it will be
+               get_note(get_id(-1)); 
+               editor_mode = true;
+               return;
+             /*
                if (strlen(O.command_line) > 2) {
                  O.context = strdup(&O.command_line[2]);
                  outlineSetMessage("\'%s\' will be opened", O.context);
@@ -2088,6 +2111,7 @@ void outlineProcessKeypress() {
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
+             */
 
              case 'o': //originates in DATABASES mode but uses COMMAND_LINE code
                ;
@@ -2126,6 +2150,18 @@ void outlineProcessKeypress() {
                exit(0);
                return;
 
+             case 'n': // really should be 'new' to somewhat mirror command to create a new window with new buffer
+                outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+
+                O.cx = O.cy = O.rowoff = 0;
+                outlineScroll();
+                outlineRefreshScreen();  //? necessary
+                O.mode = NORMAL;
+                O.command[0] = '\0';
+                O.repeat = 0;
+                outlineSetMessage("");
+                return;
+
              case 'q':
                ;
                bool unsaved_changes = false;
@@ -2159,7 +2195,6 @@ void outlineProcessKeypress() {
                return;
 
              case 'c': //originates in DATABASES mode but uses COMMAND_LINE code
-               ;
                if (NN) {
                  //new_context = context[NN];
                } else {
@@ -2178,16 +2213,59 @@ void outlineProcessKeypress() {
                O.command_line[0] = '\0';
                return;
 
-             case 'f':
+             /*case 'f':
                solr_find(&O.command_line[1]);
                outlineSetMessage("Will search items for \'%s\'", &O.command_line[1]);
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
-
-             default:
                return;
-          }; //end of inner inner switch of outer case COMMAND_LINE
+             */
 
+             //  return;
+          } //end of inner inner switch of outer case COMMAND_LINE
+
+          // **** need to look at this to also catch new and edit
+          // default above would have to go if we wanted to fall through
+          // to this switch concerning multi-character command line commands
+          switch (keyfromstring2(O.command_line)) { //needs keyfromstring2 becaouse of space
+            case C_new: //in vim create a new window and edit a file in it - here creates new item
+              outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+              O.cx = O.cy = O.rowoff = 0;
+              outlineScroll();
+              outlineRefreshScreen();  //? necessary
+              O.mode = NORMAL;
+              O.command[0] = '\0';
+              O.repeat = 0;
+              outlineSetMessage("");
+              return;
+
+            case C_edit: //definition is 'edit '
+               E.cx = E.cy = E.rowoff = 0;
+               E.mode = NORMAL;
+               // might have last been in item_info_display mode
+               // or possibly was changed in another program (unlikely)
+               // if it's a performance issue can revisit - doubt it will be
+               get_note(get_id(-1)); 
+               editor_mode = true;
+               return;
+
+            case C_find: //actual definition defines 'fin ' and 'find ' so we know the space is thre
+            case C_fin:
+              if (strlen(O.command_line) < 6) {
+                outlineSetMessage("You need more characters");
+              return;
+            }  
+              int p = (O.command_line[4] == ' ') ? 5 : 4;
+              solr_find(&O.command_line[p]);
+              outlineSetMessage("Will search items for \'%s\'", &O.command_line[p]);
+              O.mode = NORMAL;
+              O.context = "search";
+              O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+              return;
+          //case C_quit
+            default: //if after checking both single letter and multi-letter commonds there are no matches, just return
+              return;
+          }
         default:
           ;
           int n = strlen(O.command_line);
@@ -2198,7 +2276,7 @@ void outlineProcessKeypress() {
             O.command_line[n+1] = '\0';
           }
           if (O.command_line[0] == 'o') outlineSetMessage("open %s", &O.command_line[1]);
-          else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
+          //else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
           else outlineSetMessage(":%s", O.command_line);
         } // DO NOT REMOVE - becomes end of inner switch
 
@@ -4192,6 +4270,7 @@ void editorProcessKeypress(void) {
                   editorSetMessage("No write since last change");
                 }
               } else {
+                editorSetMessage("");
                 editor_mode = false;
               }
               
