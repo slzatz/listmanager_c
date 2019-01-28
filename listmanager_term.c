@@ -125,9 +125,18 @@ enum Command {
   C_gg,
   C_yy,
 
+  C_open,
+  C_o,
+
   C_fin,
   C_find,
+
   C_new,
+
+  C_context,
+  C_con,
+
+  C_e,
   C_edit
 };
 
@@ -149,10 +158,15 @@ static t_symstruct lookuptable[] = {
   {"yy", C_yy},
   {"d$", C_d$},
 
-  {"fin", C_fin},
+  {"open", C_open},
+  {"o", C_open},
+  {"fin", C_find},
   {"find", C_find},
   {"new", C_new},
-  {"edit ", C_edit}
+  {"context", C_context},
+  {"con", C_context},
+  {"edit", C_edit},
+  {"e", C_edit}
 };
 
 //should apply to both
@@ -747,6 +761,32 @@ int keyfromstring2(char *key) //for commands like find nemo - that consist of a 
       new_key = strndup(key, pos);
       new_key[pos] = '\0'; }
     else new_key = key;
+
+    for (i=0; i <  NKEYS; i++) {
+        if (strcmp(lookuptable[i].key, new_key) == 0)
+          return lookuptable[i].val;
+    }
+
+    //nothing should match -1
+
+    free(new_key);
+    return -1;
+}
+
+int keyfromstring3(char *key, int *p) //for commands like find nemo - that consist of a command a space and further info
+{
+    int i;
+    char *new_key;
+    char *ptr_2_space = strchr(key, ' ');
+    if (ptr_2_space) {
+      int pos = ptr_2_space - key;
+      *p = pos; // just here to pass it back to some of the COMMAND_MODEa swith cases (commands)
+      new_key = strndup(key, pos);
+      new_key[pos] = '\0'; }
+    else {
+      new_key = key;
+      *p = 0; //not sure this is necessary - not using it when command has no space
+    }
 
     for (i=0; i <  NKEYS; i++) {
         if (strcmp(lookuptable[i].key, new_key) == 0)
@@ -1909,11 +1949,11 @@ void outlineProcessKeypress() {
           return;
       
         case ':':
-          O.mode = COMMAND_LINE;
-          //O.command[0] = ':';
+          NN = 0; //index to contexts
           O.command[0] = '\0';
           O.command_line[0] = '\0';
           outlineSetMessage(":"); 
+          O.mode = COMMAND_LINE;
           return;
 
         case 'v':
@@ -2091,6 +2131,8 @@ void outlineProcessKeypress() {
               O.command_line[0] = '\0';
               return;
 
+             /* Right now dealing with this in the switch below -
+                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
              case 'e':
                E.cx = E.cy = E.rowoff = 0;
                E.mode = NORMAL;
@@ -2100,19 +2142,10 @@ void outlineProcessKeypress() {
                get_note(get_id(-1)); 
                editor_mode = true;
                return;
-             /*
-               if (strlen(O.command_line) > 2) {
-                 O.context = strdup(&O.command_line[2]);
-                 outlineSetMessage("\'%s\' will be opened", O.context);
-                 get_data2(O.context, 200);
-               }
-               else outlineSetMessage("You need to provide a context");
-
-               O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
-               return;
              */
 
+             /* Right now dealing with this in the switch below -
+                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
              case 'o': //originates in DATABASES mode but uses COMMAND_LINE code
                ;
                char *new_context;
@@ -2142,6 +2175,7 @@ void outlineProcessKeypress() {
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
+               */
 
              case 'x':
                update_rows2();
@@ -2149,6 +2183,10 @@ void outlineProcessKeypress() {
                write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
                exit(0);
                return;
+
+
+             /* Right now dealing with this in the switch below -
+                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
 
              case 'n': // really should be 'new' to somewhat mirror command to create a new window with new buffer
                 outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
@@ -2161,6 +2199,7 @@ void outlineProcessKeypress() {
                 O.repeat = 0;
                 outlineSetMessage("");
                 return;
+             */
 
              case 'q':
                ;
@@ -2194,6 +2233,7 @@ void outlineProcessKeypress() {
 
                return;
 
+             /*
              case 'c': //originates in DATABASES mode but uses COMMAND_LINE code
                if (NN) {
                  //new_context = context[NN];
@@ -2212,6 +2252,7 @@ void outlineProcessKeypress() {
                O.mode = DATABASE; //return to DATABASE mode
                O.command_line[0] = '\0';
                return;
+               */
 
              /*case 'f':
                solr_find(&O.command_line[1]);
@@ -2227,7 +2268,11 @@ void outlineProcessKeypress() {
           // **** need to look at this to also catch new and edit
           // default above would have to go if we wanted to fall through
           // to this switch concerning multi-character command line commands
-          switch (keyfromstring2(O.command_line)) { //needs keyfromstring2 becaouse of space
+          //switch (keyfromstring2(O.command_line)) { //needs keyfromstring2 becaouse of space
+          int pos;
+          char *new_context;
+          switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
+
             case C_new: //in vim create a new window and edit a file in it - here creates new item
               outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
               O.cx = O.cy = O.rowoff = 0;
@@ -2239,7 +2284,7 @@ void outlineProcessKeypress() {
               outlineSetMessage("");
               return;
 
-            case C_edit: //definition is 'edit '
+            case C_edit: //edit the note of the current item
                E.cx = E.cy = E.rowoff = 0;
                E.mode = NORMAL;
                // might have last been in item_info_display mode
@@ -2250,18 +2295,85 @@ void outlineProcessKeypress() {
                return;
 
             case C_find: //actual definition defines 'fin ' and 'find ' so we know the space is thre
-            case C_fin:
+            //case C_fin:
               if (strlen(O.command_line) < 6) {
                 outlineSetMessage("You need more characters");
               return;
             }  
-              int p = (O.command_line[4] == ' ') ? 5 : 4;
-              solr_find(&O.command_line[p]);
-              outlineSetMessage("Will search items for \'%s\'", &O.command_line[p]);
+              //int p = (O.command_line[4] == ' ') ? 5 : 4;
+              //solr_find(&O.command_line[p]);
+              solr_find(&O.command_line[pos + 1]);
+              outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               O.context = "search";
               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
               return;
+
+            case C_context:
+              //NN is set to zero when entering COMMAND_LINE mode
+               ;
+               int context_tid;
+               //char *new_context;
+               if (NN) {
+                 new_context = context[NN];
+                 context_tid = NN;
+               } else if (strlen(O.command_line) > 7) {
+                 bool success = false;
+                 for (int k = 1; k < 12; k++) { 
+                   if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
+                     new_context = context[k];
+                     context_tid = k;
+                     success = true;
+                     break;
+                   }
+                 }
+
+                 if (!success) {
+                   outlineSetMessage("What you typed did not match any context");
+                   return;
+                 }
+
+               } else {
+                 outlineSetMessage("You need to provide at least 3 characters that match a context!");
+                 O.command_line[1] = '\0';
+                 return;
+               }
+
+               outlineSetMessage("Item %d will get context \'%s\'(%d)", get_id(-1), new_context, context_tid);
+               update_context(context_tid); 
+               O.mode = NORMAL;
+               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               return;
+
+            case C_open:
+              //NN is set to zero when entering COMMAND_LINE mode
+               ;
+               //char *new_context;
+               if (NN) {
+                 new_context = context[NN];
+               } else if (strlen(O.command_line) > 7) {
+                 bool success = false;
+                 for (int k = 1; k < 12; k++) { 
+                   if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
+                     new_context = context[k];
+                     success = true;
+                     break;
+                   }
+                 }
+
+                 if (!success) return;
+
+               } else {
+                 outlineSetMessage("You need to provide at least 3 characters that match a context!");
+                 O.command_line[1] = '\0';
+                 return;
+               }
+               outlineSetMessage("\'%s\' will be opened", new_context);
+               get_data3(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
+               O.context = new_context; 
+               O.mode = NORMAL;
+               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               return;
           //case C_quit
             default: //if after checking both single letter and multi-letter commonds there are no matches, just return
               return;
@@ -2275,9 +2387,15 @@ void outlineProcessKeypress() {
             O.command_line[n] = c;
             O.command_line[n+1] = '\0';
           }
+
+          outlineSetMessage(":%s", O.command_line);
+
+          /*
           if (O.command_line[0] == 'o') outlineSetMessage("open %s", &O.command_line[1]);
-          //else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
+          else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
           else outlineSetMessage(":%s", O.command_line);
+          */
+
         } // DO NOT REMOVE - becomes end of inner switch
 
       return; //end of outer case COMMAND_LINE
@@ -2293,42 +2411,53 @@ void outlineProcessKeypress() {
           outlineMoveCursor(c);
           return;
 
-      case 'x':
-        O.cx = 0;
-        O.repeat = 0;
-        toggle_completed();
-        return;
+        case ':':
+          NN = 0; //index to contexts
+          O.command[0] = '\0';
+          O.command_line[0] = '\0';
+          outlineSetMessage(":"); 
+          O.mode = COMMAND_LINE;
+          return;
 
-      case 'd':
-        O.cx = 0;
-        O.repeat = 0;
-        toggle_deleted();
-        return;
+        case 'x':
+          O.cx = 0;
+          O.repeat = 0;
+          toggle_completed();
+          return;
 
-      case '*':
-        O.cx = 0;
-        O.repeat = 0;
-        toggle_star();
-        return;
+        case 'd':
+          O.cx = 0;
+          O.repeat = 0;
+          toggle_deleted();
+          return;
 
-      case 's': 
-        O.show_deleted = !O.show_deleted;
-        O.show_completed = !O.show_completed;
-        get_data3(O.context, 200);
-          
-        return;
+        case '*':
+          O.cx = 0;
+          O.repeat = 0;
+          toggle_star();
+          return;
 
-      case 'r':
-        O.cx = 0;
-        O.repeat = 0;
-        get_data3(O.context, 200);
-        return;
+        case 's': 
+          O.show_deleted = !O.show_deleted;
+          O.show_completed = !O.show_completed;
+          get_data3(O.context, 200);
+            
+          return;
 
+        case 'r':
+          O.cx = 0;
+          O.repeat = 0;
+          get_data3(O.context, 200);
+          return;
+
+      /*
       case '\r':
         update_rows();
         return;
+      */
 
       case SHIFT_TAB:
+      case '\t':
         O.mode = NORMAL;
         outlineSetMessage("");
         return;
@@ -2468,6 +2597,7 @@ void display_item_info(int id) {
   char *completed = (*PQgetvalue(res, 0, 10)) ? "true": "false";
   char *modified = PQgetvalue(res, 0, 16);
   char *added = PQgetvalue(res, 0, 9);
+  char *context_tid = PQgetvalue(res, 0, 6);
 
   editorInsertRow(E.filerows, " ", 1);
 
@@ -2475,6 +2605,8 @@ void display_item_info(int id) {
   sprintf(str,"\x1b[1mid:\x1b[0m %s", zz);
   editorInsertRow(E.filerows, str, strlen(str));
   sprintf(str,"\x1b[1mtitle:\x1b[0m %s", title);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(context_tid)]);
   editorInsertRow(E.filerows, str, strlen(str));
   sprintf(str,"\x1b[1mstar:\x1b[0m %s", star);
   editorInsertRow(E.filerows, str, strlen(str));
@@ -2648,7 +2780,7 @@ void update_context(int context_tid) {
   char query[300];
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET context_tid = %d, " 
+  sprintf(query, "UPDATE task SET context_tid=%d, " 
                  "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
                     context_tid,
