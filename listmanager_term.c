@@ -2450,50 +2450,46 @@ void outlineProcessKeypress() {
           get_data3(O.context, 200);
           return;
 
-      /*
-      case '\r':
-        update_rows();
-        return;
-      */
-
-      case SHIFT_TAB:
-      case '\t':
-        O.mode = NORMAL;
-        outlineSetMessage("");
-        return;
-
-      case 'i': //display item info
-        ;
-        int fr = outlineGetFileRow();
-        orow *row = &O.row[fr];
-        display_item_info(row->id);
-        return;
-
-      case 'o': //open
-        O.command_line[0] = 'o'; // should be changed to 'o' and a new 'o' command placed in COMMAND_LINE
-        O.command_line[1] = '\0';
-        O.mode = COMMAND_LINE;
-        NN = 0;
-        outlineSetMessage("What context do you want to open?"); 
-        return;
-
-      case 'c': //context
-        O.command_line[0] = 'c';
-        O.command[1] = ' ';
-        O.command[2] = '\0';
-        O.mode = COMMAND_LINE;
-        outlineSetMessage(""); 
-        return;
-
-      case 'f': //find
-        O.command_line[0] = 'f';
-        O.command_line[1] = '\0';
-        O.mode = COMMAND_LINE;
-        outlineSetMessage("What do you want to find?"); 
-        return;
-
-      default:
-        return;
+        case SHIFT_TAB:
+        case '\t':
+          O.mode = NORMAL;
+          outlineSetMessage("");
+          return;
+  
+        case 'i': //display item info
+          ;
+          int fr = outlineGetFileRow();
+          orow *row = &O.row[fr];
+          display_item_info(row->id);
+          return;
+  
+        /*
+        case 'o': //open
+          O.command_line[0] = 'o'; // should be changed to 'o' and a new 'o' command placed in COMMAND_LINE
+          O.command_line[1] = '\0';
+          O.mode = COMMAND_LINE;
+          NN = 0;
+          outlineSetMessage("What context do you want to open?"); 
+          return;
+  
+        case 'c': //context
+          O.command_line[0] = 'c';
+          O.command[1] = ' ';
+          O.command[2] = '\0';
+          O.mode = COMMAND_LINE;
+          outlineSetMessage(""); 
+          return;
+  
+        case 'f': //find
+          O.command_line[0] = 'f';
+          O.command_line[1] = '\0';
+          O.mode = COMMAND_LINE;
+          outlineSetMessage("What do you want to find?"); 
+          return;
+          */
+  
+        default:
+          return;
       } // end of inner switch(c) in outer case DATABASLE
 
       return; //end of outer case DATABASE
