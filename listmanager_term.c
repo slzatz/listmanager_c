@@ -35,47 +35,29 @@
 
 int EDITOR_LEFT_MARGIN;
 
-/*
-No Context 1
-financial 2
-health 3
-industry 4
-not work 7
-programming 8
-test 10
-work 11
-facts 6
-journal 5
-todo 9
-*/
-
-// need one of these to be search and check for that and/or just use "No Context"
 char *context[] = {
                         "", //maybe should be "search" - we'll see
-                        "No Context",
-                        "financial",
-                        "health",
-                        "industry",
-                        "journal",
-                        "facts",
-                        "not work",
-                        "programming",
-                        "todo",
-                        "test",
-                        "work"
+                        "No Context", // 1
+                        "financial", // 2
+                        "health", // 3
+                        "industry",// 4
+                        "journal",// 5
+                        "facts", // 6
+                        "not work",// 7
+                        "programming",// 8
+                        "todo",// 9
+                        "test",// 10
+                        "work"//11
                        }; 
 
-int context_tid; //used mainly for doing inserts of new rows
+//int context_tid; //used mainly for doing inserts of new rows
 int NN = 0; //which context is being displayed on message line (if none then NN==0)
 
-//should apply to outline and note
 struct termios orig_termios;
-// the full dimensions of the screen available to outline + note
 int screenrows, screencols;
 
 bool editor_mode;
 
-//should apply to outline and note
 enum outlineKey {
   BACKSPACE = 127,
   ARROW_LEFT = 1000,
@@ -90,7 +72,6 @@ enum outlineKey {
   SHIFT_TAB
 };
 
-//should apply to outline and note
 enum Mode {
   NORMAL = 0,
   INSERT = 1,
@@ -110,7 +91,7 @@ char *mode_text[] = {
                         "REPLACE",
                         "DATABASE"
                        }; 
-//should apply to outline and note
+
 enum Command {
   C_caw,
   C_cw,
@@ -140,7 +121,6 @@ enum Command {
   C_edit
 };
 
-//both
 //below is for multi-character commands
 //does a lookup to see which enum (representing a corresponding command) was matched
 //so can be used in a case statement
@@ -169,7 +149,6 @@ static t_symstruct lookuptable[] = {
   {"e", C_edit}
 };
 
-//should apply to both
 char search_string[30] = {'\0'}; //used for '*' and 'n' searches
 // buffers below for yanking
 char *line_buffer[20] = {NULL}; //yanking lines
@@ -178,7 +157,7 @@ char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be mallo
 /*** data ***/
 
 typedef struct orow {
-  int size; //the number of characters in the line
+  int size; //the number of characters in the line -- doesn't seem necessary - why not just use strlen(chars) [renamed to title]
   char *chars; //points at the character array of a row - mem assigned by malloc
 
   int id; //listmanager db id of the row
@@ -217,7 +196,7 @@ struct outlineConfig {
   int highlight[2];
   int mode;
   char command[20]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
-  char command_line[20]; //for commands on the command line doesn't include ':' where that applies; also used for DATABASE commands
+  char command_line[20]; //for commands on the command line doesn't include ':' where that applies
   int repeat;
   bool show_deleted;
   bool show_completed;
@@ -281,8 +260,7 @@ void outlineScroll(void);
 int get_id(int fr);
 void update_row(void);
 void update_rows(void);
-void update_rows2(void);
-void update_note2(void); 
+void update_note(void); 
 void update_context(int context_tid);
 void toggle_completed(void);
 void toggle_deleted(void);
@@ -1734,7 +1712,7 @@ void outlineProcessKeypress() {
       switch (c) {
 
         case '\r':
-          update_rows();
+          update_row();
           return;
 
         case HOME_KEY:
@@ -1826,7 +1804,7 @@ void outlineProcessKeypress() {
           return;
           */
         case '\r':
-          update_rows();
+          update_row();
           return;
 
         //case 'z':
@@ -2126,7 +2104,7 @@ void outlineProcessKeypress() {
           switch(O.command_line[0]) { //should be changed to switch(O.command_line[0]
 
             case 'w':
-              update_rows2();
+              update_rows();
               O.mode = 0;
               O.command_line[0] = '\0';
               return;
@@ -2178,7 +2156,7 @@ void outlineProcessKeypress() {
                */
 
              case 'x':
-               update_rows2();
+               update_rows();
                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
                exit(0);
@@ -2638,47 +2616,7 @@ void display_item_info(int id) {
   return;
 }
 
-
-void update_note(char *note, int id) {
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  char query[2000] = {'\0'};
-  //char title[200] = {'\0'};
-  //int fr = outlineGetFileRow();
-  //strncpy(title, O.row[fr].chars, O.row[fr].size);
-
-  sprintf(query, "UPDATE task SET note=\'%s\', "
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                   //note, get_id(-1));
-                   note, id);
-
-  PGresult *res = PQexec(conn, query); 
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("UPDATE command failed");
-   // PQclear(res);
-    //do_exit(conn);
-  }    
-
-  PQclear(res);
-  free(note);
-  E.dirty = 0;
-
-  outlineSetMessage("Updated %d", id);
-
-  return;
-}
-
-void update_note2(void) {
+void update_note(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2692,20 +2630,16 @@ void update_note2(void) {
   int len;
   char *text = editorRowsToString(&len);
 
-  /*
-
-  Valgrind just does not seem to like strncpy and no one else seems to like it as well
-  //VLA
-  char note[len + 1]; // I think len may include the trailing zero so its not the length you get from strlen(s)
-  strncpy(note, text, len + 1);
-  note[len] = '\0';
-  */
+ /*
+ Note previously had used strncpy but  Valgrind just does not seem to like strncpy
+ and no one else seems to like it as well
+ */
 
   char *note = malloc(len + 1);
   memcpy(note, text, len);
   note[len] = '\0'; 
 
-  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+  //Below replaces single quotes with two single quotes which escapes the single quote
   // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
   const char *str = note;
   int cnt = strlen(str)+1;
@@ -2713,7 +2647,6 @@ void update_note2(void) {
           ;
   //VLA
   char escaped_note[cnt];
-  //memset(escaped_note, 0, cnt*sizeof(char));
   char *out = escaped_note;
   const char *in = str;
   while (*in) {
@@ -2732,24 +2665,20 @@ void update_note2(void) {
   char *query = malloc(cnt + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
-  //sprintf(query, "UPDATE task SET note=%s, "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
-                   //note, get_id(-1));
                    escaped_note, id);
 
   PGresult *res = PQexec(conn, query); 
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    //editorSetMessage("UPDATE command failed");
     editorSetMessage(PQerrorMessage(conn));
-   // PQclear(res);
-    //do_exit(conn);
   } else editorSetMessage("Note update succeeeded");    
   
   free(note);
   free(query);
   PQclear(res);
+  //do_exit(conn);
   free(text);
   E.dirty = 0;
 
@@ -2923,57 +2852,12 @@ void toggle_star(void) {
 
 void update_row(void) {
 
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  //char query[300] = {'\0'};
-  //char title[200] = {'\0'};
   int fr = outlineGetFileRow();
-  
   orow *row = &O.row[fr];
-  //strncpy(title, O.row[fr].chars, O.row[fr].size); //valgrind
-
-  char *title = malloc(row->size + 1);
-  memcpy(title, row->chars, row->size);
-  title[row->size] = '\0'; 
-
-  char *query = malloc(row->size + 100);
-
-  //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", O.row[fr].chars, get_id(-1));
-  //sprintf(query, "UPDATE task SET title=\'%s\' WHERE id=%d", row, get_id(-1));
-  sprintf(query, "UPDATE task SET title=\'%s\', "
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                   title, get_id(-1));
-
-  PGresult *res = PQexec(conn, query); 
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("UPDATE command failed");
-    //PQclear(res);
-    //do_exit(conn);
-  }    
-
-  PQclear(res);
-  free(query);
-  free(title);
-  outlineSetMessage("%s - %s - %d", query, title, O.row[fr].size);
-  return;
-}
-
-// doesn't address new items that need to be inserted
-// uses fixed title array and does {'\0'} - doesn't need to
-// see update_rows2
-void update_rows(void) {
-
-  int updated_rows[20];
-  int n = 0; //number of updated rows
+  if (!row->dirty) {
+    outlineSetMessage("Row has not been changed");
+    return;
+  }
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2984,20 +2868,12 @@ void update_rows(void) {
     }
   }
 
-  for (int i=0; i < O.numrows;i++) {
-    orow *row = &O.row[i];
-    if (row->dirty) {
+  int len = row->size;
+  char *title = malloc(len + 1);
+  memcpy(title, row->chars, len);
+  title[len] = '\0';
 
-      //don't know the length of the query when we start although could calculate it after creating escaped_title
-      char query[300] = {'\0'}; 
-
-      //VLA doesn't work here for some reason
-      //You can't initialize VLAs and seems to need initialization
-      //char title[row->size + 1];
-      char title[200] = {'\0'};
-      strncpy(title, row->chars, row->size);
-
-      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+      // Need to replace single quotes with two single quotes which escapes the single quote 
       // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
       const char *str = title;
       int cnt = strlen(str)+1;
@@ -3015,45 +2891,28 @@ void update_rows(void) {
 
       *out = '\0';
 
-      sprintf(query, "UPDATE task SET title=\'%s\', "
+  char *query = malloc(row->size + 100);
+
+  sprintf(query, "UPDATE task SET title=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
-                   //title, row->id);
-                   escaped_title, row->id);
+                   title, get_id(-1));
 
-      PGresult *res = PQexec(conn, query); 
+  PGresult *res = PQexec(conn, query); 
     
-      if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-        outlineSetMessage("UPDATE command failed");
-        //outlineSetMessage(PQerrorMessage(conn));
-        PQclear(res);
-        return;
-      } else {
-        row->dirty = false;    
-        updated_rows[n] = row->id;
-        n++;
-        PQclear(res);
-      }
-    }
-  }
-
-  if (n == 0) {
-    outlineSetMessage("There were no rows to update");
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage(PQerrorMessage(conn));
+    PQclear(res);
     return;
-  }
+    //do_exit(conn);
+  }    
 
-  char msg[200];
-  char *put;
-  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
-  put = &msg[strlen(msg)];
-
-  for (int j=0; j < n;j++) {
-    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
-  }
-
-  int slen = strlen(msg);
-  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  outlineSetMessage("%s",  msg);
+  PQclear(res);
+  free(query);
+  free(title);
+  row->dirty = false;
+  outlineSetMessage("Successfull update row id: %d", row->id);
+  return;
 }
 
 int insert_row(int ofr) {
@@ -3177,9 +3036,7 @@ int insert_row(int ofr) {
   return row->id;
 }
 
-// updates changed titles and inserts new items
-// spurioius characters fixed
-void update_rows2(void) {
+void update_rows(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
@@ -3200,14 +3057,6 @@ void update_rows2(void) {
       char *title = malloc(len + 1);
       memcpy(title, row->chars, len);
       title[len] = '\0';
-
-      /*
-      //VLA
-      char title[row->size + 1];
-      strncpy(title, row->chars, row->size + 1);
-      title[row->size] = '\0'; 
-      */
-
 
       //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
       // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
@@ -3233,7 +3082,6 @@ void update_rows2(void) {
         sprintf(query, "UPDATE task SET title=\'%s\', "
                      "modified=LOCALTIMESTAMP - interval '5 hours' "
                      "WHERE id=%d",
-                     //title, row->id);
                      escaped_title, row->id);
 
         PGresult *res = PQexec(conn, query); 
@@ -4367,19 +4215,14 @@ void editorProcessKeypress(void) {
           switch (E.command[1]) {
 
             case 'w':
-              update_note2();
+              update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
 
               return;
   
             case 'x':
-              ;
-              int len;
-              char *note = editorRowsToString(&len);
-              int ofr = outlineGetFileRow();
-              int id = get_id(ofr);
-              update_note(note, id);
+              update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
               editor_mode = false;
