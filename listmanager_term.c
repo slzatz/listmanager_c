@@ -955,41 +955,30 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
 
 }
 
-void outlineRowDelChar(orow *row, int at) {
-  if (at < 0 || at >= row->size) return;
-  // is there any reason to realloc for one character?
-  // row->chars = realloc(row->chars, row->size -1); 
-  //have to realloc when adding but I guess no need to realloc for one character
-  memmove(&row->chars[at], &row->chars[at + 1], row->size - at);
-  row->size--;
-}
-
 /*** outline operations ***/
 void outlineInsertChar(int c) {
 
-  // O.cy == O.numrows == 0 when you start program or delete all lines
   if ( O.numrows == 0 ) {
-    //outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0'
+    //outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0' should rev
     return;
   }
 
-  //orow *row = &O.row[O.cy];
-  orow *row = &O.row[O.cy+O.rowoff];
+  int fr = outlineGetFileRow();
   int fc = outlineGetFileCol();
-  //if (O.cx < 0 || O.cx > row->size) O.cx = row->size; //can either of these be true? ie is check necessary?
-  //row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
-  row->chars = realloc(row->chars, row->size + 2); //******* was size + 2
 
-  /* moving all the chars at the current x cursor position on char
+  orow *row = &O.row[fr];
+
+  row->chars = realloc(row->chars, row->size + 2); // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
+
+  /* moving all the chars at the current x cursor position one char
      farther down the char string to make room for the new character
+     Note that if fc = row->size then beyond last character in insert
+     mode and char is inserted before the closing '\0'
      Maybe a clue from outlineInsertRow - it's memmove is below
      memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
   */
 
-  //if (fc < row->size) //////////////////////////////////
-  //memmove(&row->chars[O.cx + 1], &row->chars[O.cx], row->size - O.cx); //****was O.cx + 1
-  //memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was O.cx + 1
-  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); //****was O.cx + 1
+  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); 
 
   row->size++;
   row->chars[fc] = c;
@@ -1012,13 +1001,13 @@ void outlineDelChar(void) {
   row->size--;
   row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
+  // don't know why the below is necessary - you have one row with no chars - that's fine
   if (O.numrows == 1 && row->size == 0) {
     O.numrows = 0;
     free(O.row);
-    //outlineFreeRow(&O.row[at]);
     O.row = NULL;
   }
-  else if (O.cx == row->size && O.cx) O.cx = row->size - 1; 
+  else if (O.cx == row->size && O.cx) O.cx = row->size - 1;  //does outlineScroll handle?
 
   row->dirty = true;
 
@@ -1163,17 +1152,18 @@ void editorRowDelChar(erow *row, int fr) {
 /*** editor operations ***/
 void editorInsertChar(int c) {
 
-  // E.cy == E.filerows == 0 when you start program or delete all lines
   if ( E.filerows == 0 ) {
-    editorInsertRow(0, "", 0); //editorInsertRow will insert '\0'
+    editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
-  erow *row = &E.row[editorGetFileRow()];
   int fc = editorGetFileCol();
+  int fr = editorGetFileRow();
+
+  erow *row = &E.row[fr];
 
 
   //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
-  row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
+  row->chars = realloc(row->chars, row->size + 2); // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
 
   /* moving all the chars fr the current x cursor position on char
      farther down the char string to make room for the new character
@@ -1181,7 +1171,7 @@ void editorInsertChar(int c) {
      memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
   */
 
-  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was E.cx + 1
+  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); 
 
   row->size++;
   row->chars[fc] = c;
@@ -1265,23 +1255,29 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
-  erow *row = &E.row[editorGetFileRow()];
+  int fr = editorGetFileRow();
+  int fc = editorGetFileCol();
+
+  erow *row = &E.row[fr];
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
   // note below order important because row->size undefined if E.filerows = 0 because E.row is NULL
   if (E.filerows == 0 || row->size == 0 ) return; 
 
-  memmove(&row->chars[editorGetFileCol()], &row->chars[editorGetFileCol() + 1], row->size - editorGetFileCol());
+  memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
+  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
   row->size--;
+  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
+  // don't know why the below is necessary - you have one row with no chars - that's fine
   if (E.filerows == 1 && row->size == 0) {
     E.filerows = 0;
     free(E.row);
     //editorFreeRow(&E.row[fr]);
     E.row = NULL;
   }
-  else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // not sure what to do about this
+  else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // shouldn't editorscroll handle this
 
   E.dirty++;
 }
@@ -1295,7 +1291,9 @@ void editorDelChar2(int fr, int fc) {
   if (E.filerows == 0 || row->size == 0 ) return; 
 
   memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
+  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
   row->size--;
+  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
   if (E.filerows == 1 && row->size == 0) {
     E.filerows = 0;
@@ -1307,14 +1305,16 @@ void editorDelChar2(int fr, int fc) {
 
   E.dirty++;
 }
+
+//Really need to look at this
 void editorBackspace(void) {
-  if (E.cx == 0 && E.cy == 0) return;
   int fc = editorGetFileCol();
   int fr = editorGetFileRow();
   erow *row = &E.row[fr];
 
-  if (E.cx > 0) {
-    //memmove(dest, source, number of bytes to move?)
+  if (fc == 0 && fr == 0) return;
+
+  if (fc > 0) {
     memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
     if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1; //right now only backspace in multi-line
@@ -1322,7 +1322,9 @@ void editorBackspace(void) {
   } else { //else E.cx == 0 and could be multiline
     if (fc > 0) { //this means it's a multiline row and we're not at the top
       memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
+      row->chars = realloc(row->chars, row->size); 
       row->size--;
+      row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
       E.cx = E.screencols - 1;
       E.cy--;
       E.continuation = 0;
@@ -1683,7 +1685,7 @@ void outlineMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
       if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
-      if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT);
+      if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT); //you can go beyond the last char in insert mode
       return;
 
     case ARROW_UP:
@@ -3718,12 +3720,15 @@ void editorMoveCursor(int key) {
 
   int line_char_count = editorGetLineCharCount(); 
   if (line_char_count == 0) E.cx = 0;
-  else if (E.mode == 1) {
+  else if (E.cx >= line_char_count) E.cx = line_char_count - (E.mode != INSERT); //you can go beyond the last char in insert mode
+
+/*
+  else if (E.mode == INSERT) {
     if (E.cx >= line_char_count) E.cx = line_char_count;
     }
   else if (E.cx >= line_char_count) E.cx = line_char_count - 1;
+*/
 }
-
 // higher level editor function depends on readKey()
 void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
@@ -4565,20 +4570,6 @@ int editorGetFileCol(void) {
   return col;
 }
 
-int editorGetFileCol2(int fr) {
-  int n = 0;
-  int y = E.cy;
-  //int fr = editorGetFileRow();
-  for (;;) {
-    if (y == 0) break;
-    y--;
-    if (editorGetFileRowByLine(y) < fr) break;
-    n++;
-  }
-
-  int col = E.cx + n*E.screencols; 
-  return col;
-}
 int editorGetLineCharCount(void) {
 
   int fc = editorGetFileCol();
