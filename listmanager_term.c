@@ -156,6 +156,14 @@ char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be mallo
 
 /*** data ***/
 
+ /*
+ row size = n means there are n chars starting with chars[0] and ending with 
+ chars[n-1] and there is also an additional char = '\0' at chars[n] so memmove
+ generally has to move n+1 bytes to include the terminal '\0'
+ For the avoidance of doubt:  row->size does not include the terminating '\0' char
+ Lastly size 0 means 0 chars 
+*/
+
 typedef struct orow {
   int size; //the number of characters in the line -- doesn't seem necessary - why not just use strlen(chars) [renamed to title]
   char *chars; //points at the character array of a row - mem assigned by malloc
@@ -259,6 +267,7 @@ void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
 void update_row(void);
+int insert_row(int ofr); 
 void update_rows(void);
 void update_note(void); 
 void update_context(int context_tid);
@@ -968,7 +977,8 @@ void outlineInsertChar(int c) {
   orow *row = &O.row[O.cy+O.rowoff];
   int fc = outlineGetFileCol();
   //if (O.cx < 0 || O.cx > row->size) O.cx = row->size; //can either of these be true? ie is check necessary?
-  row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
+  //row->chars = realloc(row->chars, row->size + 1); //******* was size + 2
+  row->chars = realloc(row->chars, row->size + 2); //******* was size + 2
 
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
@@ -976,26 +986,31 @@ void outlineInsertChar(int c) {
      memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
   */
 
+  //if (fc < row->size) //////////////////////////////////
   //memmove(&row->chars[O.cx + 1], &row->chars[O.cx], row->size - O.cx); //****was O.cx + 1
-  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was O.cx + 1
+  //memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc); //****was O.cx + 1
+  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); //****was O.cx + 1
 
   row->size++;
   row->chars[fc] = c;
+  row->chars[row->size] = '\0'; //????
   row->dirty = true;
   O.cx++;
 }
 
 void outlineDelChar(void) {
-  //orow *row = &O.row[O.cy];
-  orow *row = &O.row[outlineGetFileRow()];
+  int fr = outlineGetFileRow();
+  int fc = outlineGetFileCol();
 
-  /* row size = 1 means there is 1 char; size 0 means 0 chars */
-  /* Note that row->size does not count the terminating '\0' char*/
+  orow *row = &O.row[fr];
+
   // note below order important because row->size undefined if O.numrows = 0 because O.row is NULL
   if (O.numrows == 0 || row->size == 0 ) return; 
 
-  memmove(&row->chars[O.cx], &row->chars[O.cx + 1], row->size - O.cx);
+  memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
+  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
   row->size--;
+  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
   if (O.numrows == 1 && row->size == 0) {
     O.numrows = 0;
@@ -1017,9 +1032,10 @@ void outlineBackspace(void) {
 
   orow *row = &O.row[fr];
 
-  //memmove(dest, source, number of bytes to move?)
-  memmove(&row->chars[O.cx - 1], &row->chars[O.cx], row->size - O.cx + 1);
+  memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
+  row->chars = realloc(row->chars, row->size); 
   row->size--;
+  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
   O.cx--; //if O.cx goes negative outlineScroll should handle it
  
   row->dirty = true;
@@ -2265,6 +2281,7 @@ void outlineProcessKeypress() {
             case C_edit: //edit the note of the current item
                E.cx = E.cy = E.rowoff = 0;
                E.mode = NORMAL;
+               O.mode = NORMAL;
                // might have last been in item_info_display mode
                // or possibly was changed in another program (unlikely)
                // if it's a performance issue can revisit - doubt it will be
@@ -2859,69 +2876,68 @@ void update_row(void) {
     return;
   }
 
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
+  if (row->id != -1) {
 
-  int len = row->size;
-  char *title = malloc(len + 1);
-  memcpy(title, row->chars, len);
-  title[len] = '\0';
-
-      // Need to replace single quotes with two single quotes which escapes the single quote 
-      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-      const char *str = title;
-      int cnt = strlen(str)+1;
-      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-          ;
-      //VLA
-      char escaped_title[cnt];
-      char *out = escaped_title;
-      const char *in = str;
-      while (*in) {
-          *out++ = *in;
-          if (*in == 39) *out++ = 39;
-          in++;
+    if (PQstatus(conn) != CONNECTION_OK){
+      if (PQstatus(conn) == CONNECTION_BAD) {
+          
+          fprintf(stderr, "Connection to database failed: %s\n",
+              PQerrorMessage(conn));
+          do_exit(conn);
       }
-
-      *out = '\0';
-
-  char *query = malloc(row->size + 100);
-
-  sprintf(query, "UPDATE task SET title=\'%s\', "
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                   title, get_id(-1));
-
-  PGresult *res = PQexec(conn, query); 
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage(PQerrorMessage(conn));
+    }
+  
+    int len = row->size;
+    char *title = malloc(len + 1);
+    memcpy(title, row->chars, len);
+    title[len] = '\0';
+  
+    // Need to replace single quotes with two single quotes which escapes the single quote 
+    // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+    const char *str = title;
+    int cnt = strlen(str)+1;
+    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+            ;
+    //VLA
+    char escaped_title[cnt];
+    escaped_title[cnt - 1] = '\0';
+    char *out = escaped_title;
+    const char *in = str;
+    while (*in) {
+      *out++ = *in;
+      if (*in == 39) *out++ = 39;
+      in++;
+    }
+  
+    *out = '\0';
+  
+    char *query = malloc(cnt + 100);
+  
+    sprintf(query, "UPDATE task SET title=\'%s\', "
+                     "modified=LOCALTIMESTAMP - interval '5 hours' "
+                     "WHERE id=%d",
+                     escaped_title, row->id);
+  
+    PGresult *res = PQexec(conn, query); 
+      
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+      outlineSetMessage(PQerrorMessage(conn));
+    } else {
+      row->dirty = false;    
+      outlineSetMessage("Successfully update row %d", row->id);
+    }  
+    free(query);
+    free(title);
     PQclear(res);
-    return;
-    //do_exit(conn);
-  }    
 
-  PQclear(res);
-  free(query);
-  free(title);
-  row->dirty = false;
-  outlineSetMessage("Successfull update row id: %d", row->id);
-  return;
+  } else { 
+    insert_row(fr);
+  }  
 }
 
 int insert_row(int ofr) {
 
   orow *row = &O.row[ofr];
-  char query[800];
-
-  //char title[200] = {'\0'};
-  //strncpy(title, row->chars, row->size);
 
   int len = row->size;
   char *title = malloc(len + 1);
@@ -2936,6 +2952,7 @@ int insert_row(int ofr) {
           ;
   //VLA
   char escaped_title[cnt];
+  escaped_title[cnt - 1] = '\0';
   char *out = escaped_title;
   const char *in = str;
   while (*in) {
@@ -2951,6 +2968,8 @@ int insert_row(int ofr) {
      break;
    }
  }
+
+ char *query = malloc(cnt + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
 
  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
  sprintf(query, "INSERT INTO task ("
@@ -3019,10 +3038,8 @@ int insert_row(int ofr) {
   PGresult *res = PQexec(conn, query); 
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-
-    printf("INSERT command failed\n");
-    printf("PQresStatus: %s\n", PQresStatus(PQresultStatus(res)));
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return -1;
   }
@@ -3031,7 +3048,9 @@ int insert_row(int ofr) {
   row->dirty = false;
         
   free(title);
+  free(query);
   PQclear(res);
+  outlineSetMessage("Successfully inserted new row with id %d", row->id);
     
   return row->id;
 }
@@ -3043,19 +3062,22 @@ void update_rows(void) {
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
+      //fprintf(stderr, "Connection to database failed: %s\n",
+      outlineSetMessage(PQerrorMessage(conn));
+      //do_exit(conn);
     }
   }
 
   for (int i=0; i < O.numrows;i++) {
     orow *row = &O.row[i];
-    if (row->dirty) {
+
+    if (!(row->dirty)) continue;
+
+    if (row->id != -1) {
 
       int len = row->size;
       char *title = malloc(len + 1);
-      memcpy(title, row->chars, len);
+      memcpy(title, row->chars, len); //seems to me I could also memcpy len + 1 and get the '\0' and not have to set it below
       title[len] = '\0';
 
       //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
@@ -3066,6 +3088,7 @@ void update_rows(void) {
           ;
       //VLA
       char escaped_title[cnt];
+      escaped_title[cnt - 1] = '\0';
       char *out = escaped_title;
       const char *in = str;
       while (*in) {
@@ -3076,34 +3099,32 @@ void update_rows(void) {
 
       *out = '\0';
 
-      char *query = malloc(cnt + 100);
+      char *query = malloc(cnt + 200);
 
-      if (row->id != -1) {
-        sprintf(query, "UPDATE task SET title=\'%s\', "
-                     "modified=LOCALTIMESTAMP - interval '5 hours' "
-                     "WHERE id=%d",
-                     escaped_title, row->id);
+      sprintf(query, "UPDATE task SET title=\'%s\', "
+                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   "WHERE id=%d",
+                   escaped_title, row->id);
 
-        PGresult *res = PQexec(conn, query); 
-    
-        if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-          outlineSetMessage(PQerrorMessage(conn));
-          PQclear(res);
-          return;
-        } else {
-          row->dirty = false;    
-          updated_rows[n] = row->id;
-          n++;
-          free(query);
-          free(title);
-          PQclear(res);
-        }  
-      } else { 
-        int id  = insert_row(i);
-        updated_rows[n] = id;
-        if (id !=-1) n++;
+      PGresult *res = PQexec(conn, query); 
+  
+      if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+        outlineSetMessage(PQerrorMessage(conn));
+        PQclear(res);
+        return;
+      } else {
+        row->dirty = false;    
+        updated_rows[n] = row->id;
+        n++;
+        free(query);
+        free(title);
+        PQclear(res);
       }  
-    }
+    } else { 
+      int id  = insert_row(i);
+      updated_rows[n] = id;
+      if (id !=-1) n++;
+    }  
   }
 
   if (n == 0) {
@@ -3111,9 +3132,12 @@ void update_rows(void) {
     return;
   }
 
+  outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
+  
+  outlineSetMessage("Rows successfully updated ... ");
   char msg[200];
-  char *put;
   strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  char *put;
   put = &msg[strlen(msg)];
 
   for (int j=0; j < n;j++) {
@@ -3123,6 +3147,7 @@ void update_rows(void) {
   int slen = strlen(msg);
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
   outlineSetMessage("%s",  msg);
+
   return;
 }
 
@@ -3228,11 +3253,13 @@ void outlineDelWord() {
 }
 
 void outlineDeleteToEndOfLine(void) {
-  orow *row = &O.row[O.cy];
-  row->size = O.cx;
+  int fr = outlineGetFileRow();
+  int fc = outlineGetFileCol();
+  orow *row = &O.row[fr];
+  row->size = fc;
   //Arguably you don't have to reallocate when you reduce the length of chars
-  row->chars = realloc(row->chars, O.cx + 1); //added 10042018 - before wasn't reallocating memory
-  row->chars[O.cx] = '\0';
+  row->chars = realloc(row->chars, fc + 1); //added 10042018 - before wasn't reallocating memory
+  row->chars[fc] = '\0';
   }
 
 void outlineMoveCursorEOL() {
