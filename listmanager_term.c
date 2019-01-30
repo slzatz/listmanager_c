@@ -8,6 +8,7 @@
 #define OUTLINE_ACTIVE 0 //tab should move back and forth between these
 #define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
+#define TOP_MARGIN 1
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
@@ -34,6 +35,7 @@
 /*** defines ***/
 
 int EDITOR_LEFT_MARGIN;
+//int TOP_MARGIN;
 
 char *context[] = {
                         "", //maybe should be "search" - we'll see
@@ -1477,8 +1479,9 @@ void outlineDrawRows(struct abuf *ab) {
   if (!O.row) return; //***************************
 
   int y;
-  char offset_lf_ret[10];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
+  char offset_lf_ret[20];
+  //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", OUTLINE_LEFT_MARGIN, TOP_MARGIN); 
 
   for (y = 0; y < O.screenrows; y++) {
     int filerow = y + O.rowoff;
@@ -1533,9 +1536,11 @@ void outlineDrawStatusBar(struct abuf *ab) {
   // at OUTLINE_LEFT_MARGIN
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             O.screenrows + 1,
+                             //O.screenrows + 1,
+                             O.screenrows + TOP_MARGIN + 1,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             O.screenrows + 1,
+                             //O.screenrows + 1,
+                             O.screenrows + TOP_MARGIN + 1,
                              OUTLINE_LEFT_MARGIN + 1);
   abAppend(ab, buf, strlen(buf));
 
@@ -1584,9 +1589,11 @@ void outlineDrawMessageBar(struct abuf *ab) {
   // Erase from mid-screen to the left and then place cursor left margin
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             O.screenrows + 2,
+                             //O.screenrows + 2,
+                             O.screenrows + 2 + TOP_MARGIN,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             O.screenrows + 2,
+                             //O.screenrows + 2,
+                             O.screenrows + 2 + TOP_MARGIN,
                              OUTLINE_LEFT_MARGIN + 1);
   abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.message);
@@ -1613,14 +1620,18 @@ void outlineRefreshScreen(void) {
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
-  for (int j=0; j < O.screenrows;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, 
+  //for (int j=0; j < O.screenrows;j++) {
+  //for (int j=0; j < O.screenrows + 1;j++) {
+  for (int j=TOP_MARGIN; j < O.screenrows + 1;j++) {
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
     O.screencols + OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
   }
 
   // put cursor at upper left after erasing
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, OUTLINE_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, OUTLINE_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
 
   abAppend(&ab, buf, strlen(buf));
   outlineDrawRows(&ab);
@@ -1630,7 +1641,9 @@ void outlineRefreshScreen(void) {
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
   if (O.mode != DATABASE) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, 1); 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
     abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
   }
@@ -1639,7 +1652,7 @@ void outlineRefreshScreen(void) {
     abAppend(&ab, buf, strlen(buf));
 }
   // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy+1, O.cx + OUTLINE_LEFT_MARGIN + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
   abAppend(&ab, buf, strlen(buf));
 
   abAppend(&ab, "\x1b[0m", 4); //return background to normal
@@ -5130,7 +5143,8 @@ void initOutline() {
 
   //if (getWindowSize(&O.screenrows, &O.screencols) == -1) die("getWindowSize");
   if (getWindowSize(&screenrows, &screencols) == -1) die("getWindowSize");
-  O.screenrows = screenrows - 2;
+  //O.screenrows = screenrows - 2;
+  O.screenrows = screenrows - 2 - TOP_MARGIN;
   O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
 }
 
@@ -5169,15 +5183,26 @@ int main(void) {
   int pos = screencols/2;
   char buf[32];
   for (int j=1; j < O.screenrows + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, pos);
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, pos);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
     //write(STDOUT_FILENO, "\x1b[31;1m|", 8); //31m = red; 1m = bold (only need last 'm')
     write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
-    write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
-    write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+    //write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
+    //write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 }
+
+  for (int j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, j);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+  }
+
+  write(STDOUT_FILENO, "\x1b[37;1mk", 8); //corner
+  write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
+  write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
   get_conn();
   get_data3(O.context, 200); //? brings back deleted/completed-type data
