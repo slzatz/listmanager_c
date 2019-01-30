@@ -3447,7 +3447,7 @@ void editorDrawRows(struct abuf *ab) {
   int len, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   //int filerow = 0;
   int filerow = editorGetFileRowByLine(0); //thought is find the first row given E.rowoff
 
@@ -3563,7 +3563,7 @@ void editorDrawStatusBar(struct abuf *ab) {
 
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 1,
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + TOP_MARGIN + 1,
                                             EDITOR_LEFT_MARGIN + 1); 
   abAppend(ab, buf, strlen(buf));
 
@@ -3609,7 +3609,7 @@ void editorDrawStatusBar(struct abuf *ab) {
 void editorDrawMessageBar(struct abuf *ab) {
   // Position cursor on last row and mid-screen
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + 2,
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + TOP_MARGIN + 2,
                                             EDITOR_LEFT_MARGIN + 1); 
   abAppend(ab, buf, strlen(buf));
 
@@ -3636,7 +3636,7 @@ void editorRefreshScreen(void) {
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   abAppend(&ab, buf, strlen(buf));
   //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
@@ -3648,7 +3648,7 @@ void editorRefreshScreen(void) {
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
     char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy+1, E.cx + EDITOR_LEFT_MARGIN + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1);
     abAppend(&ab, buf, strlen(buf));
   }
 
@@ -5132,7 +5132,7 @@ void initOutline() {
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
   //O.context = NULL;
-  O.context = "not work";
+  O.context = "todo";
   O.show_deleted = false;
   O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -5176,13 +5176,14 @@ void initEditor(void) {
 }
 
 int main(void) {
+  int j;
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   initOutline();
   initEditor();
   int pos = screencols/2;
   char buf[32];
-  for (int j=1; j < O.screenrows + 1;j++) {
+  for (j=1; j < O.screenrows + 1;j++) {
     //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, pos);
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
@@ -5194,13 +5195,22 @@ int main(void) {
     //write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 }
 
-  for (int j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
+  for (j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, j);
     write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
   }
 
-  write(STDOUT_FILENO, "\x1b[37;1mk", 8); //corner
+  //write(STDOUT_FILENO, "\x1b[37;1mk", 8); //corner
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
+  for (int k=j+1; k < screencols ;k++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+  }
+
+
   write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
