@@ -1764,42 +1764,35 @@ void outlineDrawStatusBar(struct abuf *ab) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenrows + TOP_MARGIN + 1,
                              O.screencols + OUTLINE_LEFT_MARGIN,
+
                              O.screenrows + TOP_MARGIN + 1,
-                             //OUTLINE_LEFT_MARGIN + 1);
-                             1);
+                             1); //status bar comes right out to left margin
 
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-//  char truncated_title[20];
-//  strncpy(truncated_title, row->chars, 19);
-//  truncated_title[19] = '\0'; // if title is shorter than 19, should be fine
-
   int len = (row->size < 20) ? row->size : 19;
   char *truncated_title = malloc(len + 1);
-  memcpy(truncated_title, row->chars, len);
+  memcpy(truncated_title, row->chars, len); //had issues with strncpy so changed to memcpy
   truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
   len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s %s",
-    O.context ? O.context : "[No Name]", O.numrows,
-    truncated_title,
-    (row->dirty) ? "(modified)" : "",
-    which_db);
-  //nt rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-  //  row->id, fr + 1, O.numrows);
+                  O.context, O.numrows, truncated_title,
+                  (row->dirty) ? "(modified)" : "",
+                  which_db);
+
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
-    mode_text[O.mode], row->id, fr + 1, O.numrows);
-  if (len > O.screencols) len = O.screencols;
+                      mode_text[O.mode], row->id, fr + 1, O.numrows);
+
+  if (len > (O.screencols + OUTLINE_LEFT_MARGIN)) 
+    len = O.screencols + OUTLINE_LEFT_MARGIN;
+
   abAppend(ab, status, len);
 
-  
-  /* add spaces until you just have enough room
-     left to print the status message  */
-
-  while (len < O.screencols) {
-    if (O.screencols - len == rlen) {
+  while (len < (O.screencols + OUTLINE_LEFT_MARGIN)) {
+    if (O.screencols + OUTLINE_LEFT_MARGIN - len == rlen) {
       abAppend(ab, rstatus, rlen);
       break;
     } else {
@@ -1807,21 +1800,22 @@ void outlineDrawStatusBar(struct abuf *ab) {
       len++;
     }
   }
+
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
   free(truncated_title);
 }
 
 void outlineDrawMessageBar(struct abuf *ab) {
 
-  // Erase from mid-screen to the left and then place cursor left margin
+  // Erase from mid-screen to the left and then place cursor all the way left 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             //O.screenrows + 2,
                              O.screenrows + 2 + TOP_MARGIN,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             //O.screenrows + 2,
                              O.screenrows + 2 + TOP_MARGIN,
-                             OUTLINE_LEFT_MARGIN + 1);
+                             //OUTLINE_LEFT_MARGIN + 1);
+                             1);
+
   abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.message);
   if (msglen > O.screencols) msglen = O.screencols;
@@ -1843,21 +1837,16 @@ void outlineRefreshScreen(void) {
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-  //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
-  //for (int j=0; j < O.screenrows;j++) {
-  //for (int j=0; j < O.screenrows + 1;j++) {
   for (int j=TOP_MARGIN; j < O.screenrows + 1;j++) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, 
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
     O.screencols + OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
   }
 
   // put cursor at upper left after erasing
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, OUTLINE_LEFT_MARGIN + 1); 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
 
   abAppend(&ab, buf, strlen(buf));
@@ -1868,14 +1857,12 @@ void outlineRefreshScreen(void) {
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
   if (O.mode != DATABASE) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, 1); 
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
     abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
   }
   else { 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy+1, 1); //blue
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, 1); //blue
     abAppend(&ab, buf, strlen(buf));
 }
   // below restores the cursor position based on O.cx and O.cy + margin
@@ -5432,7 +5419,8 @@ int main(int argc, char** argv) {
   initEditor();
   int pos = screencols/2;
   char buf[32];
-  for (j=1; j < O.screenrows + 1;j++) {
+  //for (j=1; j < O.screenrows + 1;j++) {
+  for (j=1; j < screenrows + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
