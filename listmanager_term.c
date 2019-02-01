@@ -14,6 +14,7 @@
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define ABUF_INIT {NULL, 0}
 #define DEBUG 0
+#define UNUSED(x) (void)(x)
 
 #include <Python.h>
 #include <ctype.h>
@@ -31,9 +32,11 @@
 #include <unistd.h>
 #include <libpq-fe.h>
 #include <iniparser.h>
+#include <sqlite3.h>
 
 /*** defines ***/
 
+char * which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
 //int TOP_MARGIN;
 
@@ -242,7 +245,11 @@ struct editorConfig E;
 
 
 /*** outline prototypes ***/
-
+void (*get_data3)(char *, int);
+void (*get_data4)(char *);
+void (*get_note)(int);
+int data3_callback(void *, int, char **, char **);
+int note_callback (void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -355,6 +362,25 @@ int parse_ini_file(char * ini_name)
   return 0;
 }
 
+/*
+//seems you don't need this and you open sqlite db each time
+void get_conn_sqlite(void) {
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("test.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+        
+    //return 1;
+  }
+}
+*/
+
 void get_conn(void) {
   char conninfo[250];
   parse_ini_file("db.ini");
@@ -439,7 +465,8 @@ void get_data2(char *context, int n) {
 //  char query[200];
 //  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
 //                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
-void get_data3(char *context, int n) {
+
+void get_data3_pg(char *context, int n) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
@@ -471,8 +498,6 @@ void get_data3(char *context, int n) {
     do_exit(conn);
   }    
   
-  //O.context = context; probably better to do it on COMMAND_LINE
-
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
   } 
@@ -491,19 +516,155 @@ void get_data3(char *context, int n) {
     outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
   }
 
-
-  //outlineRefreshScreen(); //?necessary - doesn't seem to be
-
-
   PQclear(res);
- // PQfinish(conn);
+  // PQfinish(conn);
 
   O.cx = O.cy = O.rowoff = 0;
   //O.context = context;
 }
 
+void get_data3_sqlite(char *context, int n) {
+  char query[400];
+
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+
+  O.cx = O.cy = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    }
+
+  if (!O.show_deleted) {
+    sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+                    "WHERE context.title = \'%s\' "
+                    "AND (task.deleted = %s "
+                    "OR task.completed = %s) "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    context,
+                    "False",
+                    "NULL",
+                    n);
+  }
+  else {
+
+    sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+                    "WHERE context.title = \'%s\' "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    context,
+                    n);
+  }
+        
+    rc = sqlite3_exec(db, query, data3_callback, 0, &err_msg);
+    
+    if (rc != SQLITE_OK ) {
+        
+       // fprintf(stderr, "Failed to select data\n");
+        //fprintf(stderr, "SQL error: %s\n", err_msg);
+        outlineSetMessage("SQL error: %s\n", err_msg);
+
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        
+        //return 1;
+    } 
+  sqlite3_close(db);
+}
+
+int data3_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+    
+  NotUsed = 0;
+  int x = 0;
+  if (NotUsed) x = 0;
+  if (argc) x = 0;
+  if (azColName) x = 0;
+    
+  /*
+  0: id = 1
+  1: tid = 1
+  2: priority = 3
+  3: title = Parents refrigerator broken.
+  4: tag = 
+  5: folder_tid = 1
+  6: context_tid = 1
+  7: duetime = NULL
+  8: star = 0
+  9: added = 2009-07-04
+  10: completed = 2009-12-20
+  11: duedate = NULL
+  12: note = new one coming on Monday, June 6, 2009.
+  13: repeat = NULL
+  14: deleted = 0
+  15: created = 2016-08-05 23:05:16.256135
+  16: modified = 2016-08-05 23:05:16.256135
+  17: startdate = 2009-07-04
+  18: remind = NULL
+  */
+
+  char *title = argv[3];
+  char *zz = argv[1]; // ? use tid?
+  //bool star = (*argv[8] == 1) ? true: false;
+  bool star = (atoi(argv[8]) == 1) ? true: false;
+  bool deleted = (atoi(argv[14]) == 1) ? true: false;
+  bool completed = (argv[10]) ? true: false;
+  int id = atoi(zz);
+  outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+  //outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, false); 
+  return x;
+}
+
+void get_data4_sqlite(char *query) {
+
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+
+  O.cx = O.cy = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    }
+
+
+    rc = sqlite3_exec(db, query, data3_callback, 0, &err_msg);
+    
+    if (rc != SQLITE_OK ) {
+        
+       // fprintf(stderr, "Failed to select data\n");
+        //fprintf(stderr, "SQL error: %s\n", err_msg);
+        outlineSetMessage("SQL error: %s\n", err_msg);
+
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        
+        //return 1;
+    } 
+  sqlite3_close(db);
+}
+
 //brings back a set of ids generated by solr search
-void get_data4(char *query) {
+void get_data4_pg(char *query) {
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -541,7 +702,65 @@ void get_data4(char *query) {
   //O.context = context; //simplest thing to try may be O.context = "No Context" or O.context = context[0];
 }
 
-void get_note(int id) {
+void get_note_sqlite(int id) {
+  if (id ==-1) return;
+
+  // free the E.row[j].chars
+  for (int j = 0 ; j < E.filerows ; j++ ) {
+    free(E.row[j].chars);
+  } 
+  free(E.row);
+  E.row = NULL; 
+  E.filerows = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    }
+  char query[100];
+  sprintf(query, "SELECT note FROM task WHERE id = %d", id);
+
+  rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+  } 
+  sqlite3_close(db);
+}
+
+int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc);
+  UNUSED(azColName);
+
+  //NotUsed = 0;
+  //int x = 0;
+  //if (NotUsed) x = 0;
+  //if (argc) x = 0;
+ // if (azColName) x = 0;
+  //note strsep handles multiple \n\n and strtok did not
+  char *note;
+  note = strdup(argv[0]); // ******************
+  char *found;
+  while ((found = strsep(&note, "\n")) !=NULL) {
+    editorInsertRow(E.filerows, found, strlen(found));
+  }
+  E.dirty = 0;
+  editorRefreshScreen();
+  free(note);
+  return 0;
+}
+
+void get_note_pg(int id) {
   if (id ==-1) return;
 
   // free the E.row[j].chars
@@ -580,6 +799,7 @@ void get_note(int id) {
 
   return;
 }
+
 bool starts_with(const char *str, const char *pre)
 {
     size_t lenpre = strlen(pre),
@@ -642,7 +862,7 @@ void solr_find(char *search_terms) {
   PyObject *pName, *pModule, *pFunc;
   PyObject *pArgs, *pValue;
 
-  Py_Initialize();
+  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
   pName = PyUnicode_DecodeFSDefault("solr_find"); //module
   /* Error checking of pName left out */
 
@@ -677,7 +897,13 @@ void solr_find(char *search_terms) {
 
               char query[2000];
               char *put;
-              strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
+
+              if (which_db[0] == 'p') {
+                strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
+              } else {
+                strncpy(query, "SELECT * FROM task WHERE task.tid IN (", sizeof(query));
+              }
+
               put = &query[strlen(query)];
 
               for (int i=0; i<len;i++) {
@@ -701,7 +927,7 @@ void solr_find(char *search_terms) {
               Py_DECREF(pValue);
 
              //this is where you would do the search
-             get_data4(query);
+             (*get_data4)(query);
 
 
           }
@@ -1536,43 +1762,37 @@ void outlineDrawStatusBar(struct abuf *ab) {
   // at OUTLINE_LEFT_MARGIN
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             //O.screenrows + 1,
                              O.screenrows + TOP_MARGIN + 1,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             //O.screenrows + 1,
+
                              O.screenrows + TOP_MARGIN + 1,
-                             OUTLINE_LEFT_MARGIN + 1);
+                             1); //status bar comes right out to left margin
+
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-//  char truncated_title[20];
-//  strncpy(truncated_title, row->chars, 19);
-//  truncated_title[19] = '\0'; // if title is shorter than 19, should be fine
-
   int len = (row->size < 20) ? row->size : 19;
   char *truncated_title = malloc(len + 1);
-  memcpy(truncated_title, row->chars, len);
+  memcpy(truncated_title, row->chars, len); //had issues with strncpy so changed to memcpy
   truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
-  len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s",
-    O.context ? O.context : "[No Name]", O.numrows,
-    truncated_title,
-    row->dirty ? "(modified)" : "");
-  //nt rlen = snprintf(rstatus, sizeof(rstatus), "%d Status bar %d/%d",
-  //  row->id, fr + 1, O.numrows);
+  len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s %s",
+                  O.context, O.numrows, truncated_title,
+                  (row->dirty) ? "(modified)" : "",
+                  which_db);
+
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
-    mode_text[O.mode], row->id, fr + 1, O.numrows);
-  if (len > O.screencols) len = O.screencols;
+                      mode_text[O.mode], row->id, fr + 1, O.numrows);
+
+  if (len > (O.screencols + OUTLINE_LEFT_MARGIN)) 
+    len = O.screencols + OUTLINE_LEFT_MARGIN;
+
   abAppend(ab, status, len);
 
-  
-  /* add spaces until you just have enough room
-     left to print the status message  */
-
-  while (len < O.screencols) {
-    if (O.screencols - len == rlen) {
+  while (len < (O.screencols + OUTLINE_LEFT_MARGIN)) {
+    if (O.screencols + OUTLINE_LEFT_MARGIN - len == rlen) {
       abAppend(ab, rstatus, rlen);
       break;
     } else {
@@ -1580,21 +1800,22 @@ void outlineDrawStatusBar(struct abuf *ab) {
       len++;
     }
   }
+
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
   free(truncated_title);
 }
 
 void outlineDrawMessageBar(struct abuf *ab) {
 
-  // Erase from mid-screen to the left and then place cursor left margin
+  // Erase from mid-screen to the left and then place cursor all the way left 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             //O.screenrows + 2,
                              O.screenrows + 2 + TOP_MARGIN,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             //O.screenrows + 2,
                              O.screenrows + 2 + TOP_MARGIN,
-                             OUTLINE_LEFT_MARGIN + 1);
+                             //OUTLINE_LEFT_MARGIN + 1);
+                             1);
+
   abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.message);
   if (msglen > O.screencols) msglen = O.screencols;
@@ -1616,21 +1837,16 @@ void outlineRefreshScreen(void) {
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-  //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
-  //for (int j=0; j < O.screenrows;j++) {
-  //for (int j=0; j < O.screenrows + 1;j++) {
   for (int j=TOP_MARGIN; j < O.screenrows + 1;j++) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j, 
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
     O.screencols + OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
   }
 
   // put cursor at upper left after erasing
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, OUTLINE_LEFT_MARGIN + 1); 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
 
   abAppend(&ab, buf, strlen(buf));
@@ -1641,14 +1857,12 @@ void outlineRefreshScreen(void) {
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
   if (O.mode != DATABASE) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy+1, 1); 
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, 1); 
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
     abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
   }
   else { 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy+1, 1); //blue
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, 1); //blue
     abAppend(&ab, buf, strlen(buf));
 }
   // below restores the cursor position based on O.cx and O.cy + margin
@@ -1712,7 +1926,8 @@ void outlineMoveCursor(int key) {
       fr = outlineGetFileRow();
       row = &O.row[fr];
       id = O.row[fr].id;
-      get_note(id); //if id == -1 does not try to retrieve note ********************************************
+      //get_note_sqlite(id); //if id == -1 does not try to retrieve note ********************************************
+      (*get_note)(id); //if id == -1 does not try to retrieve note ********************************************
       return;
 
     case ARROW_DOWN:
@@ -1722,7 +1937,8 @@ void outlineMoveCursor(int key) {
       fr = outlineGetFileRow();
       row = &O.row[fr];
       id = O.row[fr].id;
-      get_note(id); //if id == -1 does not try to retrieve note ********************************************
+      //get_note_sqlite(id); //if id == -1 does not try to retrieve note ********************************************
+      (*get_note)(id); //if id == -1 does not try to retrieve note ********************************************
       return;
   }
 }
@@ -2300,7 +2516,8 @@ void outlineProcessKeypress() {
                // might have last been in item_info_display mode
                // or possibly was changed in another program (unlikely)
                // if it's a performance issue can revisit - doubt it will be
-               get_note(get_id(-1)); 
+               //get_note_sqlite(get_id(-1)); 
+               (*get_note)(get_id(-1)); //if id == -1 does not try to retrieve note ********************************************
                editor_mode = true;
                return;
 
@@ -2379,7 +2596,8 @@ void outlineProcessKeypress() {
                  return;
                }
                outlineSetMessage("\'%s\' will be opened", new_context);
-               get_data3(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
+               //get_data3_sqlite(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
+               (*get_data3)(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
                O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
@@ -2450,14 +2668,16 @@ void outlineProcessKeypress() {
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          get_data3(O.context, 200);
+          //get_data3_sqlite(O.context, 200);
+          (*get_data3)(O.context, 200);
             
           return;
 
         case 'r':
           O.cx = 0;
           O.repeat = 0;
-          get_data3(O.context, 200);
+          //get_data3_sqlite(O.context, 200);
+          (*get_data3)(O.context, 200);
           return;
 
         case SHIFT_TAB:
@@ -5175,7 +5395,22 @@ void initEditor(void) {
   EDITOR_LEFT_MARGIN = screencols/2 + 3;
 }
 
-int main(void) {
+int main(int argc, char** argv) { 
+
+  if (argc > 1 && argv[1][0] == 's') {
+    get_data3 = &get_data3_sqlite;
+    get_data4 = &get_data4_sqlite;
+    get_note = &get_note_sqlite;
+    which_db = "sqlite";
+  } else {
+    get_conn();
+    get_data3 = &get_data3_pg;
+    get_data4 = &get_data4_pg;
+    get_note = &get_note_pg;
+    which_db = "postgres";
+  }
+
+
   int j;
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -5183,22 +5418,19 @@ int main(void) {
   initEditor();
   int pos = screencols/2;
   char buf[32];
-  for (j=1; j < O.screenrows + 1;j++) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", j, pos);
+  //for (j=1; j < O.screenrows + 1;j++) {
+  for (j=1; j < screenrows + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
-    //write(STDOUT_FILENO, "\x1b[31;1m|", 8); //31m = red; 1m = bold (only need last 'm')
     write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
-    //write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
-    //write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 }
 
   for (j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, j);
     write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line q = 0x71
   }
 
   //write(STDOUT_FILENO, "\x1b[37;1mk", 8); //corner
@@ -5214,8 +5446,7 @@ int main(void) {
   write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  get_conn();
-  get_data3(O.context, 200); //? brings back deleted/completed-type data
+  (*get_data3)(O.context, 200); //? brings back deleted/completed-type data
   
  // PQfinish(conn); // this should happen when exiting
 
