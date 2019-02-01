@@ -862,7 +862,7 @@ void solr_find(char *search_terms) {
   PyObject *pName, *pModule, *pFunc;
   PyObject *pArgs, *pValue;
 
-  Py_Initialize();
+  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
   pName = PyUnicode_DecodeFSDefault("solr_find"); //module
   /* Error checking of pName left out */
 
@@ -5396,9 +5396,8 @@ void initEditor(void) {
 }
 
 int main(int argc, char** argv) { 
-  UNUSED(argc);
 
-  if (argv[1][0] == 's') {
+  if (argc > 1 && argv[1][0] == 's') {
     get_data3 = &get_data3_sqlite;
     get_data4 = &get_data4_sqlite;
     get_note = &get_note_sqlite;
