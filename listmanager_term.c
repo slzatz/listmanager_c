@@ -117,12 +117,14 @@ enum Command {
   C_fin,
   C_find,
 
-  C_new,
+  C_new, //create a new item
 
-  C_context,
+  C_context, //change an item's context
   C_con,
 
-  C_e,
+  C_update, //update solr db
+
+  C_e, //edit a note
   C_edit
 };
 
@@ -150,6 +152,7 @@ static t_symstruct lookuptable[] = {
   {"new", C_new},
   {"context", C_context},
   {"con", C_context},
+  {"update", C_update},
   {"edit", C_edit},
   {"e", C_edit}
 };
@@ -854,8 +857,10 @@ void view_html(int id) {
       PyErr_Print();
       outlineSetMessage("Was not able to find the module: view_html!");
   }
-  if (Py_FinalizeEx() < 0) {
-  }
+
+  //if (Py_FinalizeEx() < 0) {
+  //}
+
 }
 void solr_find(char *search_terms) {
 
@@ -949,71 +954,106 @@ void solr_find(char *search_terms) {
       PyErr_Print();
       outlineSetMessage("Was not able to find the module: view_html!");
   }
-  if (Py_FinalizeEx() < 0) {
-      //return 120;
+
+  //if (Py_FinalizeEx() < 0) {
+  //}
+
+}
+
+void update_solr(void) {
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  int num = 0;
+
+  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
+  pName = PyUnicode_DecodeFSDefault("update_solr"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "update_solr"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(0); //presumably PyTuple_New(x) creates a tuple with that many elements
+          //pValue = PyLong_FromLong(1);
+          //pValue = Py_BuildValue("s", search_terms); // **************
+          //PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+              //Py_ssize_t size; 
+              //int len = PyList_Size(pValue);
+              num = PyLong_AsLong(pValue);
+              Py_DECREF(pValue); 
+          } else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              outlineSetMessage("Problem retrieving ids from solr!");
+          }
+      } else { if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: solr_find!");
+      }
+
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+
+  } else {
+      PyErr_Print();
+      outlineSetMessage("Was not able to find the module: view_html!");
   }
-  //return 0;
+
+  //if (Py_FinalizeEx() < 0) {
+  //}
+
+  outlineSetMessage("%d items were added/updated to solr db", num);
 }
-int keyfromstring(char *key)
-{
-    int i;
-    for (i=0; i <  NKEYS; i++) {
-        if (strcmp(lookuptable[i].key, key) == 0)
-          return lookuptable[i].val;
+
+int keyfromstring(char *key) {
+  int i;
+  for (i=0; i <  NKEYS; i++) {
+    if (strcmp(lookuptable[i].key, key) == 0) return lookuptable[i].val;
     }
 
     //nothing should match -1
     return -1;
 }
 
-int keyfromstring2(char *key) //for commands like find nemo - that consist of a command a space and further info
-{
-    int i;
-    char *new_key;
-    char *ptr_2_space = strchr(key, ' ');
-    if (ptr_2_space) {
-      int pos = ptr_2_space - key;
-      new_key = strndup(key, pos);
-      new_key[pos] = '\0'; }
-    else new_key = key;
+//through pointer passes back position of space (if there is one)
+int multiwordkeyfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
+  int i;
+  char *new_key;
+  char *ptr_2_space = strchr(key, ' ');
+  if (ptr_2_space) {
+    int pos = ptr_2_space - key;
+    *p = pos; // reference it position of space available to those multiword COMMAND_LINE mode switch cases that need it
+    new_key = strndup(key, pos);
+    new_key[pos] = '\0'; 
+  } else {
+    new_key = key;
+    *p = 0; //not sure this is necessary - not using it when command has no space
+  }
 
-    for (i=0; i <  NKEYS; i++) {
-        if (strcmp(lookuptable[i].key, new_key) == 0)
-          return lookuptable[i].val;
-    }
-
-    //nothing should match -1
-
-    free(new_key);
-    return -1;
-}
-
-int keyfromstring3(char *key, int *p) //for commands like find nemo - that consist of a command a space and further info
-{
-    int i;
-    char *new_key;
-    char *ptr_2_space = strchr(key, ' ');
-    if (ptr_2_space) {
-      int pos = ptr_2_space - key;
-      *p = pos; // just here to pass it back to some of the COMMAND_MODEa swith cases (commands)
-      new_key = strndup(key, pos);
-      new_key[pos] = '\0'; }
-    else {
-      new_key = key;
-      *p = 0; //not sure this is necessary - not using it when command has no space
-    }
-
-    for (i=0; i <  NKEYS; i++) {
-        if (strcmp(lookuptable[i].key, new_key) == 0)
-          return lookuptable[i].val;
-    }
+  for (i=0; i <  NKEYS; i++) {
+    if (strcmp(lookuptable[i].key, new_key) == 0)
+      return lookuptable[i].val;
+  }
 
     //nothing should match -1
 
-    free(new_key);
-    return -1;
+  free(new_key);
+  return -1;
 }
-/*** terminal ***/
 
 void die(const char *s) {
   // write is from <unistd.h> 
@@ -2326,21 +2366,19 @@ void outlineProcessKeypress() {
       switch(c) {
 
         case '\x1b': 
-          O.mode = 0;
-          O.command[0] = '\0';
-          O.command_line[0] = '\0'; //////////////////// ************************
+          O.mode = NORMAL;
+          //O.command[0] = '\0'; // should have been set on leaving NORMAL mode
+          //O.command_line[0] = '\0'; // should be set whenever entering COMMAND_LINE mode
           outlineSetMessage(""); 
           return;
 
         case ARROW_UP:
-        //case 'k':
             if (NN == 11) NN = 1;
             else NN++;
             outlineSetMessage(context[NN]);
             return;
 
         case ARROW_DOWN:
-        //case 'j':
             if (NN < 2) NN = 11;
             else NN--;
             outlineSetMessage(context[NN]);
@@ -2348,59 +2386,13 @@ void outlineProcessKeypress() {
 
         case '\r':
 
-          switch(O.command_line[0]) { //should be changed to switch(O.command_line[0]
+          switch(O.command_line[0]) { 
 
             case 'w':
               update_rows();
               O.mode = 0;
               O.command_line[0] = '\0';
               return;
-
-             /* Right now dealing with this in the switch below -
-                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
-             case 'e':
-               E.cx = E.cy = E.rowoff = 0;
-               E.mode = NORMAL;
-               // might have last been in item_info_display mode
-               // or possibly was changed in another program (unlikely)
-               // if it's a performance issue can revisit - doubt it will be
-               get_note(get_id(-1)); 
-               editor_mode = true;
-               return;
-             */
-
-             /* Right now dealing with this in the switch below -
-                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
-             case 'o': //originates in DATABASES mode but uses COMMAND_LINE code
-               ;
-               char *new_context;
-               if (NN) {
-                 new_context = context[NN];
-               } else if (strlen(O.command_line) > 3) {
-                 bool success = false;
-                 for (int k = 1; k < 12; k++) { 
-                   if (strncmp(&O.command_line[1], context[k], 3) == 0) {
-                     strcpy(&O.command_line[1], context[k]);
-                     new_context = context[k];
-                     success = true;
-                     break;
-                   }
-                 }
-
-                 if (!success) return;
-
-               } else {
-                 outlineSetMessage("You need to provide a context!");
-                 O.command_line[1] = '\0';
-                 return;
-               }
-               outlineSetMessage("\'%s\' will be opened", O.context);
-               get_data3(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
-               O.context = new_context; 
-               O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
-               return;
-               */
 
              case 'x':
                update_rows();
@@ -2409,11 +2401,9 @@ void outlineProcessKeypress() {
                exit(0);
                return;
 
-
-             /* Right now dealing with this in the switch below -
-                switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
-
-             case 'n': // really should be 'new' to somewhat mirror command to create a new window with new buffer
+             /*
+             //Right now to create a new item you need to type :new but need to decide about :n
+             case 'n': 
                 outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
 
                 O.cx = O.cy = O.rowoff = 0;
@@ -2441,11 +2431,11 @@ void outlineProcessKeypress() {
                  if (strlen(O.command_line) == 2 && O.command_line[1] == '!') {
                    write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                    write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+                   Py_FinalizeEx();
                    exit(0);
                  }  
                  else {
                    O.mode = NORMAL;
-                   //O.command[0] = '\0'; //should be set when coming in to COMMAND_LINE mode
                    outlineSetMessage("No db write since last change");
                  }
                }
@@ -2453,50 +2443,18 @@ void outlineProcessKeypress() {
                else {
                  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                  write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+                 Py_FinalizeEx();
                  exit(0);
                }
-
                return;
 
-             /*
-             case 'c': //originates in DATABASES mode but uses COMMAND_LINE code
-               if (NN) {
-                 //new_context = context[NN];
-               } else {
-                 if (strlen(O.command_line) > 2) {
-                   //char *new_context = strdup(&O.command_line[1]);
-                 } else {
-                   outlineSetMessage("You need to provide a context");
-                   NN = 0;
-                   O.command_line[1] = '\0';
-                   return;
-                 }
-               }
-               outlineSetMessage("\"%s\" will be assigned to the item", context[NN]);
-               update_context(NN);
-               O.mode = DATABASE; //return to DATABASE mode
-               O.command_line[0] = '\0';
-               return;
-               */
+          } //end of first switch under case '\r' which is under the switch(c) that is under case COMMAND_LINE
 
-             /*case 'f':
-               solr_find(&O.command_line[1]);
-               outlineSetMessage("Will search items for \'%s\'", &O.command_line[1]);
-               O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
-               return;
-             */
-
-             //  return;
-          } //end of inner inner switch of outer case COMMAND_LINE
-
-          // **** need to look at this to also catch new and edit
-          // default above would have to go if we wanted to fall through
-          // to this switch concerning multi-character command line commands
-          //switch (keyfromstring2(O.command_line)) { //needs keyfromstring2 becaouse of space
+          // the switch below is for multi-character and in some cases multi-word command line commands followed by '\r'
+          //switch 
           int pos;
           char *new_context;
-          switch (keyfromstring3(O.command_line, &pos)) { //needs keyfromstring2 becaouse of space
+          switch (multiwordkeyfromstring(O.command_line, &pos)) { //through pointer passes back position of space (if there is one)
 
             case C_new: //in vim create a new window and edit a file in it - here creates new item
               outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
@@ -2525,8 +2483,8 @@ void outlineProcessKeypress() {
             //case C_fin:
               if (strlen(O.command_line) < 6) {
                 outlineSetMessage("You need more characters");
-              return;
-            }  
+                return;
+              }  
               //int p = (O.command_line[4] == ' ') ? 5 : 4;
               //solr_find(&O.command_line[p]);
               solr_find(&O.command_line[pos + 1]);
@@ -2534,6 +2492,11 @@ void outlineProcessKeypress() {
               O.mode = NORMAL;
               O.context = "search";
               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+              return;
+
+            case C_update: //update solr
+              update_solr();
+              O.command_line[0] = '\0'; 
               return;
 
             case C_context:
@@ -2602,12 +2565,18 @@ void outlineProcessKeypress() {
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
-          //case C_quit
-            default: //if after checking both single letter and multi-letter commonds there are no matches, just return
+
+            //case C_quit
+
+            default: // default for keyfromstring - 1st single letter and then keyfromstring for '\r' in COMMAND_MODE
               return;
-          }
-        default:
-          ;
+
+          } //end of keyfromstring switch with '\r' of COMMAND_LINE
+
+        default: //default for switch 'c' of COMMAND_LINE
+
+          if (c=='\r') return; // if return calls through don't add return to command_line just allow more characters to be typed
+
           int n = strlen(O.command_line);
           if (c == DEL_KEY || c == BACKSPACE) {
             O.command_line[n-1] = '\0';
@@ -2618,13 +2587,7 @@ void outlineProcessKeypress() {
 
           outlineSetMessage(":%s", O.command_line);
 
-          /*
-          if (O.command_line[0] == 'o') outlineSetMessage("open %s", &O.command_line[1]);
-          else if (O.command_line[0] == 'f') outlineSetMessage("find %s", &O.command_line[1]);
-          else outlineSetMessage(":%s", O.command_line);
-          */
-
-        } // DO NOT REMOVE - becomes end of inner switch
+        } // end of 'c' switch within case COMMAND_LINE
 
       return; //end of outer case COMMAND_LINE
 
@@ -3212,7 +3175,7 @@ int insert_row(int ofr) {
                                    "priority, "
                                    "title, "
                                    //"tag, "
-                                   //"folder_tid, "
+                                   "folder_tid, "
                                    "context_tid, "
                                    //"duetime, "
                                    "star, "
@@ -3231,7 +3194,7 @@ int insert_row(int ofr) {
                                    " %d," //priority
                                    " \'%s\',"//title
                                    //%s //tag 
-                                   //%s //folder_tid
+                                   " %d," //folder_tid
                                    " %d," //context_tid 
                                    //%s, //duetime
                                    " %s," //star 
@@ -3251,7 +3214,7 @@ int insert_row(int ofr) {
                                    3, //priority, 
                                    escaped_title, 
                                    //tag, 
-                                   //folder_tid,
+                                   1, //folder_tid,
                                    context_tid, 
                                    //duetime, 
                                    "True", //star, 
@@ -5453,6 +5416,11 @@ int main(int argc, char** argv) {
   O.cx = O.cy = O.rowoff = 0;
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenrows, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
+
+  // putting this here seems to speed up first search but still slow
+  // might make sense to do the module imports here too
+  // assume the reimports are essentially no-ops
+  Py_Initialize(); 
 
   while (1) {
     if (editor_mode){
