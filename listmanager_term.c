@@ -251,6 +251,8 @@ struct editorConfig E;
 void (*get_data3)(char *, int);
 void (*get_data4)(char *);
 void (*get_note)(int);
+void (*update_note)(void); 
+void (*toggle_star)(void);
 int data3_callback(void *, int, char **, char **);
 int note_callback (void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
@@ -281,11 +283,12 @@ int get_id(int fr);
 void update_row(void);
 int insert_row(int ofr); 
 void update_rows(void);
-void update_note(void); 
+void update_note_pg(void); 
+void update_note_sqlite(void); 
 void update_context(int context_tid);
 void toggle_completed(void);
 void toggle_deleted(void);
-void toggle_star(void);
+//void toggle_star(void);
 void display_item_info(int id);
 
 //editor Prototypes
@@ -727,8 +730,9 @@ void get_note_sqlite(int id) {
     sqlite3_close(db);
     }
   char query[100];
-  sprintf(query, "SELECT note FROM task WHERE id = %d", id);
+  sprintf(query, "SELECT note FROM task WHERE tid = %d", id);
 
+  // callback does *not* appear to be called if result (argv) is null
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
@@ -739,17 +743,13 @@ void get_note_sqlite(int id) {
   sqlite3_close(db);
 }
 
+// doesn't appear to be called if row is NULL
 int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
   UNUSED(NotUsed);
-  UNUSED(argc);
+  UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  //NotUsed = 0;
-  //int x = 0;
-  //if (NotUsed) x = 0;
-  //if (argc) x = 0;
- // if (azColName) x = 0;
   //note strsep handles multiple \n\n and strtok did not
   char *note;
   note = strdup(argv[0]); // ******************
@@ -758,7 +758,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     editorInsertRow(E.filerows, found, strlen(found));
   }
   E.dirty = 0;
-  editorRefreshScreen();
+  //editorSetMessage("");
   free(note);
   return 0;
 }
@@ -1966,8 +1966,8 @@ void outlineMoveCursor(int key) {
       fr = outlineGetFileRow();
       row = &O.row[fr];
       id = O.row[fr].id;
-      //get_note_sqlite(id); //if id == -1 does not try to retrieve note ********************************************
-      (*get_note)(id); //if id == -1 does not try to retrieve note ********************************************
+      (*get_note)(id); //if id == -1 does not try to retrieve note 
+      editorRefreshScreen();
       return;
 
     case ARROW_DOWN:
@@ -1977,8 +1977,8 @@ void outlineMoveCursor(int key) {
       fr = outlineGetFileRow();
       row = &O.row[fr];
       id = O.row[fr].id;
-      //get_note_sqlite(id); //if id == -1 does not try to retrieve note ********************************************
-      (*get_note)(id); //if id == -1 does not try to retrieve note ********************************************
+      (*get_note)(id); //if id == -1 does not try to retrieve note 
+      editorRefreshScreen();
       return;
   }
 }
@@ -2080,16 +2080,7 @@ void outlineProcessKeypress() {
           //O.command[0] = '\0';
           O.repeat = 0;
           return;
-          /*
-          E.cx = E.cy = E.rowoff = 0;
-          E.mode = NORMAL;
-          // might have last been in item_info_display mode
-          // or possibly was changed in another program (unlikely)
-          // if it's a performance issue can revisit - doubt it will be
-          get_note(get_id(-1)); 
-          editor_mode = true;
-          return;
-          */
+
         case '\r':
           update_row();
           return;
@@ -2474,8 +2465,8 @@ void outlineProcessKeypress() {
                // might have last been in item_info_display mode
                // or possibly was changed in another program (unlikely)
                // if it's a performance issue can revisit - doubt it will be
-               //get_note_sqlite(get_id(-1)); 
-               (*get_note)(get_id(-1)); //if id == -1 does not try to retrieve note ********************************************
+               (*get_note)(get_id(-1)); //if id == -1 does not try to retrieve note
+               editorRefreshScreen();
                editor_mode = true;
                return;
 
@@ -2625,7 +2616,7 @@ void outlineProcessKeypress() {
         case '*':
           O.cx = 0;
           O.repeat = 0;
-          toggle_star();
+          (*toggle_star)();
           return;
 
         case 's': 
@@ -2831,7 +2822,7 @@ void display_item_info(int id) {
   return;
 }
 
-void update_note(void) {
+void update_note_pg(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -2902,6 +2893,79 @@ void update_note(void) {
   return;
 }
 
+void update_note_sqlite(void) {
+
+  int len;
+  char *text = editorRowsToString(&len);
+
+ /*
+ Note previously had used strncpy but  Valgrind just does not seem to like strncpy
+ and no one else seems to like it as well
+ */
+
+  char *note = malloc(len + 1);
+  memcpy(note, text, len);
+  note[len] = '\0'; 
+
+  //Below replaces single quotes with two single quotes which escapes the single quote
+  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  const char *str = note;
+  int cnt = strlen(str)+1;
+   for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+          ;
+  //VLA
+  char escaped_note[cnt];
+  char *out = escaped_note;
+  const char *in = str;
+  while (*in) {
+      *out++ = *in;
+      if (*in == 39) *out++ = 39;
+      //if (*in == 133) *out++ = 32;
+
+      in++;
+  }
+
+  *out = '\0';
+
+  int ofr = outlineGetFileRow();
+  int id = get_id(ofr);
+
+  char *query = malloc(cnt + 100);
+
+  sprintf(query, "UPDATE task SET note=\'%s\', "
+                   "modified=datetime() "
+                   "WHERE tid=%d",
+                   escaped_note, id);
+
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Updated %d", id);
+  }
+
+  sqlite3_close(db);
+
+  free(note);
+  free(query);
+  free(text);
+  E.dirty = 0;
+}
 void update_context(int context_tid) {
 
   orow *row;
@@ -3023,7 +3087,7 @@ void toggle_deleted(void) {
   return;
 }
 
-void toggle_star(void) {
+void toggle_star_pg(void) {
 
   orow *row;
   int fr = outlineGetFileRow();
@@ -3063,6 +3127,46 @@ void toggle_star(void) {
   }
   PQclear(res);
   return;
+}
+
+void toggle_star_sqlite(void) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET star=%s, " 
+                 "modified=datetime() "
+                 "WHERE tid=%d",
+                 (row->star) ? "False" : "True", id);
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Toggle star succeeded");
+    row->star = !row->star;
+    //row->dirty = true;
+  }
+
+  sqlite3_close(db);
+
 }
 
 void update_row(void) {
@@ -3738,19 +3842,21 @@ void editorDrawRows(struct abuf *ab) {
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
 
-  if (!E.row || !O.row) return; //**********************************
+  // if (!E.row || !O.row) return; //**********************************
+  int efr = (E.row) ? editorGetFileRow() : -1;
 
-  int efr = editorGetFileRow();
+  //int efr = editorGetFileRow();
   int ofr = outlineGetFileRow();
   orow *row = &O.row[ofr];
 
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + TOP_MARGIN + 1,
-                                            EDITOR_LEFT_MARGIN + 1); 
+                                            EDITOR_LEFT_MARGIN);//+1 
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
+
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
   //char truncated_title[20];
@@ -4443,14 +4549,16 @@ void editorProcessKeypress(void) {
           switch (E.command[1]) {
 
             case 'w':
-              update_note();
+              //update_note();
+              (*update_note)();
               E.mode = NORMAL;
               E.command[0] = '\0';
 
               return;
   
             case 'x':
-              update_note();
+              //update_note();
+              (*update_note)();
               E.mode = NORMAL;
               E.command[0] = '\0';
               editor_mode = false;
@@ -5353,9 +5461,9 @@ void initEditor(void) {
   E.continuation = 0; //circumstance when a line wraps
 
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-  E.screenrows = screenrows - 2;
-  E.screencols = -5 + screencols/2;
-  EDITOR_LEFT_MARGIN = screencols/2 + 3;
+  E.screenrows = screenrows - 2 - TOP_MARGIN;
+  E.screencols = -2 + screencols/2;
+  EDITOR_LEFT_MARGIN = screencols/2 + 1;
 }
 
 int main(int argc, char** argv) { 
@@ -5364,12 +5472,20 @@ int main(int argc, char** argv) {
     get_data3 = &get_data3_sqlite;
     get_data4 = &get_data4_sqlite;
     get_note = &get_note_sqlite;
+    update_note = &update_note_sqlite;
+    toggle_star = &toggle_star_sqlite;
+    //insert_note = &insert_note_sqlite;
+    //update_rows = &update_rows_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
     get_data3 = &get_data3_pg;
     get_data4 = &get_data4_pg;
     get_note = &get_note_pg;
+    update_note = &update_note_pg;
+    toggle_star = &toggle_star_pg;
+    //insert_note = &insert_note_pg;
+    //update_rows = &update_rows_pg;
     which_db = "postgres";
   }
 
