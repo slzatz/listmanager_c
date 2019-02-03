@@ -3320,7 +3320,7 @@ void update_row(void) {
   }  
 }
 
-int insert_row(int ofr) {
+int insert_row_pg(int ofr) {
 
   orow *row = &O.row[ofr];
 
@@ -3435,6 +3435,139 @@ int insert_row(int ofr) {
   free(title);
   free(query);
   PQclear(res);
+  outlineSetMessage("Successfully inserted new row with id %d", row->id);
+    
+  return row->id;
+}
+
+int insert_row_sqlite(int ofr) {
+
+  orow *row = &O.row[ofr];
+
+  int len = row->size;
+  char *title = malloc(len + 1);
+  memcpy(title, row->chars, len);
+  title[len] = '\0';
+
+  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  const char *str = title;
+  int cnt = strlen(str)+1;
+  for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates at the end of the string where *p == 0
+          ;
+  //VLA
+  char escaped_title[cnt];
+  escaped_title[cnt - 1] = '\0';
+  char *out = escaped_title;
+  const char *in = str;
+  while (*in) {
+    *out++ = *in;
+    if (*in == 39) *out++ = 39;
+      in++;
+    }
+
+ int context_tid = 1; //just in case there isn't a match but there has to be
+ for (int k = 1; k < 12; k++) { 
+   if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
+     context_tid = k;
+     break;
+   }
+ }
+
+ char *query = malloc(cnt + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+
+ //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
+ sprintf(query, "INSERT INTO task ("
+                                   //"tid, "
+                                   "priority, "
+                                   "title, "
+                                   //"tag, "
+                                   "folder_tid, "
+                                   "context_tid, "
+                                   //"duetime, "
+                                   "star, "
+                                   "added, "
+                                   //"completed, "
+                                   //"duedate, "
+                                   "note, "
+                                   //"repeat, "
+                                   "deleted, "
+                                   "created, "
+                                   "modified, "
+                                   "startdate " 
+                                   //"remind) "
+                                   ") VALUES ("
+                                   //"%s," //tid 
+                                   " %d," //priority
+                                   " \'%s\',"//title
+                                   //%s //tag 
+                                   " %d," //folder_tid
+                                   " %d," //context_tid 
+                                   //%s, //duetime
+                                   " %s," //star 
+                                   "%s," //added 
+                                   //"%s," //completed 
+                                   //"%s," //duedate 
+                                   " \'%s\'," //note
+                                   //s% //repeat
+                                   " %s," //deleted
+                                   " %s," //created 
+                                   " %s," //modified
+                                   " %s" //startdate
+                                   //%s //remind
+                                   ");", // RETURNING id;", // ************************************
+                                     
+                                   //tid, 
+                                   3, //priority, 
+                                   escaped_title, 
+                                   //tag, 
+                                   1, //folder_tid,
+                                   context_tid, 
+                                   //duetime, 
+                                   "True", //star, 
+                                   "date", //starttime
+                                   //completed, 
+                                   //duedate, 
+                                   "<This is a new note from sqlite>", //note, 
+                                   //repeat, 
+                                   "False", //deleted 
+                                   "datetime()", //created, 
+                                   "datetime()", //modified 
+                                   "date()" //startdate  
+                                   //remind
+                                   );
+                                     
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Toggle star succeeded");
+    row->star = !row->star;
+    //row->dirty = true;
+  }
+
+                            
+  row->id =  sqlite3_last_insert_rowid(db)
+  //row->id = atoi(PQgetvalue(res, 0, 0)); // *****************************************
+  row->dirty = false;
+        
+  free(title);
+  free(query);
+  sqlite3_close(db);
   outlineSetMessage("Successfully inserted new row with id %d", row->id);
     
   return row->id;
