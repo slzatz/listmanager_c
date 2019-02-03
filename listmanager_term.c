@@ -253,6 +253,9 @@ void (*get_data4)(char *);
 void (*get_note)(int);
 void (*update_note)(void); 
 void (*toggle_star)(void);
+void (*toggle_completed)(void);
+void (*toggle_deleted)(void);
+void (*update_rows)(void);
 int data3_callback(void *, int, char **, char **);
 int note_callback (void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
@@ -282,12 +285,12 @@ void outlineScroll(void);
 int get_id(int fr);
 void update_row(void);
 int insert_row(int ofr); 
-void update_rows(void);
+//void update_rows(void);
 void update_note_pg(void); 
 void update_note_sqlite(void); 
 void update_context(int context_tid);
-void toggle_completed(void);
-void toggle_deleted(void);
+//void toggle_completed(void);
+//void toggle_deleted(void);
 //void toggle_star(void);
 void display_item_info(int id);
 
@@ -1902,7 +1905,7 @@ void outlineRefreshScreen(void) {
     abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
   }
   else { 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, 1); //blue
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     abAppend(&ab, buf, strlen(buf));
 }
   // below restores the cursor position based on O.cx and O.cy + margin
@@ -2604,13 +2607,13 @@ void outlineProcessKeypress() {
         case 'x':
           O.cx = 0;
           O.repeat = 0;
-          toggle_completed();
+          (*toggle_completed)();
           return;
 
         case 'd':
           O.cx = 0;
           O.repeat = 0;
-          toggle_deleted();
+          (*toggle_deleted)();
           return;
 
         case '*':
@@ -3003,7 +3006,7 @@ void update_context(int context_tid) {
   PQclear(res);
 }
 
-void toggle_completed(void) {
+void toggle_completed_pg(void) {
 
   orow *row;
   int fr = outlineGetFileRow();
@@ -3039,13 +3042,53 @@ void toggle_completed(void) {
   else {
     outlineSetMessage("Toggle completed succeeded");
     row->completed = !row->completed;
-    row->dirty = true;
+    //row->dirty = true;
   }
   PQclear(res);
 }
 
+void toggle_completed_sqlite(void) {
 
-void toggle_deleted(void) {
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET completed=%s, " 
+                   "modified=datetime() "
+                   "WHERE tid=%d",
+                   (row->completed) ? "NULL" : "date()", id);
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Toggle completed succeeded");
+    row->completed = !row->completed;
+    //row->dirty = true;
+  }
+
+  sqlite3_close(db);
+    
+}
+
+void toggle_deleted_pg(void) {
 
   orow *row;
   int fr = outlineGetFileRow();
@@ -3085,6 +3128,46 @@ void toggle_deleted(void) {
   }
   PQclear(res);
   return;
+}
+
+void toggle_deleted_sqlite(void) {
+
+  orow *row;
+  int fr = outlineGetFileRow();
+  row = &O.row[fr];
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET deleted=%s, " 
+                 "modified=datetime() "
+                 "WHERE tid=%d",
+                 (row->deleted) ? "False" : "True", id);
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Toggle deleted succeeded");
+    row->deleted = !row->deleted;
+    //row->dirty = true;
+  }
+
+  sqlite3_close(db);
+
 }
 
 void toggle_star_pg(void) {
@@ -3357,14 +3440,13 @@ int insert_row(int ofr) {
   return row->id;
 }
 
-void update_rows(void) {
+void update_rows_pg(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
-      //fprintf(stderr, "Connection to database failed: %s\n",
       outlineSetMessage(PQerrorMessage(conn));
       //do_exit(conn);
     }
@@ -3449,8 +3531,105 @@ void update_rows(void) {
   int slen = strlen(msg);
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
   outlineSetMessage("%s",  msg);
+}
 
-  return;
+void update_rows_sqlite(void) {
+  int n = 0; //number of updated rows
+  int updated_rows[20];
+
+  for (int i=0; i < O.numrows;i++) {
+    orow *row = &O.row[i];
+
+    if (!(row->dirty)) continue;
+
+    if (row->id != -1) {
+
+      int len = row->size;
+      char *title = malloc(len + 1);
+      memcpy(title, row->chars, len); //seems to me I could also memcpy len + 1 and get the '\0' and not have to set it below
+      title[len] = '\0';
+
+      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
+      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+      const char *str = title;
+      int cnt = strlen(str)+1;
+      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+          ;
+      //VLA
+      char escaped_title[cnt];
+      escaped_title[cnt - 1] = '\0';
+      char *out = escaped_title;
+      const char *in = str;
+      while (*in) {
+          *out++ = *in;
+          if (*in == 39) *out++ = 39;
+          in++;
+      }
+
+      *out = '\0';
+
+      char *query = malloc(cnt + 200);
+
+      sprintf(query, "UPDATE task SET title=\'%s\', "
+                   "modified=datetime() "
+                   "WHERE tid=%d",
+                   escaped_title, row->id);
+
+  
+      sqlite3 *db;
+      char *err_msg = 0;
+        
+      int rc = sqlite3_open("mylistmanager_s.db", &db);
+        
+      if (rc != SQLITE_OK) {
+            
+        outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return;
+        }
+    
+      rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+        
+      if (rc != SQLITE_OK ) {
+        outlineSetMessage("SQL error: %s\n", err_msg);
+        sqlite3_free(err_msg);
+        return; // ? should we abort all other rows
+      } else {
+        row->dirty = false;    
+        updated_rows[n] = row->id;
+        n++;
+        free(query);
+        free(title);
+        sqlite3_close(db);
+      }
+    
+    } else { 
+      int id  = insert_row(i);
+      updated_rows[n] = id;
+      if (id !=-1) n++;
+    }  
+  }
+
+  if (n == 0) {
+    outlineSetMessage("There were no rows to update");
+    return;
+  }
+
+  outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
+  
+  outlineSetMessage("Rows successfully updated ... ");
+  char msg[200];
+  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  char *put;
+  put = &msg[strlen(msg)];
+
+  for (int j=0; j < n;j++) {
+    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
+  }
+
+  int slen = strlen(msg);
+  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
+  outlineSetMessage("%s",  msg);
 }
 
 int outlineGetFileRow(void) {
@@ -5474,8 +5653,10 @@ int main(int argc, char** argv) {
     get_note = &get_note_sqlite;
     update_note = &update_note_sqlite;
     toggle_star = &toggle_star_sqlite;
-    //insert_note = &insert_note_sqlite;
-    //update_rows = &update_rows_sqlite;
+    toggle_completed = &toggle_completed_sqlite;
+    toggle_deleted = &toggle_deleted_sqlite;
+    //insert_row = &insert_note_sqlite;
+    update_rows = &update_rows_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
@@ -5484,8 +5665,10 @@ int main(int argc, char** argv) {
     get_note = &get_note_pg;
     update_note = &update_note_pg;
     toggle_star = &toggle_star_pg;
-    //insert_note = &insert_note_pg;
-    //update_rows = &update_rows_pg;
+    toggle_completed = &toggle_completed_pg;
+    toggle_deleted = &toggle_deleted_pg;
+    //insert_row = &insert_note_pg;
+    update_rows = &update_rows_pg;
     which_db = "postgres";
   }
 
