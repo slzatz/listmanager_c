@@ -36,7 +36,8 @@
 
 /*** defines ***/
 
-char * which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
+char *SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+char *which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
 //int TOP_MARGIN;
 
@@ -553,7 +554,7 @@ void get_data3_sqlite(char *context, int n) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
@@ -649,7 +650,7 @@ void get_data4_sqlite(char *query) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -727,7 +728,7 @@ void get_note_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -2843,7 +2844,7 @@ void display_item_info_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -2900,7 +2901,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
   editorInsertRow(E.filerows, " ", 1);
 
-  char str[100];
+  char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0m %s", id);
   editorInsertRow(E.filerows, str, strlen(str));
   sprintf(str,"\x1b[1mtid:\x1b[0m %s", tid);
@@ -2941,6 +2942,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   editorRefreshScreen();
   return 0;
 }
+
 void update_note_pg(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3052,7 +3054,7 @@ void update_note_sqlite(void) {
   char *query = malloc(cnt + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
-                   "modified=datetime() "
+                   "modified=datetime('now', '-5 hours') "
                    "WHERE id=%d", //tid
                    escaped_note, id);
 
@@ -3060,7 +3062,7 @@ void update_note_sqlite(void) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3127,7 +3129,7 @@ void update_context_sqlite(int context_tid) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET context_tid=%d, " 
-                 "modified=datetime() "
+                 "modified=datetime('now', '-5 hours') "
                    "WHERE id=%d",
                     context_tid,
                     id);
@@ -3135,7 +3137,7 @@ void update_context_sqlite(int context_tid) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3207,14 +3209,14 @@ void toggle_completed_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET completed=%s, " 
-                   "modified=datetime() "
+                   "modified=datetime('now', '-5 hours') "
                    "WHERE id=%d", //tid
                    (row->completed) ? "NULL" : "date()", id);
 
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3290,13 +3292,13 @@ void toggle_deleted_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET deleted=%s, " 
-                 "modified=datetime() "
+                 "modified=datetime('now', '-5 hours') "
                  "WHERE id=%d", //tid
                  (row->deleted) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3372,13 +3374,13 @@ void toggle_star_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET star=%s, " 
-                 "modified=datetime() "
+                 "modified=datetime('now', '-5 hours') "
                  "WHERE id=%d", //tid
                  (row->star) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3515,7 +3517,7 @@ void update_row_sqlite(void) {
     sqlite3 *db;
     char *err_msg = 0;
       
-    int rc = sqlite3_open("mylistmanager_s.db", &db);
+    int rc = sqlite3_open(SQLITE_DB, &db);
       
     if (rc != SQLITE_OK) {
           
@@ -3763,7 +3765,7 @@ int insert_row_sqlite(int ofr) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("mylistmanager_s.db", &db);
+  int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3922,7 +3924,7 @@ void update_rows_sqlite(void) {
       char *query = malloc(cnt + 200);
 
       sprintf(query, "UPDATE task SET title=\'%s\', "
-                   "modified=datetime() "
+                   "modified=datetime('now', '-5 hours') "
                    "WHERE id=%d", //tid
                    escaped_title, row->id);
 
@@ -3930,7 +3932,7 @@ void update_rows_sqlite(void) {
       sqlite3 *db;
       char *err_msg = 0;
         
-      int rc = sqlite3_open("mylistmanager_s.db", &db);
+      int rc = sqlite3_open(SQLITE_DB, &db);
         
       if (rc != SQLITE_OK) {
             
