@@ -255,9 +255,14 @@ void (*update_note)(void);
 void (*toggle_star)(void);
 void (*toggle_completed)(void);
 void (*toggle_deleted)(void);
+void (*update_context)(int);
 void (*update_rows)(void);
+void (*update_row)(void);
+int (*insert_row)(int); 
+void (*display_item_info)(int);
 int data3_callback(void *, int, char **, char **);
 int note_callback (void *, int, char **, char **);
+int display_item_info_callback (void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -283,16 +288,17 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
 void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
-void update_row(void);
-int insert_row(int ofr); 
+//void update_row(void);
+int insert_row_pg(int); 
+int insert_row_sqlite(int); 
 //void update_rows(void);
 void update_note_pg(void); 
 void update_note_sqlite(void); 
-void update_context(int context_tid);
+//void update_context(int context_tid);
 //void toggle_completed(void);
 //void toggle_deleted(void);
 //void toggle_star(void);
-void display_item_info(int id);
+//void display_item_info(int id);
 
 //editor Prototypes
 void editorSetMessage(const char *fmt, ...);
@@ -550,9 +556,9 @@ void get_data3_sqlite(char *context, int n) {
   int rc = sqlite3_open("mylistmanager_s.db", &db);
     
   if (rc != SQLITE_OK) {
-        
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
+    return;
     }
 
   if (!O.show_deleted) {
@@ -578,26 +584,17 @@ void get_data3_sqlite(char *context, int n) {
     rc = sqlite3_exec(db, query, data3_callback, 0, &err_msg);
     
     if (rc != SQLITE_OK ) {
-        
-       // fprintf(stderr, "Failed to select data\n");
-        //fprintf(stderr, "SQL error: %s\n", err_msg);
-        outlineSetMessage("SQL error: %s\n", err_msg);
-
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        
-        //return 1;
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
     } 
   sqlite3_close(db);
 }
 
 int data3_callback(void *NotUsed, int argc, char **argv, char **azColName) {
     
-  NotUsed = 0;
-  int x = 0;
-  if (NotUsed) x = 0;
-  if (argc) x = 0;
-  if (azColName) x = 0;
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
     
   /*
   0: id = 1
@@ -619,18 +616,23 @@ int data3_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   16: modified = 2016-08-05 23:05:16.256135
   17: startdate = 2009-07-04
   18: remind = NULL
+
+  I thought I should be using tid as the "id" for sqlite version but realized
+  that would work and mean you could always compare the tid to the pg id
+  but for new items created with sqlite, there would be no tid so
+  the right thing to use is the id.  At some point might also want to
+  store the tid in orow row
   */
 
   char *title = argv[3];
-  char *zz = argv[1]; // ? use tid?
-  //bool star = (*argv[8] == 1) ? true: false;
+  char *zz = argv[0]; // ? use tid? = argv[1] see note above
   bool star = (atoi(argv[8]) == 1) ? true: false;
   bool deleted = (atoi(argv[14]) == 1) ? true: false;
   bool completed = (argv[10]) ? true: false;
   int id = atoi(zz);
   outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
   //outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, false); 
-  return x;
+  return 0;
 }
 
 void get_data4_sqlite(char *query) {
@@ -733,7 +735,7 @@ void get_note_sqlite(int id) {
     sqlite3_close(db);
     }
   char query[100];
-  sprintf(query, "SELECT note FROM task WHERE tid = %d", id);
+  sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
 
   // callback does *not* appear to be called if result (argv) is null
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
@@ -2524,7 +2526,7 @@ void outlineProcessKeypress() {
                }
 
                outlineSetMessage("Item %d will get context \'%s\'(%d)", get_id(-1), new_context, context_tid);
-               update_context(context_tid); 
+               (*update_context)(context_tid); 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
@@ -2750,7 +2752,7 @@ void outlineProcessKeypress() {
 
 /*** slz additions ***/
 
-void display_item_info(int id) {
+void display_item_info_pg(int id) {
 
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
@@ -2767,10 +2769,9 @@ void display_item_info(int id) {
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage(PQerrorMessage(conn)); //? editorSet
-    //printf("No data retrieved\n");        
+    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn)); 
     PQclear(res);
-    //do_exit(conn);
+    return;
   }    
   
   char *title = PQgetvalue(res, 0, 3);
@@ -2825,6 +2826,121 @@ void display_item_info(int id) {
   return;
 }
 
+void display_item_info_sqlite(int id) {
+
+  for (int j = 0 ; j < E.filerows ; j++ ) {
+    free(E.row[j].chars);
+  } 
+  free(E.row);
+  E.row = NULL; 
+  E.filerows = 0;
+
+  if (id ==-1) return;
+
+  char query[100];
+  sprintf(query, "SELECT * FROM task WHERE id = %d", id);
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+  
+  rc = sqlite3_exec(db, query, display_item_info_callback, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } 
+  sqlite3_close(db);
+}
+int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+    
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+    
+  /*
+  0: id = 1
+  1: tid = 1
+  2: priority = 3
+  3: title = Parents refrigerator broken.
+  4: tag = 
+  5: folder_tid = 1
+  6: context_tid = 1
+  7: duetime = NULL
+  8: star = 0
+  9: added = 2009-07-04
+  10: completed = 2009-12-20
+  11: duedate = NULL
+  12: note = new one coming on Monday, June 6, 2009.
+  13: repeat = NULL
+  14: deleted = 0
+  15: created = 2016-08-05 23:05:16.256135
+  16: modified = 2016-08-05 23:05:16.256135
+  17: startdate = 2009-07-04
+  18: remind = NULL
+  */
+
+  char *title = argv[3];
+  char *id = argv[0]; // ? use tid? = argv[1] see note above
+  char *tid = argv[1]; // ? use tid? = argv[1] see note above
+  char *star = (atoi(argv[8]) == 1) ? "true": "false";
+  char *deleted = (atoi(argv[14]) == 1) ? "true": "false";
+  char *completed = (argv[10]) ? "true": "false";
+  char *modified = argv[16];
+  char *added = argv[9];
+  char *context_tid = argv[6];
+
+  editorInsertRow(E.filerows, " ", 1);
+
+  char str[100];
+  sprintf(str,"\x1b[1mid:\x1b[0m %s", id);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mtid:\x1b[0m %s", tid);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", title);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(context_tid)]);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mstar:\x1b[0m %s", star);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", deleted);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", completed);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", modified);
+  editorInsertRow(E.filerows, str, strlen(str));
+  sprintf(str,"\x1b[1madded:\x1b[0m %s", added);
+  editorInsertRow(E.filerows, str, strlen(str));
+  editorInsertRow(E.filerows, " ", 1);
+  editorInsertRow(E.filerows, " ", 1);
+
+  //note strsep handles multiple \n\n and strtok did not
+  char *note;
+  note = strdup(argv[12]); // ******************
+  char *found;
+  //while ((found = strsep(&note, "\n")) !=NULL) {
+  //  editorInsertRow(E.filerows, found, strlen(found));
+  //}
+
+  for (int k=0; k < 4; k++) {
+
+    if ((found = strsep(&note, "\n")) ==NULL) break; 
+    editorInsertRow(E.filerows, found, strlen(found));
+  }
+  free(note);
+  note = NULL; //? not necessary
+
+  editorRefreshScreen();
+  return 0;
+}
 void update_note_pg(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -2937,7 +3053,7 @@ void update_note_sqlite(void) {
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
                    "modified=datetime() "
-                   "WHERE tid=%d",
+                   "WHERE id=%d", //tid
                    escaped_note, id);
 
 
@@ -2969,18 +3085,16 @@ void update_note_sqlite(void) {
   free(text);
   E.dirty = 0;
 }
-void update_context(int context_tid) {
 
-  orow *row;
-  int fr = outlineGetFileRow();
-  row = &O.row[fr];
+void update_context_pg(int context_tid) {
+
+  //orow *row;
+  //int fr = outlineGetFileRow();
+  //row = &O.row[fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
+      outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
     }
   }
 
@@ -2996,14 +3110,50 @@ void update_context(int context_tid) {
   PGresult *res = PQexec(conn, query); 
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    //outlineSetMessage("Setting context to %s failed", context);
-    outlineSetMessage("%s", PQerrorMessage(conn));
-  }
-  else {
+    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+  } else {
     outlineSetMessage("Setting context to %s succeeded", context[context_tid]);
-    row->completed = !row->completed;
   }
   PQclear(res);
+}
+
+void update_context_sqlite(int context_tid) {
+
+  //orow *row;
+  //int fr = outlineGetFileRow();
+  //row = &O.row[fr];
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET context_tid=%d, " 
+                 "modified=datetime() "
+                   "WHERE id=%d",
+                    context_tid,
+                    id);
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("mylistmanager_s.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Setting context to %s succeeded", context[context_tid]);
+  }
+
+  sqlite3_close(db);
 }
 
 void toggle_completed_pg(void) {
@@ -3058,7 +3208,7 @@ void toggle_completed_sqlite(void) {
 
   sprintf(query, "UPDATE task SET completed=%s, " 
                    "modified=datetime() "
-                   "WHERE tid=%d",
+                   "WHERE id=%d", //tid
                    (row->completed) ? "NULL" : "date()", id);
 
   sqlite3 *db;
@@ -3141,7 +3291,7 @@ void toggle_deleted_sqlite(void) {
 
   sprintf(query, "UPDATE task SET deleted=%s, " 
                  "modified=datetime() "
-                 "WHERE tid=%d",
+                 "WHERE id=%d", //tid
                  (row->deleted) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
@@ -3223,7 +3373,7 @@ void toggle_star_sqlite(void) {
 
   sprintf(query, "UPDATE task SET star=%s, " 
                  "modified=datetime() "
-                 "WHERE tid=%d",
+                 "WHERE id=%d", //tid
                  (row->star) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
@@ -3235,7 +3385,7 @@ void toggle_star_sqlite(void) {
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
-    }
+  }
 
   rc = sqlite3_exec(db, query, 0, 0, &err_msg);
     
@@ -3252,7 +3402,7 @@ void toggle_star_sqlite(void) {
 
 }
 
-void update_row(void) {
+void update_row_pg(void) {
 
   int fr = outlineGetFileRow();
   orow *row = &O.row[fr];
@@ -3316,7 +3466,80 @@ void update_row(void) {
     PQclear(res);
 
   } else { 
-    insert_row(fr);
+    insert_row_pg(fr);
+  }  
+}
+
+void update_row_sqlite(void) {
+
+  int fr = outlineGetFileRow();
+  orow *row = &O.row[fr];
+  if (!row->dirty) {
+    outlineSetMessage("Row has not been changed");
+    return;
+  }
+
+  if (row->id != -1) {
+
+    int len = row->size;
+    char *title = malloc(len + 1);
+    memcpy(title, row->chars, len);
+    title[len] = '\0';
+  
+    // Need to replace single quotes with two single quotes which escapes the single quote 
+    // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+    const char *str = title;
+    int cnt = strlen(str)+1;
+    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
+            ;
+    //VLA
+    char escaped_title[cnt];
+    escaped_title[cnt - 1] = '\0';
+    char *out = escaped_title;
+    const char *in = str;
+    while (*in) {
+      *out++ = *in;
+      if (*in == 39) *out++ = 39;
+      in++;
+    }
+  
+    *out = '\0';
+  
+    char *query = malloc(cnt + 100);
+  
+    sprintf(query, "UPDATE task SET title=\'%s\', "
+                     "modified=datetime('now', '-5 hours') "
+                     "WHERE id=%d",
+                     escaped_title, row->id);
+  
+    sqlite3 *db;
+    char *err_msg = 0;
+      
+    int rc = sqlite3_open("mylistmanager_s.db", &db);
+      
+    if (rc != SQLITE_OK) {
+          
+      outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+      }
+  
+    rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+      
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    } else {
+      row->dirty = false;    
+      outlineSetMessage("Successfully updated row %d", row->id);
+    }
+
+    free(query);
+    free(title);
+    sqlite3_close(db);
+
+  } else { 
+    insert_row_sqlite(fr);
   }  
 }
 
@@ -3546,7 +3769,7 @@ int insert_row_sqlite(int ofr) {
         
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
-    return;
+    return -1;
     }
 
   rc = sqlite3_exec(db, query, 0, 0, &err_msg);
@@ -3554,15 +3777,10 @@ int insert_row_sqlite(int ofr) {
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
-  } else {
-    outlineSetMessage("Toggle star succeeded");
-    row->star = !row->star;
-    //row->dirty = true;
+    return -1;
   }
 
-                            
-  row->id =  sqlite3_last_insert_rowid(db)
-  //row->id = atoi(PQgetvalue(res, 0, 0)); // *****************************************
+  row->id =  sqlite3_last_insert_rowid(db);
   row->dirty = false;
         
   free(title);
@@ -3638,7 +3856,7 @@ void update_rows_pg(void) {
         PQclear(res);
       }  
     } else { 
-      int id  = insert_row(i);
+      int id  = insert_row_pg(i);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -3705,7 +3923,7 @@ void update_rows_sqlite(void) {
 
       sprintf(query, "UPDATE task SET title=\'%s\', "
                    "modified=datetime() "
-                   "WHERE tid=%d",
+                   "WHERE id=%d", //tid
                    escaped_title, row->id);
 
   
@@ -3726,6 +3944,9 @@ void update_rows_sqlite(void) {
       if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
+        free(query);
+        free(title);
+        sqlite3_close(db);
         return; // ? should we abort all other rows
       } else {
         row->dirty = false;    
@@ -3737,7 +3958,7 @@ void update_rows_sqlite(void) {
       }
     
     } else { 
-      int id  = insert_row(i);
+      int id  = insert_row_sqlite(i);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -3874,6 +4095,7 @@ void outlineDeleteToEndOfLine(void) {
   //Arguably you don't have to reallocate when you reduce the length of chars
   row->chars = realloc(row->chars, fc + 1); //added 10042018 - before wasn't reallocating memory
   row->chars[fc] = '\0';
+  row->dirty = true;
   }
 
 void outlineMoveCursorEOL() {
@@ -5788,8 +6010,11 @@ int main(int argc, char** argv) {
     toggle_star = &toggle_star_sqlite;
     toggle_completed = &toggle_completed_sqlite;
     toggle_deleted = &toggle_deleted_sqlite;
-    //insert_row = &insert_note_sqlite;
+    insert_row = &insert_row_sqlite;
     update_rows = &update_rows_sqlite;
+    update_row = &update_row_sqlite;
+    update_context = &update_context_sqlite;
+    display_item_info = &display_item_info_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
@@ -5800,8 +6025,11 @@ int main(int argc, char** argv) {
     toggle_star = &toggle_star_pg;
     toggle_completed = &toggle_completed_pg;
     toggle_deleted = &toggle_deleted_pg;
-    //insert_row = &insert_note_pg;
+    insert_row = &insert_row_pg;
     update_rows = &update_rows_pg;
+    update_row = &update_row_pg;
+    update_context = &update_context_pg;
+    display_item_info = &display_item_info_pg;
     which_db = "postgres";
   }
 
