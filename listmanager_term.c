@@ -113,17 +113,20 @@ enum Command {
   C_yy,
 
   C_open,
-  C_o,
+  //C_o,
 
-  C_fin,
+  //C_fin,
   C_find,
 
   C_new, //create a new item
 
   C_context, //change an item's context
-  C_con,
+  //C_con,
 
   C_update, //update solr db
+
+  C_synch, // synchronixe sqlite and postgres dbs
+  C_synch_test,//show what sync would do but don't do it 
 
   C_e, //edit a note
   C_edit
@@ -154,6 +157,11 @@ static t_symstruct lookuptable[] = {
   {"context", C_context},
   {"con", C_context},
   {"update", C_update},
+  {"synch", C_synch},
+  {"synchronize", C_synch},
+  {"test", C_synch_test},
+  {"synchtest", C_synch_test},
+  {"synch_test", C_synch_test},
   {"edit", C_edit},
   {"e", C_edit}
 };
@@ -295,6 +303,7 @@ int insert_row_sqlite(int);
 //void update_rows(void);
 void update_note_pg(void); 
 void update_note_sqlite(void); 
+void synchronize(int);
 //void update_context(int context_tid);
 //void toggle_completed(void);
 //void toggle_deleted(void);
@@ -1655,7 +1664,7 @@ void editorOpen(char *filename) {
   }
   free(line);
   fclose(fp);
-  E.dirty = 0;
+  //E.dirty = 0;
 }
 
 void editorSave(void) {
@@ -2398,8 +2407,7 @@ void outlineProcessKeypress() {
                exit(0);
                return;
 
-             /*
-             //Right now to create a new item you need to type :new but need to decide about :n
+             //both :n and :new create a new item right now
              case 'n': 
                 outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
 
@@ -2411,7 +2419,13 @@ void outlineProcessKeypress() {
                 O.repeat = 0;
                 outlineSetMessage("");
                 return;
-             */
+
+             case 'r':
+               outlineSetMessage("\'%s\' will be refreshed", O.context);
+               (*get_data3)(O.context, 200); 
+               O.mode = NORMAL;
+               //O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               return;
 
              case 'q':
                ;
@@ -2556,12 +2570,45 @@ void outlineProcessKeypress() {
                  return;
                }
                outlineSetMessage("\'%s\' will be opened", new_context);
-               //get_data3_sqlite(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
                (*get_data3)(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
                O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                return;
+
+            case C_synch:
+              synchronize(0); //1 -> report_only
+
+              // free the E.row[j].chars
+              if (E.row) {
+                for (int j = 0 ; j < E.filerows ; j++ ) {
+                  free(E.row[j].chars);
+                } 
+                free(E.row);
+                E.row = NULL; 
+                E.filerows = 0;
+              }
+              editorOpen("log");//put them in the command mode case synch
+              editorRefreshScreen();
+              O.mode = NORMAL;
+              return;
+
+            case C_synch_test:
+              synchronize(1); //1 -> report_only
+
+              // free the E.row[j].chars
+              if (E.row) {
+                for (int j = 0 ; j < E.filerows ; j++ ) {
+                  free(E.row[j].chars);
+                } 
+                free(E.row);
+                E.row = NULL; 
+                E.filerows = 0;
+              }
+              editorOpen("log");//put them in the command mode case synch
+              editorRefreshScreen();
+              O.mode = NORMAL;
+              return;
 
             //case C_quit
 
@@ -2628,7 +2675,6 @@ void outlineProcessKeypress() {
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          //get_data3_sqlite(O.context, 200);
           (*get_data3)(O.context, 200);
             
           return;
@@ -2636,7 +2682,6 @@ void outlineProcessKeypress() {
         case 'r':
           O.cx = 0;
           O.repeat = 0;
-          //get_data3_sqlite(O.context, 200);
           (*get_data3)(O.context, 200);
           return;
 
@@ -2652,31 +2697,6 @@ void outlineProcessKeypress() {
           orow *row = &O.row[fr];
           display_item_info(row->id);
           return;
-  
-        /*
-        case 'o': //open
-          O.command_line[0] = 'o'; // should be changed to 'o' and a new 'o' command placed in COMMAND_LINE
-          O.command_line[1] = '\0';
-          O.mode = COMMAND_LINE;
-          NN = 0;
-          outlineSetMessage("What context do you want to open?"); 
-          return;
-  
-        case 'c': //context
-          O.command_line[0] = 'c';
-          O.command[1] = ' ';
-          O.command[2] = '\0';
-          O.mode = COMMAND_LINE;
-          outlineSetMessage(""); 
-          return;
-  
-        case 'f': //find
-          O.command_line[0] = 'f';
-          O.command_line[1] = '\0';
-          O.mode = COMMAND_LINE;
-          outlineSetMessage("What do you want to find?"); 
-          return;
-          */
   
         default:
           return;
@@ -2751,7 +2771,67 @@ void outlineProcessKeypress() {
   } //End of outer switch(O.mode)
 }
 
-/*** slz additions ***/
+// calls editorOpen to read the log file
+void synchronize(int report_only) { //using 1 or 0
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  int num = 0;
+
+  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
+  pName = PyUnicode_DecodeFSDefault("synchronize"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "synchronize"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = PyLong_FromLong(report_only);
+          //pValue = Py_BuildValue("s", search_terms); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  outlineSetMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+              //Py_ssize_t size; 
+              //int len = PyList_Size(pValue);
+              num = PyLong_AsLong(pValue);
+              Py_DECREF(pValue); 
+          } else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              outlineSetMessage("Received a NULL value from synchronize!");
+          }
+      } else { if (PyErr_Occurred()) PyErr_Print();
+          outlineSetMessage("Was not able to find the function: synchronize!");
+      }
+
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+
+  } else {
+      //PyErr_Print();
+      outlineSetMessage("Was not able to find the module: synchronize!");
+  }
+
+  //if (Py_FinalizeEx() < 0) {
+  //}
+  //editorOpen("log");//put them in the command mode case synch
+  //editorRefreshScreen();
+  if (report_only) outlineSetMessage("Number of tasks/items that would be affected is %d", num);
+  else outlineSetMessage("Number of tasks/items that were affected is %d", num);
+}
 
 void display_item_info_pg(int id) {
 
