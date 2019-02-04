@@ -3748,7 +3748,7 @@ int insert_row_sqlite(int ofr) {
                                    context_tid, 
                                    //duetime, 
                                    "True", //star, 
-                                   "date", //starttime
+                                   "date()", //starttime
                                    //completed, 
                                    //duedate, 
                                    "<This is a new note from sqlite>", //note, 
