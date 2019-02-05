@@ -805,7 +805,7 @@ void get_note_pg(int id) {
   char *note;
   note = strdup(PQgetvalue(res, 0, 0)); // ******************
   char *found;
-  while ((found = strsep(&note, "\n")) !=NULL) {
+  while ((found = strsep(&note, "\r\n")) !=NULL) {
     editorInsertRow(E.filerows, found, strlen(found));
   }
   PQclear(res);
