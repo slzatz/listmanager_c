@@ -272,7 +272,6 @@ void (*display_item_info)(int);
 int data3_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
-int display_item_info_callback2(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -2964,7 +2963,7 @@ void display_item_info_sqlite(int id) {
     return;
   }
   
-  rc = sqlite3_exec(db, query, display_item_info_callback2, 0, &err_msg);
+  rc = sqlite3_exec(db, query, display_item_info_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -2973,91 +2972,9 @@ void display_item_info_sqlite(int id) {
   sqlite3_close(db);
 }
 
-int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
-    
-  UNUSED(NotUsed);
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-    
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag = 
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-  */
-
-  char *title = argv[3];
-  char *id = argv[0]; // ? use tid? = argv[1] see note above
-  char *tid = argv[1]; // ? use tid? = argv[1] see note above
-  char *star = (atoi(argv[8]) == 1) ? "true": "false";
-  char *deleted = (atoi(argv[14]) == 1) ? "true": "false";
-  char *completed = (argv[10]) ? "true": "false";
-  char *modified = argv[16];
-  char *added = argv[9];
-  char *context_tid = argv[6];
-
-  editorInsertRow(E.filerows, " ", 1);
-
-  char str[300];
-  sprintf(str,"\x1b[1mid:\x1b[0m %s", id);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mtid:\x1b[0m %s", tid);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", title);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(context_tid)]);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mstar:\x1b[0m %s", star);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", deleted);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", completed);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", modified);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1madded:\x1b[0m %s", added);
-  editorInsertRow(E.filerows, str, strlen(str));
-  editorInsertRow(E.filerows, " ", 1);
-  editorInsertRow(E.filerows, " ", 1);
-
-  //note strsep handles multiple \n\n and strtok did not
-  char *note;
-  note = strdup(argv[12]); // ******************
-  char *found;
-  //while ((found = strsep(&note, "\n")) !=NULL) {
-  //  editorInsertRow(E.filerows, found, strlen(found));
-  //}
-
-  for (int k=0; k < 4; k++) {
-
-    if ((found = strsep(&note, "\n")) ==NULL) break; 
-    editorInsertRow(E.filerows, found, strlen(found));
-  }
-  free(note);
-  note = NULL; //? not necessary
-
-  editorRefreshScreen();
-  return 0;
-}
-
 // this version doesn't save the text in E.row
 //which didn't make sense since you're not going to edit it
-int display_item_info_callback2(void *NotUsed, int argc, char **argv, char **azColName) {
+int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
     
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
