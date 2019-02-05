@@ -1,13 +1,13 @@
 '''
-Creates the sqlalchemy objects necessary for the remote postgreSQL database
+Creates the postgresql objects necessary for the remote postgreSQL database
+It is the equivalent of the lmdb_s.py database for sqlite
 '''
 import datetime
 from sqlalchemy import *
 from sqlalchemy.orm import *
 import sqlalchemy.orm.exc as sqla_orm_exc
 import sqlalchemy.exc as sqla_exc
-from config import RDS_URI ### should change to PG_URI
-from lmglobals_p import REMOTE_DB, internet_accessible #, LOCAL_DB_FILE
+from config import RDS_URI, REMOTE_DB ### RDS_URI should change to something like PG_URI
 
 __all__ = ['Task', 'Context', 'Folder', 'Keyword', 'TaskKeyword', 'Sync', 'remote_engine', 'sqla_exc', 'sqla_orm_exc', 'remote_session', 'or_', 'and_', 'case', 'literal', 'asc', 'desc', 'func', 'new_remote_session']
 
@@ -82,14 +82,6 @@ folder_table = Table('folder', metadata,
                  Column('textcolor', Integer),
                  Column('image', LargeBinary)
 )
-
-#temp_tid_table = Table('temp_tid', metadata,
-#                 Column('id', Integer, primary_key=True),
-#                 Column('title', String(32)),
-#                 Column('type_', String(32)),
-#                 Column('created', DateTime, default=datetime.datetime.now), 
-#)
-
 
 keyword_table = Table('keyword', metadata,
                  Column('id',Integer, primary_key=True),
@@ -175,35 +167,13 @@ mapper(TaskKeyword, taskkeyword_table, properties= {
 
 mapper(Sync, sync_table)
 
-if internet_accessible():
-    try:
-        # the use of pool_pre_ping doesn't help preserve a connection
-        # that goes unused for a while
-        #remote_engine = create_engine(RDS_URI+'/'+REMOTE_DB, echo=False, pool_pre_ping=True)
+try:
+    remote_engine = create_engine(RDS_URI+'/'+REMOTE_DB, echo=False)
+    Remote_Session = sessionmaker(bind=remote_engine)
+    remote_session = Remote_Session()
 
-        # the use of pool_recycle shouldn't work since this is only used on checkout
-        #remote_engine = create_engine(RDS_URI+'/'+REMOTE_DB, echo=False, pool_recycle=500)
-
-        remote_engine = create_engine(RDS_URI+'/'+REMOTE_DB, echo=False)
-        Remote_Session = sessionmaker(bind=remote_engine)
-        remote_session = Remote_Session()
-
-        metadata.bind = remote_engine # I think only necessary if you're issuing a metadata.create_all(engine) command
-        metadata.create_all(remote_engine) # only creates if tables not present but not
-    except Exception as e:
-        print(e)
-        remote_session = None
-else:
+    metadata.bind = remote_engine # I think only necessary if you're issuing a metadata.create_all(engine) command
+    metadata.create_all(remote_engine) # only creates if tables not present but not
+except Exception as e:
     remote_session = None
 
-##############################################
-# The below was only needed for the migration script from raspi postgres to ec2 postgres
-#RASPI_URI = 'postgresql+psycopg2://pi:D*****##@0.tcp.ngrok.io:xxxxxxx'
-#RASPI_DB = 'listmanager_pi' ############### 09082015
-#raspi_engine = create_engine(RASPI_URI+'/'+RASPI_DB, echo=False)
-#Raspi_Session = sessionmaker(bind=raspi_engine)
-#raspi_session = Raspi_Session()
-
-def new_remote_session():
-    Remote_Session = sessionmaker(bind=remote_engine)
-    return Remote_Session()
