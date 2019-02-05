@@ -2841,12 +2841,14 @@ void synchronize(int report_only) { //using 1 or 0
 
 void display_item_info_pg(int id) {
 
+  /*
   for (int j = 0 ; j < E.filerows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
   E.filerows = 0;
+  */
 
   if (id ==-1) return;
 
@@ -2860,57 +2862,80 @@ void display_item_info_pg(int id) {
     PQclear(res);
     return;
   }    
-  
-  char *title = PQgetvalue(res, 0, 3);
-  char *zz = PQgetvalue(res, 0, 0);
-  char *star = (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false";
-  char *deleted = (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false";
-  char *completed = (*PQgetvalue(res, 0, 10)) ? "true": "false";
-  char *modified = PQgetvalue(res, 0, 16);
-  char *added = PQgetvalue(res, 0, 9);
-  char *context_tid = PQgetvalue(res, 0, 6);
 
-  editorInsertRow(E.filerows, " ", 1);
+  char offset_lf_ret[20];
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
 
-  char str[100];
-  sprintf(str,"\x1b[1mid:\x1b[0m %s", zz);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", title);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(context_tid)]);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mstar:\x1b[0m %s", star);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", deleted);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", completed);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", modified);
-  editorInsertRow(E.filerows, str, strlen(str));
-  sprintf(str,"\x1b[1madded:\x1b[0m %s", added);
-  editorInsertRow(E.filerows, str, strlen(str));
-  editorInsertRow(E.filerows, " ", 1);
-  editorInsertRow(E.filerows, " ", 1);
+  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+
+  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenrows; i++) {
+    abAppend(&ab, "\x1b[K", 3); 
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //set background color to blue
+  abAppend(&ab, "\x1b[44m", 5);
+
+  char str[300];
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, offset_lf_ret, 7);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
   note = strdup(PQgetvalue(res, 0, 12)); // ******************
   char *found;
-  //while ((found = strsep(&note, "\n")) !=NULL) {
-  //  editorInsertRow(E.filerows, found, strlen(found));
-  //}
 
   for (int k=0; k < 4; k++) {
 
-    if ((found = strsep(&note, "\n")) ==NULL) break; 
-    editorInsertRow(E.filerows, found, strlen(found));
+    if ((found = strsep(&note, "\n")) == NULL) break; 
+
+    size_t len = E.screencols;
+    abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
+    abAppend(&ab, offset_lf_ret, 7);
   }
+
+  abAppend(&ab, "\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+
+  abFree(&ab); 
+  free(note);
   note = NULL; //? not necessary
 
   PQclear(res);
-  E.dirty = 0;
-  editorRefreshScreen();
-  return;
 }
 
 void display_item_info_sqlite(int id) {
@@ -3079,32 +3104,35 @@ int display_item_info_callback2(void *NotUsed, int argc, char **argv, char **azC
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   abAppend(&ab, buf, strlen(buf));
 
+  //set background color to blue
+  abAppend(&ab, "\x1b[44m", 5);
+
   char str[300];
-  sprintf(str,"\x1b[1mid:\x1b[0m %s", argv[0]);
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", argv[0]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mtid:\x1b[0m %s", argv[1]);
+  sprintf(str,"\x1b[1mtid:\x1b[0;44m %s", argv[1]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", argv[3]);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(argv[6])]);
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mstar:\x1b[0m %s", (atoi(argv[8]) == 1) ? "true": "false");
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", (atoi(argv[14]) == 1) ? "true": "false");
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (atoi(argv[14]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", (argv[10]) ? "true": "false");
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (argv[10]) ? "true": "false");
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", argv[16]);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", argv[16]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
-  sprintf(str,"\x1b[1madded:\x1b[0m %s", argv[9]);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, offset_lf_ret, 7);
   abAppend(&ab, offset_lf_ret, 7);
@@ -3119,11 +3147,12 @@ int display_item_info_callback2(void *NotUsed, int argc, char **argv, char **azC
 
     if ((found = strsep(&note, "\n")) == NULL) break; 
 
-    //abAppend(&ab, found, strlen(found));
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
     abAppend(&ab, offset_lf_ret, 7);
   }
+
+  abAppend(&ab, "\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.b, ab.len);
 
