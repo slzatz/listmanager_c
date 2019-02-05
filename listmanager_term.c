@@ -39,6 +39,7 @@
 char *SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 char *which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
+int tid = 0;
 //int TOP_MARGIN;
 
 char *context[] = {
@@ -272,6 +273,7 @@ void (*display_item_info)(int);
 int data3_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
+int tid_callback(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -724,6 +726,55 @@ void get_data4_pg(char *query) {
   //O.context = context; //simplest thing to try may be O.context = "No Context" or O.context = context[0];
 }
 
+void get_tid_sqlite(int id) {
+  if (id ==-1) return;
+
+  // free the E.row[j].chars
+  for (int j = 0 ; j < E.filerows ; j++ ) {
+    free(E.row[j].chars);
+  } 
+  free(E.row);
+  E.row = NULL; 
+  E.filerows = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB, &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    }
+  char query[100];
+  sprintf(query, "SELECT tid FROM task WHERE id = %d", id); //tid
+
+  // callback does *not* appear to be called if result (argv) is null
+  rc = sqlite3_exec(db, query, tid_callback, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+  } 
+  sqlite3_close(db);
+}
+
+
+int tid_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  //note strsep handles multiple \n\n and strtok did not
+  if (argv[0] != NULL) { //added this guard 02052019 - not sure
+    tid = atoi(argv[0]);
+  }
+  return 0;
+}
+
 void get_note_sqlite(int id) {
   if (id ==-1) return;
 
@@ -832,7 +883,10 @@ void view_html(int id) {
   PyObject *pArgs, *pValue;
 
   Py_Initialize();
-  pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  if (which_db[0] == 'p') 
+    pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  else 
+    pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
   /* Error checking of pName left out */
 
   pModule = PyImport_Import(pName);
@@ -2752,6 +2806,18 @@ void outlineProcessKeypress() {
           display_item_info(row->id);
           return;
   
+        case 'v': //render in browser
+          ;
+          int fr1 = outlineGetFileRow();
+          orow *row1 = &O.row[fr1];
+          view_html(row1->id);
+          /* not getting error messages with qutebrowser so below not necessary (for the moment)
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          outlineRefreshScreen();
+          editorRefreshScreen();
+          */
+          return;
+
         default:
           return;
       } // end of inner switch(c) in outer case DATABASLE
