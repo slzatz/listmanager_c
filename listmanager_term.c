@@ -769,7 +769,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   char *note;
   note = strdup(argv[0]); // ******************
   char *found;
-  while ((found = strsep(&note, "\n")) !=NULL) {
+  while ((found = strsep(&note, "\r\n")) !=NULL) {
     editorInsertRow(E.filerows, found, strlen(found));
   }
   E.dirty = 0;
@@ -3080,7 +3080,11 @@ void update_note_pg(void) {
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     editorSetMessage(PQerrorMessage(conn));
-  } else editorSetMessage("Note update succeeeded");    
+  } else {
+    outlineSetMessage("Updated note for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded"); 
+  }
   
   free(note);
   free(query);
@@ -3157,7 +3161,9 @@ void update_note_sqlite(void) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Updated %d", id);
+    outlineSetMessage("Updated note for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded"); 
   }
 
   sqlite3_close(db);
@@ -5165,7 +5171,6 @@ void editorProcessKeypress(void) {
           switch (E.command[1]) {
 
             case 'w':
-              //update_note();
               (*update_note)();
               E.mode = NORMAL;
               E.command[0] = '\0';
