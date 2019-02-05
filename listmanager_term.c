@@ -270,8 +270,9 @@ void (*update_row)(void);
 int (*insert_row)(int); 
 void (*display_item_info)(int);
 int data3_callback(void *, int, char **, char **);
-int note_callback (void *, int, char **, char **);
-int display_item_info_callback (void *, int, char **, char **);
+int note_callback(void *, int, char **, char **);
+int display_item_info_callback(void *, int, char **, char **);
+int display_item_info_callback2(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -1994,7 +1995,6 @@ void outlineMoveCursor(int key) {
       row = &O.row[fr];
       id = O.row[fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
-      editorRefreshScreen();
       //editorRefreshScreen(); //in get_note
       return;
   }
@@ -2939,7 +2939,7 @@ void display_item_info_sqlite(int id) {
     return;
   }
   
-  rc = sqlite3_exec(db, query, display_item_info_callback, 0, &err_msg);
+  rc = sqlite3_exec(db, query, display_item_info_callback2, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -2947,6 +2947,7 @@ void display_item_info_sqlite(int id) {
   } 
   sqlite3_close(db);
 }
+
 int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
     
   UNUSED(NotUsed);
@@ -3026,6 +3027,111 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   note = NULL; //? not necessary
 
   editorRefreshScreen();
+  return 0;
+}
+
+// this version doesn't save the text in E.row
+//which didn't make sense since you're not going to edit it
+int display_item_info_callback2(void *NotUsed, int argc, char **argv, char **azColName) {
+    
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+    
+  /*
+  0: id = 1
+  1: tid = 1
+  2: priority = 3
+  3: title = Parents refrigerator broken.
+  4: tag = 
+  5: folder_tid = 1
+  6: context_tid = 1
+  7: duetime = NULL
+  8: star = 0
+  9: added = 2009-07-04
+  10: completed = 2009-12-20
+  11: duedate = NULL
+  12: note = new one coming on Monday, June 6, 2009.
+  13: repeat = NULL
+  14: deleted = 0
+  15: created = 2016-08-05 23:05:16.256135
+  16: modified = 2016-08-05 23:05:16.256135
+  17: startdate = 2009-07-04
+  18: remind = NULL
+  */
+
+  char offset_lf_ret[20];
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+
+  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+
+  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenrows; i++) {
+    abAppend(&ab, "\x1b[K", 3); 
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  char str[300];
+  sprintf(str,"\x1b[1mid:\x1b[0m %s", argv[0]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mtid:\x1b[0m %s", argv[1]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mtitle:\x1b[0m %s", argv[3]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mcontext:\x1b[0m %s", context[atoi(argv[6])]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mstar:\x1b[0m %s", (atoi(argv[8]) == 1) ? "true": "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0m %s", (atoi(argv[14]) == 1) ? "true": "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0m %s", (argv[10]) ? "true": "false");
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1mmodified:\x1b[0m %s", argv[16]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  sprintf(str,"\x1b[1madded:\x1b[0m %s", argv[9]);
+  abAppend(&ab, str, strlen(str));
+  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, offset_lf_ret, 7);
+
+  //note strsep handles multiple \n\n and strtok did not
+  char *note;
+  note = strdup(argv[12]); // ******************
+  char *found;
+
+  for (int k=0; k < 4; k++) {
+
+    if ((found = strsep(&note, "\n")) == NULL) break; 
+
+    //abAppend(&ab, found, strlen(found));
+    size_t len = E.screencols;
+    abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+
+  abFree(&ab); 
+  free(note);
+  note = NULL; //? not necessary
+
+  //editorRefreshScreen();
   return 0;
 }
 
@@ -4363,18 +4469,21 @@ void editorDrawRows(struct abuf *ab) {
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char offset_lf_ret[20];
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  //int filerow = 0;
-  int filerow = editorGetFileRowByLine(0); //thought is find the first row given E.rowoff
+
+  //this is the first visible row on the screen given E.rowoff and the length
+  //of the preceding rows
+  int filerow = editorGetFileRowByLine(0); //this is the first visible row on the screen given E.rowoff and the length of the preceding rows
 
   // if not displaying the 0th row of the 0th filerow than increment one filerow - this is what vim does
   // if (editorGetScreenLineFromFileRow != 0) filerow++; ? necessary ******************************
 
   for (;;){
     if (y >= E.screenrows) break; //somehow making this >= made all the difference
-    if (filerow > E.filerows - 1) { 
-      //if (y >= E.screenrows) break; //somehow making this >= made all the difference
 
-      //drawing '~' below: first escape is red and second erases rest of line
+    // if there is still screen real estate but we've run out of text rows (E.filerows)
+    //drawing '~' below: first escape is red colr (31m) and K erases rest of line
+    if (filerow > E.filerows - 1) { 
+
       //may not be worth this if else to not draw ~ in first row
       //and probably there is a better way to do it
       if (y) abAppend(ab, "\x1b[31m~~\x1b[K", 10); 
@@ -4382,19 +4491,26 @@ void editorDrawRows(struct abuf *ab) {
       abAppend(ab, offset_lf_ret, 7);
       y++;
 
+    // this else is the main drawing code
     } else {
 
       int lines = E.row[filerow].size/E.screencols;
       if (E.row[filerow].size%E.screencols) lines++;
       if (lines == 0) lines = 1;
-      if (E.row[filerow].chars[0] == '\r') E.row[filerow].chars[0] = '\0';
+
+      // thought \r was a problem but not sure necessary since now filtering '\r' in get_note
+      //if (E.row[filerow].chars[0] == '\r') E.row[filerow].chars[0] = '\0'; commented out 02052019 and not sure or not
+
+      // below is trying to emulate what vim does when it can't show an entire row (which will be multi-screen-line)
+      // at the bottom of the screen because of where the screen scroll is.  It shows nothing of the row
+      // rather than show a partial row.  May not be worth it.
       if ((y + lines) > E.screenrows) {
           for (n=0; n < (E.screenrows - y);n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
             abAppend(ab, offset_lf_ret, 7);
           }
-      break;
+        break;
       }      
 
       for (n=0; n<lines;n++) {
@@ -4404,7 +4520,6 @@ void editorDrawRows(struct abuf *ab) {
         if ((E.row[filerow].size - n*E.screencols) > E.screencols) len = E.screencols;
         else len = E.row[filerow].size - n*E.screencols;
 
-        //if (E.mode == VISUAL_LINE && filerow >= E.highlight[0] && filerow <= E.highlight[1]) {
         if (E.mode == VISUAL_LINE) { 
 
           // below in case E.highlight[1] < E.highlight[0]
@@ -4444,25 +4559,19 @@ void editorDrawRows(struct abuf *ab) {
               abAppend(ab, "\x1b[49m", 5); //return background to normal
               abAppend(ab, &(row->chars[E.highlight[k]]), start + len - E.highlight[k]);
             }  
-              
           } else abAppend(ab, &(row->chars[start]), len);
-
-        
         } else abAppend(ab, &(row->chars[start]), len);
     
       //"\x1b[K" erases the part of the line to the right of the cursor in case the
       // new line i shorter than the old
-
       abAppend(ab, "\x1b[K", 3); 
-      //abAppend(ab, "\r\n", 2); ///////////////////////////////////////////
+
       abAppend(ab, offset_lf_ret, 7);
       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
       }
 
       filerow++;
     }
-    //  abAppend(ab, offset_lf_ret, 7);
-    //abAppend(ab, "\r\n", 2);
    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
 }
