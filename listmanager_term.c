@@ -1983,7 +1983,7 @@ void outlineMoveCursor(int key) {
       row = &O.row[fr];
       id = O.row[fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
-      editorRefreshScreen();
+      //editorRefreshScreen(); //in get_note
       return;
 
     case ARROW_DOWN:
@@ -1995,6 +1995,7 @@ void outlineMoveCursor(int key) {
       id = O.row[fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
       editorRefreshScreen();
+      //editorRefreshScreen(); //in get_note
       return;
   }
 }
