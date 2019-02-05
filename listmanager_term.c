@@ -884,7 +884,7 @@ void view_html(int id) {
 
   Py_Initialize();
   if (which_db[0] == 'p') 
-    pName = PyUnicode_DecodeFSDefault("view_html"); //module
+    pName = PyUnicode_DecodeFSDefault("view_html_pg"); //module
   else 
     pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
   /* Error checking of pName left out */
