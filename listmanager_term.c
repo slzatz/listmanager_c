@@ -558,7 +558,7 @@ void get_data3_sqlite(char *context, int n) {
   O.row = NULL; 
   O.numrows = 0;
 
-  O.cx = O.cy = O.rowoff = 0;
+  O.cx = O.cy = O.rowoff = 0; //? whether should be in get data function
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -766,15 +766,17 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(azColName);
 
   //note strsep handles multiple \n\n and strtok did not
-  char *note;
-  note = strdup(argv[0]); // ******************
-  char *found;
-  while ((found = strsep(&note, "\r\n")) !=NULL) {
-    editorInsertRow(E.filerows, found, strlen(found));
+  if (argv[0] != NULL) { //added this guard 02052019 - not sure
+    char *note;
+    note = strdup(argv[0]); // ******************
+    char *found;
+    while ((found = strsep(&note, "\r\n")) !=NULL) {
+      editorInsertRow(E.filerows, found, strlen(found));
+    }
+    free(note);
   }
   E.dirty = 0;
-  //editorSetMessage("");
-  free(note);
+  editorRefreshScreen();
   return 0;
 }
 
@@ -802,19 +804,18 @@ void get_note_pg(int id) {
   }    
 
   //note strsep handles multiple \n\n and strtok did not
-  char *note;
-  note = strdup(PQgetvalue(res, 0, 0)); // ******************
-  char *found;
-  while ((found = strsep(&note, "\r\n")) !=NULL) {
-    editorInsertRow(E.filerows, found, strlen(found));
+  if (PQgetvalue(res, 0, 0) != NULL) { //added this guard 02052019 - not sure
+    char *note;
+    note = strdup(PQgetvalue(res, 0, 0)); // ******************
+    char *found;
+    while ((found = strsep(&note, "\r\n")) !=NULL) {
+      editorInsertRow(E.filerows, found, strlen(found));
+    }
+    free(note);
   }
   PQclear(res);
   E.dirty = 0;
   editorRefreshScreen();
-  free(note);
-  //free(found); //didn't prevent segfault
-  //note = NULL; //? not necessary
-
   return;
 }
 
@@ -2381,13 +2382,15 @@ void outlineProcessKeypress() {
         case ARROW_UP:
             if (NN == 11) NN = 1;
             else NN++;
-            outlineSetMessage(context[NN]);
+            //outlineSetMessage(context[NN]);
+            outlineSetMessage(":%s %s", O.command_line, context[NN]);
             return;
 
         case ARROW_DOWN:
             if (NN < 2) NN = 11;
             else NN--;
-            outlineSetMessage(context[NN]);
+            //outlineSetMessage(context[NN]);
+            outlineSetMessage(":%s %s", O.command_line, context[NN]);
             return;
 
         case '\r':
@@ -2574,6 +2577,8 @@ void outlineProcessKeypress() {
                O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               (*get_note)(O.row[0].id);
+               //editorRefreshScreen(); //in get_note
                return;
 
             case C_synch:
@@ -5201,7 +5206,7 @@ void editorProcessKeypress(void) {
                 editorSetMessage("");
                 editor_mode = false;
               }
-              
+              editorRefreshScreen();
               return;
 
           } //leave for inner inner switch
@@ -6157,6 +6162,8 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
   (*get_data3)(O.context, 200); //? brings back deleted/completed-type data
+  (*get_note)(O.row[0].id);
+   //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
 
