@@ -9,7 +9,7 @@ import sqlalchemy.orm.exc as sqla_orm_exc
 import sqlalchemy.exc as sqla_exc
 from config import RDS_URI, REMOTE_DB ### RDS_URI should change to something like PG_URI
 
-__all__ = ['Task', 'Context', 'Folder', 'Keyword', 'TaskKeyword', 'Sync', 'remote_engine', 'sqla_exc', 'sqla_orm_exc', 'remote_session', 'or_', 'and_', 'case', 'literal', 'asc', 'desc', 'func', 'new_remote_session']
+__all__ = ['Task', 'Context', 'Folder', 'Keyword', 'TaskKeyword', 'Sync', 'remote_engine', 'sqla_exc', 'sqla_orm_exc', 'remote_session', 'or_', 'and_', 'case', 'literal', 'asc', 'desc', 'func'] #, 'new_remote_session']
 
 metadata = MetaData()
 task_table = Table('task',metadata,

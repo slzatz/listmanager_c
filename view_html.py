@@ -28,7 +28,7 @@ meta_html = '''<meta name="viewport" content="width=device-width, initial-scale=
 def view_html(task_id):
     #task_id = int(sys.argv[1])
     #print(sys.argv)
-    remote_session = new_remote_session()
+    #remote_session = new_remote_session()
     task = remote_session.query(Task).get(task_id)
 
     note = task.note if task.note else ''
@@ -60,3 +60,6 @@ def view_html(task_id):
     #call(['chromium', html_fn]) # default is -new-tab
     call(['qutebrowser', html_fn]) # default is -new-tab
 
+
+if __name__ == "__main__":
+    view_html(4809)

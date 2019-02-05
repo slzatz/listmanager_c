@@ -347,6 +347,7 @@ int editorGetLineCharCount (void);
 int editorGetScreenLineFromFileRow(int fr);
 int *editorGetScreenPosFromFilePos(int fr, int fc);
 void editorInsertRow(int fr, char *s, size_t len); 
+void abAppend(struct abuf *ab, const char *s, int len);
 
 // config struct for reading db.ini file
 
@@ -1647,6 +1648,54 @@ char *editorRowsToString(int *buflen) {
   return buf;
 }
 
+void editorDisplayLog(char *filename) {
+  //filename = strdup(filename);
+
+  FILE *fp = fopen(filename, "r");
+  if (!fp) die("fopen");
+
+  char offset_lf_ret[20];
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+
+  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+
+  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenrows; i++) {
+    abAppend(&ab, "\x1b[K", 3); 
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //set background color to blue
+  abAppend(&ab, "\x1b[44m", 5);
+
+  char *line = NULL;
+  size_t linecap = 0;
+  ssize_t linelen;
+  while ((linelen = getline(&line, &linecap, fp)) != -1) {
+    while (linelen > 0 && (line[linelen - 1] == '\n' ||
+                           line[linelen - 1] == '\r'))
+      linelen--;
+    //editorInsertRow(E.filerows, line, linelen);
+    abAppend(&ab, line, linelen);
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+  abAppend(&ab, "\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+
+  free(line);
+  
+  fclose(fp);
+}
+
 void editorOpen(char *filename) {
   free(E.filename);
   E.filename = strdup(filename);
@@ -2593,8 +2642,8 @@ void outlineProcessKeypress() {
                 E.row = NULL; 
                 E.filerows = 0;
               }
-              editorOpen("log");//put them in the command mode case synch
-              editorRefreshScreen();
+              editorDisplayLog("log");//put them in the command mode case synch
+              //editorRefreshScreen();
               O.mode = NORMAL;
               return;
 
@@ -2610,8 +2659,8 @@ void outlineProcessKeypress() {
                 E.row = NULL; 
                 E.filerows = 0;
               }
-              editorOpen("log");//put them in the command mode case synch
-              editorRefreshScreen();
+              editorDisplayLog("log");//put them in the command mode case synch
+              //editorRefreshScreen();
               O.mode = NORMAL;
               return;
 
@@ -2839,15 +2888,6 @@ void synchronize(int report_only) { //using 1 or 0
 }
 
 void display_item_info_pg(int id) {
-
-  /*
-  for (int j = 0 ; j < E.filerows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-  free(E.row);
-  E.row = NULL; 
-  E.filerows = 0;
-  */
 
   if (id ==-1) return;
 
