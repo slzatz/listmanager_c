@@ -125,6 +125,8 @@ enum Command {
   C_synch, // synchronixe sqlite and postgres dbs
   C_synch_test,//show what sync would do but don't do it 
 
+  C_quit,
+
   //C_e, //edit a note
   C_edit
 };
@@ -154,11 +156,13 @@ static t_symstruct lookuptable[] = {
   {"context", C_context},
   {"con", C_context},
   {"update", C_update},
+  {"sync", C_synch},
   {"synch", C_synch},
   {"synchronize", C_synch},
   {"test", C_synch_test},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
+  {"quit", C_quit},
   {"edit", C_edit}
   //{"e", C_edit}
 };
@@ -255,8 +259,8 @@ struct editorConfig E;
 
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
-void (*get_data3)(char *, int);
-void (*get_data4)(char *);
+void (*get_data)(char *, int);
+void (*get_solr_data)(char *);
 void (*get_note)(int);
 void (*update_note)(void); 
 void (*toggle_star)(void);
@@ -267,7 +271,7 @@ void (*update_rows)(void);
 void (*update_row)(void);
 int (*insert_row)(int); 
 void (*display_item_info)(int);
-int data3_callback(void *, int, char **, char **);
+int data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 int tid_callback(void *, int, char **, char **);
@@ -424,74 +428,7 @@ void get_conn(void) {
   } 
 }
 
-PGresult *get_data(char *context, int n) {
-  char query[200];
-  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
-
-  PGresult *res = PQexec(conn, query);    
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");        
-    PQclear(res);
-    do_exit(conn);
-  }    
-  
-  O.context = context;
-  return res;
-}
-
-void get_data2(char *context, int n) {
-  char query[200];
-  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
-
-  PGresult *res = PQexec(conn, query);    
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");        
-    PQclear(res);
-    do_exit(conn);
-  }    
-  
-  for (int j = 0 ; j < O.numrows ; j++ ) {
-    free(O.row[j].chars);
-  } 
-  free(O.row);
-  O.row = NULL; 
-  O.numrows = 0;
-
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    char *z = PQgetvalue(res, i, 3);
-    char *zz = PQgetvalue(res, i, 0);
-    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    int id = atoi(zz);
-    outlineInsertRow2(O.numrows, z, strlen(z), id, star, deleted, completed); 
-  }
-
-  outlineRefreshScreen(); //?necessary
-
-  PQclear(res);
- // PQfinish(conn);
-
-  O.cx = O.cy = O.rowoff = 0;
-  //O.context = context;
-}
-
-// get_data3 only one at moment capable of restricting to not deleted and not complete
-// want to restore what we had in get_data2 and pass context
-
-//void get_data2(char *context, int n) {
-//  char query[200];
-//  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-//                    "WHERE context.title = \'%s\' ORDER BY task.modified DESC LIMIT %d", context, n);
-
-void get_data3_pg(char *context, int n) {
+void get_data_pg(char *context, int n) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
@@ -548,7 +485,7 @@ void get_data3_pg(char *context, int n) {
   //O.context = context;
 }
 
-void get_data3_sqlite(char *context, int n) {
+void get_data_sqlite(char *context, int n) {
   char query[400];
 
   for (int j = 0 ; j < O.numrows ; j++ ) {
@@ -591,7 +528,7 @@ void get_data3_sqlite(char *context, int n) {
                     n);
   }
         
-    rc = sqlite3_exec(db, query, data3_callback, 0, &err_msg);
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
     
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -600,7 +537,7 @@ void get_data3_sqlite(char *context, int n) {
   sqlite3_close(db);
 }
 
-int data3_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
     
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
@@ -645,7 +582,7 @@ int data3_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void get_data4_sqlite(char *query) {
+void get_solr_data_sqlite(char *query) {
 
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
@@ -662,30 +599,22 @@ void get_data4_sqlite(char *query) {
   int rc = sqlite3_open(SQLITE_DB, &db);
     
   if (rc != SQLITE_OK) {
-        
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
 
-
-    rc = sqlite3_exec(db, query, data3_callback, 0, &err_msg);
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
     
     if (rc != SQLITE_OK ) {
-        
-       // fprintf(stderr, "Failed to select data\n");
-        //fprintf(stderr, "SQL error: %s\n", err_msg);
         outlineSetMessage("SQL error: %s\n", err_msg);
-
         sqlite3_free(err_msg);
         sqlite3_close(db);
-        
-        //return 1;
     } 
   sqlite3_close(db);
 }
 
 //brings back a set of ids generated by solr search
-void get_data4_pg(char *query) {
+void get_solr_data_pg(char *query) {
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -720,7 +649,6 @@ void get_data4_pg(char *query) {
  // PQfinish(conn);
 
   O.cx = O.cy = O.rowoff = 0;
-  //O.context = context; //simplest thing to try may be O.context = "No Context" or O.context = context[0];
 }
 
 void get_tid_sqlite(int id) {
@@ -1000,7 +928,7 @@ void solr_find(char *search_terms) {
               Py_DECREF(pValue);
 
              //this is where you would do the search
-             (*get_data4)(query);
+             (*get_solr_data)(query);
 
 
           }
@@ -2543,80 +2471,7 @@ void outlineProcessKeypress() {
             return;
 
         case '\r':
-
-          switch(O.command_line[0]) { 
-           /*
-            case 'w':
-              update_rows();
-              O.mode = 0;
-              O.command_line[0] = '\0';
-              return;
-
-             case 'x':
-               update_rows();
-               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
-               exit(0);
-               return;
-
-             //both :n and :new create a new item right now
-             case 'n': 
-                outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
-
-                O.cx = O.cy = O.rowoff = 0;
-                outlineScroll();
-                outlineRefreshScreen();  //? necessary
-                O.mode = NORMAL;
-                O.command[0] = '\0';
-                O.repeat = 0;
-                outlineSetMessage("");
-                editorEraseScreen();
-                editorRefreshScreen();
-                return;
-               */
-
-             case 'r':
-               outlineSetMessage("\'%s\' will be refreshed", O.context);
-               (*get_data3)(O.context, 200); 
-               O.mode = NORMAL;
-               //O.command_line[0] = '\0'; //probably not necessary
-               return;
-
-             case 'q':
-               ;
-               bool unsaved_changes = false;
-               for (int i=0;i<O.numrows;i++) {
-                 orow *row = &O.row[i];
-                 if (row->dirty) {
-                   unsaved_changes = true;
-                   break;
-                 }
-               } 
-
-               if (unsaved_changes) {
-                 if (strlen(O.command_line) == 2 && O.command_line[1] == '!') {
-                   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-                   write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-                   Py_FinalizeEx();
-                   exit(0);
-                 }  
-                 else {
-                   O.mode = NORMAL;
-                   outlineSetMessage("No db write since last change");
-                 }
-               }
-           
-               else {
-                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-                 write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-                 Py_FinalizeEx();
-                 exit(0);
-               }
-               return;
-
-          } //end of first switch under COMMAND case switch case '\r'
-
-          //the switch below is for commands that may have a target like 'open todo'
+          ;
           int pos;
           char *new_context;
           //pointer passes back position of space (if there is one) in var pos
@@ -2635,17 +2490,16 @@ void outlineProcessKeypress() {
                exit(0);
                return;
 
+             case 'r':
+               outlineSetMessage("\'%s\' will be refreshed", O.context);
+               (*get_data)(O.context, 200); 
+               O.mode = NORMAL;
+               //O.command_line[0] = '\0'; //probably not necessary
+               return;
+
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              /* this was for testing
-              outlineSetMessage("%s", O.command_line);
-              O.mode = NORMAL;
-              O.command[0] = '\0';
-              O.repeat = 0;
-              return;
-              */
-
               outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
               O.cx = O.cy = O.rowoff = 0;
               outlineScroll();
@@ -2674,23 +2528,22 @@ void outlineProcessKeypress() {
                  editorRefreshScreen();
                  editor_mode = true;
                } else {
-                 outlineSetMessage("You need to save item before you can create a note");
+                 outlineSetMessage("You need to save item before you can "
+                                   "create a note");
                }
                return;
 
-            case C_find: //actual definition defines 'fin ' and 'find ' so we know the space is thre
-            //case C_fin:
+            case 'f':
+            case C_find: //catches 'fin' and 'find' 
               if (strlen(O.command_line) < 6) {
                 outlineSetMessage("You need more characters");
                 return;
               }  
-              //int p = (O.command_line[4] == ' ') ? 5 : 4;
-              //solr_find(&O.command_line[p]);
               solr_find(&O.command_line[pos + 1]);
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               O.context = "search";
-              O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+              //O.command_line[0] = '\0'; //probably not necessary
               return;
 
             case C_update: //update solr
@@ -2731,13 +2584,11 @@ void outlineProcessKeypress() {
                outlineSetMessage("Item %d will get context \'%s\'(%d)", get_id(-1), new_context, context_tid);
                (*update_context)(context_tid); 
                O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               O.command_line[0] = '\0'; //probably not necessary 
                return;
 
             case C_open:
               //NN is set to zero when entering COMMAND_LINE mode
-               ;
-               //char *new_context;
                if (NN) {
                  new_context = context[NN];
                } else if (strlen(O.command_line) > 7) {
@@ -2758,7 +2609,7 @@ void outlineProcessKeypress() {
                  return;
                }
                outlineSetMessage("\'%s\' will be opened", new_context);
-               (*get_data3)(new_context, 200); //was get_data2 believe get_data2 passed context and need to do that with get_data3
+               (*get_data)(new_context, 200); 
                O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
@@ -2800,14 +2651,45 @@ void outlineProcessKeypress() {
               O.mode = NORMAL;
               return;
 
-            //case C_quit
+             case C_quit:
+             case 'q':
+               ;
+               bool unsaved_changes = false;
+               for (int i=0;i<O.numrows;i++) {
+                 orow *row = &O.row[i];
+                 if (row->dirty) {
+                   unsaved_changes = true;
+                   break;
+                 }
+               } 
 
-            default: // default for keyfromstring - 1st single letter and then keyfromstring for '\r' in COMMAND_MODE
+               if (unsaved_changes) {
+                 if (strlen(O.command_line) == 2 && O.command_line[1] == '!') {
+                   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+                   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+                   Py_FinalizeEx();
+                   exit(0);
+                 }  
+                 else {
+                   O.mode = NORMAL;
+                   outlineSetMessage("No db write since last change");
+                 }
+               }
+           
+               else {
+                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+                 write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+                 Py_FinalizeEx();
+                 exit(0);
+               }
+               return;
+
+            default: // default for commandfromstring
               return;
 
           } //end of keyfromstring switch with '\r' of COMMAND_LINE
 
-        default: //default for switch 'c' of COMMAND_LINE
+        default: //default for case COMMAND_LINE of switch 'c'
 
           if (c=='\r') return; // if return calls through don't add return to command_line just allow more characters to be typed
 
@@ -2865,14 +2747,14 @@ void outlineProcessKeypress() {
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          (*get_data3)(O.context, 200);
+          (*get_data)(O.context, 200);
             
           return;
 
         case 'r':
           O.cx = 0;
           O.repeat = 0;
-          (*get_data3)(O.context, 200);
+          (*get_data)(O.context, 200);
           return;
 
         case SHIFT_TAB:
@@ -5680,7 +5562,8 @@ int editorGetFileRowByLine (int y){
   return n;
 }
 
-// returns E.cy for a given filerow - right now just used for 'G' and for some reason editorFindNextWord
+// returns E.cy for a given filerow - right now just used for 'G' 
+// and for some reason editorFindNextWord
 // I think this assumes that E.cx is zero
 int editorGetScreenLineFromFileRow (int fr){
   int screenline = -1;
@@ -5690,7 +5573,10 @@ int editorGetScreenLineFromFileRow (int fr){
   for (n=0;n < fr + 1;n++) {
     rowlines = E.row[n].size/E.screencols;
     if (E.row[n].size%E.screencols) rowlines++;
-    if (rowlines == 0) rowlines = 1; // a row with no characters still takes up a line may also deal with last line
+
+    // a row with no characters still takes up a line may also deal with last line
+    if (rowlines == 0) rowlines = 1; 
+
     screenline+= rowlines;
   }
   return screenline - E.rowoff;
@@ -5947,7 +5833,8 @@ void editorMoveCursorBOL(void) {
 }
 
 void editorMoveCursorEOL(void) {
- // possibly should turn line in row and total lines into a function but use does vary a little so maybe not 
+  // possibly should turn line in row and total lines into a function 
+  // but use does vary a little so maybe not 
   int fc = editorGetFileCol();
   int fr = editorGetFileRow();
   int row_size = E.row[fr].size;
@@ -6072,7 +5959,6 @@ void editorMoveEndWord(void) {
       if (row->size) break;
       }
     line_in_row = 0;
-    //E.cx = 0;
     fc = 0;
   }
   j = fc + 1;
@@ -6082,7 +5968,6 @@ void editorMoveEndWord(void) {
       if (row->chars[j] > 48) break;
     }
   }
-  //for (j = E.cx + 1; j < row->size ; j++) {
   for (j++; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
@@ -6140,19 +6025,16 @@ void editorDecorateWord(int c) {
 }
 
 void editorDecorateVisual(int c) {
- // E.cx = E.highlight[0];
     E.cx = E.highlight[0]%E.screencols;
   if (c == CTRL_KEY('b')) {
     editorInsertChar('*');
     editorInsertChar('*');
-    //E.cx = E.highlight[1]+3;
     E.cx = (E.highlight[1]+3)%E.screencols;
     editorInsertChar('*');
     editorInsertChar('*');
   } else {
     char cc = (c ==CTRL_KEY('i')) ? '*' : '`';
     editorInsertChar(cc);
-    //E.cx = E.highlight[1]+2;
     E.cx = (E.highlight[1]+2)%E.screencols;
     editorInsertChar(cc);
   }
@@ -6208,7 +6090,8 @@ void editorFindNextWord(void) {
   int line_in_row = 1 + fc/E.screencols; //counting from one
   int total_lines = row->size/E.screencols;
   if (row->size%E.screencols) total_lines++;
-  E.cy = editorGetScreenLineFromFileRow(y) - (total_lines - line_in_row); //that is screen line of last row in multi-row
+  //below is screen line of last row in multi-row
+  E.cy = editorGetScreenLineFromFileRow(y) - (total_lines - line_in_row); 
 
     editorSetMessage("x = %d; y = %d", x, y); 
 }
@@ -6281,7 +6164,6 @@ void getcharundercursor(void) {
   editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
 }
 */
-/*** slz testing stuff (above) ***/
 
 /*** init ***/
 
@@ -6292,7 +6174,6 @@ void initOutline() {
   O.coloff = 0;  //col the user is currently scrolled to  
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
-  //O.context = NULL;
   O.context = "todo";
   O.show_deleted = false;
   O.show_completed = true;
@@ -6302,9 +6183,7 @@ void initOutline() {
   O.command[0] = '\0';
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
-  //if (getWindowSize(&O.screenrows, &O.screencols) == -1) die("getWindowSize");
   if (getWindowSize(&screenrows, &screencols) == -1) die("getWindowSize");
-  //O.screenrows = screenrows - 2;
   O.screenrows = screenrows - 2 - TOP_MARGIN;
   O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
 }
@@ -6321,7 +6200,6 @@ void initEditor(void) {
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
   E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
-  //E.message_time = 0;
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   E.command[0] = '\0';
@@ -6339,8 +6217,8 @@ void initEditor(void) {
 int main(int argc, char** argv) { 
 
   if (argc > 1 && argv[1][0] == 's') {
-    get_data3 = &get_data3_sqlite;
-    get_data4 = &get_data4_sqlite;
+    get_data = &get_data_sqlite;
+    get_solr_data = &get_solr_data_sqlite;
     get_note = &get_note_sqlite;
     update_note = &update_note_sqlite;
     toggle_star = &toggle_star_sqlite;
@@ -6354,8 +6232,8 @@ int main(int argc, char** argv) {
     which_db = "sqlite";
   } else {
     get_conn();
-    get_data3 = &get_data3_pg;
-    get_data4 = &get_data4_pg;
+    get_data = &get_data_pg;
+    get_solr_data = &get_solr_data_pg;
     get_note = &get_note_pg;
     update_note = &update_note_pg;
     toggle_star = &toggle_star_pg;
@@ -6369,7 +6247,6 @@ int main(int argc, char** argv) {
     which_db = "postgres";
   }
 
-
   int j;
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -6377,7 +6254,6 @@ int main(int argc, char** argv) {
   initEditor();
   int pos = screencols/2;
   char buf[32];
-  //for (j=1; j < O.screenrows + 1;j++) {
   for (j=1; j < screenrows + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
@@ -6402,10 +6278,10 @@ int main(int argc, char** argv) {
   }
 
 
-  write(STDOUT_FILENO, "\x1b[0m", 4); //slz return background to normal (not really nec didn't tough backgound)
+  write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  (*get_data3)(O.context, 200); //? brings back deleted/completed-type data
+  (*get_data)(O.context, 200); //? brings back deleted/completed-type data
   (*get_note)(O.row[0].id);
    //editorRefreshScreen(); //in get_note
   
