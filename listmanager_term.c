@@ -39,8 +39,6 @@
 char *SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 char *which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
-int tid = 0;
-//int TOP_MARGIN;
 
 char *context[] = {
                         "", //maybe should be "search" - we'll see
@@ -100,7 +98,7 @@ char *mode_text[] = {
                        }; 
 
 enum Command {
-  C_caw,
+  C_caw = 2000,
   C_cw,
   C_daw,
   C_dw,
@@ -114,9 +112,7 @@ enum Command {
   C_yy,
 
   C_open,
-  //C_o,
 
-  //C_fin,
   C_find,
 
   C_new, //create a new item
@@ -129,7 +125,7 @@ enum Command {
   C_synch, // synchronixe sqlite and postgres dbs
   C_synch_test,//show what sync would do but don't do it 
 
-  C_e, //edit a note
+  //C_e, //edit a note
   C_edit
 };
 
@@ -151,10 +147,10 @@ static t_symstruct lookuptable[] = {
   {"d$", C_d$},
 
   {"open", C_open},
-  {"o", C_open},
+  {"o", C_open}, //need 'o' because this is command with target word
   {"fin", C_find},
   {"find", C_find},
-  {"new", C_new},
+  {"new", C_new}, //don't need "n" but still catch it - see code
   {"context", C_context},
   {"con", C_context},
   {"update", C_update},
@@ -163,8 +159,8 @@ static t_symstruct lookuptable[] = {
   {"test", C_synch_test},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
-  {"edit", C_edit},
-  {"e", C_edit}
+  {"edit", C_edit}
+  //{"e", C_edit}
 };
 
 char search_string[30] = {'\0'}; //used for '*' and 'n' searches
@@ -215,13 +211,13 @@ struct outlineConfig {
   int numrows; // the number of rows of text so last text row is always row numrows
   orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
   //orow *prev_row; //for undo purposes
-  int dirty; //file changes since last save
+  //int dirty; //each row has a row->dirty
   char *context;
   char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
-  char command[20]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
+  char command[10]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
   char command_line[20]; //for commands on the command line doesn't include ':' where that applies
   int repeat;
   bool show_deleted;
@@ -257,6 +253,7 @@ struct editorConfig {
 struct editorConfig E;
 
 
+void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
 void (*get_data3)(char *, int);
 void (*get_data4)(char *);
@@ -770,7 +767,7 @@ int tid_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
   //note strsep handles multiple \n\n and strtok did not
   if (argv[0] != NULL) { //added this guard 02052019 - not sure
-    tid = atoi(argv[0]);
+    //tid = atoi(argv[0]);
   }
   return 0;
 }
@@ -1101,28 +1098,34 @@ int keyfromstring(char *key) {
 }
 
 //through pointer passes back position of space (if there is one)
-int multiwordkeyfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
-  int i;
-  char *new_key;
+int commandfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
+
+  if (strlen(key) == 1) return key[0]; 
+
+  int i, pos;
+  char *command;
   char *ptr_2_space = strchr(key, ' ');
   if (ptr_2_space) {
-    int pos = ptr_2_space - key;
-    *p = pos; // reference it position of space available to those multiword COMMAND_LINE mode switch cases that need it
-    new_key = strndup(key, pos);
-    new_key[pos] = '\0'; 
+    pos = ptr_2_space - key;
+    // reference to position of space in commands like "open todo"
+    *p = pos; 
+    command = strndup(key, pos);
+    command[pos] = '\0'; 
   } else {
-    new_key = key;
-    *p = 0; //not sure this is necessary - not using it when command has no space
+    command = key;
+    pos = 0;
+    *p = pos; //not sure this is necessary - not using it when command has no space
   }
 
   for (i=0; i <  NKEYS; i++) {
-    if (strcmp(lookuptable[i].key, new_key) == 0)
+    if (strcmp(lookuptable[i].key, command) == 0) {
+      if (pos) free(command);
       return lookuptable[i].val;
+    }
   }
 
-    //nothing should match -1
-
-  free(new_key);
+  //if don't match anything and not a single char then just return -1
+  if (pos) free(command);
   return -1;
 }
 
@@ -1701,6 +1704,39 @@ char *editorRowsToString(int *buflen) {
   *p = '\0'; //does not work if this is missing
   return buf;
 }
+void editorEraseScreen(void) {
+
+  if (E.row) {
+    for (int j = 0 ; j < E.filerows ; j++ ) {
+      free(E.row[j].chars);
+    } 
+    free(E.row);
+    E.row = NULL; 
+    E.filerows = 0;
+  }
+
+  char offset_lf_ret[20];
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+
+  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+
+  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenrows; i++) {
+    abAppend(&ab, "\x1b[K", 3); 
+    abAppend(&ab, offset_lf_ret, 7);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  abAppend(&ab, buf, strlen(buf));
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+  abFree(&ab); 
+}
 
 void editorDisplayLog(char *filename) {
   //filename = strdup(filename);
@@ -1745,6 +1781,7 @@ void editorDisplayLog(char *filename) {
 
   write(STDOUT_FILENO, ab.b, ab.len);
 
+  abFree(&ab); 
   free(line);
   
   fclose(fp);
@@ -1879,9 +1916,11 @@ void outlineDrawRows(struct abuf *ab) {
     
     if (row->star) abAppend(ab, "\x1b[1m", 4); //bold
 
-    if (row->completed && row->deleted) abAppend(ab, "\x1b[32m", 5); //green
-    else if (row->completed) abAppend(ab, "\x1b[33m", 5); //yellow
-    else if (row->deleted) abAppend(ab, "\x1b[31m", 5); //red
+    if (row->completed && row->deleted) abAppend(ab, "\x1b[32m", 5); //green foreground
+    else if (row->completed) abAppend(ab, "\x1b[33m", 5); //yellow foreground
+    else if (row->deleted) abAppend(ab, "\x1b[31m", 5); //red foreground
+
+    if (row->dirty) abAppend(ab, "\x1b[41m", 5); //red background
 
     // below - only will get visual highlighting if it's the active row and 
     //then also deals with column offset
@@ -2117,8 +2156,11 @@ void outlineProcessKeypress() {
 
       switch (c) {
 
-        case '\r':
+        case '\r': //also does escape into NORMAL mode
           update_row();
+          O.mode = NORMAL;
+          if (O.cx > 0) O.cx--;
+          outlineSetMessage("");
           return;
 
         case HOME_KEY:
@@ -2204,7 +2246,11 @@ void outlineProcessKeypress() {
           update_row();
           return;
 
-        //case 'z':
+        case 'z':
+          editorEraseScreen();
+          editorRefreshScreen();
+          return;
+
         case SHIFT_TAB:
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
@@ -2301,6 +2347,7 @@ void outlineProcessKeypress() {
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
+        /*
         case 'N':
          
          // void outlineInsertRow2(int at, char *s, size_t len, 
@@ -2315,6 +2362,7 @@ void outlineProcessKeypress() {
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
+         */
 
         case 'G':
           O.cx = 0;
@@ -2469,7 +2517,7 @@ void outlineProcessKeypress() {
           return;
 
       } //end of keyfromswitch inner switch under outer case NORMAL 
-      return; // end of outer case NORMAL
+      return; // end of outer switch case NORMAL
 
     case COMMAND_LINE:
 
@@ -2477,29 +2525,27 @@ void outlineProcessKeypress() {
 
         case '\x1b': 
           O.mode = NORMAL;
-          //O.command[0] = '\0'; // should have been set on leaving NORMAL mode
-          //O.command_line[0] = '\0'; // should be set whenever entering COMMAND_LINE mode
+          //O.command[0] = '\0'; //should have been set on leaving NORMAL mode
+          //O.command_line[0] = '\0'; //should be set when entering COMMAND_LINE mode
           outlineSetMessage(""); 
           return;
 
         case ARROW_UP:
             if (NN == 11) NN = 1;
             else NN++;
-            //outlineSetMessage(context[NN]);
             outlineSetMessage(":%s %s", O.command_line, context[NN]);
             return;
 
         case ARROW_DOWN:
             if (NN < 2) NN = 11;
             else NN--;
-            //outlineSetMessage(context[NN]);
             outlineSetMessage(":%s %s", O.command_line, context[NN]);
             return;
 
         case '\r':
 
           switch(O.command_line[0]) { 
-
+           /*
             case 'w':
               update_rows();
               O.mode = 0;
@@ -2509,7 +2555,7 @@ void outlineProcessKeypress() {
              case 'x':
                update_rows();
                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-               write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
+               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
                exit(0);
                return;
 
@@ -2524,13 +2570,16 @@ void outlineProcessKeypress() {
                 O.command[0] = '\0';
                 O.repeat = 0;
                 outlineSetMessage("");
+                editorEraseScreen();
+                editorRefreshScreen();
                 return;
+               */
 
              case 'r':
                outlineSetMessage("\'%s\' will be refreshed", O.context);
                (*get_data3)(O.context, 200); 
                O.mode = NORMAL;
-               //O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
+               //O.command_line[0] = '\0'; //probably not necessary
                return;
 
              case 'q':
@@ -2565,15 +2614,38 @@ void outlineProcessKeypress() {
                }
                return;
 
-          } //end of first switch under case '\r' which is under the switch(c) that is under case COMMAND_LINE
+          } //end of first switch under COMMAND case switch case '\r'
 
-          // the switch below is for multi-character and in some cases multi-word command line commands followed by '\r'
-          //switch 
+          //the switch below is for commands that may have a target like 'open todo'
           int pos;
           char *new_context;
-          switch (multiwordkeyfromstring(O.command_line, &pos)) { //through pointer passes back position of space (if there is one)
+          //pointer passes back position of space (if there is one) in var pos
+          switch (commandfromstring(O.command_line, &pos)) { 
 
-            case C_new: //in vim create a new window and edit a file in it - here creates new item
+            case 'w':
+              update_rows();
+              O.mode = 0;
+              O.command_line[0] = '\0';
+              return;
+
+             case 'x':
+               update_rows();
+               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
+               exit(0);
+               return;
+
+            //in vim create new window and edit a file in it - here creates new item
+            case 'n':
+            case C_new: 
+              /* this was for testing
+              outlineSetMessage("%s", O.command_line);
+              O.mode = NORMAL;
+              O.command[0] = '\0';
+              O.repeat = 0;
+              return;
+              */
+
               outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
               O.cx = O.cy = O.rowoff = 0;
               outlineScroll();
@@ -2582,8 +2654,11 @@ void outlineProcessKeypress() {
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("");
+              editorEraseScreen();
+              editorRefreshScreen();
               return;
 
+            case 'e':
             case C_edit: //edit the note of the current item
                E.cx = E.cy = E.rowoff = 0;
                E.mode = NORMAL;
@@ -2591,9 +2666,16 @@ void outlineProcessKeypress() {
                // might have last been in item_info_display mode
                // or possibly was changed in another program (unlikely)
                // if it's a performance issue can revisit - doubt it will be
-               (*get_note)(get_id(-1)); //if id == -1 does not try to retrieve note
-               editorRefreshScreen();
-               editor_mode = true;
+               int id = get_id(-1);
+               if (id != -1) {
+                 //(*get_note)(get_id(-1)); 
+                 outlineSetMessage("");
+                 (*get_note)(id); //if id == -1 does not try to retrieve note
+                 editorRefreshScreen();
+                 editor_mode = true;
+               } else {
+                 outlineSetMessage("You need to save item before you can create a note");
+               }
                return;
 
             case C_find: //actual definition defines 'fin ' and 'find ' so we know the space is thre
