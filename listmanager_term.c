@@ -118,7 +118,6 @@ enum Command {
   C_new, //create a new item
 
   C_context, //change an item's context
-  //C_con,
 
   C_update, //update solr db
 
@@ -127,7 +126,8 @@ enum Command {
 
   C_quit,
 
-  //C_e, //edit a note
+  C_help,
+
   C_edit
 };
 
@@ -148,13 +148,15 @@ static t_symstruct lookuptable[] = {
   {"yy", C_yy},
   {"d$", C_d$},
 
+  {"help", C_help},
   {"open", C_open},
   {"o", C_open}, //need 'o' because this is command with target word
   {"fin", C_find},
   {"find", C_find},
-  {"new", C_new}, //don't need "n" but still catch it - see code
+  {"new", C_new}, //don't need "n" because there is no target
   {"context", C_context},
   {"con", C_context},
+  {"c", C_context}, //need because there is a target
   {"update", C_update},
   {"sync", C_synch},
   {"synch", C_synch},
@@ -1693,7 +1695,7 @@ void editorDisplayLog(char *filename) {
 
   //set background color to blue
   abAppend(&ab, "\x1b[44m", 5);
-
+  int num_lines = 0;
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelen;
@@ -1702,7 +1704,17 @@ void editorDisplayLog(char *filename) {
                            line[linelen - 1] == '\r'))
       linelen--;
     //editorInsertRow(E.filerows, line, linelen);
-    abAppend(&ab, line, linelen);
+    //probably should have if (lineline > E.screencols) break into multiple lines
+    int n = 0;
+    for(;;) {
+      if (linelen < (n+1)*E.screencols) break;
+      abAppend(&ab, &line[n*E.screencols], E.screencols);
+      abAppend(&ab, offset_lf_ret, 7);
+      n++;
+    }
+    abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
+    num_lines++;
+    if (num_lines > E.screenrows - 1) break;
     abAppend(&ab, offset_lf_ret, 7);
   }
   abAppend(&ab, "\x1b[0m", 4);
@@ -2620,7 +2632,7 @@ void outlineProcessKeypress() {
             case C_synch:
               synchronize(0); //1 -> report_only
 
-              // free the E.row[j].chars
+              // free the E.row[j].chars not sure this has to be done
               if (E.row) {
                 for (int j = 0 ; j < E.filerows ; j++ ) {
                   free(E.row[j].chars);
@@ -2683,6 +2695,12 @@ void outlineProcessKeypress() {
                  exit(0);
                }
                return;
+
+            case 'h':
+            case C_help:
+              editorDisplayLog("listmanager_commands");
+              O.mode = NORMAL;
+              return;
 
             default: // default for commandfromstring
               return;
