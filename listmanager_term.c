@@ -1,4 +1,4 @@
-/***  includes ***/
+ /***  includes ***/
 
 #define _DEFAULT_SOURCE
 //#define _BSD_SOURCE
@@ -60,7 +60,7 @@ int NN = 0; //which context is being displayed on message line (if none then NN=
 
 struct termios orig_termios;
 int screenrows, screencols;
-
+int initial_file_row = 0; //for arrowing or displaying files
 bool editor_mode;
 
 enum outlineKey {
@@ -84,7 +84,8 @@ enum Mode {
   VISUAL_LINE = 3, //outline mode does not have VISUAL_LINE
   VISUAL = 4,
   REPLACE = 5,
-  DATABASE = 6
+  DATABASE = 6,
+  FILE_DISPLAY = 7
 };
 
 char *mode_text[] = {
@@ -1668,8 +1669,7 @@ void editorEraseScreen(void) {
   abFree(&ab); 
 }
 
-void editorDisplayLog(char *filename) {
-  //filename = strdup(filename);
+void editorDisplayFile(char *filename) {
 
   FILE *fp = fopen(filename, "r");
   if (!fp) die("fopen");
@@ -1695,7 +1695,9 @@ void editorDisplayLog(char *filename) {
 
   //set background color to blue
   abAppend(&ab, "\x1b[44m", 5);
-  int num_lines = 0;
+  int file_line = 0;
+  int file_row = 0;
+  //initial_file_row is a global - should be set to zero when you open a file
   char *line = NULL;
   size_t linecap = 0;
   ssize_t linelen;
@@ -1706,15 +1708,18 @@ void editorDisplayLog(char *filename) {
     //editorInsertRow(E.filerows, line, linelen);
     //probably should have if (lineline > E.screencols) break into multiple lines
     int n = 0;
+    file_row++;
+    if (file_row < initial_file_row) continue;
     for(;;) {
       if (linelen < (n+1)*E.screencols) break;
       abAppend(&ab, &line[n*E.screencols], E.screencols);
       abAppend(&ab, offset_lf_ret, 7);
+      //should be num_liness++ here
       n++;
     }
     abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
-    num_lines++;
-    if (num_lines > E.screenrows - 1) break;
+    file_line++;
+    if (file_line > E.screenrows - 1) break;
     abAppend(&ab, offset_lf_ret, 7);
   }
   abAppend(&ab, "\x1b[0m", 4);
@@ -2641,7 +2646,7 @@ void outlineProcessKeypress() {
                 E.row = NULL; 
                 E.filerows = 0;
               }
-              editorDisplayLog("log");//put them in the command mode case synch
+              editorDisplayFile("log");//put them in the command mode case synch
               //editorRefreshScreen();
               O.mode = NORMAL;
               return;
@@ -2658,7 +2663,7 @@ void outlineProcessKeypress() {
                 E.row = NULL; 
                 E.filerows = 0;
               }
-              editorDisplayLog("log");//put them in the command mode case synch
+              editorDisplayFile("log");//put them in the command mode case synch
               //editorRefreshScreen();
               O.mode = NORMAL;
               return;
@@ -2698,8 +2703,10 @@ void outlineProcessKeypress() {
 
             case 'h':
             case C_help:
-              editorDisplayLog("listmanager_commands");
-              O.mode = NORMAL;
+              initial_file_row = 0;
+              O.mode = FILE_DISPLAY;
+              editorDisplayFile("listmanager_commands");
+              //O.mode = NORMAL;
               return;
 
             default: // default for commandfromstring
@@ -2848,7 +2855,7 @@ void outlineProcessKeypress() {
           return;
   
         case '\x1b':
-          O.mode = 0;
+          O.mode = NORMAL;
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("");
@@ -2870,6 +2877,44 @@ void outlineProcessKeypress() {
       O.mode = 0;
 
       return; //////// end of outer case REPLACE
+
+    case FILE_DISPLAY: 
+
+      //int initial_file_row; //for arrowing or displaying files
+      switch (c) {
+  
+        case ARROW_UP:
+        case 'k':
+          initial_file_row--;
+          initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
+          editorDisplayFile("listmanager_commands");
+          return;
+
+        case ARROW_DOWN:
+        case 'j':
+          initial_file_row++;
+          editorDisplayFile("listmanager_commands");
+          return;
+
+        case PAGE_UP:
+          initial_file_row = initial_file_row - E.screenrows;
+          initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
+          editorDisplayFile("listmanager_commands");
+          return;
+
+        case PAGE_DOWN:
+          initial_file_row = initial_file_row + E.screenrows;
+          editorDisplayFile("listmanager_commands");
+          return;
+
+        case '\x1b':
+          O.mode = NORMAL;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("");
+          return;
+      }
+      return;
   } //End of outer switch(O.mode)
 }
 
