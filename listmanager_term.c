@@ -126,6 +126,7 @@ enum Command {
   C_synch_test,//show what sync would do but don't do it 
 
   C_quit,
+  C_quit0,
 
   C_help,
 
@@ -166,6 +167,8 @@ static t_symstruct lookuptable[] = {
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
   {"quit", C_quit},
+  {"quit!", C_quit0},
+  {"q!", C_quit0},
   {"edit", C_edit}
   //{"e", C_edit}
 };
@@ -2492,7 +2495,9 @@ void outlineProcessKeypress() {
           int pos;
           char *new_context;
           //pointer passes back position of space (if there is one) in var pos
-          switch (commandfromstring(O.command_line, &pos)) { 
+          //switch (commandfromstring(O.command_line, &pos)) { 
+          int command = commandfromstring(O.command_line, &pos); 
+          switch(command) {
 
             case 'w':
               update_rows();
@@ -2681,24 +2686,22 @@ void outlineProcessKeypress() {
                } 
 
                if (unsaved_changes) {
-                 if (strlen(O.command_line) == 2 && O.command_line[1] == '!') {
-                   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-                   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-                   Py_FinalizeEx();
-                   exit(0);
-                 }  
-                 else {
-                   O.mode = NORMAL;
-                   outlineSetMessage("No db write since last change");
-                 }
-               }
+                 O.mode = NORMAL;
+                 outlineSetMessage("No db write since last change");
            
-               else {
+               } else {
                  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
                  Py_FinalizeEx();
                  exit(0);
                }
+               return;
+
+             case C_quit0: //catches both :q! and :quit!
+               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+               write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+               Py_FinalizeEx();
+               exit(0);
                return;
 
             case 'h':
