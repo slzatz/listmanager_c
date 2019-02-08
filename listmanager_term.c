@@ -1022,6 +1022,9 @@ void update_solr(void) {
 }
 
 int keyfromstring(char *key) {
+
+  //if (strlen(key) == 1) return key[0]; //catching this before calling keyfromstring
+
   int i;
   for (i=0; i <  NKEYS; i++) {
     if (strcmp(lookuptable[i].key, key) == 0) return lookuptable[i].val;
@@ -1034,7 +1037,9 @@ int keyfromstring(char *key) {
 //through pointer passes back position of space (if there is one)
 int commandfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
 
-  if (strlen(key) == 1) return key[0]; 
+  if (strlen(key) == 1) return key[0];  //need this
+
+  //probably should strip trailing spaces with isspace
 
   int i, pos;
   char *command;
@@ -2091,7 +2096,7 @@ void outlineMoveCursor(int key) {
 
 // higher level outline function depends on readKey()
 void outlineProcessKeypress() {
-  int start, end;
+  int start, end, command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -2140,6 +2145,7 @@ void outlineProcessKeypress() {
           return;
 
         case '\x1b':
+          O.command[0] = '\0';
           O.mode = NORMAL;
           if (O.cx > 0) O.cx--;
           outlineSetMessage("");
@@ -2179,30 +2185,36 @@ void outlineProcessKeypress() {
 
       if ( O.repeat == 0 ) O.repeat = 1;
 
-      if (O.command[0] == '\0') { 
+      int n = strlen(O.command);
+      O.command[n] = c;
+      O.command[n+1] = '\0';
+      // for some reason arrow keys not working when keyfromstring returned command[0]
+      command = (n) ? keyfromstring(O.command) : c;
 
-      switch (c) {
+      switch(command) {  
 
         case '\t':
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
-          //O.command[0] = '\0';
+          O.command[0] = '\0';
           O.repeat = 0;
           return;
 
         case '\r':
           update_row();
+          O.command[0] = '\0';
           return;
 
         case 'z':
           editorEraseScreen();
           editorRefreshScreen();
+          O.command[0] = '\0';
           return;
 
         case SHIFT_TAB:
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
-          //O.command[0] = '\0';
+          O.command[0] = '\0';
           O.repeat = 0;
           return;
 
@@ -2228,6 +2240,7 @@ void outlineProcessKeypress() {
           return;
         
         case 'r':
+          O.command[0] = '\0';
           O.mode = REPLACE; //REPLACE_MODE = 5
           return;
 
@@ -2251,7 +2264,6 @@ void outlineProcessKeypress() {
           outlineMoveCursor(ARROW_RIGHT);
           O.command[0] = '\0';
           O.repeat = 0;
-          //O.mode = 1;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
@@ -2295,23 +2307,6 @@ void outlineProcessKeypress() {
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
-        /*
-        case 'N':
-         
-         // void outlineInsertRow2(int at, char *s, size_t len, 
-         // int id, bool star, bool deleted, bool completed); 
-          outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
-
-          O.cx = O.cy = O.rowoff = 0;
-          outlineScroll();
-          outlineRefreshScreen();  //? necessary
-          O.mode = INSERT;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-         */
-
         case 'G':
           O.cx = 0;
           O.cy = O.numrows-1;
@@ -2344,14 +2339,17 @@ void outlineProcessKeypress() {
         case '*':  
           outlineGetWordUnderCursor();
           outlineFindNextWord(); 
+          O.command[0] = '\0';
           return;
 
         case 'n':
           outlineFindNextWord();
+          O.command[0] = '\0';
           return;
 
         case 'u':
           //could be used to update solr - would use U
+          O.command[0] = '\0';
           return;
 
         case '^':
@@ -2365,6 +2363,7 @@ void outlineProcessKeypress() {
           outlineRefreshScreen();
           editorRefreshScreen();
           */
+          O.command[0] = '\0';
           return;
 
         case ARROW_UP:
@@ -2380,20 +2379,6 @@ void outlineProcessKeypress() {
           O.repeat = 0;
           return;
 
-      }// end of inner switch(c) in outer swith NORMAL
-
-      // don't want a default case just want it to fall through
-      // if it doesn't match switch above
-      // presumption is it's a multicharacter command
-
-      } // end of if statement - if (O.command[0] == 0)
-
-      int n = strlen(O.command);
-      O.command[n] = c;
-      O.command[n+1] = '\0';
-
-      switch (keyfromstring(O.command)) {
-        
         case C_daw:
           for (int i = 0; i < O.repeat; i++) outlineDelWord();
           O.command[0] = '\0';
@@ -2462,9 +2447,11 @@ void outlineProcessKeypress() {
          return;
 
         default:
+          // if a single char or sequence of chars  doesn't match just do nothing
+          // the next char may cause a match
           return;
 
-      } //end of keyfromswitch inner switch under outer case NORMAL 
+      } //end of keyfromstring inner switch under outer case NORMAL 
       return; // end of outer switch case NORMAL
 
     case COMMAND_LINE:
@@ -2495,8 +2482,8 @@ void outlineProcessKeypress() {
           int pos;
           char *new_context;
           //pointer passes back position of space (if there is one) in var pos
-          //switch (commandfromstring(O.command_line, &pos)) { 
-          int command = commandfromstring(O.command_line, &pos); 
+          //switch (commandfromstring(O.command_line, &pos))  
+          command = commandfromstring(O.command_line, &pos); 
           switch(command) {
 
             case 'w':
@@ -2713,14 +2700,13 @@ void outlineProcessKeypress() {
               return;
 
             default: // default for commandfromstring
+              outlineSetMessage("I don't recognize %s", O.command_line);
               return;
 
-          } //end of keyfromstring switch with '\r' of COMMAND_LINE
+          } //end of commandfromstring switch within '\r' of case COMMAND_LINE
 
-        default: //default for case COMMAND_LINE of switch 'c'
-
-          if (c=='\r') return; // if return calls through don't add return to command_line just allow more characters to be typed
-
+        default: //default for switch 'c' in case COMMAND_LINE
+          ;
           int n = strlen(O.command_line);
           if (c == DEL_KEY || c == BACKSPACE) {
             O.command_line[n-1] = '\0';
@@ -2811,8 +2797,9 @@ void outlineProcessKeypress() {
           return;
 
         default:
+          outlineSetMessage("I don't recognize %c", c);
           return;
-      } // end of inner switch(c) in outer case DATABASLE
+      } // end of switch(c) in case DATABASLE
 
       return; //end of outer case DATABASE
 
