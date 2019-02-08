@@ -2190,7 +2190,7 @@ void outlineProcessKeypress() {
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
-      command = (n) ? keyfromstring(O.command) : c;
+      command = (n && c < 128) ? keyfromstring(O.command) : c;
 
       switch(command) {  
 
@@ -2448,12 +2448,13 @@ void outlineProcessKeypress() {
          return;
 
         default:
-          // if a single char or sequence of chars  doesn't match just do nothing
-          // the next char may cause a match
+          // if a single char or sequence of chars doesn't match then
+          // do nothing - the next char may generate a match
           return;
 
-      } //end of keyfromstring inner switch under outer case NORMAL 
-      return; // end of outer switch case NORMAL
+      } //end of keyfromstring switch under case NORMAL 
+
+      return; // end of case NORMAL (don't think it can be reached)
 
     case COMMAND_LINE:
 
@@ -2586,12 +2587,16 @@ void outlineProcessKeypress() {
                  }
 
                } else {
-                 outlineSetMessage("You need to provide at least 3 characters that match a context!");
+                 outlineSetMessage("You need to provide at least 3 characters"
+                                   "that match a context!");
+
                  O.command_line[1] = '\0';
                  return;
                }
 
-               outlineSetMessage("Item %d will get context \'%s\'(%d)", get_id(-1), new_context, context_tid);
+               outlineSetMessage("Item %d will get context \'%s\'(%d)",
+                                 get_id(-1), new_context, context_tid);
+
                (*update_context)(context_tid); 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary 
@@ -4841,7 +4846,7 @@ void editorMoveCursor(int key) {
 // higher level editor function depends on readKey()
 void editorProcessKeypress(void) {
   static int quit_times = KILO_QUIT_TIMES;
-  int i, start, end;
+  int i, start, end, command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -4976,7 +4981,14 @@ void editorProcessKeypress(void) {
     
       if ( E.repeat == 0 ) E.repeat = 1;
     
-      switch (c) {
+      
+      int n = strlen(E.command);
+      E.command[n] = c;
+      E.command[n+1] = '\0';
+      command = (n && c < 128) ? keyfromstring(E.command) : c;
+    
+      switch (command) {
+      //switch (c) {
     
         case SHIFT_TAB:
           editor_mode = false;
@@ -5013,6 +5025,7 @@ void editorProcessKeypress(void) {
         
         case 'r':
           E.mode = 5;
+          E.command[0] = '\0';
           return;
     
         case '~':
@@ -5189,7 +5202,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           return;
     
-    // for testing purposes I am using CTRL-h in normal mode
+        // for testing purposes I am using CTRL-h in normal mode
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           return;
@@ -5199,18 +5212,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           return;
-      }
-    
-      // don't want a default case just want it to fall through
-      // if it doesn't match switch above
-      // presumption is it's a multicharacter command
-    
-      int n = strlen(E.command);
-      E.command[n] = c;
-      E.command[n+1] = '\0';
-    
-      switch (keyfromstring(E.command)) {
-        
+
         case C_daw:
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorDelWord();
@@ -5247,7 +5249,6 @@ void editorProcessKeypress(void) {
           ;
           int fr = editorGetFileRow();
           if (E.filerows != 0) {
-            //int r = E.filerows - E.cy;
             int r = E.filerows - fr;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
             editorCreateSnapshot();
@@ -5301,7 +5302,7 @@ void editorProcessKeypress(void) {
     
         case C_indent:
           editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) {
+          for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
             editorIndentRow();
             E.cy++;}
           E.cy-=i;
@@ -5311,7 +5312,7 @@ void editorProcessKeypress(void) {
     
         case C_unindent:
           editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) {
+          for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
             editorUnIndentRow();
             E.cy++;}
           E.cy-=i;
@@ -5332,12 +5333,14 @@ void editorProcessKeypress(void) {
          E.repeat = 0;
          return;
     
-        default:
+       default:
+          // if a single char or sequence of chars doesn't match then
+          // do nothing - the next char may generate a match
           return;
     
-      } 
+      } // end of keyfromstring switch under case NORMAL 
 
-      return;
+      return; // end of case NORMAL (don't think it can be reached)
 
     case COMMAND_LINE:
 
@@ -5352,7 +5355,10 @@ void editorProcessKeypress(void) {
           return;
   
         case '\r':
-
+          // probably easier to maintain if this was same as case '\r'
+          // in outline mode/COMMAND_LINE mode/case '\r'
+          // but with only single char commands except q!
+          // probably not worth it
           switch (E.command[1]) {
 
             case 'w':
@@ -5363,7 +5369,6 @@ void editorProcessKeypress(void) {
               return;
   
             case 'x':
-              //update_note();
               (*update_note)();
               E.mode = NORMAL;
               E.command[0] = '\0';
@@ -5389,7 +5394,7 @@ void editorProcessKeypress(void) {
               editorRefreshScreen();
               return;
 
-          } //leave for inner inner switch
+          } // end of case '\r' switch
      
           return;
   
