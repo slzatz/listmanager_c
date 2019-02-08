@@ -2188,7 +2188,8 @@ void outlineProcessKeypress() {
       int n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
-      // for some reason arrow keys not working when keyfromstring returned command[0]
+      // I believe because arrow keys above ascii range could not just
+      // have keyfromstring return command[0]
       command = (n) ? keyfromstring(O.command) : c;
 
       switch(command) {  
@@ -4955,7 +4956,7 @@ void editorProcessKeypress(void) {
 
       return;
 
-    case NORMAL:
+    case NORMAL: /////need to copy what I did with one switch in case Normal outline mode
  
       /*leading digit is a multiplier*/
       if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
