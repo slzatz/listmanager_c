@@ -2162,7 +2162,6 @@ void outlineProcessKeypress() {
     case NORMAL:  
 
         if (c == '\x1b') {
-        // Leave in NORMAL mode and reset so you can issue new command
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2172,7 +2171,7 @@ void outlineProcessKeypress() {
       if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
         if ( O.repeat == 0 ){
 
-          //if c = 48 => 0 then it falls through to 0 move to beginning of line
+          //if c=48=>0 then it falls through to move to beginning of line
           if ( c != 48 ) { 
             O.repeat = c - 48;
             return;
@@ -2360,11 +2359,15 @@ void outlineProcessKeypress() {
           int fr = outlineGetFileRow();
           orow *row = &O.row[fr];
           view_html(row->id);
-          /* not getting error messages with qutebrowser so below not necessary (for the moment)
+
+          /*
+          not getting error messages with qutebrowser
+          so below not necessary (for the moment)
           write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
           outlineRefreshScreen();
           editorRefreshScreen();
           */
+
           O.command[0] = '\0';
           return;
 
@@ -2703,7 +2706,6 @@ void outlineProcessKeypress() {
               initial_file_row = 0;
               O.mode = FILE_DISPLAY;
               editorDisplayFile("listmanager_commands");
-              //O.mode = NORMAL;
               return;
 
             default: // default for commandfromstring
@@ -4962,13 +4964,18 @@ void editorProcessKeypress(void) {
 
       return;
 
-    case NORMAL: /////need to copy what I did with one switch in case Normal outline mode
+    case NORMAL: 
  
+        if (c == '\x1b') {
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+        }  
       /*leading digit is a multiplier*/
       if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
         if ( E.repeat == 0 ){
     
-          //if c = 48 => 0 then it falls through to 0 move to beginning of line
+          //if c=48=>0 then it falls through to move to beginning of line
           if ( c != 48 ) { 
             E.repeat = c - 48;
             return;
@@ -4997,16 +5004,11 @@ void editorProcessKeypress(void) {
           return;
     
         case 'i':
-          //This probably needs to be generalized when a letter is a single char command
-          //but can also appear in multi-character commands too
-          if (E.command[0] == '\0') { 
-            E.mode = 1;
-            E.command[0] = '\0';
-            E.repeat = 0;
-            editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          E.mode = INSERT;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
-          }
-          break;
     
         case 's':
           editorCreateSnapshot();
@@ -5208,12 +5210,6 @@ void editorProcessKeypress(void) {
           editorMarkupLink(); 
           return;
     
-        case '\x1b':
-        // Leave in E.mode = 0 -> normal mode
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-
         case C_daw:
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorDelWord();
