@@ -808,6 +808,7 @@ bool starts_with(const char *str, const char *pre)
            lenstr = strlen(str);
     return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
 }
+
 void view_html(int id) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -828,7 +829,7 @@ void view_html(int id) {
       /* pFunc is a new reference */
 
       if (pFunc && PyCallable_Check(pFunc)) {
-          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pArgs = PyTuple_New(1); // PyTuple_New(x) creates a tuple with x elements
           pValue = Py_BuildValue("i", id); // **************
           PyTuple_SetItem(pArgs, 0, pValue); // ***********
           pValue = PyObject_CallObject(pFunc, pArgs);
@@ -862,8 +863,8 @@ void view_html(int id) {
 
   //if (Py_FinalizeEx() < 0) {
   //}
-
 }
+
 void solr_find(char *search_terms) {
 
   PyObject *pName, *pModule, *pFunc;

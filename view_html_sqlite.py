@@ -34,7 +34,9 @@ def view_html(task_id):
     note = task.note if task.note else ''
 
     with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
-        tf.write(note.encode("utf-8"))
+        #tf.write(note.encode("utf-8"))
+        text = f"# {task.title} \n\n{note}"
+        tf.write(text.encode('utf-8'))
         tf.flush()
         fn = tf.name
         call(['mkd2html', fn])
