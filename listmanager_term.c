@@ -15,6 +15,7 @@
 #define ABUF_INIT {NULL, 0}
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
+#define MAX 500
 
 #include <Python.h>
 #include <ctype.h>
@@ -218,9 +219,9 @@ struct outlineConfig {
   int cx, cy; //cursor x and y position 
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
   int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
-  int screenrows; //number of rows in the display
-  int screencols;  //number of columns in the display
-  int numrows; // the number of rows of text so last text row is always row numrows
+  int screenrows; //number of rows in the display available to text
+  int screencols;  //number of columns in the display available to text
+  int numrows; // the number of rows of items/tasks
   orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
   //orow *prev_row; //for undo purposes
   //int dirty; //each row has a row->dirty
@@ -516,11 +517,12 @@ void get_data_sqlite(char *context, int n) {
     return;
     }
 
+  // why does this have substitutions since !O.show_deleted determines them
   if (!O.show_deleted) {
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
-                    "AND (task.deleted = %s "
-                    "OR task.completed = %s) "
+                    "AND task.deleted = %s "
+                    "AND task.completed IS %s " // has to be IS NULL
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
                     "False",
@@ -1704,8 +1706,8 @@ void editorDisplayFile(char *filename) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   abAppend(&ab, buf, strlen(buf));
 
-  //set background color to blue
-  abAppend(&ab, "\x1b[44m", 5);
+  //abAppend(&ab, "\x1b[44m", 5); //tried background blue - didn't love it
+  abAppend(&ab, "\x1b[36m", 5); //this is foreground cyan - we'll see
   int file_line = 0;
   int file_row = 0;
   //initial_file_row is a global - should be set to zero when you open a file
@@ -2301,7 +2303,17 @@ void outlineProcessKeypress() {
 
         case 'G':
           O.cx = 0;
-          O.cy = O.numrows-1;
+
+          /* might someday want to just do equivalent of 
+          editorGetScreenLineFromFileRow(E.filerows-1) and
+          then outlineScroll would have to adjust;
+          */
+
+          if (O.numrows > O.screenrows) {
+            O.rowoff = O.numrows - O.screenrows;
+            O.cy = O.screenrows - 1;
+          } else O.cy = O.numrows - 1;
+
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2505,7 +2517,7 @@ void outlineProcessKeypress() {
 
              case 'r':
                outlineSetMessage("\'%s\' will be refreshed", O.context);
-               (*get_data)(O.context, 200); 
+               (*get_data)(O.context, MAX); 
                O.mode = NORMAL;
                //O.command_line[0] = '\0'; //probably not necessary
                return;
@@ -2625,7 +2637,7 @@ void outlineProcessKeypress() {
                  return;
                }
                outlineSetMessage("\'%s\' will be opened", new_context);
-               (*get_data)(new_context, 200); 
+               (*get_data)(new_context, MAX); 
                O.context = new_context; 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
@@ -2767,14 +2779,14 @@ void outlineProcessKeypress() {
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          (*get_data)(O.context, 200);
+          (*get_data)(O.context, MAX);
             
           return;
 
         case 'r':
           O.cx = 0;
           O.repeat = 0;
-          (*get_data)(O.context, 200);
+          (*get_data)(O.context, MAX);
           return;
 
         case '\x1b':
@@ -6241,7 +6253,7 @@ void initOutline() {
   O.coloff = 0;  //col the user is currently scrolled to  
   O.numrows = 0; //number of rows of text
   O.row = NULL; //pointer to the orow structure 'array'
-  O.context = "todo";
+  O.context = "todo"; 
   O.show_deleted = false;
   O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -6348,7 +6360,10 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  (*get_data)(O.context, 200); //? brings back deleted/completed-type data
+  (*get_data)(O.context, MAX); //? brings back deleted/completed-type data
+  // I need to look at below when incorrect queries were bringing back nother
+  // without the guard segfault and even now searches could bring back nothing
+  if (O.row)
   (*get_note)(O.row[0].id);
    //editorRefreshScreen(); //in get_note
   
