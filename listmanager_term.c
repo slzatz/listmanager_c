@@ -5624,6 +5624,12 @@ int editorGetFileRow(void) {
 }
 
 int editorGetFileRowByLine (int y){
+  /*
+  y is the actual screenline
+  the display may be scrolled so has to take into account the rowoff
+  not sure what this yields if y is beyond the edge of the screen
+  */
+
   int screenrow = -1;
   int n = 0;
   int linerows;
