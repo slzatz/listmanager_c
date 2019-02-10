@@ -2527,23 +2527,22 @@ void outlineProcessKeypress() {
 
             case 'e':
             case C_edit: //edit the note of the current item
-               E.cx = E.cy = E.rowoff = 0;
-               E.mode = NORMAL;
-               O.mode = NORMAL;
-               // might have last been in item_info_display mode
-               // or possibly was changed in another program (unlikely)
-               // if it's a performance issue can revisit - doubt it will be
+              ;
                int id = get_id(-1);
                if (id != -1) {
-                 //(*get_note)(get_id(-1)); 
-                 outlineSetMessage("");
+                 outlineSetMessage("Edit note %d", id);
+                 outlineRefreshScreen();
                  (*get_note)(id); //if id == -1 does not try to retrieve note
-                 editorRefreshScreen();
                  editor_mode = true;
+                 E.cx = E.cy = E.rowoff = 0;
+                 E.mode = NORMAL;
+                 E.command[0] = '\0';
                } else {
                  outlineSetMessage("You need to save item before you can "
                                    "create a note");
                }
+               O.command[0] = '\0';
+               O.mode = NORMAL;
                return;
 
             case 'f':
@@ -5187,6 +5186,7 @@ void editorProcessKeypress(void) {
           editorRefreshScreen();
           */
 
+          outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';
           return;
 
