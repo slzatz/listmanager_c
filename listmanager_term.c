@@ -3,7 +3,7 @@
 #define _DEFAULT_SOURCE
 //#define _BSD_SOURCE
 //#define _GNU_SOURCE
-#define KILO_QUIT_TIMES 1
+//#define KILO_QUIT_TIMES 1
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define OUTLINE_ACTIVE 0 //tab should move back and forth between these
 #define EDITOR_ACTIVE 1
@@ -152,12 +152,14 @@ static t_symstruct lookuptable[] = {
 
   {"help", C_help},
   {"open", C_open},
+  // doesn't work if you use arrow keys
   {"o", C_open}, //need 'o' because this is command with target word
   {"fin", C_find},
   {"find", C_find},
   {"new", C_new}, //don't need "n" because there is no target
   {"context", C_context},
   {"con", C_context},
+  // doesn't work if you use arrow keys
   {"c", C_context}, //need because there is a target
   {"update", C_update},
   {"sync", C_synch},
@@ -1718,7 +1720,7 @@ void editorDisplayFile(char *filename) {
     //probably should have if (lineline > E.screencols) break into multiple lines
     int n = 0;
     file_row++;
-    if (file_row < initial_file_row) continue;
+    if (file_row < initial_file_row + 1) continue;
     for(;;) {
       if (linelen < (n+1)*E.screencols) break;
       abAppend(&ab, &line[n*E.screencols], E.screencols);
@@ -1728,7 +1730,7 @@ void editorDisplayFile(char *filename) {
     }
     abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
     file_line++;
-    if (file_line > E.screenrows - 1) break;
+    if (file_line > E.screenrows - 2) break; //was - 1
     abAppend(&ab, offset_lf_ret, 7);
   }
   abAppend(&ab, "\x1b[0m", 4);
@@ -2194,24 +2196,13 @@ void outlineProcessKeypress() {
 
       switch(command) {  
 
-        case '\t':
-          O.cx = 0; //intentionally leave O.cy whereever it is
-          O.mode = DATABASE;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
         case '\r':
           update_row();
           O.command[0] = '\0';
           return;
 
-        case 'z':
-          editorEraseScreen();
-          editorRefreshScreen();
-          O.command[0] = '\0';
-          return;
-
+        case '<':
+        case '\t':
         case SHIFT_TAB:
           O.cx = 0; //intentionally leave O.cy whereever it is
           O.mode = DATABASE;
@@ -2355,7 +2346,6 @@ void outlineProcessKeypress() {
 
         case '^':
         ;
-
           int fr = outlineGetFileRow();
           orow *row = &O.row[fr];
           view_html(row->id);
@@ -2382,6 +2372,14 @@ void outlineProcessKeypress() {
           outlineMoveCursor(c);
           O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           O.repeat = 0;
+          return;
+
+        // for testing purposes I am using CTRL-h in normal mode
+        case CTRL_KEY('h'):
+          editorMarkupLink(); 
+          editorRefreshScreen();
+          (*update_note)(); //not going this in EDITOR mode but should catch it because note dirty
+          O.command[0] = '\0';
           return;
 
         case C_daw:
@@ -2610,7 +2608,7 @@ void outlineProcessKeypress() {
               //NN is set to zero when entering COMMAND_LINE mode
                if (NN) {
                  new_context = context[NN];
-               } else if (strlen(O.command_line) > 7) {
+               } else if (pos) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
                    if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
@@ -2623,7 +2621,7 @@ void outlineProcessKeypress() {
                  if (!success) return;
 
                } else {
-                 outlineSetMessage("You need to provide at least 3 characters that match a context!");
+                 outlineSetMessage("You did not provide a valid  context!");
                  O.command_line[1] = '\0';
                  return;
                }
@@ -2780,6 +2778,8 @@ void outlineProcessKeypress() {
           (*get_data)(O.context, 200);
           return;
 
+        case '\x1b':
+        case '>':
         case SHIFT_TAB:
         case '\t':
           O.mode = NORMAL;
@@ -3236,8 +3236,12 @@ void update_note_pg(void) {
   memcpy(note, text, len);
   note[len] = '\0'; 
 
-  //Below replaces single quotes with two single quotes which escapes the single quote
-  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  /*
+  Below replaces single quotes with two single quotes which escapes the 
+  single quote see:
+  https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
+  */
+
   const char *str = note;
   int cnt = strlen(str)+1;
    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
@@ -4848,7 +4852,7 @@ void editorMoveCursor(int key) {
 }
 // higher level editor function depends on readKey()
 void editorProcessKeypress(void) {
-  static int quit_times = KILO_QUIT_TIMES;
+  //static int quit_times = KILO_QUIT_TIMES;
   int i, start, end, command;
 
   /* readKey brings back one processed character that handles
@@ -4868,6 +4872,7 @@ void editorProcessKeypress(void) {
           editorInsertNewline(1);
           break;
     
+        /*
         case CTRL_KEY('q'):
           if (E.dirty && quit_times > 0) {
             editorSetMessage("WARNING!!! File has unsaved changes. "
@@ -4883,7 +4888,8 @@ void editorProcessKeypress(void) {
         case CTRL_KEY('s'):
           editorSave();
           break;
-    
+        */
+
         case HOME_KEY:
           E.cx = 0;
           break;
@@ -4960,7 +4966,7 @@ void editorProcessKeypress(void) {
           return;
      
       } //end inner switch for outer case NORMAL 
-      quit_times = KILO_QUIT_TIMES;
+      //quit_times = KILO_QUIT_TIMES;
 
       return;
 
@@ -4996,7 +5002,6 @@ void editorProcessKeypress(void) {
       command = (n && c < 128) ? keyfromstring(E.command) : c;
     
       switch (command) {
-      //switch (c) {
     
         case SHIFT_TAB:
           editor_mode = false;
@@ -5039,15 +5044,12 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
-          if (E.command[0] == '\0') { 
-            E.mode = 1; //this has to go here for MoveCursor to work right at EOLs
-            editorMoveCursor(ARROW_RIGHT);
-            E.command[0] = '\0';
-            E.repeat = 0;
-            editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+          editorMoveCursor(ARROW_RIGHT);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
-          }
-          break;
     
         case 'A':
           editorMoveCursorEOL();
@@ -5060,13 +5062,10 @@ void editorProcessKeypress(void) {
           return;
     
         case 'w':
-          if (E.command[0] == '\0') { 
-            editorMoveNextWord();
-            E.command[0] = '\0';
-            E.repeat = 0;
-            return;
-          }
-          break;
+          editorMoveNextWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
     
         case 'b':
           editorMoveBeginningWord();
@@ -5075,13 +5074,10 @@ void editorProcessKeypress(void) {
           return;
     
         case 'e':
-          if (E.command[0] == '\0') { 
-            editorMoveEndWord();
-            E.command[0] = '\0';
-            E.repeat = 0;
-            return;
-            }
-          break;
+          editorMoveEndWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
     
         case '0':
           //E.cx = 0;
@@ -5091,13 +5087,10 @@ void editorProcessKeypress(void) {
           return;
     
         case '$':
-          if (E.command[0] == '\0') { 
-            editorMoveCursorEOL();
-            E.command[0] = '\0';
-            E.repeat = 0;
-            return;
-          }
-          break;
+          editorMoveCursorEOL();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
     
         case 'I':
           editorMoveCursorBOL();
@@ -5180,6 +5173,23 @@ void editorProcessKeypress(void) {
           editorRestoreSnapshot();
           return;
     
+        case '^':
+        ;
+          int ofr = outlineGetFileRow();
+          orow *outline_row = &O.row[ofr];
+          view_html(outline_row->id);
+
+          /*
+          not getting error messages with qutebrowser
+          so below not necessary (for the moment)
+          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          outlineRefreshScreen();
+          editorRefreshScreen();
+          */
+
+          O.command[0] = '\0';
+          return;
+
         case CTRL_KEY('z'):
           E.smartindent = (E.smartindent == 4) ? 0 : 4;
           editorSetMessage("E.smartindent = %d", E.smartindent); 
@@ -6210,6 +6220,7 @@ void editorMarkupLink(void) {
     editorSetMessage("z = %u and beginning position = %d and end = %d and %u", z, p, j,zz); 
     n++;
   }
+  E.dirty++;
 }
 
 /*** slz testing stuff ***/
