@@ -60,7 +60,7 @@ char *context[] = {
 int NN = 0; //which context is being displayed on message line (if none then NN==0)
 
 struct termios orig_termios;
-int screenrows, screencols;
+int screenlines, screencols;
 int initial_file_row = 0; //for arrowing or displaying files
 bool editor_mode;
 
@@ -242,13 +242,13 @@ struct outlineConfig O;
 struct editorConfig {
   int cx, cy; //cursor x and y position
   int rx; //index into the render field - only nec b/o tabs
-  int rowoff; //row the user is currently scrolled to
+  int line_offset; //row the user is currently scrolled to
   int coloff; //column user is currently scrolled to
-  int screenrows; //number of rows in the display
+  int screenlines; //number of rows in the display
   int screencols;  //number of columns in the display
-  int filerows; // the number of rows(lines) of text delineated by /n if written out to a file
+  int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
   erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
-  int prev_filerows; // the number of rows of text so last text row is always row numrows
+  int prev_numrows; // the number of rows of text so last text row is always row numrows
   erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
   char *filename;
@@ -303,7 +303,7 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-int outlineGetFileRow(void);
+int outlineGetResultSetRow(void);
 int outlineGetFileCol(void);
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
 void outlineDrawRows(struct abuf *ab);
@@ -665,12 +665,12 @@ void get_tid_sqlite(int id) {
   if (id ==-1) return;
 
   // free the E.row[j].chars
-  for (int j = 0 ; j < E.filerows ; j++ ) {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
-  E.filerows = 0;
+  E.numrows = 0;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -714,12 +714,12 @@ void get_note_sqlite(int id) {
   if (id ==-1) return;
 
   // free the E.row[j].chars
-  for (int j = 0 ; j < E.filerows ; j++ ) {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
-  E.filerows = 0;
+  E.numrows = 0;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -758,7 +758,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     note = strdup(argv[0]); // ******************
     char *found;
     while ((found = strsep(&note, "\r\n")) !=NULL) {
-      editorInsertRow(E.filerows, found, strlen(found));
+      editorInsertRow(E.numrows, found, strlen(found));
     }
     free(note);
   }
@@ -771,12 +771,12 @@ void get_note_pg(int id) {
   if (id ==-1) return;
 
   // free the E.row[j].chars
-  for (int j = 0 ; j < E.filerows ; j++ ) {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
-  E.filerows = 0;
+  E.numrows = 0;
 
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id);
@@ -796,7 +796,7 @@ void get_note_pg(int id) {
     note = strdup(PQgetvalue(res, 0, 0)); // ******************
     char *found;
     while ((found = strsep(&note, "\r\n")) !=NULL) {
-      editorInsertRow(E.filerows, found, strlen(found));
+      editorInsertRow(E.numrows, found, strlen(found));
     }
     free(note);
   }
@@ -1249,7 +1249,7 @@ void outlineInsertChar(int c) {
     return;
   }
 
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   int fc = outlineGetFileCol();
 
   orow *row = &O.row[fr];
@@ -1274,7 +1274,7 @@ void outlineInsertChar(int c) {
 }
 
 void outlineDelChar(void) {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   int fc = outlineGetFileCol();
 
   orow *row = &O.row[fr];
@@ -1300,7 +1300,7 @@ void outlineDelChar(void) {
 }
 
 void outlineBackspace(void) {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   int fc = outlineGetFileCol();
 
   if (fc == 0) return;
@@ -1368,26 +1368,26 @@ void editorInsertRow(int fr, char *s, size_t len) {
   The array of erows that E.row points to needs to have its memory enlarged when
   you add a row. Note that erow structues are just a size and a char pointer*/
 
-  E.row = realloc(E.row, sizeof(erow) * (E.filerows + 1));
+  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
   /*
   memmove(dest, source, number of bytes to move?)
   moves the line at fr to fr+1 and all the other erow structs until the end
-  when you insert into the last row E.filerows==fr then no memory is moved
+  when you insert into the last row E.numrows==fr then no memory is moved
   apparently ok if there is no E.row[fr+1] if number of bytes = 0
   so below we are moving the row structure currently at *fr* to x+1
   and all the rows below *fr* to a new location to make room at *fr*
   to create room for the line that we are inserting
   */
 
-  memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
+  memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
 
   // section below creates an erow struct for the new row
   E.row[fr].size = len;
   E.row[fr].chars = malloc(len + 1);
   memcpy(E.row[fr].chars, s, len);
   E.row[fr].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
-  E.filerows++;
+  E.numrows++;
   E.dirty++;
 }
 
@@ -1396,23 +1396,23 @@ void editorFreeRow(erow *row) {
 }
 
 void editorDelRow(int fr) {
-  //editorSetMessage("Row to delete = %d; E.filerows = %d", fr, E.filerows); 
-  if (E.filerows == 0) return; // some calls may duplicate this guard
+  //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
+  if (E.numrows == 0) return; // some calls may duplicate this guard
   int fc = editorGetFileCol();
   editorFreeRow(&E.row[fr]); 
-  memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
-  E.filerows--; 
-  if (E.filerows == 0) {
+  memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.numrows - fr - 1));
+  E.numrows--; 
+  if (E.numrows == 0) {
     E.row = NULL;
     E.cy = 0;
     E.cx = 0;
   } else if (E.cy > 0) {
     int lines = fc/E.screencols;
     E.cy = E.cy - lines;
-    if (fr == E.filerows) E.cy--;
+    if (fr == E.numrows) E.cy--;
   }
   E.dirty++;
-  //editorSetMessage("Row deleted = %d; E.filerows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.filerows, E.cx, E.row[fr].size); 
+  //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.numrows, E.cx, E.row[fr].size); 
 }
 // only used by editorBackspace
 void editorRowAppendString(erow *row, char *s, size_t len) {
@@ -1438,7 +1438,7 @@ void editorRowDelChar(erow *row, int fr) {
 /*** editor operations ***/
 void editorInsertChar(int c) {
 
-  if ( E.filerows == 0 ) {
+  if ( E.numrows == 0 ) {
     editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
@@ -1454,7 +1454,7 @@ void editorInsertChar(int c) {
   /* moving all the chars fr the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
+     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
   */
 
   memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); 
@@ -1473,7 +1473,7 @@ void editorInsertChar(int c) {
 /* uses VLA */
 void editorInsertNewline(int direction) {
   /* note this func does position cursor*/
-  if (E.filerows == 0) {
+  if (E.numrows == 0) {
     editorInsertRow(0, "", 0);
     return;
   }
@@ -1524,8 +1524,8 @@ void editorInsertNewline(int direction) {
     else i = 0;
 
     E.cy++;
-    //if (E.cy == E.screenrows) {
-    //  E.rowoff++;
+    //if (E.cy == E.screenlines) {
+    //  E.line_offset++;
     //  E.cy--;
     //}
 
@@ -1548,8 +1548,8 @@ void editorDelChar(void) {
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
-  // note below order important because row->size undefined if E.filerows = 0 because E.row is NULL
-  if (E.filerows == 0 || row->size == 0 ) return; 
+  // note below order important because row->size undefined if E.numrows = 0 because E.row is NULL
+  if (E.numrows == 0 || row->size == 0 ) return; 
 
   memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
   row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
@@ -1557,8 +1557,8 @@ void editorDelChar(void) {
   row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
   // don't know why the below is necessary - you have one row with no chars - that's fine
-  if (E.filerows == 1 && row->size == 0) {
-    E.filerows = 0;
+  if (E.numrows == 1 && row->size == 0) {
+    E.numrows = 0;
     free(E.row);
     //editorFreeRow(&E.row[fr]);
     E.row = NULL;
@@ -1573,16 +1573,16 @@ void editorDelChar2(int fr, int fc) {
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
-  // note below order important because row->size undefined if E.filerows = 0 because E.row is NULL
-  if (E.filerows == 0 || row->size == 0 ) return; 
+  // note below order important because row->size undefined if E.numrows = 0 because E.row is NULL
+  if (E.numrows == 0 || row->size == 0 ) return; 
 
   memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
   row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
   row->size--;
   row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
-  if (E.filerows == 1 && row->size == 0) {
-    E.filerows = 0;
+  if (E.numrows == 1 && row->size == 0) {
+    E.numrows = 0;
     free(E.row);
     //editorFreeRow(&E.row[fr]);
     E.row = NULL;
@@ -1619,8 +1619,8 @@ void editorBackspace(void) {
       //if (E.cx < 0) E.cx = 0; //don't think this guard is necessary but we'll see
       editorRowAppendString(&E.row[fr - 1], row->chars, row->size); //only use of this function
       editorFreeRow(&E.row[fr]);
-      memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.filerows - fr - 1));
-      E.filerows--;
+      memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.numrows - fr - 1));
+      E.numrows--;
       E.cy--;
     }
   }
@@ -1632,14 +1632,14 @@ void editorBackspace(void) {
 char *editorRowsToString(int *buflen) {
   int totlen = 0;
   int j;
-  for (j = 0; j < E.filerows; j++)
+  for (j = 0; j < E.numrows; j++)
     totlen += E.row[j].size + 1;
   *buflen = totlen;
 
   char *buf = malloc(totlen + 1);
   //char *buf = calloc(totlen, sizeof(char)); // worked because it made sure c string terminated with '\0' but not necessary.
   char *p = buf;
-  for (j = 0; j < E.filerows; j++) {
+  for (j = 0; j < E.numrows; j++) {
     memcpy(p, E.row[j].chars, E.row[j].size);
     p += E.row[j].size;
     *p = '\n';
@@ -1651,12 +1651,12 @@ char *editorRowsToString(int *buflen) {
 void editorEraseScreen(void) {
 
   if (E.row) {
-    for (int j = 0 ; j < E.filerows ; j++ ) {
+    for (int j = 0 ; j < E.numrows ; j++ ) {
       free(E.row[j].chars);
     } 
     free(E.row);
     E.row = NULL; 
-    E.filerows = 0;
+    E.numrows = 0;
   }
 
   char offset_lf_ret[20];
@@ -1670,7 +1670,7 @@ void editorEraseScreen(void) {
   abAppend(&ab, buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenrows; i++) {
+  for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
     abAppend(&ab, offset_lf_ret, 7);
   }
@@ -1698,7 +1698,7 @@ void editorDisplayFile(char *filename) {
   abAppend(&ab, buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenrows; i++) {
+  for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
     abAppend(&ab, offset_lf_ret, 7);
   }
@@ -1718,7 +1718,7 @@ void editorDisplayFile(char *filename) {
     while (linelen > 0 && (line[linelen - 1] == '\n' ||
                            line[linelen - 1] == '\r'))
       linelen--;
-    //editorInsertRow(E.filerows, line, linelen);
+    //editorInsertRow(E.numrows, line, linelen);
     //probably should have if (lineline > E.screencols) break into multiple lines
     int n = 0;
     file_row++;
@@ -1732,7 +1732,7 @@ void editorDisplayFile(char *filename) {
     }
     abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
     file_line++;
-    if (file_line > E.screenrows - 2) break; //was - 1
+    if (file_line > E.screenlines - 2) break; //was - 1
     abAppend(&ab, offset_lf_ret, 7);
   }
   abAppend(&ab, "\x1b[0m", 4);
@@ -1759,7 +1759,7 @@ void editorOpen(char *filename) {
     while (linelen > 0 && (line[linelen - 1] == '\n' ||
                            line[linelen - 1] == '\r'))
       linelen--;
-    editorInsertRow(E.filerows, line, linelen);
+    editorInsertRow(E.numrows, line, linelen);
   }
   free(line);
   fclose(fp);
@@ -1853,6 +1853,7 @@ void outlineScroll(void) {
 
 // "drawing" rows really means updating the ab buffer
 // filerow/filecol are the row/column of the titles regardless of scroll
+// result_set_row/filecol are the row/column of the titles regardless of scroll
 void outlineDrawRows(struct abuf *ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
 
@@ -1864,9 +1865,9 @@ void outlineDrawRows(struct abuf *ab) {
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", OUTLINE_LEFT_MARGIN, TOP_MARGIN); 
 
   for (y = 0; y < O.screenrows; y++) {
-    int filerow = y + O.rowoff;
-    if (filerow > O.numrows - 1) return;
-    orow *row = &O.row[filerow];
+    int result_set_row = y + O.rowoff;
+    if (result_set_row > O.numrows - 1) return;
+    orow *row = &O.row[result_set_row];
 
     // below says that if a line is long you only draw what fits on the screen
     //if (len > O.screencols) len = O.screencols;
@@ -1882,7 +1883,7 @@ void outlineDrawRows(struct abuf *ab) {
 
     // below - only will get visual highlighting if it's the active row and 
     //then also deals with column offset
-    if (O.mode == VISUAL && filerow == O.cy + O.rowoff) { 
+    if (O.mode == VISUAL && result_set_row == O.cy + O.rowoff) { 
             
        // below in case E.highlight[1] < E.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
@@ -1896,7 +1897,7 @@ void outlineDrawRows(struct abuf *ab) {
       
     } else {
         // below means that the only row that is scrolled is the row that is active
-        abAppend(ab, &O.row[filerow].chars[(filerow == O.cy + O.rowoff) ? O.coloff : 0], len);
+        abAppend(ab, &O.row[result_set_row].chars[(result_set_row == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
     
     abAppend(ab, offset_lf_ret, 6);
@@ -1909,7 +1910,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
 
   if (!O.row) return; //**********************************
 
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
 
   // so the below should 1) position the cursor on the status
@@ -1988,7 +1989,7 @@ void outlineRefreshScreen(void) {
 
   //if (O.row)
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetFileRow(), get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.filerows = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, outlineGetResultSetRow(), get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -2052,7 +2053,7 @@ void outlineSetMessage(const char *fmt, ...) {
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   int id;
 
@@ -2077,9 +2078,9 @@ void outlineMoveCursor(int key) {
       // so it still makes sense to move cursor up and then O.cy goes negative
       // also if scrolled so O.rowoff != 0 and do gg - ? what happens
       // dealt with in outlineScroll
-      if (outlineGetFileRow() > 0) O.cy--; 
+      if (outlineGetResultSetRow() > 0) O.cy--; 
       O.cx = O.coloff = 0;
-      fr = outlineGetFileRow();
+      fr = outlineGetResultSetRow();
       row = &O.row[fr];
       id = O.row[fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
@@ -2088,9 +2089,9 @@ void outlineMoveCursor(int key) {
 
     case ARROW_DOWN:
     case 'j':
-      if (outlineGetFileRow() < O.numrows - 1) O.cy++;
+      if (outlineGetResultSetRow() < O.numrows - 1) O.cy++;
       O.cx = O.coloff = 0;
-      fr = outlineGetFileRow();
+      fr = outlineGetResultSetRow();
       row = &O.row[fr];
       id = O.row[fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
@@ -2305,7 +2306,7 @@ void outlineProcessKeypress() {
           O.cx = 0;
 
           /* might someday want to just do equivalent of 
-          editorGetScreenLineFromFileRow(E.filerows-1) and
+          editorGetScreenLineFromFileRow(E.numrows-1) and
           then outlineScroll would have to adjust;
           */
 
@@ -2358,7 +2359,7 @@ void outlineProcessKeypress() {
 
         case '^':
         ;
-          int fr = outlineGetFileRow();
+          int fr = outlineGetResultSetRow();
           orow *row = &O.row[fr];
           view_html(row->id);
 
@@ -2546,7 +2547,7 @@ void outlineProcessKeypress() {
                  outlineRefreshScreen();
                  (*get_note)(id); //if id == -1 does not try to retrieve note
                  editor_mode = true;
-                 E.cx = E.cy = E.rowoff = 0;
+                 E.cx = E.cy = E.line_offset = 0;
                  E.mode = NORMAL;
                  E.command[0] = '\0';
                } else {
@@ -2650,12 +2651,12 @@ void outlineProcessKeypress() {
 
               // free the E.row[j].chars not sure this has to be done
               if (E.row) {
-                for (int j = 0 ; j < E.filerows ; j++ ) {
+                for (int j = 0 ; j < E.numrows ; j++ ) {
                   free(E.row[j].chars);
                 } 
                 free(E.row);
                 E.row = NULL; 
-                E.filerows = 0;
+                E.numrows = 0;
               }
               editorDisplayFile("log");//put them in the command mode case synch
               //editorRefreshScreen();
@@ -2667,12 +2668,12 @@ void outlineProcessKeypress() {
 
               // free the E.row[j].chars
               if (E.row) {
-                for (int j = 0 ; j < E.filerows ; j++ ) {
+                for (int j = 0 ; j < E.numrows ; j++ ) {
                   free(E.row[j].chars);
                 } 
                 free(E.row);
                 E.row = NULL; 
-                E.filerows = 0;
+                E.numrows = 0;
               }
               editorDisplayFile("log");//put them in the command mode case synch
               //editorRefreshScreen();
@@ -2799,14 +2800,14 @@ void outlineProcessKeypress() {
   
         case 'i': //display item info
           ;
-          int fr = outlineGetFileRow();
+          int fr = outlineGetResultSetRow();
           orow *row = &O.row[fr];
           display_item_info(row->id);
           return;
   
         case 'v': //render in browser
           ;
-          int fr1 = outlineGetFileRow();
+          int fr1 = outlineGetResultSetRow();
           orow *row1 = &O.row[fr1];
           view_html(row1->id);
           /* not getting error messages with qutebrowser so below not necessary (for the moment)
@@ -2907,13 +2908,13 @@ void outlineProcessKeypress() {
           return;
 
         case PAGE_UP:
-          initial_file_row = initial_file_row - E.screenrows;
+          initial_file_row = initial_file_row - E.screenlines;
           initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
           editorDisplayFile("listmanager_commands");
           return;
 
         case PAGE_DOWN:
-          initial_file_row = initial_file_row + E.screenrows;
+          initial_file_row = initial_file_row + E.screenlines;
           editorDisplayFile("listmanager_commands");
           return;
 
@@ -3016,7 +3017,7 @@ void display_item_info_pg(int id) {
   abAppend(&ab, buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenrows; i++) {
+  for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
     abAppend(&ab, offset_lf_ret, 7);
   }
@@ -3082,12 +3083,12 @@ void display_item_info_pg(int id) {
 
 void display_item_info_sqlite(int id) {
 
-  for (int j = 0 ; j < E.filerows ; j++ ) {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
-  E.filerows = 0;
+  E.numrows = 0;
 
   if (id ==-1) return;
 
@@ -3156,7 +3157,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   abAppend(&ab, buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenrows; i++) {
+  for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
     abAppend(&ab, offset_lf_ret, 7);
   }
@@ -3271,7 +3272,7 @@ void update_note_pg(void) {
 
   *out = '\0';
 
-  int ofr = outlineGetFileRow();
+  int ofr = outlineGetResultSetRow();
   int id = get_id(ofr);
 
   char *query = malloc(cnt + 100);
@@ -3337,7 +3338,7 @@ void update_note_sqlite(void) {
 
   *out = '\0';
 
-  int ofr = outlineGetFileRow();
+  int ofr = outlineGetResultSetRow();
   int id = get_id(ofr);
 
   char *query = malloc(cnt + 100);
@@ -3382,7 +3383,7 @@ void update_note_sqlite(void) {
 void update_context_pg(int context_tid) {
 
   //orow *row;
-  //int fr = outlineGetFileRow();
+  //int fr = outlineGetResultSetRow();
   //row = &O.row[fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3413,7 +3414,7 @@ void update_context_pg(int context_tid) {
 void update_context_sqlite(int context_tid) {
 
   //orow *row;
-  //int fr = outlineGetFileRow();
+  //int fr = outlineGetResultSetRow();
   //row = &O.row[fr];
 
   char query[300];
@@ -3452,7 +3453,7 @@ void update_context_sqlite(int context_tid) {
 void toggle_completed_pg(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3493,7 +3494,7 @@ void toggle_completed_pg(void) {
 void toggle_completed_sqlite(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   char query[300];
@@ -3534,7 +3535,7 @@ void toggle_completed_sqlite(void) {
 void toggle_deleted_pg(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3576,7 +3577,7 @@ void toggle_deleted_pg(void) {
 void toggle_deleted_sqlite(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   char query[300];
@@ -3616,7 +3617,7 @@ void toggle_deleted_sqlite(void) {
 void toggle_star_pg(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3658,7 +3659,7 @@ void toggle_star_pg(void) {
 void toggle_star_sqlite(void) {
 
   orow *row;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   row = &O.row[fr];
 
   char query[300];
@@ -3697,7 +3698,7 @@ void toggle_star_sqlite(void) {
 
 void update_row_pg(void) {
 
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   if (!row->dirty) {
     outlineSetMessage("Row has not been changed");
@@ -3765,7 +3766,7 @@ void update_row_pg(void) {
 
 void update_row_sqlite(void) {
 
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   if (!row->dirty) {
     outlineSetMessage("Row has not been changed");
@@ -4279,7 +4280,7 @@ void update_rows_sqlite(void) {
   outlineSetMessage("%s",  msg);
 }
 
-int outlineGetFileRow(void) {
+int outlineGetResultSetRow(void) {
   return O.cy + O.rowoff; ////////
 }
 
@@ -4288,7 +4289,7 @@ int outlineGetFileCol(void) {
 }
 
 int get_id(int fr) {
-  if(fr==-1) fr = outlineGetFileRow();
+  if(fr==-1) fr = outlineGetResultSetRow();
   int id = O.row[fr].id;
   return id;
 }
@@ -4335,7 +4336,7 @@ void outlineYankString() {
 void outlinePasteString(void) {
   if (O.numrows == 0) return;
 
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
 
   orow *row = &O.row[fr];
   int len = strlen(string_buffer);
@@ -4358,7 +4359,7 @@ void outlinePasteString(void) {
 }
 
 void outlineDelWord() {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   int fc = outlineGetFileCol();
 
   orow *row = &O.row[fr];
@@ -4381,7 +4382,7 @@ void outlineDelWord() {
 }
 
 void outlineDeleteToEndOfLine(void) {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   int fc = outlineGetFileCol();
   orow *row = &O.row[fr];
   row->size = fc;
@@ -4392,14 +4393,14 @@ void outlineDeleteToEndOfLine(void) {
   }
 
 void outlineMoveCursorEOL() {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   O.cx = O.row[fr].size - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void outlineMoveEndWord2() {
   int j;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow row = O.row[fr];
 
   for (j = O.cx + 1; j < row.size ; j++) {
@@ -4412,7 +4413,7 @@ void outlineMoveEndWord2() {
 void outlineMoveNextWord() {
   // below is same is outlineMoveEndWord2
   int j;
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow row = O.row[fr];
 
   for (j = O.cx + 1; j < row.size ; j++) {
@@ -4429,7 +4430,7 @@ void outlineMoveNextWord() {
 }
 
 void outlineMoveBeginningWord() {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   if (O.cx == 0) return;
   for (;;) {
@@ -4447,7 +4448,7 @@ void outlineMoveBeginningWord() {
 }
 
 void outlineMoveEndWord() {
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   if (O.cx == row->size - 1) return;
   for (;;) {
@@ -4465,7 +4466,7 @@ void outlineMoveEndWord() {
 }
 
 void outlineGetWordUnderCursor(){
-  int fr = outlineGetFileRow();
+  int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
   if (row->chars[O.cx] < 48) return;
 
@@ -4526,15 +4527,15 @@ this function deals with that */
 void editorScroll(void) {
   if (!E.row) return;
 
-  if (E.cy > E.screenrows -1){
+  if (E.cy > E.screenlines -1){
     E.cy--;
-    E.rowoff++;
+    E.line_offset++;
   }
 
   if (E.cy < 0) {
-     E.rowoff+=E.cy;
+     E.line_offset+=E.cy;
      E.cy = 0;
-     if (editorGetFileRow() == 0) E.rowoff = 0; //? necessary really not sure
+     if (editorGetFileRow() == 0) E.line_offset = 0; //? necessary really not sure
   }
   //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
   //I believe vim also doesn't want partial lines at the top so balancing both concepts
@@ -4543,15 +4544,15 @@ void editorScroll(void) {
 
   int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
   if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
-  //if (E.cy >= E.screenrows) {
-  if (E.cy + lines - 1 >= E.screenrows) {
+  //if (E.cy >= E.screenlines) {
+  if (E.cy + lines - 1 >= E.screenlines) {
     int first_row_lines = E.row[editorGetFileRowByLine(0)].size/E.screencols + 1; //****
     if (E.row[editorGetFileRowByLine(0)].size && E.row[editorGetFileRowByLine(0)].size%E.screencols == 0) first_row_lines--;
     int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
     if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
-    int delta = E.cy + lines - E.screenrows; //////
+    int delta = E.cy + lines - E.screenlines; //////
     delta = (delta > first_row_lines) ? delta : first_row_lines; //
-    E.rowoff += delta;
+    E.line_offset += delta;
     E.cy-=delta;
     }
 }
@@ -4563,19 +4564,19 @@ void editorDrawRows(struct abuf *ab) {
   char offset_lf_ret[20];
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
 
-  //this is the first visible row on the screen given E.rowoff and the length
+  //this is the first visible row on the screen given E.line_offset and the length
   //of the preceding rows
-  int filerow = editorGetFileRowByLine(0); //this is the first visible row on the screen given E.rowoff and the length of the preceding rows
+  int filerow = editorGetFileRowByLine(0); //this is the first visible row on the screen given E.line_offset and the length of the preceding rows
 
   // if not displaying the 0th row of the 0th filerow than increment one filerow - this is what vim does
   // if (editorGetScreenLineFromFileRow != 0) filerow++; ? necessary ******************************
 
   for (;;){
-    if (y >= E.screenrows) break; //somehow making this >= made all the difference
+    if (y >= E.screenlines) break; //somehow making this >= made all the difference
 
-    // if there is still screen real estate but we've run out of text rows (E.filerows)
+    // if there is still screen real estate but we've run out of text rows (E.numrows)
     //drawing '~' below: first escape is red colr (31m) and K erases rest of line
-    if (filerow > E.filerows - 1) { 
+    if (filerow > E.numrows - 1) { 
 
       //may not be worth this if else to not draw ~ in first row
       //and probably there is a better way to do it
@@ -4597,8 +4598,8 @@ void editorDrawRows(struct abuf *ab) {
       // below is trying to emulate what vim does when it can't show an entire row (which will be multi-screen-line)
       // at the bottom of the screen because of where the screen scroll is.  It shows nothing of the row
       // rather than show a partial row.  May not be worth it.
-      if ((y + lines) > E.screenrows) {
-          for (n=0; n < (E.screenrows - y);n++) {
+      if ((y + lines) > E.screenlines) {
+          for (n=0; n < (E.screenlines - y);n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
             abAppend(ab, offset_lf_ret, 7);
@@ -4676,12 +4677,12 @@ void editorDrawStatusBar(struct abuf *ab) {
   int efr = (E.row) ? editorGetFileRow() : -1;
 
   //int efr = editorGetFileRow();
-  int ofr = outlineGetFileRow();
+  int ofr = outlineGetResultSetRow();
   orow *row = &O.row[ofr];
 
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + TOP_MARGIN + 1,
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
                                             EDITOR_LEFT_MARGIN);//+1 
   abAppend(ab, buf, strlen(buf));
 
@@ -4699,13 +4700,13 @@ void editorDrawStatusBar(struct abuf *ab) {
   truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
   len = snprintf(status, sizeof(status), "%.20s - %d line %s %s",
-    O.context ? O.context : "[No Name]", E.filerows,
+    O.context ? O.context : "[No Name]", E.numrows,
     truncated_title,
     E.dirty ? "(modified)" : "");
     //"*");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
-    //E.cy + 1, E.filerows);
-    efr + 1, E.filerows);
+    //E.cy + 1, E.numrows);
+    efr + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   
@@ -4728,7 +4729,7 @@ void editorDrawStatusBar(struct abuf *ab) {
 void editorDrawMessageBar(struct abuf *ab) {
   // Position cursor on last row and mid-screen
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenrows + TOP_MARGIN + 2,
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 2,
                                             EDITOR_LEFT_MARGIN + 1); 
   abAppend(ab, buf, strlen(buf));
 
@@ -4747,9 +4748,9 @@ void editorRefreshScreen(void) {
     };*/
   if (DEBUG) {
     if (E.row)
-      editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.filerows = %d,  0th = %d", E.rowoff, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.filerows, editorGetFileRowByLine(0)); 
+      editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.numrows = %d,  0th = %d", E.line_offset, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.numrows, editorGetFileRowByLine(0)); 
     else
-      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.filerows = %d, E.rowoff = %d", E.cx, E.cy, E.filerows, E.rowoff); 
+      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
   }
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -4798,7 +4799,7 @@ void editorSetMessage(const char *fmt, ...) {
 
 void editorMoveCursor(int key) {
 
-  if (!E.row) return; //could also be !E.filerows
+  if (!E.row) return; //could also be !E.numrows
 
   int fr = editorGetFileRow();
   int fc = editorGetFileCol();
@@ -4837,7 +4838,7 @@ void editorMoveCursor(int key) {
 
     case ARROW_DOWN:
     case 'j':
-      if (fr < E.filerows - 1) {
+      if (fr < E.numrows - 1) {
         int *row_column = editorGetScreenPosFromFilePos(fr + 1, fc);
         E.cy = row_column[0];
         E.cx = row_column[1];
@@ -4906,7 +4907,7 @@ void editorProcessKeypress(void) {
           break;
     
         case END_KEY:
-          if (E.cy < E.filerows)
+          if (E.cy < E.numrows)
             E.cx = E.row[E.cy].size;
           break;
     
@@ -4924,13 +4925,13 @@ void editorProcessKeypress(void) {
         case PAGE_DOWN:
           
           if (c == PAGE_UP) {
-            E.cy = E.rowoff;
+            E.cy = E.line_offset;
           } else if (c == PAGE_DOWN) {
-            E.cy = E.rowoff + E.screenrows - 1;
-            if (E.cy > E.filerows) E.cy = E.filerows;
+            E.cy = E.line_offset + E.screenlines - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
           }
     
-            int times = E.screenrows;
+            int times = E.screenlines;
             while (times--){
               editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
               } 
@@ -5135,7 +5136,7 @@ void editorProcessKeypress(void) {
     
         case 'G':
           E.cx = 0;
-          E.cy = editorGetScreenLineFromFileRow(E.filerows-1);
+          E.cy = editorGetScreenLineFromFileRow(E.numrows-1);
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -5186,7 +5187,7 @@ void editorProcessKeypress(void) {
     
         case '^':
         ;
-          int ofr = outlineGetFileRow();
+          int ofr = outlineGetResultSetRow();
           orow *outline_row = &O.row[ofr];
           view_html(outline_row->id);
 
@@ -5267,8 +5268,8 @@ void editorProcessKeypress(void) {
         case C_dd:
           ;
           int fr = editorGetFileRow();
-          if (E.filerows != 0) {
-            int r = E.filerows - fr;
+          if (E.numrows != 0) {
+            int r = E.numrows - fr;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
             editorCreateSnapshot();
             editorYankLine(E.repeat);
@@ -5282,8 +5283,8 @@ void editorProcessKeypress(void) {
         case C_d$:
           editorCreateSnapshot();
           editorDeleteToEndOfLine();
-          if (E.filerows != 0) {
-            int r = E.filerows - E.cy;
+          if (E.numrows != 0) {
+            int r = E.numrows - E.cy;
             E.repeat--;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
             //editorYankLine(E.repeat); //b/o 2 step won't really work right
@@ -5449,7 +5450,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'x':
-          if (E.filerows != 0) {
+          if (E.numrows != 0) {
             editorCreateSnapshot();
             E.repeat = E.highlight[1] - E.highlight[0] + 1;
             E.cy = E.highlight[0]; // this isn't right because E.highlight[0] and [1] are now rows
@@ -5605,7 +5606,7 @@ int editorGetFileRow(void) {
   int screenrow = -1;
   int n = 0;
   int linerows;
-  int y = E.cy + E.rowoff; ////////
+  int y = E.cy + E.line_offset; ////////
   //if (E.cy == 0) return 0;
   if (y == 0) return 0;
   for (;;) {
@@ -5633,7 +5634,7 @@ int editorGetFileRowByLine (int y){
   int screenrow = -1;
   int n = 0;
   int linerows;
-  y+= E.rowoff;
+  y+= E.line_offset;
   if (y == 0) return 0;
   for (;;) {
     linerows = E.row[n].size/E.screencols;
@@ -5663,12 +5664,12 @@ int editorGetScreenLineFromFileRow (int fr){
 
     screenline+= rowlines;
   }
-  return screenline - E.rowoff;
+  return screenline - E.line_offset;
 
 }
 
 //below tested on down arrow not sure about up arrow
-//somewhere need to test that fr not >= E.filerows
+//somewhere need to test that fr not >= E.numrows
 int *editorGetScreenPosFromFilePos(int fr, int fc){
   static int row_column[2]; //if not use static then it's a variable local to function
   int screenline = 0;
@@ -5682,12 +5683,12 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
   }
 
   int incremental_lines = (E.row[fr].size >= fc) ? fc/E.screencols : E.row[fr].size/E.screencols;
-  screenline = screenline + incremental_lines - E.rowoff;
+  screenline = screenline + incremental_lines - E.line_offset;
   // below seems like a total kluge and (barely tested) but actually seems to work
   //- ? should be in editorScroll - I did try to put a version in editorScroll but
   // it didn't work and I didn't investigate why so here it will remain at least  for the moment
   if (screenline<=0 && fr==0) {
-    E.rowoff = 0; 
+    E.line_offset = 0; 
     screenline = 0;
     }
   // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
@@ -5701,7 +5702,7 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
 
 int editorGetFileCol(void) {
   int n = 0;
-  int y = E.cy;// + E.rowoff;
+  int y = E.cy;// + E.line_offset;
   int fr = editorGetFileRow();
   for (;;) {
     if (y == 0) break;
@@ -5727,34 +5728,34 @@ int editorGetLineCharCount(void) {
   else return E.screencols;
 }
 void editorCreateSnapshot(void) {
-  if ( E.filerows == 0 ) return; //don't create snapshot if there is no text
-  for (int j = 0 ; j < E.prev_filerows ; j++ ) {
+  if ( E.numrows == 0 ) return; //don't create snapshot if there is no text
+  for (int j = 0 ; j < E.prev_numrows ; j++ ) {
     free(E.prev_row[j].chars);
   }
-  E.prev_row = realloc(E.prev_row, sizeof(erow) * E.filerows );
-  for ( int i = 0 ; i < E.filerows ; i++ ) {
+  E.prev_row = realloc(E.prev_row, sizeof(erow) * E.numrows );
+  for ( int i = 0 ; i < E.numrows ; i++ ) {
     int len = E.row[i].size;
     E.prev_row[i].chars = malloc(len + 1);
     E.prev_row[i].size = len;
     memcpy(E.prev_row[i].chars, E.row[i].chars, len);
     E.prev_row[i].chars[len] = '\0';
   }
-  E.prev_filerows = E.filerows;
+  E.prev_numrows = E.numrows;
 }
 
 void editorRestoreSnapshot(void) {
-  for (int j = 0 ; j < E.filerows ; j++ ) {
+  for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
-  E.row = realloc(E.row, sizeof(erow) * E.prev_filerows );
-  for (int i = 0 ; i < E.prev_filerows ; i++ ) {
+  E.row = realloc(E.row, sizeof(erow) * E.prev_numrows );
+  for (int i = 0 ; i < E.prev_numrows ; i++ ) {
     int len = E.prev_row[i].size;
     E.row[i].chars = malloc(len + 1);
     E.row[i].size = len;
     memcpy(E.row[i].chars, E.prev_row[i].chars, len);
     E.row[i].chars[len] = '\0';
   }
-  E.filerows = E.prev_filerows;
+  E.numrows = E.prev_numrows;
 }
 
 void editorChangeCase(void) {
@@ -5799,8 +5800,8 @@ void editorYankString(void) {
 }
 
 void editorPasteString(void) {
-  if (E.cy == E.filerows) {
-    editorInsertRow(E.filerows, "", 0); //editorInsertRow will also insert another '\0'
+  if (E.cy == E.numrows) {
+    editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
   int fr = editorGetFileRow();
   int fc = editorGetFileCol();
@@ -5813,7 +5814,7 @@ void editorPasteString(void) {
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.filerows - fr));
+     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
   */
 
   memmove(&row->chars[fc + len], &row->chars[fc], row->size - fc); //****was E.cx + 1
@@ -5828,7 +5829,7 @@ void editorPasteString(void) {
 }
 
 void editorPasteLine(void){
-  if ( E.filerows == 0 ) editorInsertRow(0, "", 0);
+  if ( E.numrows == 0 ) editorInsertRow(0, "", 0);
   int fr = editorGetFileRow();
   for (int i=0; i < 10; i++) {
     if (line_buffer[i] == NULL) break;
@@ -5964,13 +5965,13 @@ void editorMoveNextWord(void) {
   } 
   if (j >= row.size - 1) { // at end of line was ==
 
-    if (fr == E.filerows - 1) return; // no more rows
+    if (fr == E.numrows - 1) return; // no more rows
     
     for (;;) {
       fr++;
       E.cy++;
       row = E.row[fr];
-      if (row.size == 0 && fr == E.filerows - 1) return;
+      if (row.size == 0 && fr == E.numrows - 1) return;
       if (row.size) break;
       }
 
@@ -6033,13 +6034,13 @@ void editorMoveEndWord(void) {
   int j;
 
   if (fc >= row->size - 1) {
-    if (fr == E.filerows - 1) return; // no more rows
+    if (fr == E.numrows - 1) return; // no more rows
     
     for (;;) {
       fr++;
       E.cy++;
       row = &E.row[fr];
-      if (row->size == 0 && fr == E.filerows - 1) return;
+      if (row->size == 0 && fr == E.numrows - 1) return;
       if (row->size) break;
       }
     line_in_row = 0;
@@ -6159,7 +6160,7 @@ void editorFindNextWord(void) {
   erow *row;
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
-  for ( int n=0; n < E.filerows; n++ ) {
+  for ( int n=0; n < E.numrows; n++ ) {
     row = &E.row[y];
     z = strstr(&(row->chars[x]), search_string);
     if ( z != NULL ) {
@@ -6167,7 +6168,7 @@ void editorFindNextWord(void) {
     }
     y++;
     x = 0;
-    if ( y == E.filerows ) y = 0;
+    if ( y == E.numrows ) y = 0;
   }
   fc = z - row->chars;
   E.cx = fc%E.screencols;
@@ -6185,7 +6186,7 @@ void editorMarkupLink(void) {
   char *z;
   char *http = "http";
   char *bracket_http = "[http";
-  numrows = E.filerows;
+  numrows = E.numrows;
   n = 1;
 
 
@@ -6221,15 +6222,15 @@ void editorMarkupLink(void) {
     editorInsertChar(']');
 
     if ( E.row[numrows-1].chars[0] != '[' ) {
-      E.cy = E.filerows - 1; //check why need - 1 otherwise seg faults
+      E.cy = E.numrows - 1; //check why need - 1 otherwise seg faults
       E.cx = 0;
       editorInsertNewline(1);
       }
 
-    editorInsertRow(E.filerows, zz, len); 
+    editorInsertRow(E.numrows, zz, len); 
     free(zz);
     E.cx = 0;
-    E.cy = E.filerows - 1;
+    E.cy = E.numrows - 1;
     editorInsertChar('[');
     editorInsertChar(48+n);
     editorInsertChar(']');
@@ -6268,19 +6269,19 @@ void initOutline() {
   O.command[0] = '\0';
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
-  if (getWindowSize(&screenrows, &screencols) == -1) die("getWindowSize");
-  O.screenrows = screenrows - 2 - TOP_MARGIN;
+  if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
+  O.screenrows = screenlines - 2 - TOP_MARGIN;
   O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
 }
 
 void initEditor(void) {
   E.cx = 0; //cursor x position
   E.cy = 0; //cursor y position
-  E.rowoff = 0;  //the number of rows at the top scrolled off the screen
+  E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
-  E.filerows = 0; //number of rows (lines) of text delineated by a return
+  E.numrows = 0; //number of rows (lines) of text delineated by a return
   E.row = NULL; //pointer to the erow structure 'array'
-  E.prev_filerows = 0; //number of rows of text in snapshot
+  E.prev_numrows = 0; //number of rows of text in snapshot
   E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
@@ -6293,8 +6294,8 @@ void initEditor(void) {
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
   E.continuation = 0; //circumstance when a line wraps
 
-  if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
-  E.screenrows = screenrows - 2 - TOP_MARGIN;
+  if (getWindowSize(&E.screenlines, &E.screencols) == -1) die("getWindowSize");
+  E.screenlines = screenlines - 2 - TOP_MARGIN;
   E.screencols = -2 + screencols/2;
   EDITOR_LEFT_MARGIN = screencols/2 + 1;
 }
@@ -6339,7 +6340,7 @@ int main(int argc, char** argv) {
   initEditor();
   int pos = screencols/2;
   char buf[32];
-  for (j=1; j < screenrows + 1;j++) {
+  for (j=1; j < screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
