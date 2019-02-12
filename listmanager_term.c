@@ -40,6 +40,12 @@
 char *SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 char *which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
+int NN = 0; //which context is being displayed on message line (if none then NN==0)
+struct termios orig_termios;
+int screenlines, screencols;
+int initial_file_row = 0; //for arrowing or displaying files
+bool editor_mode;
+char search_terms[50];
 
 char *context[] = {
                         "", //maybe should be "search" - we'll see
@@ -56,13 +62,6 @@ char *context[] = {
                         "work"//11
                        }; 
 
-//int context_tid; //used mainly for doing inserts of new rows
-int NN = 0; //which context is being displayed on message line (if none then NN==0)
-
-struct termios orig_termios;
-int screenlines, screencols;
-int initial_file_row = 0; //for arrowing or displaying files
-bool editor_mode;
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -753,11 +752,29 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(azColName);
 
   //note strsep handles multiple \n\n and strtok did not
+  //note tabs in notes cause problems so that probably need
+  //to do same thing we did with ' - find them and just replace with ' '
+  //VLA
+  /*
+  char *note;
+  note = strdup(argv[0]); // ******************
+  char clean_note[strlen(note) + 1];
+  char *out = clean_note;
+  const char *in = note;
+  while (*in) {
+      *out = *in;
+      if (*in == 9) *out = 32;
+      in++;
+      out++;
+  }
+  *out = '\0';
+  */
+
   if (argv[0] != NULL) { //added this guard 02052019 - not sure
     char *note;
     note = strdup(argv[0]); // ******************
     char *found;
-    while ((found = strsep(&note, "\r\n")) !=NULL) {
+    while ((found = strsep(&note, "\r\n")) !=NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
       editorInsertRow(E.numrows, found, strlen(found));
     }
     free(note);
@@ -1913,10 +1930,13 @@ void outlineDrawStatusBar(struct abuf *ab) {
   int fr = outlineGetResultSetRow();
   orow *row = &O.row[fr];
 
-  // so the below should 1) position the cursor on the status
-  // bar row and midscreen and 2) erase previous statusbar
-  // r -> l and then put the cursor back where it should be
-  // at OUTLINE_LEFT_MARGIN
+  /*
+  so the below should 1) position the cursor on the status
+  bar row and midscreen and 2) erase previous statusbar
+  r -> l and then put the cursor back where it should be
+  at OUTLINE_LEFT_MARGIN
+  */
+
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenrows + TOP_MARGIN + 1,
@@ -1935,10 +1955,13 @@ void outlineDrawStatusBar(struct abuf *ab) {
   memcpy(truncated_title, row->chars, len); //had issues with strncpy so changed to memcpy
   truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
-  len = snprintf(status, sizeof(status), "%.20s - %d rows - %s %s %s",
-                  O.context, O.numrows, truncated_title,
-                  (row->dirty) ? "(modified)" : "",
-                  which_db);
+  len = snprintf(status, sizeof(status), "%s%s%s - %d rows - %.15s... - \x1b[1m%s\x1b[0;7m",
+                              O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
+                              (strcmp(O.context, "search") == 0) ? search_terms : "",
+                              O.numrows, truncated_title, which_db);
+
+  //because of escapes
+  len-=10;
 
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
                       mode_text[O.mode], row->id, fr + 1, O.numrows);
@@ -1946,7 +1969,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   if (len > (O.screencols + OUTLINE_LEFT_MARGIN)) 
     len = O.screencols + OUTLINE_LEFT_MARGIN;
 
-  abAppend(ab, status, len);
+  abAppend(ab, status, len+10);
 
   while (len < (O.screencols + OUTLINE_LEFT_MARGIN)) {
     if (O.screencols + OUTLINE_LEFT_MARGIN - len == rlen) {
@@ -2053,21 +2076,22 @@ void outlineSetMessage(const char *fmt, ...) {
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
-  int fr = outlineGetResultSetRow();
-  orow *row = &O.row[fr];
-  int id;
+  int rsr, id;
+  orow *row;
 
   switch (key) {
     case ARROW_LEFT:
     case 'h':
       // note O.cx might be zero but filecol positive because of O.coloff
       // then O.cx goes negative
-      // dealt with in EditorScroll
+      // dealt with in outlineScroll
       if (outlineGetFileCol() > 0) O.cx--; 
       return;
 
     case ARROW_RIGHT:
     case 'l':
+      rsr = outlineGetResultSetRow();
+      row = &O.row[rsr];
       if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
       if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT); //you can go beyond the last char in insert mode
       return;
@@ -2080,9 +2104,10 @@ void outlineMoveCursor(int key) {
       // dealt with in outlineScroll
       if (outlineGetResultSetRow() > 0) O.cy--; 
       O.cx = O.coloff = 0;
-      fr = outlineGetResultSetRow();
-      row = &O.row[fr];
-      id = O.row[fr].id;
+      // note need to determine row after moving cursor
+      rsr = outlineGetResultSetRow();
+      //row = &O.row[rsr];
+      id = O.row[rsr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
       return;
@@ -2091,10 +2116,12 @@ void outlineMoveCursor(int key) {
     case 'j':
       if (outlineGetResultSetRow() < O.numrows - 1) O.cy++;
       O.cx = O.coloff = 0;
-      fr = outlineGetResultSetRow();
-      row = &O.row[fr];
-      id = O.row[fr].id;
-      (*get_note)(id); //if id == -1 does not try to retrieve note 
+      // note need to determine row after moving cursor
+      rsr = outlineGetResultSetRow(); 
+      row = &O.row[rsr];
+      //id = O.row[rsr].id;
+      (*get_note)(row->id); //if id == -1 does not try to retrieve note 
+      //(*get_note)(row->id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
       return;
   }
@@ -2317,6 +2344,7 @@ void outlineProcessKeypress() {
 
           O.command[0] = '\0';
           O.repeat = 0;
+         (*get_note)(O.row[outlineGetResultSetRow()].id); //if id == -1 does not try to retrieve note 
           return;
       
         case ':':
@@ -2460,6 +2488,7 @@ void outlineProcessKeypress() {
          O.cy = O.repeat-1; //this needs to take into account O.rowoff
          O.command[0] = '\0';
          O.repeat = 0;
+         (*get_note)(O.row[outlineGetResultSetRow()].id); //if id == -1 does not try to retrieve note 
          return;
 
         default:
@@ -2477,8 +2506,6 @@ void outlineProcessKeypress() {
 
         case '\x1b': 
           O.mode = NORMAL;
-          //O.command[0] = '\0'; //should have been set on leaving NORMAL mode
-          //O.command_line[0] = '\0'; //should be set when entering COMMAND_LINE mode
           outlineSetMessage(""); 
           return;
 
@@ -2518,9 +2545,9 @@ void outlineProcessKeypress() {
 
              case 'r':
                outlineSetMessage("\'%s\' will be refreshed", O.context);
-               (*get_data)(O.context, MAX); 
+               if (strcmp(O.context, "search") == 0) solr_find(search_terms);
+               else (*get_data)(O.context, MAX); 
                O.mode = NORMAL;
-               //O.command_line[0] = '\0'; //probably not necessary
                return;
 
             //in vim create new window and edit a file in it - here creates new item
@@ -2568,12 +2595,13 @@ void outlineProcessKeypress() {
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               O.context = "search";
-              //O.command_line[0] = '\0'; //probably not necessary
+              strcpy(search_terms, &O.command_line[pos + 1]);
+              (*get_note)(get_id(-1));
               return;
 
             case C_update: //update solr
               update_solr();
-              O.command_line[0] = '\0'; 
+              O.mode = NORMAL;
               return;
 
             case C_context:
@@ -2641,7 +2669,6 @@ void outlineProcessKeypress() {
                (*get_data)(new_context, MAX); 
                O.context = new_context; 
                O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary if only way to get to command line is from normal mode
                (*get_note)(O.row[0].id);
                //editorRefreshScreen(); //in get_note
                return;
@@ -2790,6 +2817,7 @@ void outlineProcessKeypress() {
           (*get_data)(O.context, MAX);
           return;
 
+        case ARROW_RIGHT:
         case '\x1b':
         case '>':
         case SHIFT_TAB:
@@ -4580,7 +4608,7 @@ void editorDrawRows(struct abuf *ab) {
 
       //may not be worth this if else to not draw ~ in first row
       //and probably there is a better way to do it
-      if (y) abAppend(ab, "\x1b[31m~~\x1b[K", 10); 
+      if (y) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
       else abAppend(ab, "\x1b[K", 3); 
       abAppend(ab, offset_lf_ret, 7);
       y++;
@@ -4740,12 +4768,15 @@ void editorDrawMessageBar(struct abuf *ab) {
 }
 
 void editorRefreshScreen(void) {
+  char buf[32];
   editorScroll(); ////////////////////////
 
-  /*  struct abuf {
+    /* struct abuf {
       char *b;
       int len;
-    };*/
+    };
+    */
+
   if (DEBUG) {
     if (E.row)
       editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.numrows = %d,  0th = %d", E.line_offset, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.numrows, editorGetFileRowByLine(0)); 
@@ -4755,7 +4786,7 @@ void editorRefreshScreen(void) {
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-  char buf[32];
+  //char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   abAppend(&ab, buf, strlen(buf));
   //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
@@ -4767,10 +4798,28 @@ void editorRefreshScreen(void) {
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
-    char buf[32];
+    //char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1);
     abAppend(&ab, buf, strlen(buf));
   }
+
+  if (E.dirty == 1) {
+    //The below needs to be in a function that takes the color as a parameter
+    write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+
+    for (int k = OUTLINE_LEFT_MARGIN + O.screencols + 1; k < screencols ;k++) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
+      write(STDOUT_FILENO, buf, strlen(buf));
+      //write(STDOUT_FILENO, "\x1b[31;1mq", 8); //horizontal line
+      write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
+    }
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
+    write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
+    write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+  }  
+
 
   abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
 
@@ -4807,11 +4856,21 @@ void editorMoveCursor(int key) {
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      if (E.cx == 0 && editorGetFileCol() > 0) {
+      /* original
+      if (E.cx == 0 && fc > 0) {
         E.cx = E.screencols - 1;
         E.cy--;
       }
-      else if (E.cx != 0) E.cx--; //do need to check for row?
+      else if (E.cx) E.cx--; //do need to check for row?
+      */
+
+      // Alternative - 02112019
+        if (E.cx) E.cx--;
+        else if (fc){
+          E.cx = E.screencols - 1;
+          E.cy--;
+        }
+
       break;
 
     case ARROW_RIGHT:
@@ -5385,6 +5444,7 @@ void editorProcessKeypress(void) {
               (*update_note)();
               E.mode = NORMAL;
               E.command[0] = '\0';
+              editorSetMessage("");
 
               return;
   
@@ -5393,6 +5453,23 @@ void editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               editor_mode = false;
+              editorSetMessage("");
+              editorRefreshScreen();
+
+              //The below needs to be in a function that takes the color as a parameter
+              char buf[32];
+              write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+          
+              for (int k=OUTLINE_LEFT_MARGIN+O.screencols+1; k < screencols ;k++) {
+                snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
+                write(STDOUT_FILENO, buf, strlen(buf));
+                write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+              }
+              snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
+              write(STDOUT_FILENO, buf, strlen(buf));
+              write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+              write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
+              write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
               return;
   
@@ -6340,10 +6417,11 @@ int main(int argc, char** argv) {
   initEditor();
   int pos = screencols/2;
   char buf[32];
+  write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
   for (j=1; j < screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+    //write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
 }
