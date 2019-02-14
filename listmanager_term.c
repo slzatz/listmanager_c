@@ -325,6 +325,7 @@ void synchronize(int);
 void editorSetMessage(const char *fmt, ...);
 void editorRefreshScreen(void);
 //void getcharundercursor(void);
+void editorInsertReturn(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
 void editorDelWord(void);
@@ -1487,8 +1488,49 @@ void editorInsertChar(int c) {
   E.cx++;
 }
 
-/* uses VLA */
-// now think you can't combine 'o' and 'O' with '\r' mainly because of positioning of cursor
+void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
+  if (E.numrows == 0) {
+    editorInsertRow(0, "", 0);
+    editorInsertRow(0, "", 0);
+    E.cx = 0;
+    E.cy = 1;
+    return;
+  }
+    
+  int fc = editorGetFileCol();
+  int fr = editorGetFileRow();
+  erow *row = &E.row[fr];
+  //could use VLA
+  int len = row->size - fc;
+  //note that you need row-size - fc + 1 but InsertRow will take care of that
+  //here you just need to copy the actual characters without the terminating '\0'
+  //note below we indent but could be combined so that inserted into
+  //the new line both the chars and the number of indent spaces
+  char *moved_chars = malloc(len);
+  memcpy(moved_chars, &row->chars[fc], len); //? I had issues with strncpy so changed to memcpy
+  
+  //This is the row from which the return took place which is now smaller 
+  //because some characters where moved into the next row(although could
+  //be zero chars moved at the end of a line
+  // fc can equal row->size because we are in insert mode and could be beyond the last char column
+  // in that case the realloc should do nothing - assume that it behaves correctly
+  // when there is no actual change in the memory allocation
+  // also malloc and memcpy should behave ok with zero arguments
+  row->size = fc;
+  row->chars[row->size] = '\0';//someday may actually figure out if row-chars has to be a c-string 
+  row->chars = realloc(row->chars, row->size + 1); 
+  editorInsertRow(fr + 1, moved_chars, len);
+  free(moved_chars);
+
+  E.cy++;
+  E.cx = 0;
+  int indent = (E.smartindent) ? editorIndentAmount(fr) : 0;
+  for (int j=0; j < indent; j++) editorInsertChar(' ');
+  E.cx = indent;
+}
+
+// now 'o' and 'O' separated from '\r' (in INSERT mode)
+//'o' -> direction == 1 and 'O' direction == 0
 void editorInsertNewline(int direction) {
   /* note this func does position cursor*/
   if (E.numrows == 0) {
@@ -1496,80 +1538,40 @@ void editorInsertNewline(int direction) {
     return;
   }
 
-  if (editorGetFileRow() == 0 && direction == 0) {
+  if (editorGetFileRow() == 0 && direction == 0) { // this is for 'O'
     editorInsertRow(0, "", 0);
     E.cx = 0;
     E.cy = 0;
     return;
   }
     
-  int fc = editorGetFileCol();
   int fr = editorGetFileRow();
-  erow *row = &E.row[fr];
-  int i;
-  //if (E.cx == 0 || E.cx == row->size) 
-  if (fc == 0 || fc == row->size) {
-    if (E.smartindent) i = editorIndentAmount(fr);
-    else i = 0;
-    char spaces[i + 1]; //VLA
-    for (int j=0; j<i; j++) {
-      spaces[j] = ' ';
-    }
-    spaces[i] = '\0';
-    //int fr = editorGetFileRow();
-    int y = E.cy;
-    editorInsertRow(fr + direction, spaces, i);
-    if (direction) {
-      for (;;) {
-        if (editorGetFileRowByLine(y) > fr) break;   
-        y++;
-      }
-    }
-    else {
+  int indent = (E.smartindent) ? editorIndentAmount(fr) : 0;
 
-      for (;;) {
-        if (editorGetFileRowByLine(y) < fr) break;   
-        y--;
-      }
-    }
-    E.cy = y;
-    if (direction == 0) E.cy++;
-    E.cx = i;
+  //VLA
+  char spaces[indent + 1]; 
+  for (int j=0; j < indent; j++) {
+    spaces[j] = ' ';
   }
-  else {
-    //editorInsertRow(fr + 1, &row->chars[fc], row->size - fc); //02132019
-    //row = &E.row[fr];
+  spaces[indent] = '\0';
 
-    //could use VLA
-    int len = row->size - fc;
-    char *moved_chars = malloc(len);
-    memcpy(moved_chars, &row->chars[fc], len); //had issues with strncpy so changed to memcpy
-    
-    row->size = fc;
-    row->chars[row->size] = '\0';
-    row->chars = realloc(row->chars, row->size + 1); // ******* this is untested but similar to outlineBackspace
-    //editorInsertRow(fr + 1, &row->chars[fc], row->size - fc);
-    editorInsertRow(fr + 1, moved_chars, len);
-    free(moved_chars);
-    if (E.smartindent) i = editorIndentAmount(fr);
-    else i = 0;
+  editorInsertRow(fr + direction, spaces, indent);
 
-    E.cy++;
-    //if (E.cy == E.screenlines) {
-    //  E.line_offset++;
-    //  E.cy--;
-    //}
-
-    E.cx = 0;
-    for (;;){
-      if (!row->chars) break; //added 02132019
-      if (row->chars[0] != ' ') break;
-      editorDelChar();
+  int y = E.cy;
+  if (direction) { //'o' -> insert below
+    for (;;) {
+      if (editorGetFileRowByLine(y) > fr) break;   
+      y++;
+      E.cy = y;
     }
-
-  for ( int j=0; j < i; j++ ) editorInsertChar(' ');
-  E.cx = i;
+  } else { //'O' insert above
+    for (;;) {
+      if (editorGetFileRowByLine(y) < fr) break;   
+      y--;
+      E.cy = y + 1;
+    }
   }
+  E.cx = indent;
 }
 
 void editorDelChar(void) {
@@ -1633,12 +1635,12 @@ void editorBackspace(void) {
   if (fc == 0 && fr == 0) return;
 
   if (fc > 0) {
+    if (E.cx > 0) {
     memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
     row->size--;
     if (E.cx == 1 && row->size/E.screencols && fc > row->size) E.continuation = 1; //right now only backspace in multi-line
     E.cx--;
-  } else { //else E.cx == 0 and could be multiline
-    if (fc > 0) { //this means it's a multiline row and we're not at the top
+    } else { //else E.cx == 0 and could be multiline
       memmove(&row->chars[fc - 1], &row->chars[fc], row->size - fc + 1);
       row->chars = realloc(row->chars, row->size); 
       row->size--;
@@ -1646,15 +1648,15 @@ void editorBackspace(void) {
       E.cx = E.screencols - 1;
       E.cy--;
       E.continuation = 0;
-    } else {// this means we're at fc == 0 so we're in the first filecolumn
-      E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols : E.row[fr - 1].size ;
-      //if (E.cx < 0) E.cx = 0; //don't think this guard is necessary but we'll see
-      editorRowAppendString(&E.row[fr - 1], row->chars, row->size); //only use of this function
-      editorFreeRow(&E.row[fr]);
-      memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.numrows - fr - 1));
-      E.numrows--;
-      E.cy--;
-    }
+    } 
+  } else {// this means we're at fc == 0 so we're in the first filecolumn
+    E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols : E.row[fr - 1].size ;
+    //if (E.cx < 0) E.cx = 0; //don't think this guard is necessary but we'll see
+    editorRowAppendString(&E.row[fr - 1], row->chars, row->size); //only use of this function
+    editorFreeRow(&E.row[fr]);
+    memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.numrows - fr - 1));
+    E.numrows--;
+    E.cy--;
   }
   E.dirty++;
 }
@@ -4781,7 +4783,7 @@ void editorDrawMessageBar(struct abuf *ab) {
   // Position cursor on last row and mid-screen
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 2,
-                                            EDITOR_LEFT_MARGIN + 1); 
+                                            EDITOR_LEFT_MARGIN);  //+1
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
@@ -4962,8 +4964,7 @@ void editorProcessKeypress(void) {
     
         case '\r':
           editorCreateSnapshot();
-          //E.cx = 0;
-          editorInsertNewline(0);
+          editorInsertReturn();
           break;
     
         /*
@@ -5040,7 +5041,7 @@ void editorProcessKeypress(void) {
           break;
     
         case '\x1b':
-          E.mode = 0;
+          E.mode = NORMAL;
           E.continuation = 0; // right now used by backspace in multi-line filerow
           if (E.cx > 0) E.cx--;
           // below - if the indent amount == size of line then it's all blanks
@@ -5198,7 +5199,7 @@ void editorProcessKeypress(void) {
     
         case 'o':
           editorCreateSnapshot();
-          E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
+          //E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
           editorInsertNewline(1);
           E.mode = 1;
           E.command[0] = '\0';
@@ -5208,7 +5209,7 @@ void editorProcessKeypress(void) {
     
         case 'O':
           editorCreateSnapshot();
-          E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
+          //E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
           editorInsertNewline(0);
           E.mode = 1;
           E.command[0] = '\0';
@@ -6502,7 +6503,7 @@ int main(int argc, char** argv) {
   // putting this here seems to speed up first search but still slow
   // might make sense to do the module imports here too
   // assume the reimports are essentially no-ops
-  Py_Initialize(); 
+  //Py_Initialize(); 
 
   while (1) {
     if (editor_mode){
