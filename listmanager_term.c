@@ -1488,6 +1488,7 @@ void editorInsertChar(int c) {
 }
 
 /* uses VLA */
+// now think you can't combine 'o' and 'O' with '\r' mainly because of positioning of cursor
 void editorInsertNewline(int direction) {
   /* note this func does position cursor*/
   if (E.numrows == 0) {
@@ -1502,19 +1503,22 @@ void editorInsertNewline(int direction) {
     return;
   }
     
-  erow *row = &E.row[editorGetFileRow()];
+  int fc = editorGetFileCol();
+  int fr = editorGetFileRow();
+  erow *row = &E.row[fr];
   int i;
-  if (E.cx == 0 || E.cx == row->size) {
-    if (E.smartindent) i = editorIndentAmount(editorGetFileRow());
+  //if (E.cx == 0 || E.cx == row->size) 
+  if (fc == 0 || fc == row->size) {
+    if (E.smartindent) i = editorIndentAmount(fr);
     else i = 0;
     char spaces[i + 1]; //VLA
     for (int j=0; j<i; j++) {
       spaces[j] = ' ';
     }
     spaces[i] = '\0';
-    int fr = editorGetFileRow();
+    //int fr = editorGetFileRow();
     int y = E.cy;
-    editorInsertRow(editorGetFileRow()+direction, spaces, i);
+    editorInsertRow(fr + direction, spaces, i);
     if (direction) {
       for (;;) {
         if (editorGetFileRowByLine(y) > fr) break;   
@@ -1533,11 +1537,21 @@ void editorInsertNewline(int direction) {
     E.cx = i;
   }
   else {
-    editorInsertRow(editorGetFileRow() + 1, &row->chars[editorGetFileCol()], row->size - editorGetFileCol());
-    row = &E.row[editorGetFileRow()];
-    row->size = editorGetFileCol();
+    //editorInsertRow(fr + 1, &row->chars[fc], row->size - fc); //02132019
+    //row = &E.row[fr];
+
+    //could use VLA
+    int len = row->size - fc;
+    char *moved_chars = malloc(len);
+    memcpy(moved_chars, &row->chars[fc], len); //had issues with strncpy so changed to memcpy
+    
+    row->size = fc;
     row->chars[row->size] = '\0';
-    if (E.smartindent) i = editorIndentAmount(E.cy);
+    row->chars = realloc(row->chars, row->size + 1); // ******* this is untested but similar to outlineBackspace
+    //editorInsertRow(fr + 1, &row->chars[fc], row->size - fc);
+    editorInsertRow(fr + 1, moved_chars, len);
+    free(moved_chars);
+    if (E.smartindent) i = editorIndentAmount(fr);
     else i = 0;
 
     E.cy++;
@@ -1548,6 +1562,7 @@ void editorInsertNewline(int direction) {
 
     E.cx = 0;
     for (;;){
+      if (!row->chars) break; //added 02132019
       if (row->chars[0] != ' ') break;
       editorDelChar();
     }
@@ -2086,6 +2101,11 @@ void outlineMoveCursor(int key) {
       // then O.cx goes negative
       // dealt with in outlineScroll
       if (outlineGetFileCol() > 0) O.cx--; 
+      else {
+        O.mode = DATABASE;
+        O.command[0] = '\0';
+        O.repeat = 0;
+      }
       return;
 
     case ARROW_RIGHT:
@@ -2234,7 +2254,7 @@ void outlineProcessKeypress() {
         case '<':
         case '\t':
         case SHIFT_TAB:
-          O.cx = 0; //intentionally leave O.cy whereever it is
+          O.cx = 0; //intentionally leave O.cy wherever it is
           O.mode = DATABASE;
           O.command[0] = '\0';
           O.repeat = 0;
@@ -2746,7 +2766,10 @@ void outlineProcessKeypress() {
               return;
 
             default: // default for commandfromstring
-              outlineSetMessage("I don't recognize %s", O.command_line);
+
+              //"\x1b[41m", 5); //red background
+              outlineSetMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line);
+              O.mode = NORMAL;
               return;
 
           } //end of commandfromstring switch within '\r' of case COMMAND_LINE
@@ -4939,8 +4962,8 @@ void editorProcessKeypress(void) {
     
         case '\r':
           editorCreateSnapshot();
-          E.cx = 0;
-          editorInsertNewline(1);
+          //E.cx = 0;
+          editorInsertNewline(0);
           break;
     
         /*
@@ -5445,18 +5468,10 @@ void editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               editorSetMessage("");
-
-              return;
-  
-            case 'x':
-              (*update_note)();
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              editor_mode = false;
-              editorSetMessage("");
               editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
+              {
               char buf[32];
               write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
           
@@ -5470,7 +5485,33 @@ void editorProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
               write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
               write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+              }
+              return;
+  
+            case 'x':
+              (*update_note)();
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              editor_mode = false;
+              editorSetMessage("");
+              editorRefreshScreen();
 
+              //The below needs to be in a function that takes the color as a parameter
+              {
+              char buf[32];
+              write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+          
+              for (int k=OUTLINE_LEFT_MARGIN+O.screencols+1; k < screencols ;k++) {
+                snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
+                write(STDOUT_FILENO, buf, strlen(buf));
+                write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+              }
+              snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
+              write(STDOUT_FILENO, buf, strlen(buf));
+              write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+              write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
+              write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+              }
               return;
   
             case 'q':
