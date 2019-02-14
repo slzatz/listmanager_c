@@ -4580,7 +4580,7 @@ this function deals with that */
 void editorScroll(void) {
   if (!E.row) return;
 
-  if (E.cy > E.screenlines -1){
+  if (E.cy > E.screenlines - 1){
     E.cy--;
     E.line_offset++;
   }
@@ -4758,7 +4758,6 @@ void editorDrawStatusBar(struct abuf *ab) {
     E.dirty ? "(modified)" : "");
     //"*");
   int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
-    //E.cy + 1, E.numrows);
     efr + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
@@ -4881,14 +4880,6 @@ void editorMoveCursor(int key) {
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      /* original
-      if (E.cx == 0 && fc > 0) {
-        E.cx = E.screencols - 1;
-        E.cy--;
-      }
-      else if (E.cx) E.cx--; //do need to check for row?
-      */
-
       // Alternative - 02112019
         if (E.cx) E.cx--;
         else if (fc){
@@ -4968,30 +4959,17 @@ void editorProcessKeypress(void) {
           break;
     
         /*
-        case CTRL_KEY('q'):
-          if (E.dirty && quit_times > 0) {
-            editorSetMessage("WARNING!!! File has unsaved changes. "
-              "Press Ctrl-Q %d more times to quit.", quit_times);
-            quit_times--;
-            return;
-          }
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          write(STDOUT_FILENO, "\x1b[H", 3); //cursor goes home, which is to first char
-          exit(0);
-          break;
-    
         case CTRL_KEY('s'):
           editorSave();
           break;
         */
 
         case HOME_KEY:
-          E.cx = 0;
+          editorMoveCursorBOL();
           break;
     
         case END_KEY:
-          if (E.cy < E.numrows)
-            E.cx = E.row[E.cy].size;
+          editorMoveCursorEOL();
           break;
     
         case BACKSPACE:
@@ -5004,6 +4982,7 @@ void editorProcessKeypress(void) {
           editorDelChar();
           break;
     
+        // need to look at these
         case PAGE_UP:
         case PAGE_DOWN:
           
@@ -5189,7 +5168,6 @@ void editorProcessKeypress(void) {
     
         case 'I':
           editorMoveCursorBOL();
-          //E.cx = editorIndentAmount(E.cy);
           E.cx = editorIndentAmount(editorGetFileRow());
           E.mode = 1;
           E.command[0] = '\0';
@@ -5199,7 +5177,6 @@ void editorProcessKeypress(void) {
     
         case 'o':
           editorCreateSnapshot();
-          //E.cx = 0; //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
           editorInsertNewline(1);
           E.mode = 1;
           E.command[0] = '\0';
@@ -5209,7 +5186,6 @@ void editorProcessKeypress(void) {
     
         case 'O':
           editorCreateSnapshot();
-          //E.cx = 0;  //editorInsertNewline needs E.cx set to zero for 'o' and 'O' before calling it
           editorInsertNewline(0);
           E.mode = 1;
           E.command[0] = '\0';
@@ -5424,7 +5400,7 @@ void editorProcessKeypress(void) {
           return;
     
         case C_gg:
-         E.cx = 0;
+         E.cx = E.line_offset = 0;
          E.cy = E.repeat-1;
          E.command[0] = '\0';
          E.repeat = 0;
