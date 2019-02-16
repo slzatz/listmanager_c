@@ -4610,6 +4610,160 @@ void editorScroll(void) {
     }
 }
 
+// new new new new new new new new new
+void editorDrawRowsWW(struct abuf *ab) {
+  int y = 0;
+  int len, n;
+  int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
+  char offset_lf_ret[20];
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+
+  //this is the first visible row on the screen given E.line_offset and the length
+  //of the preceding rows
+  int filerow = editorGetFileRowByLine(0); //this is the first visible row on the screen given E.line_offset and the length of the preceding rows
+
+  // if not displaying the 0th row of the 0th filerow than increment one filerow - this is what vim does
+  // if (editorGetScreenLineFromFileRow != 0) filerow++; ? necessary ******************************
+
+  for (;;){
+    if (y >= E.screenlines) break; //somehow making this >= made all the difference
+
+    // if there is still screen real estate but we've run out of text rows (E.numrows)
+    //drawing '~' below: first escape is red colr (31m) and K erases rest of line
+    if (filerow > E.numrows - 1) { 
+
+      //may not be worth this if else to not draw ~ in first row
+      //and probably there is a better way to do it
+      if (y) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
+      else abAppend(ab, "\x1b[K", 3); 
+      abAppend(ab, offset_lf_ret, 7);
+      y++;
+
+    // this else is the main drawing code
+    } else {
+
+      int lines = E.row[filerow].size/E.screencols;
+      if (E.row[filerow].size%E.screencols) lines++;
+      if (lines == 0) lines = 1;
+
+      // thought \r was a problem but not sure necessary since now filtering '\r' in get_note
+      //if (E.row[filerow].chars[0] == '\r') E.row[filerow].chars[0] = '\0'; commented out 02052019 and not sure or not
+
+      // below is trying to emulate what vim does when it can't show an entire row (which will be multi-screen-line)
+      // at the bottom of the screen because of where the screen scroll is.  It shows nothing of the row
+      // rather than show a partial row.  May not be worth it.
+      if ((y + lines) > E.screenlines) {
+          for (n=0; n < (E.screenlines - y);n++) {
+            abAppend(ab, "@", 2);
+            abAppend(ab, "\x1b[K", 3); 
+            abAppend(ab, offset_lf_ret, 7);
+          }
+        break;
+      }      
+
+/***********************************************************/
+    erow *row = &E.row[filerow];
+    char *start,*right_margin;
+    int left, width;
+    bool more_lines = true;
+
+    left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+    start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+    width = E.screencols; //wrapping width
+    
+    //while(*start) //exit when hit the end of the string '\0' - #1
+    while(more_lines) {//exit when hit the end of the string '\0' - #1
+
+        if(left <= width) {//after creating whatever number of lines if remainer <= width: get out
+            /*
+            puts(start);     //display string 
+            return(0);      // and leave 
+            */
+            len = left;
+            more_lines = false;
+            
+        } else {
+        right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+        while(!isspace(*right_margin)) //#2
+        {
+            right_margin--;
+            if( right_margin == start) // situation in which there were no spaces to break the link
+            {
+                right_margin += width - 1;
+                break; /////
+            }    /////
+
+        } //end #2
+
+        len = right_margin - start + 1;
+        left -= right_margin-start+1;      /* +1 for the space */
+        //start = right_margin + 1; //move the start pointer to the beginning of what will be the next line done below
+     //end #1
+       }
+/***********************************************************/
+        y++;
+
+        if (E.mode == VISUAL_LINE) { 
+
+          // below in case E.highlight[1] < E.highlight[0]
+          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
+          j =!k;
+         
+          if (filerow >= E.highlight[j] && filerow <= E.highlight[k]) {
+            abAppend(ab, "\x1b[48;5;242m", 11);
+            abAppend(ab, start, len);
+            abAppend(ab, "\x1b[49m", 5); //return background to normal
+          } else abAppend(ab, start, len);
+
+        } else if (E.mode == VISUAL && filerow == editorGetFileRow()) {
+
+          // below in case E.highlight[1] < E.highlight[0]
+          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
+          j =!k;
+
+          char *Ehj = &(row->chars[E.highlight[j]]);
+          char *Ehk = &(row->chars[E.highlight[k]]);
+
+          if ((Ehj >= start) && (Ehj < start + len)) {
+            abAppend(ab, start, Ehj - start);
+            abAppend(ab, "\x1b[48;5;242m", 11);
+            if ((Ehk - start) > len) {
+              abAppend(ab, Ehj, len - (Ehj - start));
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+          } else {
+            abAppend(ab, Ehj, E.highlight[k] - E.highlight[j]);
+            abAppend(ab, "\x1b[49m", 5); //return background to normal
+            abAppend(ab, Ehk, start + len - Ehk);
+          }
+          } else if ((Ehj < start) && (Ehk > start)) {
+              abAppend(ab, "\x1b[48;5;242m", 11);
+            if ((Ehk - start) > len) {
+              abAppend(ab, start, len);
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+            } else {  
+              abAppend(ab, start, Ehk - start);
+              abAppend(ab, "\x1b[49m", 5); //return background to normal
+              abAppend(ab, Ehk, start + len - Ehk);
+            }  
+          } else abAppend(ab, start, len);
+        } else abAppend(ab, start, len);
+    
+      //"\x1b[K" erases the part of the line to the right of the cursor in case the
+      // new line i shorter than the old
+      abAppend(ab, "\x1b[K", 3); 
+
+      abAppend(ab, offset_lf_ret, 7);
+      abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+
+      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+      }
+
+      filerow++;
+    }
+   abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+  }
+}
+
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
   int len, n;
@@ -4816,7 +4970,8 @@ void editorRefreshScreen(void) {
   //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
 
-  editorDrawRows(&ab);
+  if (editor_mode) editorDrawRows(&ab);
+  else editorDrawRowsWW(&ab);
   editorDrawStatusBar(&ab);
   editorDrawMessageBar(&ab);
 
