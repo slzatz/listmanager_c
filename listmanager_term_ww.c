@@ -325,7 +325,8 @@ void synchronize(int);
 int editorGetFileRowByLineWW(int);
 int editorGetLinesInRowWW(int); 
 int *editorGetRowLineCharWW(void);
-int editorGetCharInRowWW(int rsr, int line); 
+int editorGetCharInRowWW(int, int); 
+int editorGetLineCharCountWW(int, int);
 
 
 void editorSetMessage(const char *fmt, ...);
@@ -4971,8 +4972,9 @@ void editorRefreshScreen(void) {
   if (DEBUG) {
     if (E.row){
       int *rowlinechar = editorGetRowLineCharWW();
+      int line_char_count = editorGetLineCharCountWW(rowlinechar[0], rowlinechar[1]);
       //editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.numrows = %d,  0th = %d", E.line_offset, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.numrows, editorGetFileRowByLine(0)); 
-      editorSetMessage("row=%d  line=%d  char=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2]);
+      editorSetMessage("row=%d  line=%d  char=%d  line char count=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2], line_char_count);
     } else
       editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
   }
@@ -5043,8 +5045,12 @@ void editorMoveCursor(int key) {
 
   if (!E.row) return; //could also be !E.numrows
 
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  int line = rowlinechar[1];
+  int fc = rowlinechar[2];
 
   switch (key) {
     case ARROW_LEFT:
@@ -5062,10 +5068,11 @@ void editorMoveCursor(int key) {
     case 'l':
       ;
       int row_size = E.row[fr].size;
-      int line_in_row = 1 + fc/E.screencols; //counting from one
-      int total_lines = row_size/E.screencols;
-      if (row_size%E.screencols) total_lines++;
-      if (total_lines > line_in_row && E.cx >= E.screencols-1) {
+      //int line_in_row = 1 + fc/E.screencols; //counting from one
+      //int total_lines = row_size/E.screencols;
+      //if (row_size%E.screencols) total_lines++;
+      //if (total_lines > line_in_row && E.cx >= E.screencols-1) {
+      if ((fc < row_size - 1 ) && (E.cx >= editorGetLineCharCountWW(fr, line) - 1)) {
         E.cy++;
         E.cx = 0;
       } else E.cx++;
@@ -5095,7 +5102,7 @@ void editorMoveCursor(int key) {
      where E.cx can be equal to the length of the line
   */
 
-  int line_char_count = editorGetLineCharCount(); 
+  int line_char_count = editorGetLineCharCountWW(fr, line); 
   if (line_char_count == 0) E.cx = 0;
   else if (E.cx >= line_char_count) E.cx = line_char_count - (E.mode != INSERT); //you can go beyond the last char in insert mode
 
@@ -5983,7 +5990,7 @@ int *editorGetRowLineCharWW(void) {
 }
 
 // if you know row and line get char pos
-int editorGetCharInRowWW(int rsr, int line) {
+int editorGetCharInRowWW________(int rsr, int line) {
   erow *row = &E.row[rsr];
   char *start,*right_margin;
   int left, width, num, len, length;
@@ -6021,6 +6028,72 @@ int editorGetCharInRowWW(int rsr, int line) {
     }
   }
   return length + E.cx;
+}
+
+int editorGetCharInRowWW(int rsr, int line) {
+  erow *row = &E.row[rsr];
+  char *start,*right_margin;
+  int left, width, num, len, length;
+
+  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  length = 0;
+  num = 1; ////// Don't see how this works for line = 1
+  for (;;) {
+    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+    len = right_margin - start + 1;
+    left -= right_margin-start+1;      // +1 for the space //
+    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+    if (num == line) break;
+    num++;
+    length += len;
+  }
+  return length + E.cx;
+}
+
+int editorGetLineCharCountWW(int rsr, int line) {
+
+  erow *row = &E.row[rsr];
+  char *start,*right_margin;
+  int width, num, len, left;  //length left
+
+  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  //length = 0;
+
+  if (row->size == 0) return 0;
+
+  num = 1; ////// Don't see how this works for line = 1
+  for (;;) {
+    if (left < width) return left;
+    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+    len = right_margin - start + 1;
+    left -= right_margin - start+1;      // +1 for the space //
+    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+    //length += len;
+    if (num == line) break;
+    num++;
+    //length += len;
+  }
+  return len;
 }
 
 /************************************* end of WW ************************************************/
