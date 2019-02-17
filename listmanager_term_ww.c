@@ -327,6 +327,7 @@ int editorGetLinesInRowWW(int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
+int *editorGetScreenPosFromRowCharPosWW(int);
 
 
 void editorSetMessage(const char *fmt, ...);
@@ -5081,7 +5082,8 @@ void editorMoveCursor(int key) {
     case ARROW_UP:
     case 'k':
       if (fr > 0) {
-        int *row_column = editorGetScreenPosFromFilePos(fr - 1, fc);
+        fr--;
+        int *row_column = editorGetScreenPosFromRowCharPosWW(fr); //fc
         E.cy = row_column[0];
         E.cx = row_column[1];
       }
@@ -5090,7 +5092,8 @@ void editorMoveCursor(int key) {
     case ARROW_DOWN:
     case 'j':
       if (fr < E.numrows - 1) {
-        int *row_column = editorGetScreenPosFromFilePos(fr + 1, fc);
+        fr++;
+        int *row_column = editorGetScreenPosFromRowCharPosWW(fr); //fc
         E.cy = row_column[0];
         E.cx = row_column[1];
       }
@@ -6096,6 +6099,30 @@ int editorGetLineCharCountWW(int rsr, int line) {
   return len;
 }
 
+int *editorGetScreenPosFromRowCharPosWW(int fr) { //, int fc){
+  static int row_column[2]; //if not use static then it's a variable local to function
+  int screenline = 0;
+  int n = 0;
+
+  for (n=0;n < fr;n++) {
+    screenline+= editorGetLinesInRowWW(n);
+  }
+
+  screenline -= E.line_offset;
+  // below seems like a total kluge and (barely tested) but actually seems to work
+  //- ? should be in editorScroll - I did try to put a version in editorScroll but
+  // it didn't work and I didn't investigate why so here it will remain at least  for the moment
+  if (screenline<=0 && fr==0) {
+    E.line_offset = 0; 
+    screenline = 0;
+    }
+  // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
+  // this can put E.cx one farther right than it should be but editorMoveCursor checks and moves it back if not in insert mode
+  row_column[0] = screenline;
+  row_column[1] = E.cx;
+
+  return row_column;
+}
 /************************************* end of WW ************************************************/
 
 int editorGetFileRowByLine (int y){
