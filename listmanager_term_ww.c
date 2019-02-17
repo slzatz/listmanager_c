@@ -5061,6 +5061,7 @@ void editorMoveCursor(int key) {
         else if (fc){
           E.cx = E.screencols - 1;
           E.cy--;
+          line--;
         }
 
       break;
@@ -5069,10 +5070,6 @@ void editorMoveCursor(int key) {
     case 'l':
       ;
       int row_size = E.row[fr].size;
-      //int line_in_row = 1 + fc/E.screencols; //counting from one
-      //int total_lines = row_size/E.screencols;
-      //if (row_size%E.screencols) total_lines++;
-      //if (total_lines > line_in_row && E.cx >= E.screencols-1) {
       if ((fc < row_size - 1 ) && (E.cx >= editorGetLineCharCountWW(fr, line) - 1)) {
         E.cy++;
         E.cx = 0;
