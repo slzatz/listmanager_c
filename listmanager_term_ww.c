@@ -5099,8 +5099,6 @@ void editorMoveCursor(int key) {
 
   if (!E.row) return; //could also be !E.numrows
 
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
   int *rowlinechar = editorGetRowLineCharWW();
   int fr = rowlinechar[0];
   int line = rowlinechar[1];
@@ -6045,47 +6043,6 @@ int *editorGetRowLineCharWW(void) {
   return row_line_char;
 }
 
-// if you know row and line get char pos
-int editorGetCharInRowWW________(int rsr, int line) {
-  erow *row = &E.row[rsr];
-  char *start,*right_margin;
-  int left, width, num, len, length;
-  bool more_lines = true;
-
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  length = 0;
-  num = 1; ////// Don't see how this works for line = 1
-  while(more_lines) { //exit when hit the end of the string '\0' - #1
-
-    if (0) {
-    //if(left <= width) { //after creating whatever number of lines if remainer <= width: get out
-      len = left;
-      more_lines = false; 
-          
-    } else {
-      right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-      while(!isspace(*right_margin)) { //#2
-        right_margin--;
-        if( right_margin == start) { // situation in which there were no spaces to break the link
-          right_margin += width - 1;
-          break; 
-        }    
-      } 
-      len = right_margin - start + 1;
-      left -= right_margin-start+1;      // +1 for the space //
-      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-      if (num == line) break;
-      num++;
-      //if (num == line) break;
-      length += len;
-    }
-  }
-  return length + E.cx;
-}
-
 int editorGetCharInRowWW(int rsr, int line) {
   erow *row = &E.row[rsr];
   char *start,*right_margin;
@@ -6230,7 +6187,7 @@ int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
     left -= right_margin - start+1;      // +1 for the space //
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
-    if (c <= length) break; //<=
+    if (c < length) break; // changing from <= to < fixed a problem in editorMoveNextWork - no idea if it introduced new issues !! 02182019
     num++;
   }
   rowline_screenx[1] = c - length + len;
@@ -6520,18 +6477,24 @@ int editorIndentAmount(int fr) {
   return i;
 }
 
+// called by caw and daw
 void editorDelWord(void) {
-  erow *row = &E.row[E.cy];
-  if (row->chars[E.cx] < 48) return;
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int c = rowlinechar[2];
+
+  erow *row = &E.row[r];
+  if (row->chars[c] < 48) return;
 
   int i,j,x;
-  for (i = E.cx; i > -1; i--){
+  for (i = c; i > -1; i--){
     if (row->chars[i] < 48) break;
     }
-  for (j = E.cx; j < row->size ; j++) {
+  for (j = c; j < row->size ; j++) {
     if (row->chars[j] < 48) break;
   }
-  E.cx = i+1;
+  //E.cx = i+1; in ww world, not sure if this has to be done
 
   for (x = 0 ; x < j-i; x++) {
       editorDelChar();
@@ -6541,26 +6504,32 @@ void editorDelWord(void) {
 }
 
 void editorDeleteToEndOfLine(void) {
-  erow *row = &E.row[E.cy];
-  row->size = E.cx;
-  //Arguably you don't have to reallocate when you reduce the length of chars
-  row->chars = realloc(row->chars, E.cx + 1); //added 10042018 - before wasn't reallocating memory
-  row->chars[E.cx] = '\0';
-  }
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int c = rowlinechar[2];
+
+  erow *row = &E.row[r];
+  row->size = c;
+
+  row->chars = realloc(row->chars, c + 1); //added 10042018 - before wasn't reallocating memory
+  row->chars[c] = '\0';
+}
 
 void editorMoveCursorBOL(void) {
-  E.cx = 0;
-  int fr = editorGetFileRow();
-  if (fr == 0) {
-    E.cy = 0;
-    return;
-  }
-  int y = E.cy - 1;
-  for (;;) {
-    if (editorGetFileRowByLine(y) != fr) break;
-    y--;
-  }
-  E.cy = y + 1;
+
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+  int c = 0;
+
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  // you know E.cx should be 0 (? which screenrow) but this actually works
+  E.cx = screeny_screenx[1]; 
+  E.cy = screeny_screenx[0];
 }
 
 void editorMoveCursorEOL(void) {
@@ -6584,71 +6553,86 @@ void editorMoveCursorEOL(void) {
 // used by dw
 void editorMoveEndWord2() {
   int j;
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
-
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
+  int c = rowlinechar[2];
 
+  erow row = E.row[r];
 
-  erow row = E.row[fr];
-
-  for (j = fc + 1; j < row.size ; j++) {
+  for (j = c + 1; j < row.size ; j++) {
     if (row.chars[j] < 48) break;
   }
 
-  fc = j - 1;
-  E.cx = fc%E.screencols;
+  c = j - 1;
+
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
 }
 
 // used by 'w'
 void editorMoveNextWord(void) {
 // doesn't handle multiple white space characters at EOL
   int j;
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
 
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
+  int c = rowlinechar[2];
 
-  int line_in_row = fc/E.screencols; //counting from zero
-  erow row = E.row[fr];
+  //int line_in_row = c/E.screencols; //counting from zero
+  erow row = E.row[r];
 
-  if (row.chars[fc] < 48) j = fc;
+  if (row.chars[c] < 48) j = c;
   else {
-    for (j = fc + 1; j < row.size; j++) { 
-      if (row.chars[j] < 48) break;
+    for (j = c + 1; j < row.size; j++) { 
+      if (row.chars[j] < 48) {
+          /*
+          int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, j); 
+          E.cy = screeny_screenx[0];
+          E.cx = screeny_screenx[1];
+          rowlinechar = editorGetRowLineCharWW();
+          int line = rowlinechar[1];
+          int n = editorGetLineCharCountWW(r, line);
+          if (E.cx < n - 1) break;
+          */
+          break;
+      }    
     }
   } 
   if (j >= row.size - 1) { // at end of line was ==
 
-    if (fr == E.numrows - 1) return; // no more rows
+    if (r == E.numrows - 1) return; // no more rows
     
     for (;;) {
-      fr++;
-      E.cy++;
-      row = E.row[fr];
-      if (row.size == 0 && fr == E.numrows - 1) return;
+      r++;
+      //E.cy++;
+      row = E.row[r];
+      if (row.size == 0 && r == E.numrows - 1) return;
       if (row.size) break;
       }
 
-    line_in_row = 0;
+    //line_in_row = 0;
     E.cx = 0;
-    fc = 0;
+    c = 0;
     if (row.chars[0] >= 48) return;  //Since we went to a new row it must be beginning of a word if char in 0th position
   
-  } else fc = j - 1;
+  } else c = j - 1;
   
-  for (j = fc + 1; j < row.size ; j++) { //+1
+  for (j = c + 1; j < row.size ; j++) { //+1
     if (row.chars[j] > 48) break;
   }
-  fc = j;
+  c = j;
+
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
+
+  /*
   E.cx = fc%E.screencols;
   E.cy+=fc/E.screencols - line_in_row;
+  */
 }
 
 void editorMoveBeginningWord(void) {
