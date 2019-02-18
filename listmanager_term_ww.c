@@ -1494,18 +1494,24 @@ void editorInsertChar(int c) {
   row->chars[fc] = c;
   E.dirty++;
 
-  int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
+  //rowlinechar = editorGetRowLineCharWW();
+  //fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //fc = rowlinechar[2];
+  //row = &E.row[fr];
+  //int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
 
-  E.cy = row_column[0];
-  E.cx = row_column[1] + 1;
+  
+  //E.cy = row_column[0];
+  //E.cx = row_column[1] + 1;
 
-  /*
   if (E.cx >= E.screencols) {
     E.cy++; 
-    E.cx = 0;
+    int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
+    E.cx = row_column[1] + 1;
+    //E.cx = 0;
   }
   E.cx++;
-  */
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -5006,7 +5012,7 @@ void editorRefreshScreen(void) {
       int screenx = rowline_screenx[1];
 
       //editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.numrows = %d,  0th = %d", E.line_offset, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.numrows, editorGetFileRowByLine(0)); 
-      editorSetMessage("row=%d  line=%d  char=%d  line char count=%d screenx=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2], line_char_count, screenx);
+      editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2], line_char_count, screenx, E.screencols);
     } else
       editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
   }
@@ -5102,6 +5108,7 @@ void editorMoveCursor(int key) {
       ;
       int row_size = E.row[fr].size;
       if ((fc < row_size - 1 ) && (E.cx >= editorGetLineCharCountWW(fr, line) - 1)) {
+      //if ((fc < row_size) && (E.cx >= editorGetLineCharCountWW(fr, line))) {
         E.cy++;
         E.cx = 0;
       } else E.cx++;
@@ -6107,7 +6114,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
 
   num = 1; ////// Don't see how this works for line = 1
   for (;;) {
-    if (left < width) return left;
+    if (left <= width) return left; // <
     right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
     while(!isspace(*right_margin)) { //#2
       right_margin--;
@@ -6160,7 +6167,7 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
     left -= len;
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
-    if (c <= length) break;
+    if (c < length) break; //<= segfaults with either
     //num++;
     //length += len;
   }
