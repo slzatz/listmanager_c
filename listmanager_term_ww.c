@@ -6445,8 +6445,12 @@ void editorPasteString(void) {
   if (E.cy == E.numrows) {
     editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
 
   erow *row = &E.row[fr];
   //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; 10-29-2018 ? is this necessary - not sure
@@ -6560,26 +6564,35 @@ void editorMoveCursorBOL(void) {
 }
 
 void editorMoveCursorEOL(void) {
-  // possibly should turn line in row and total lines into a function 
-  // but use does vary a little so maybe not 
-  int fc = editorGetFileCol();
-  int fr = editorGetFileRow();
-  int row_size = E.row[fr].size;
-  int line_in_row = 1 + fc/E.screencols; //counting from one
-  int total_lines = row_size/E.screencols;
-  if (row_size%E.screencols) total_lines++;
-  if (total_lines > line_in_row) E.cy = E.cy + total_lines - line_in_row;
-  int char_in_line = editorGetLineCharCount();
-  if (char_in_line == 0) E.cx = 0; 
-  else E.cx = char_in_line - 1;
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
+  // set row column to the end of the row
+  int c = E.row[r].size - 1;
+  
+  // the below works to set the position of the cursor from knowing the note/text [r]ow and [c]olumn
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
+
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 // used by dw
 void editorMoveEndWord2() {
   int j;
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
+
   erow row = E.row[fr];
 
   for (j = fc + 1; j < row.size ; j++) {
@@ -6594,8 +6607,14 @@ void editorMoveEndWord2() {
 void editorMoveNextWord(void) {
 // doesn't handle multiple white space characters at EOL
   int j;
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
   int line_in_row = fc/E.screencols; //counting from zero
   erow row = E.row[fr];
 
@@ -6633,8 +6652,15 @@ void editorMoveNextWord(void) {
 }
 
 void editorMoveBeginningWord(void) {
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
   erow *row = &E.row[fr];
   int line_in_row = fc/E.screencols; //counting from zero
   if (fc == 0){ 
@@ -6669,8 +6695,14 @@ void editorMoveBeginningWord(void) {
 
 void editorMoveEndWord(void) {
 // doesn't handle whitespace at the end of a line
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
   int line_in_row = fc/E.screencols; //counting from zero
   erow *row = &E.row[fr];
   int j;
@@ -6705,8 +6737,15 @@ void editorMoveEndWord(void) {
 }
 
 void editorDecorateWord(int c) {
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
   erow *row = &E.row[fr];
   char cc;
   if (row->chars[fc] < 48) return;
@@ -6768,8 +6807,14 @@ void editorDecorateVisual(int c) {
 }
 
 void getWordUnderCursor(void){
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
   erow *row = &E.row[fr];
   if (row->chars[fc] < 48) return;
 
@@ -6795,8 +6840,15 @@ void getWordUnderCursor(void){
 void editorFindNextWord(void) {
   int y, x;
   char *z;
-  int fc = editorGetFileCol();
-  int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+
+
   y = fr;
   x = fc + 1;
   erow *row;
