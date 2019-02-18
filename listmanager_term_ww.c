@@ -6098,6 +6098,7 @@ int editorGetCharInRowWW(int rsr, int line) {
   length = 0;
   num = 1; ////// Don't see how this works for line = 1
   for (;;) {
+    if (left <= width) return length + E.cx; /////////////////////////////////////////////////////////////////////////////02182019 9:41 am 
     right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
     while(!isspace(*right_margin)) { //#2
       right_margin--;
