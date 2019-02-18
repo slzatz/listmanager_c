@@ -327,8 +327,9 @@ int editorGetLinesInRowWW(int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
-int *editorGetScreenPosFromRowCharPosWW(int);
-
+int *editorGetScreenPosFromRowCharPosWW(int, int);
+int editorGetScreenXFromRowCharPosWW(int, int);
+int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 
 void editorSetMessage(const char *fmt, ...);
 void editorRefreshScreen(void);
@@ -1468,9 +1469,13 @@ void editorInsertChar(int c) {
     editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
-  int fc = editorGetFileCol();
-  int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
 
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
   erow *row = &E.row[fr];
 
 
@@ -1489,11 +1494,18 @@ void editorInsertChar(int c) {
   row->chars[fc] = c;
   E.dirty++;
 
+  int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
+
+  E.cy = row_column[0];
+  E.cx = row_column[1] + 1;
+
+  /*
   if (E.cx >= E.screencols) {
     E.cy++; 
     E.cx = 0;
   }
   E.cx++;
+  */
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -1505,8 +1517,12 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
     return;
   }
     
-  int fc = editorGetFileCol();
-  int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
   erow *row = &E.row[fr];
   //could use VLA
   int len = row->size - fc;
@@ -1553,7 +1569,11 @@ void editorInsertNewline(int direction) {
     return;
   }
     
-  int fr = editorGetFileRow();
+  //int fr = editorGetFileRow();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int fc = rowlinechar[2];
   int indent = (E.smartindent) ? editorIndentAmount(fr) : 0;
 
   //VLA
@@ -1583,8 +1603,12 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
-  int fr = editorGetFileRow();
-  int fc = editorGetFileCol();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
+  //int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
 
   erow *row = &E.row[fr];
 
@@ -1636,8 +1660,12 @@ void editorDelChar2(int fr, int fc) {
 
 //Really need to look at this
 void editorBackspace(void) {
-  int fc = editorGetFileCol();
-  int fr = editorGetFileRow();
+  //int fc = editorGetFileCol();
+  //int fr = editorGetFileRow();
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  //int line = rowlinechar[1];
+  int fc = rowlinechar[2];
   erow *row = &E.row[fr];
 
   if (fc == 0 && fr == 0) return;
@@ -4974,8 +5002,11 @@ void editorRefreshScreen(void) {
     if (E.row){
       int *rowlinechar = editorGetRowLineCharWW();
       int line_char_count = editorGetLineCharCountWW(rowlinechar[0], rowlinechar[1]);
+      int *rowline_screenx = editorGetRowLineScreenXFromRowCharPosWW(rowlinechar[0], rowlinechar[2]);
+      int screenx = rowline_screenx[1];
+
       //editorSetMessage("rowoff=%d, length=%d, cx=%d, cy=%d, frow=%d, fcol=%d, size=%d, E.numrows = %d,  0th = %d", E.line_offset, editorGetLineCharCount(), E.cx, E.cy, editorGetFileRow(), editorGetFileCol(), E.row[editorGetFileRow()].size, E.numrows, editorGetFileRowByLine(0)); 
-      editorSetMessage("row=%d  line=%d  char=%d  line char count=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2], line_char_count);
+      editorSetMessage("row=%d  line=%d  char=%d  line char count=%d screenx=%d", rowlinechar[0], rowlinechar[1], rowlinechar[2], line_char_count, screenx);
     } else
       editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
   }
@@ -5080,9 +5111,9 @@ void editorMoveCursor(int key) {
     case 'k':
       if (fr > 0) {
         fr--;
-        int *row_column = editorGetScreenPosFromRowCharPosWW(fr); //fc
-        E.cy = row_column[0];
-        E.cx = row_column[1];
+        int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(fr, fc); //fc
+        E.cy = screeny_screenx[0];
+        E.cx = screeny_screenx[1];
       }
       break;
 
@@ -5090,9 +5121,9 @@ void editorMoveCursor(int key) {
     case 'j':
       if (fr < E.numrows - 1) {
         fr++;
-        int *row_column = editorGetScreenPosFromRowCharPosWW(fr); //fc
-        E.cy = row_column[0];
-        E.cx = row_column[1];
+        int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(fr, fc); //fc
+        E.cy = screeny_screenx[0];
+        E.cx = screeny_screenx[1];
       }
       break;
   }
@@ -5917,8 +5948,8 @@ int editorGetFileRowByLineWW(int y){
   return n;
 }
 
-int editorGetLinesInRowWW(int rsr) {
-  erow *row = &E.row[rsr];
+int editorGetLinesInRowWW(int r) {
+  erow *row = &E.row[r];
   char *start,*right_margin;
   int left, width, num;  //, len;
   bool more_lines = true;
@@ -6096,12 +6127,97 @@ int editorGetLineCharCountWW(int rsr, int line) {
   return len;
 }
 
-int *editorGetScreenPosFromRowCharPosWW(int fr) { //, int fc){
-  static int row_column[2]; //if not use static then it's a variable local to function
+int editorGetScreenXFromRowCharPosWW(int r, int c) {
+
+  erow *row = &E.row[r];
+  char *start,*right_margin;
+  int width, len, left, length;  //num 
+
+  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  length = 0;
+
+  if (row->size == 0) return 0;
+
+  //num = 1; ////// Don't see how this works for line = 1
+  for (;;) {
+    if (left < width) {
+      length += left;
+      len = left;
+      break;
+    }
+    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+    len = right_margin - start + 1;
+    left -= len;
+    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+    length += len;
+    if (c <= length) break;
+    //num++;
+    //length += len;
+  }
+  return c - length + len;
+}
+
+int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
+  static int rowline_screenx[2]; //if not use static then it's a variable local to function
+  erow *row = &E.row[r];
+  char *start,*right_margin;
+  int width, len, left, length, num; //, prev_length;  
+
+  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  length = 0;
+
+  if (row->size == 0) {
+     rowline_screenx[1] = 0;
+     rowline_screenx[0] = 1;
+     return rowline_screenx;
+  }
+
+  num = 1; 
+  for (;;) {
+    if (left < width) {
+      length += left;
+      len = left;
+      break;
+    }
+    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+    len = right_margin - start + 1;
+    left -= right_margin - start+1;      // +1 for the space //
+    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+    length += len;
+    if (c <= length) break; //<=
+    num++;
+  }
+  rowline_screenx[1] = c - length + len;
+  rowline_screenx[0] = num;
+  return rowline_screenx;
+}
+
+int *editorGetScreenPosFromRowCharPosWW(int r, int c) { //, int fc){
+  static int screeny_screenx[2]; //if not use static then it's a variable local to function
   int screenline = 0;
   int n = 0;
 
-  for (n=0;n < fr;n++) {
+  for (n=0; n < r; n++) { //////////////////////////////////////////
     screenline+= editorGetLinesInRowWW(n);
   }
 
@@ -6109,16 +6225,16 @@ int *editorGetScreenPosFromRowCharPosWW(int fr) { //, int fc){
   // below seems like a total kluge and (barely tested) but actually seems to work
   //- ? should be in editorScroll - I did try to put a version in editorScroll but
   // it didn't work and I didn't investigate why so here it will remain at least  for the moment
-  if (screenline<=0 && fr==0) {
+  if (screenline<=0 && r==0) {
     E.line_offset = 0; 
     screenline = 0;
     }
   // since E.cx should be less than E.row[].size (since E.cx counts from zero and E.row[].size from 1
   // this can put E.cx one farther right than it should be but editorMoveCursor checks and moves it back if not in insert mode
-  row_column[0] = screenline;
-  row_column[1] = E.cx;
-
-  return row_column;
+  int *rowline_screenx = editorGetRowLineScreenXFromRowCharPosWW(r, c);
+  screeny_screenx[0] = screenline + rowline_screenx[0] - 1; //new -1
+  screeny_screenx[1] = rowline_screenx[1];
+  return screeny_screenx;
 }
 /************************************* end of WW ************************************************/
 
