@@ -6587,18 +6587,7 @@ void editorMoveNextWord(void) {
   if (row.chars[c] < 48) j = c;
   else {
     for (j = c + 1; j < row.size; j++) { 
-      if (row.chars[j] < 48) {
-          /*
-          int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, j); 
-          E.cy = screeny_screenx[0];
-          E.cx = screeny_screenx[1];
-          rowlinechar = editorGetRowLineCharWW();
-          int line = rowlinechar[1];
-          int n = editorGetLineCharCountWW(r, line);
-          if (E.cx < n - 1) break;
-          */
-          break;
-      }    
+      if (row.chars[j] < 48) break;
     }
   } 
   if (j >= row.size - 1) { // at end of line was ==
@@ -6607,14 +6596,14 @@ void editorMoveNextWord(void) {
     
     for (;;) {
       r++;
-      //E.cy++;
       row = E.row[r];
       if (row.size == 0 && r == E.numrows - 1) return;
       if (row.size) break;
       }
 
-    //line_in_row = 0;
+    // this still needs work 02192019
     E.cx = 0;
+    E.cy++;
     c = 0;
     if (row.chars[0] >= 48) return;  //Since we went to a new row it must be beginning of a word if char in 0th position
   
@@ -6628,24 +6617,18 @@ void editorMoveNextWord(void) {
   int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
   E.cx = screeny_screenx[1];
   E.cy = screeny_screenx[0];
-
-  /*
-  E.cx = fc%E.screencols;
-  E.cy+=fc/E.screencols - line_in_row;
-  */
 }
 
+// normal mode 'b'
 void editorMoveBeginningWord(void) {
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
-
 
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
+  int c = rowlinechar[2];
 
-  erow *row = &E.row[fr];
+  erow *row = &E.row[r];
+  /*
   int line_in_row = fc/E.screencols; //counting from zero
   if (fc == 0){ 
     if (fr == 0) return;
@@ -6659,22 +6642,45 @@ void editorMoveBeginningWord(void) {
     fc = row->size - 1;
     line_in_row = fc/E.screencols;
   }
+  */
+  int j = c;
 
-  int j = fc;
+  if (c == 0 || (c == 1 && row->chars[0] < 48)) {
+    if (r == 0) return;
+    for (;;) {
+      r--;
+      row = &E.row[r];
+      if (r == 0 && row->size == 0) return;
+      if (row->size == 0) continue;
+      if (row->size) {
+        j = row->size - 1;
+        break;
+      }
+    } 
+  }
+
   for (;;) {
-    if (row->chars[j - 1] < 48) j--;
+    if (j > 1 && row->chars[j - 1] < 48) j--;
     else break;
-    if (j == 0) return; 
   }
 
   int i;
   for (i = j - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (i == 0) { 
+      if (row->chars[0] > 47) { 
+        c = 0;
+        break;
+      } else return;
+    }
+    if (row->chars[i] < 48) {
+      c = i + 1;
+      break;
+    }
   }
-  fc = i + 1;
 
-  E.cx = fc%E.screencols;
-  E.cy = E.cy - line_in_row + fc/E.screencols;
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
 }
 
 void editorMoveEndWord(void) {
