@@ -1508,7 +1508,7 @@ void editorInsertChar(int c) {
   if (E.cx >= E.screencols) {
     E.cy++; 
     int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
-    E.cx = row_column[1] + 1;
+    E.cx = row_column[1];
     //E.cx = 0;
   }
   E.cx++;
@@ -6194,7 +6194,7 @@ int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
 
   num = 1; 
   for (;;) {
-    if (left < width) {
+    if (left < width + 1) { //// didn't have the + 1 and + 1 seems better 02182019
       length += left;
       len = left;
       break;
