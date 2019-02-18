@@ -1509,7 +1509,6 @@ void editorInsertChar(int c) {
     E.cy++; 
     int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
     E.cx = row_column[1];
-    //E.cx = 0;
   }
   E.cx++;
 }
@@ -1638,6 +1637,10 @@ void editorDelChar(void) {
   else if (E.cx == row->size && E.cx) E.cx = row->size - 1;  // shouldn't editorscroll handle this
 
   E.dirty++;
+  /*********************************/
+  int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
+  E.cx = row_column[1];
+  E.cy = row_column[0];
 }
 
 void editorDelChar2(int fr, int fc) {
@@ -4632,6 +4635,19 @@ void editorScroll(void) {
      E.cy = 0;
      if (editorGetFileRow() == 0) E.line_offset = 0; //? necessary really not sure
   }
+
+  // also appears in move cursor - can't have to appear in both - this was necessary
+  // for 'x' to work right when it is at the end of a line
+  int *rowlinechar = editorGetRowLineCharWW();
+  int fr = rowlinechar[0];
+  int line = rowlinechar[1];
+  //int fc = rowlinechar[2];
+  int line_char_count = editorGetLineCharCountWW(fr, line); 
+  if (line_char_count == 0) E.cx = 0;
+  else if (E.cx >= line_char_count) E.cx = line_char_count - (E.mode != INSERT); //you can go beyond the last char in insert mode
+
+
+
   //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
   //I believe vim also doesn't want partial lines at the top so balancing both concepts
   //The lines you can view at the top and the bottom of the screen are 
@@ -5138,6 +5154,8 @@ void editorMoveCursor(int key) {
      and also deals with instances when the right arrow can go beyond the 
      length of the line.  Takes into account whether in E.mode == INSERT
      where E.cx can be equal to the length of the line
+
+     Since this is now in editorScroll -- need to test whether it needs to be in both places!!
   */
 
   int line_char_count = editorGetLineCharCountWW(fr, line); 
