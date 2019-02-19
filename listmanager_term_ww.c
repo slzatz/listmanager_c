@@ -6376,11 +6376,18 @@ void editorYankLine(int n){
     line_buffer[i] = NULL;
     }
 
-  int fr = editorGetFileRow();
+  //int fr = editorGetFileRow();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
+
   for (int i=0; i < n; i++) {
-    int len = E.row[fr + i].size;
+    int len = E.row[r + i].size;
     line_buffer[i] = malloc(len + 1);
-    memcpy(line_buffer[i], E.row[fr + i].chars, len);
+    memcpy(line_buffer[i], E.row[r + i].chars, len);
     line_buffer[i][len] = '\0';
   }
   // set string_buffer to "" to signal should paste line and not chars
@@ -6389,8 +6396,15 @@ void editorYankLine(int n){
 
 void editorYankString(void) {
   int n,x;
-  int fr = editorGetFileRow();
-  erow *row = &E.row[fr];
+
+  //int fr = editorGetFileRow();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
+  erow *row = &E.row[r];
   for (x = E.highlight[0], n = 0; x < E.highlight[1]+1; x++, n++) {
       string_buffer[n] = row->chars[x];
   }
@@ -6402,60 +6416,74 @@ void editorPasteString(void) {
   if (E.cy == E.numrows) {
     editorInsertRow(E.numrows, "", 0); //editorInsertRow will also insert another '\0'
   }
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
+  int c = rowlinechar[2];
 
-  erow *row = &E.row[fr];
-  //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; 10-29-2018 ? is this necessary - not sure
+  erow *row = &E.row[r];
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
 
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
+     memmove(&E.row[r + 1], &E.row[r], sizeof(erow) * (E.numrows - r));
   */
 
-  memmove(&row->chars[fc + len], &row->chars[fc], row->size - fc); //****was E.cx + 1
+  memmove(&row->chars[c + len], &row->chars[c], row->size - c); //****was E.cx + 1
 
   for (int i = 0; i < len; i++) {
     row->size++;
-    row->chars[fc] = string_buffer[i];
-    fc++;
+    row->chars[c] = string_buffer[i];
+    c++;
   }
-  E.cx = fc%E.screencols; //this can't work in all circumstances - might have to move E.cy too
+  //below has to be changed - but will need to see what vim does
+  //E.cx = fc%E.screencols; //this can't work in all circumstances - might have to move E.cy too
+
   E.dirty++;
 }
 
 void editorPasteLine(void){
   if ( E.numrows == 0 ) editorInsertRow(0, "", 0);
-  int fr = editorGetFileRow();
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
   for (int i=0; i < 10; i++) {
     if (line_buffer[i] == NULL) break;
 
     int len = strlen(line_buffer[i]);
-    fr++;
-    editorInsertRow(fr, line_buffer[i], len);
-    //need to set E.cy - need general fr to E.cy function 10-28-2018
+    r++;
+    editorInsertRow(r, line_buffer[i], len);
+    //need to set E.cy - need general r to E.cy function 10-28-2018
   }
 }
 
 void editorIndentRow(void) {
-  int fr = editorGetFileRow();
-  erow *row = &E.row[fr];
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
+  erow *row = &E.row[r];
   if (row->size == 0) return;
   //E.cx = 0;
-  E.cx = editorIndentAmount(fr);
+  E.cx = editorIndentAmount(r);
   for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
   E.dirty++;
 }
 
 void editorUnIndentRow(void) {
-  erow *row = &E.row[E.cy];
+
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0];
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+  erow *row = &E.row[r];
   if (row->size == 0) return;
   E.cx = 0;
   for (int i = 0; i < E.indent; i++) {
@@ -6466,9 +6494,9 @@ void editorUnIndentRow(void) {
   E.dirty++;
 }
 
-int editorIndentAmount(int fr) {
+int editorIndentAmount(int r) {
   int i;
-  erow *row = &E.row[fr];
+  erow *row = &E.row[r];
   if ( !row || row->size == 0 ) return 0; //row is NULL if the row has been deleted or opening app
 
   for ( i = 0; i < row->size; i++) {
@@ -6676,46 +6704,48 @@ void editorMoveBeginningWord(void) {
   E.cy = screeny_screenx[0];
 }
 
-// haven't addressed this one yet (02182019)
+// normal mode 'e' - seems to handle all corner cases
 void editorMoveEndWord(void) {
-// doesn't handle whitespace at the end of a line
 
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
+  int c = rowlinechar[2];
+  erow *row = &E.row[r];
 
-  int line_in_row = fc/E.screencols; //counting from zero
-  erow *row = &E.row[fr];
-  int j;
+  int j = (row->chars[c + 1] < 48) ? c + 1 : c;
 
-  if (fc >= row->size - 1) {
-    if (fr == E.numrows - 1) return; // no more rows
-    
-    for (;;) {
-      fr++;
-      E.cy++;
-      row = &E.row[fr];
-      if (row->size == 0 && fr == E.numrows - 1) return;
-      if (row->size) break;
+  for(;;) {
+
+    j++;
+
+    if (j > row->size - 1) { //>=
+
+      for (;;) {
+        if (r == E.numrows - 1) return; // no more rows
+        r++;
+        row = &E.row[r];
+        if (row->size == 0 && r == E.numrows - 1) return;
+        if (row->size) {
+          j = 0;
+          break;
+        }
       }
-    line_in_row = 0;
-    fc = 0;
-  }
-  j = fc + 1;
-  if (row->chars[j] < 48) {
- 
-    for (j = fc + 1; j < row->size ; j++) {
-      if (row->chars[j] > 48) break;
     }
-  }
-  for (j++; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+    if (j == row->size - 1) {
+      c = j;
+      break;
+    }
+    if (row->chars[j] < 48 && (j < row->size - 1) && row->chars[j - 1] > 48) {
+      c = j-1;
+      break;
+    }
+ 
   }
 
-  fc = j - 1;
-  E.cx = fc%E.screencols;
-  E.cy+=fc/E.screencols - line_in_row;
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
 }
 
 void editorDecorateWord(int c) {
