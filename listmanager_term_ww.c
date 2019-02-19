@@ -6574,14 +6574,13 @@ void editorMoveEndWord2() {
 // used by 'w'
 void editorMoveNextWord(void) {
 // doesn't handle multiple white space characters at EOL
-  int j;
+  int i,j;
 
   int *rowlinechar = editorGetRowLineCharWW();
   int r = rowlinechar[0];
   //int line = rowlinechar[1];
   int c = rowlinechar[2];
 
-  //int line_in_row = c/E.screencols; //counting from zero
   erow row = E.row[r];
 
   if (row.chars[c] < 48) j = c;
@@ -6590,6 +6589,7 @@ void editorMoveNextWord(void) {
       if (row.chars[j] < 48) break;
     }
   } 
+
   if (j >= row.size - 1) { // at end of line was ==
 
     if (r == E.numrows - 1) return; // no more rows
@@ -6598,22 +6598,30 @@ void editorMoveNextWord(void) {
       r++;
       row = E.row[r];
       if (row.size == 0 && r == E.numrows - 1) return;
+      //if (row.size == 0) continue; //don't need it
       if (row.size) break;
       }
-
-    // this still needs work 02192019
-    E.cx = 0;
-    E.cy++;
-    c = 0;
-    if (row.chars[0] >= 48) return;  //Since we went to a new row it must be beginning of a word if char in 0th position
   
-  } else c = j - 1;
-  
-  for (j = c + 1; j < row.size ; j++) { //+1
-    if (row.chars[j] > 48) break;
+    if (row.chars[0] > 47) {
+      c = 0;
+      int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+      E.cx = screeny_screenx[1];
+      E.cy = screeny_screenx[0];
+      return;
+    } else {
+      for (j = c + 1; j < row.size; j++) { 
+        if (row.chars[j] < 48) break;
+      }
+    }
   }
-  c = j;
 
+  for (i = j + 1; j < row.size ; i++) { //+1
+    if (row.chars[i] > 48) {
+      c = i;
+      break;
+    }
+  }
+  
   int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
   E.cx = screeny_screenx[1];
   E.cy = screeny_screenx[0];
@@ -6628,24 +6636,9 @@ void editorMoveBeginningWord(void) {
   int c = rowlinechar[2];
 
   erow *row = &E.row[r];
-  /*
-  int line_in_row = fc/E.screencols; //counting from zero
-  if (fc == 0){ 
-    if (fr == 0) return;
-      for (;;) {
-        fr--;
-        E.cy--;
-        row = &E.row[fr];
-        if (row->size == 0 && fr==0) return;
-        if (row->size) break;
-      }
-    fc = row->size - 1;
-    line_in_row = fc/E.screencols;
-  }
-  */
   int j = c;
 
-  if (c == 0 || (c == 1 && row->chars[0] < 48)) {
+  if (c == 0 || (c == 1 && row->chars[0] < 48)) { 
     if (r == 0) return;
     for (;;) {
       r--;
@@ -6683,10 +6676,9 @@ void editorMoveBeginningWord(void) {
   E.cy = screeny_screenx[0];
 }
 
+// haven't addressed this one yet (02182019)
 void editorMoveEndWord(void) {
 // doesn't handle whitespace at the end of a line
-  //int fr = editorGetFileRow();
-  //int fc = editorGetFileCol();
 
   int *rowlinechar = editorGetRowLineCharWW();
   int fr = rowlinechar[0];
