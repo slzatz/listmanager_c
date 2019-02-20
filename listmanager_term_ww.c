@@ -361,7 +361,7 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-//int editorGetFileCol(void);
+int editorGetFileCol(void); 
 int editorGetFileRowByLine (int y); //get_filerow_by_line
 int editorGetFileRow(void); //get_filerow
 int editorGetLineCharCount (void); 
@@ -4641,18 +4641,19 @@ void editorScroll(void) {
   else if (E.cx >= line_char_count) E.cx = line_char_count - (E.mode != INSERT); //you can go beyond the last char in insert mode
 
 
-
+  //ignoring for now
   //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
   //I believe vim also doesn't want partial lines at the top so balancing both concepts
   //The lines you can view at the top and the bottom of the screen are 
   //even if that means you scroll more than you have to to show complete lines at the top.
 
+  /* 
   int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
   if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
   //if (E.cy >= E.screenlines) {
   if (E.cy + lines - 1 >= E.screenlines) {
-    int first_row_lines = E.row[editorGetFileRowByLine(0)].size/E.screencols + 1; //****
-    if (E.row[editorGetFileRowByLine(0)].size && E.row[editorGetFileRowByLine(0)].size%E.screencols == 0) first_row_lines--;
+    int first_row_lines = E.row[editorGetFileRowByLine(0)].size/E.screencols + 1;
+    if (E.row[editorGetFileRowByLineWW(0)].size && E.row[editorGetFileRowByLineWW(0)].size%E.screencols == 0) first_row_lines--;
     int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
     if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
     int delta = E.cy + lines - E.screenlines; //////
@@ -4660,6 +4661,7 @@ void editorScroll(void) {
     E.line_offset += delta;
     E.cy-=delta;
     }
+    */
 }
 // new new new new new new new new new
 void editorDrawRows(struct abuf *ab) {
@@ -5853,12 +5855,7 @@ void editorProcessKeypress(void) {
         case 'k':
         case 'l':
           editorMoveCursor(c);
-          //E.highlight[1] = editorGetFileCol();
-          int *rowlinechar = editorGetRowLineCharWW();
-          //int r = rowlinechar[0]; //eventually this should be used to span rows
-          //int line = rowlinechar[1];
-          //int c = rowlinechar[2];
-          E.highlight[1] = rowlinechar[2];
+          E.highlight[1] = editorGetFileCol();
           return;
     
         case 'x':
@@ -5866,16 +5863,17 @@ void editorProcessKeypress(void) {
           E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
           //editorYankString();  /// *** causing segfault
 
-          // the delete below requies positioning the cursor
+          // the delete below requires positioning the cursor
           int fc = (E.highlight[1] > E.highlight[0]) ? E.highlight[0] : E.highlight[1];
           int fr = editorGetFileRow();
     
           for (int i = 0; i < E.repeat; i++) {
             editorDelChar2(fr, fc);
           }
-          int *row_column = editorGetScreenPosFromFilePos(fr, fc-1);
-          E.cy = row_column[0];
-          E.cx = row_column[1];
+          //int *row_column = editorGetScreenPosFromFilePos(fr, fc-1);
+          int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(fr, fc-1);
+          E.cy = screeny_screenx[0];
+          E.cx = screeny_screenx[1];
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
@@ -5931,18 +5929,64 @@ void editorProcessKeypress(void) {
   }  //keep and use for switch
 } 
 /*** slz additions ***/
+int editorGetFileCol(void) {
+
+  int screenrow = -1;
+  int r = 0;
+
+  //if not use static then it's a variable local to function
+
+  int linerows;
+  int y = E.cy + E.line_offset; 
+  if (y == 0) {
+    return E.cx;
+  }
+  for (;;) {
+    linerows = editorGetLinesInRowWW(r);
+    screenrow += linerows;
+    if (screenrow >= y) break;
+    r++;
+  }
+
+  // right now this is necesssary for backspacing in a multiline filerow
+  // no longer seems necessary for insertchar
+  if (E.continuation) r--;
+
+  // note: line (meaning the line in the row with the counting
+  // beginning at 1 = linerows - screenrow + y
+
+  return editorGetCharInRowWW(r, linerows - screenrow + y);
+
+  // new
+
+  /* old
+  int n = 0;
+  int y = E.cy;// + E.line_offset;
+  int fr = editorGetFileRow();
+  for (;;) {
+    if (y == 0) break;
+    y--;
+    if (editorGetFileRowByLine(y) < fr) break;
+    n++;
+  }
+
+  int col = E.cx + n*E.screencols; 
+  return col;
+  */
+}
+
+
+
+
 int editorGetFileRow(void) {
 
   // new
   int screenrow = -1;
   int r = 0;
 
-  //if not use static then it's a variable local to function
-  static int row_line_char[3];
-
   int linerows;
   int y = E.cy + E.line_offset; 
-  if (y == 0) return 0
+  if (y == 0) return 0;
 
   for (;;) {
     linerows = editorGetLinesInRowWW(r);
@@ -5992,7 +6036,7 @@ int editorGetFileRowByLineWW(int y){
   int n = 0;
   int linerows;
 
-  //y+= E.line_offset; // the calling function should add the E.line_offset
+  y+= E.line_offset; // the calling function should add the E.line_offset
 
   if (y == 0) return 0;
   for (;;) {
@@ -6040,6 +6084,26 @@ int editorGetLinesInRowWW(int r) {
   return num;
 }
 
+// not in use and not tested but for completeness
+int editorGetLineInRowWW(void) {
+  int screenrow = -1;
+  int linerows;
+  int r = 0;
+  int y = E.cy + E.line_offset; 
+
+  if (y == 0) return 1;
+
+  for (;;) {
+    linerows = editorGetLinesInRowWW(r);
+    screenrow += linerows;
+    if (screenrow >= y) break;
+    r++;
+  }
+
+  return linerows - screenrow + y;
+
+
+}
 // I now think you want to return row and line and char
 // and ignore whatever you don't need.  This will calculat
 // from the current position. 
@@ -6329,22 +6393,6 @@ int *editorGetScreenPosFromFilePos(int fr, int fc){
   row_column[1] = screencol;
 
   return row_column;
-}
-
-
-int editorGetFileCol(void) {
-  int n = 0;
-  int y = E.cy;// + E.line_offset;
-  int fr = editorGetFileRow();
-  for (;;) {
-    if (y == 0) break;
-    y--;
-    if (editorGetFileRowByLine(y) < fr) break;
-    n++;
-  }
-
-  int col = E.cx + n*E.screencols; 
-  return col;
 }
 
 int editorGetLineCharCount(void) {
