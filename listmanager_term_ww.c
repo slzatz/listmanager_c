@@ -361,7 +361,7 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-int editorGetFileCol(void);
+//int editorGetFileCol(void);
 int editorGetFileRowByLine (int y); //get_filerow_by_line
 int editorGetFileRow(void); //get_filerow
 int editorGetLineCharCount (void); 
@@ -1422,25 +1422,29 @@ void editorFreeRow(erow *row) {
   free(row->chars);
 }
 
-void editorDelRow(int fr) {
+// untested
+void editorDelRow(int r) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
   if (E.numrows == 0) return; // some calls may duplicate this guard
-  int fc = editorGetFileCol();
-  editorFreeRow(&E.row[fr]); 
-  memmove(&E.row[fr], &E.row[fr + 1], sizeof(erow) * (E.numrows - fr - 1));
+
+  editorFreeRow(&E.row[r]); 
+  memmove(&E.row[r], &E.row[r + 1], sizeof(erow) * (E.numrows - r - 1));
   E.numrows--; 
   if (E.numrows == 0) {
     E.row = NULL;
     E.cy = 0;
     E.cx = 0;
-  } else if (E.cy > 0) {
-    int lines = fc/E.screencols;
-    E.cy = E.cy - lines;
-    if (fr == E.numrows) E.cy--;
-  }
+    return;
+  } else if (r == E.numrows) r--;
+
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, 0); 
+  E.cx = screeny_screenx[1];
+  E.cy = screeny_screenx[0];
+
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.numrows, E.cx, E.row[fr].size); 
 }
+
 // only used by editorBackspace
 void editorRowAppendString(erow *row, char *s, size_t len) {
   row->chars = realloc(row->chars, row->size + len + 1);
@@ -1463,54 +1467,36 @@ void editorRowDelChar(erow *row, int fr) {
 */
 
 /*** editor operations ***/
-void editorInsertChar(int c) {
+void editorInsertChar(int chr) {
 
   if ( E.numrows == 0 ) {
     editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
-  //int fc = editorGetFileCol();
-  //int fr = editorGetFileRow();
-
   int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
+  int r = rowlinechar[0];
   //int line = rowlinechar[1];
-  int fc = rowlinechar[2];
-  erow *row = &E.row[fr];
+  int c = rowlinechar[2];
+  erow *row = &E.row[r];
 
+  // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
+  row->chars = realloc(row->chars, row->size + 2); 
 
-  //if (E.cx < 0 || E.cx > row->size) E.cx = row->size; //can either of these be true? ie is check necessary?
-  row->chars = realloc(row->chars, row->size + 2); // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
-
-  /* moving all the chars fr the current x cursor position on char
+  /* moving all the chars r the current x cursor position on char
      farther down the char string to make room for the new character
      Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
+     memmove(&E.row[r + 1], &E.row[r], sizeof(erow) * (E.numrows - r));
   */
 
-  memmove(&row->chars[fc + 1], &row->chars[fc], row->size - fc + 1); 
+  memmove(&row->chars[c + 1], &row->chars[c], row->size - c + 1); 
 
   row->size++;
-  row->chars[fc] = c;
+  row->chars[c] = chr;
   E.dirty++;
 
-  //rowlinechar = editorGetRowLineCharWW();
-  //fr = rowlinechar[0];
-  //int line = rowlinechar[1];
-  //fc = rowlinechar[2];
-  //row = &E.row[fr];
-  //int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
-
-  
-  //E.cy = row_column[0];
-  //E.cx = row_column[1] + 1;
-
-  if (E.cx >= E.screencols) {
-    E.cy++; 
-    int *row_column = editorGetScreenPosFromRowCharPosWW(fr, fc); 
-    E.cx = row_column[1];
-  }
-  E.cx++;
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1] + 1;
+  E.cy = screeny_screenx[0];
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -1567,19 +1553,19 @@ void editorInsertNewline(int direction) {
     return;
   }
 
-  if (editorGetFileRow() == 0 && direction == 0) { // this is for 'O'
+  int *rowlinechar = editorGetRowLineCharWW();
+  int r = rowlinechar[0]; //eventually this should be used to span rows
+  //int line = rowlinechar[1];
+  //int c = rowlinechar[2];
+
+  if (r == 0 && direction == 0) { // this is for 'O'
     editorInsertRow(0, "", 0);
     E.cx = 0;
     E.cy = 0;
     return;
   }
     
-  //int fr = editorGetFileRow();
-  int *rowlinechar = editorGetRowLineCharWW();
-  int fr = rowlinechar[0];
-  //int line = rowlinechar[1];
-  //int fc = rowlinechar[2];
-  int indent = (E.smartindent) ? editorIndentAmount(fr) : 0;
+  int indent = (E.smartindent) ? editorIndentAmount(r) : 0;
 
   //VLA
   char spaces[indent + 1]; 
@@ -1588,23 +1574,13 @@ void editorInsertNewline(int direction) {
   }
   spaces[indent] = '\0';
 
-  editorInsertRow(fr + direction, spaces, indent);
+  int c = indent;
 
-  int y = E.cy;
-  if (direction) { //'o' -> insert below
-    for (;;) {
-      if (editorGetFileRowByLine(y) > fr) break;   
-      y++;
-      E.cy = y;
-    }
-  } else { //'O' insert above
-    for (;;) {
-      if (editorGetFileRowByLine(y) < fr) break;   
-      y--;
-      E.cy = y + 1;
-    }
-  }
-  E.cx = indent;
+  r = r + direction;
+  editorInsertRow(r, spaces, indent);
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1]; 
+  E.cy = screeny_screenx[0]; 
 }
 
 void editorDelChar(void) {
@@ -4622,6 +4598,24 @@ void outlineFindNextWord() {
 /*** editor output ***/
 /* cursor can be move negative or beyond screen lines and also in wrong x and
 this function deals with that */
+
+
+// is there any chance that all of this can just be replaced by:
+// that would be pretty amazing but should be possible - 
+// if you know r and c you know where the cursor is
+// just have to make sure that every function call sets r and c correctly
+// and at that point what you really have is E.c and E.r and that is
+// what every function sets and then you run the below
+// function renamed to something like ....
+// but you would still have to adjust E.line_offset but that would be straight
+//forward -- if screeny_screenx[0] > E.screenlines then
+// E.line_offset = screeny_screenx[0] - E.screenlines
+  /*
+  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
+  E.cx = screeny_screenx[1]; 
+  E.cy = screeny_screenx[0];
+  */
+
 void editorScroll(void) {
   if (!E.row) return;
 
@@ -5449,7 +5443,12 @@ void editorProcessKeypress(void) {
           E.mode = VISUAL;
           E.command[0] = '\0';
           E.repeat = 0;
-          E.highlight[0] = E.highlight[1] = editorGetFileCol();
+          //E.highlight[0] = E.highlight[1] = editorGetFileCol();
+          int *rowlinechar = editorGetRowLineCharWW();
+          //int r = rowlinechar[0]; //eventually this should be used to span rows
+          //int line = rowlinechar[1];
+          //int c = rowlinechar[2];
+          E.highlight[0] = E.highlight[1] = rowlinechar[2];
           editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
           return;
     
@@ -5854,7 +5853,12 @@ void editorProcessKeypress(void) {
         case 'k':
         case 'l':
           editorMoveCursor(c);
-          E.highlight[1] = editorGetFileCol();
+          //E.highlight[1] = editorGetFileCol();
+          int *rowlinechar = editorGetRowLineCharWW();
+          //int r = rowlinechar[0]; //eventually this should be used to span rows
+          //int line = rowlinechar[1];
+          //int c = rowlinechar[2];
+          E.highlight[1] = rowlinechar[2];
           return;
     
         case 'x':
@@ -6396,8 +6400,6 @@ void editorYankLine(int n){
 
 void editorYankString(void) {
   int n,x;
-
-  //int fr = editorGetFileRow();
 
   int *rowlinechar = editorGetRowLineCharWW();
   int r = rowlinechar[0];
