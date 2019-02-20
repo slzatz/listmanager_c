@@ -5932,6 +5932,34 @@ void editorProcessKeypress(void) {
 } 
 /*** slz additions ***/
 int editorGetFileRow(void) {
+
+  // new
+  int screenrow = -1;
+  int r = 0;
+
+  //if not use static then it's a variable local to function
+  static int row_line_char[3];
+
+  int linerows;
+  int y = E.cy + E.line_offset; 
+  if (y == 0) return 0
+
+  for (;;) {
+    linerows = editorGetLinesInRowWW(r);
+    screenrow += linerows;
+    if (screenrow >= y) break;
+    r++;
+  }
+
+  // right now this is necesssary for backspacing in a multiline filerow
+  // no longer seems necessary for insertchar
+  if (E.continuation) r--;
+
+
+  return r;
+
+
+  /* old
   int screenrow = -1;
   int n = 0;
   int linerows;
@@ -5949,6 +5977,7 @@ int editorGetFileRow(void) {
   // no longer seems necessary for insertchar
   if (E.continuation) n--;
   return n;
+  */
 }
 
 /********************************************************** WW stuff *****************************************/
