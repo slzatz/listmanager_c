@@ -303,24 +303,15 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-//int outlineGetResultSetRow(void);
-//int outlineGetFileCol(void);
 void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
 void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
-//void update_row(void);
 int insert_row_pg(int); 
 int insert_row_sqlite(int); 
-//void update_rows(void);
 void update_note_pg(void); 
 void update_note_sqlite(void); 
 void synchronize(int);
-//void update_context(int context_tid);
-//void toggle_completed(void);
-//void toggle_deleted(void);
-//void toggle_star(void);
-//void display_item_info(int id);
 
 //editor Prototypes
 int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
@@ -496,7 +487,7 @@ void get_data_pg(char *context, int n) {
   PQclear(res);
   // PQfinish(conn);
 
-  O.cx = O.cy = O.rowoff = 0;
+  O.fc = O.fr = O.rowoff = 0;
   //O.context = context;
 }
 
@@ -510,7 +501,7 @@ void get_data_sqlite(char *context, int n) {
   O.row = NULL; 
   O.numrows = 0;
 
-  O.cx = O.cy = O.rowoff = 0; //? whether should be in get data function
+  O.fc = O.fr = O.rowoff = 0;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -607,7 +598,7 @@ void get_solr_data_sqlite(char *query) {
   O.row = NULL; 
   O.numrows = 0;
 
-  O.cx = O.cy = O.rowoff = 0;
+  O.fc = O.fr = O.rowoff = 0;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -664,7 +655,7 @@ void get_solr_data_pg(char *query) {
   PQclear(res);
  // PQfinish(conn);
 
-  O.cx = O.cy = O.rowoff = 0;
+  O.fc = O.fr = O.rowoff = 0;
 }
 
 void get_tid_sqlite(int id) {
@@ -1273,9 +1264,6 @@ void outlineInsertChar(int c) {
     return;
   }
 
-  //int fr = outlineGetResultSetRow();
-  //int fc = outlineGetFileCol();
-
   orow *row = &O.row[O.fr];
 
   row->chars = realloc(row->chars, row->size + 2); // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
@@ -1298,8 +1286,6 @@ void outlineInsertChar(int c) {
 }
 
 void outlineDelChar(void) {
-  //int fr = outlineGetResultSetRow();
-  //int fc = outlineGetFileCol();
 
   orow *row = &O.row[O.fr];
 
@@ -1324,8 +1310,6 @@ void outlineDelChar(void) {
 }
 
 void outlineBackspace(void) {
-  //int fr = outlineGetResultSetRow();
-  //int fc = outlineGetFileCol();
 
   if (O.fc == 0) return;
 
@@ -1429,14 +1413,10 @@ void editorDelRow(int r) {
   E.numrows--; 
   if (E.numrows == 0) {
     E.row = NULL;
-    E.cy = 0;
-    E.cx = 0;
+    E.fr = 0;
+    E.fc = 0;
     return;
   } else if (r == E.numrows) r--;
-
-  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, 0); 
-  E.cx = screeny_screenx[1];
-  E.cy = screeny_screenx[0];
 
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.numrows, E.cx, E.row[fr].size); 
@@ -1622,28 +1602,24 @@ void editorBackspace(void) {
   erow *row = &E.row[E.fr];
 
   if (E.fc > 0) {
-    if (E.cx > 0) {
+    if (E.cx > 0) { // We want this E.cx - don't change to E.fc!!!
       memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
       row->size--;
 
-     // below needs work - might work now; don't like changing screen coords outside of editorScroll
+     // below seems like a complete kluge but definitely want that E.cx!!!!!
       if (E.cx == 1 && E.fc > 1) E.continuation = 1; //right now only backspace in multi-line
 
       E.fc--;
 
-    } else { //else E.cx == 0 and could be multiline
+    } else { 
       memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
       row->chars = realloc(row->chars, row->size); 
       row->size--;
       row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
       E.fc--;
-      //E.cx = E.screencols - 1;
-      //E.cy--;
       E.continuation = 0;
     } 
   } else {// this means we're at fc == 0 so we're in the first filecolumn
-    //E.cx = (E.row[fr - 1].size/E.screencols) ? E.screencols : E.row[fr - 1].size ;
-    //if (E.cx < 0) E.cx = 0; //don't think this guard is necessary but we'll see
     editorRowAppendString(&E.row[E.fr - 1], row->chars, row->size); //only use of this function
     editorFreeRow(&E.row[E.fr]);
     memmove(&E.row[E.fr], &E.row[E.fr + 1], sizeof(erow) * (E.numrows - E.fr - 1));
@@ -1855,14 +1831,18 @@ void abFree(struct abuf *ab) {
   free(ab->b);
 }
 
-// Adjusts O.cx and O.cy for O.coloff and O.rowoff
+// positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
   if(!O.row) return;
 
-  if (O.cy >= O.screenrows) {
+  O.cy = O.fr - O.rowoff;
+  O.cx = O.fc - O.coloff;
+
+  if (O.cy > O.screenrows - 1) {   //there was >= no -1 but changed on 02222019
+    O.cy--;
     O.rowoff++;
-    O.cy = O.screenrows - 1;
+    //O.cy = O.screenrows - 1;
   } 
 
   if (O.cy < 0) {
@@ -1939,7 +1919,6 @@ void outlineDrawStatusBar(struct abuf *ab) {
 
   if (!O.row) return; //**********************************
 
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   /*
@@ -1976,7 +1955,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   len-=10;
 
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
-                      mode_text[O.mode], row->id, fr + 1, O.numrows);
+                      mode_text[O.mode], row->id, O.fr + 1, O.numrows);
 
   if (len > (O.screencols + OUTLINE_LEFT_MARGIN)) 
     len = O.screencols + OUTLINE_LEFT_MARGIN;
@@ -2088,59 +2067,51 @@ void outlineSetMessage(const char *fmt, ...) {
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
-  int rsr, id;
+  int id;
   orow *row;
 
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      // note O.cx might be zero but filecol positive because of O.coloff
-      // then O.cx goes negative
-      // dealt with in outlineScroll
-      if (outlineGetFileCol() > 0) O.cx--; 
+      if (O.fc > 0) O.fc--; 
       else {
         O.mode = DATABASE;
         O.command[0] = '\0';
         O.repeat = 0;
       }
-      return;
+      break;
 
     case ARROW_RIGHT:
     case 'l':
-      //rsr = outlineGetResultSetRow();
       row = &O.row[O.fr];
-      if (row) O.cx++;  //segfaults on opening if you arrow right w/o row
-      if (outlineGetFileCol() >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT); //you can go beyond the last char in insert mode
-      return;
+      if (row) O.fc++;  //segfaults on opening if you arrow right w/o row
+      break;
 
     case ARROW_UP:
     case 'k':
-      // note O.cy might be zero before but filerow positive because of O.rowoff
-      // so it still makes sense to move cursor up and then O.cy goes negative
-      // also if scrolled so O.rowoff != 0 and do gg - ? what happens
-      // dealt with in outlineScroll
-      if (outlineGetResultSetRow() > 0) O.cy--; 
-      O.fc = O.coloff = 0; // <- prob can move O.coloff into outlineScroll
+      if (O.fr > 0) O.fr--; 
+      O.fc = O.coloff = 0; 
+
       // note need to determine row after moving cursor
-      //rsr = outlineGetResultSetRow();
-      //row = &O.row[rsr];
       id = O.row[O.fr].id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
-      return;
+      break;
 
     case ARROW_DOWN:
     case 'j':
       if (O.fr < O.numrows - 1) O.fr++;
       O.fc = O.coloff = 0;
+
       // note need to determine row after moving cursor
-      //rsr = outlineGetResultSetRow(); 
       row = &O.row[O.fr];
-      //id = O.row[rsr].id;
       (*get_note)(row->id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
-      return;
+      break;
   }
+
+  row = &O.row[O.fr];
+  if (O.fc >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT); 
 }
 
 // higher level outline function depends on readKey()
@@ -2152,6 +2123,8 @@ void outlineProcessKeypress() {
 
   int c = readKey();
 
+  orow *row;
+
   switch (O.mode) { 
 
     case INSERT:  
@@ -2161,17 +2134,17 @@ void outlineProcessKeypress() {
         case '\r': //also does escape into NORMAL mode
           update_row();
           O.mode = NORMAL;
-          if (O.cx > 0) O.cx--;
+          if (O.fc > 0) O.fc--;
           outlineSetMessage("");
           return;
 
         case HOME_KEY:
-          O.cx = 0;
+          O.fc = 0;
           return;
 
         case END_KEY:
-          if (O.cy < O.numrows)
-            O.cx = O.row[O.cy].size;
+          row = &O.row[O.fr];
+          if (row->size) O.fc = row->size - 1;
           return;
 
         case BACKSPACE:
@@ -2196,7 +2169,7 @@ void outlineProcessKeypress() {
         case '\x1b':
           O.command[0] = '\0';
           O.mode = NORMAL;
-          if (O.cx > 0) O.cx--;
+          if (O.fc > 0) O.fc--;
           outlineSetMessage("");
           return;
 
@@ -2250,7 +2223,7 @@ void outlineProcessKeypress() {
         case '<':
         case '\t':
         case SHIFT_TAB:
-          O.cx = 0; //intentionally leave O.cy wherever it is
+          O.fc = 0; //intentionally leave O.fr wherever it is
           O.mode = DATABASE;
           O.command[0] = '\0';
           O.repeat = 0;
@@ -2324,9 +2297,9 @@ void outlineProcessKeypress() {
             return;
 
         case '0':
-          //O.coloff = 0; //unlikely to work
-          //O.cx = 0;
-          O.cx = -O.coloff; //surprisingly seems to work
+          //O.cx = -O.coloff; //surprisingly seems to work
+
+          if (O.row != NULL) O.fc = 0;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2338,24 +2311,23 @@ void outlineProcessKeypress() {
           return;
 
         case 'I':
-          O.cx = 0;
-          O.mode = 1;
+          if (O.row != NULL) {
+            O.fc = 0;
+            O.mode = 1;
+            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          }
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 'G':
-          O.cx = 0;
-
-          if (O.numrows > O.screenrows) {
-            O.rowoff = O.numrows - O.screenrows;
-            O.cy = O.screenrows - 1;
-          } else O.cy = O.numrows - 1;
-
+          O.fc = 0;
+          O.fr = E.numrows - 1;
           O.command[0] = '\0';
           O.repeat = 0;
+
          (*get_note)(O.row[O.fr].id); //if id == -1 does not try to retrieve note 
+
           return;
       
         case ':':
@@ -2370,7 +2342,7 @@ void outlineProcessKeypress() {
           O.mode = VISUAL;
           O.command[0] = '\0';
           O.repeat = 0;
-          O.highlight[0] = O.highlight[1] = O.cx + O.coloff; //this needs to be get_filecol not O.cx
+          O.highlight[0] = O.highlight[1] = O.fc;
           outlineSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
           return;
 
@@ -2397,9 +2369,7 @@ void outlineProcessKeypress() {
           return;
 
         case '^':
-        ;
-          //int fr = outlineGetResultSetRow();
-          orow *row = &O.row[O.fr];
+          row = &O.row[O.fr];
           view_html(row->id);
 
           /*
@@ -2442,10 +2412,10 @@ void outlineProcessKeypress() {
 
         case C_dw:
           for (int j = 0; j < O.repeat; j++) {
-            start = O.cx;
+            start = O.fc;
             outlineMoveEndWord2();
-            end = O.cx;
-            O.cx = start;
+            end = O.fc;
+            O.fc = start;
             for (int j = 0; j < end - start + 2; j++) outlineDelChar();
           }
           O.command[0] = '\0';
@@ -2453,12 +2423,12 @@ void outlineProcessKeypress() {
           return;
 
         case C_de:
-          start = O.cx;
+          start = O.fc;
           outlineMoveEndWord(); //correct one to use to emulate vim
-          end = O.cx;
-          O.cx = start; 
+          end = O.fc;
+          O.fc = start; 
           for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          O.cx = (start < O.row[O.cy].size) ? start : O.row[O.cy].size -1;
+          O.fc = (start < O.row[O.cy].size) ? start : O.row[O.cy].size -1;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2473,10 +2443,10 @@ void outlineProcessKeypress() {
         //tested with repeat on one line
         case C_cw:
           for (int j = 0; j < O.repeat; j++) {
-            start = O.cx;
+            start = O.fc;
             outlineMoveEndWord();
-            end = O.cx;
-            O.cx = start;
+            end = O.fc;
+            O.fc = start;
             for (int j = 0; j < end - start + 1; j++) outlineDelChar();
           }
           O.command[0] = '\0';
@@ -2495,8 +2465,8 @@ void outlineProcessKeypress() {
           return;
 
         case C_gg:
-         O.cx = O.rowoff = 0;
-         O.cy = O.repeat-1; //this needs to take into account O.rowoff
+         O.fc = O.rowoff = 0;
+         O.fr = O.repeat-1; //this needs to take into account O.rowoff
          O.command[0] = '\0';
          O.repeat = 0;
          (*get_note)(O.row[O.fr].id); //if id == -1 does not try to retrieve note 
@@ -2565,7 +2535,7 @@ void outlineProcessKeypress() {
             case 'n':
             case C_new: 
               outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
-              O.cx = O.cy = O.rowoff = 0;
+              O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
               O.mode = NORMAL;
@@ -2801,19 +2771,19 @@ void outlineProcessKeypress() {
           return;
 
         case 'x':
-          O.cx = 0;
+          O.fc = 0;
           O.repeat = 0;
           (*toggle_completed)();
           return;
 
         case 'd':
-          O.cx = 0;
+          O.fc = 0;
           O.repeat = 0;
           (*toggle_deleted)();
           return;
 
         case '*':
-          O.cx = 0;
+          O.fc = 0;
           O.repeat = 0;
           (*toggle_star)();
           return;
@@ -2826,7 +2796,7 @@ void outlineProcessKeypress() {
           return;
 
         case 'r':
-          O.cx = 0;
+          O.fc = 0;
           O.repeat = 0;
           (*get_data)(O.context, MAX);
           return;
@@ -2842,17 +2812,14 @@ void outlineProcessKeypress() {
   
         case 'i': //display item info
           ;
-          /**********************HERE**********************/
-          int fr = outlineGetResultSetRow();
-          orow *row = &O.row[fr];
+          orow *row = &O.row[O.fr];
           display_item_info(row->id);
           return;
   
         case 'v': //render in browser
-          ;
-          int fr1 = outlineGetResultSetRow();
-          orow *row1 = &O.row[fr1];
-          view_html(row1->id);
+          
+          row = &O.row[O.fr];
+          view_html(row->id);
           /* not getting error messages with qutebrowser so below not necessary (for the moment)
           write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
           outlineRefreshScreen();
@@ -2880,18 +2847,25 @@ void outlineProcessKeypress() {
         case 'k':
         case 'l':
           outlineMoveCursor(c);
-          O.highlight[1] = O.cx + O.coloff; //this needs to be getFileCol
+          O.highlight[1] = O.fc; //this needs to be getFileCol
           return;
   
         case 'x':
-          O.repeat = O.highlight[1] - O.highlight[0] + 1;
-          O.cx = O.highlight[0] - O.coloff;
-          outlineYankString(); 
+          //O.repeat = O.highlight[1] - O.highlight[0] + 1;
+
+          O.repeat = abs(O.highlight[1] - O.highlight[0]) + 1;
+          outlineYankString(); //reportedly segfaults on the editor side
+
+          // the delete below requires positioning the cursor
+          O.fc = (O.highlight[1] > O.highlight[0]) ? O.highlight[0] : O.highlight[1];
+
+          //O.cx = O.highlight[0] - O.coloff;
+          //outlineYankString(); 
   
           for (int i = 0; i < O.repeat; i++) {
-            outlineDelChar();
+            outlineDelChar(); //uses editorDeleteChar2! on editor side
           }
-  
+          if (O.fc) O.fc--; 
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = 0;
@@ -2900,7 +2874,7 @@ void outlineProcessKeypress() {
   
         case 'y':  
           O.repeat = O.highlight[1] - O.highlight[0] + 1;
-          O.cx = O.highlight[0] - O.coloff;
+          O.fc = O.highlight[0];
           outlineYankString();
           O.command[0] = '\0';
           O.repeat = 0;
@@ -3315,7 +3289,6 @@ void update_note_pg(void) {
 
   *out = '\0';
 
-  //int ofr = outlineGetResultSetRow();
   int id = get_id(O.fr);
 
   char *query = malloc(cnt + 100);
@@ -3381,7 +3354,6 @@ void update_note_sqlite(void) {
 
   *out = '\0';
 
-  //int ofr = outlineGetResultSetRow();
   int id = get_id(O.fr);
 
   char *query = malloc(cnt + 100);
@@ -3487,8 +3459,6 @@ void update_context_sqlite(int context_tid) {
 
 void toggle_completed_pg(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3528,8 +3498,6 @@ void toggle_completed_pg(void) {
 
 void toggle_completed_sqlite(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   char query[300];
@@ -3569,9 +3537,7 @@ void toggle_completed_sqlite(void) {
 
 void toggle_deleted_pg(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
-  Orow *row = &O.row[O.fr];
+  orow *row = &O.row[O.fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -3611,8 +3577,6 @@ void toggle_deleted_pg(void) {
 
 void toggle_deleted_sqlite(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   char query[300];
@@ -3651,8 +3615,6 @@ void toggle_deleted_sqlite(void) {
 
 void toggle_star_pg(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -3693,8 +3655,6 @@ void toggle_star_pg(void) {
 
 void toggle_star_sqlite(void) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   char query[300];
@@ -3733,7 +3693,6 @@ void toggle_star_sqlite(void) {
 
 void update_row_pg(void) {
 
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   if (!row->dirty) {
@@ -3796,13 +3755,12 @@ void update_row_pg(void) {
     PQclear(res);
 
   } else { 
-    insert_row_pg(fr);
+    insert_row_pg(O.fr);
   }  
 }
 
 void update_row_sqlite(void) {
 
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   if (!row->dirty) {
@@ -3870,7 +3828,7 @@ void update_row_sqlite(void) {
     sqlite3_close(db);
 
   } else { 
-    insert_row_sqlite(fr);
+    insert_row_sqlite(O.fr);
   }  
 }
 
@@ -4317,6 +4275,7 @@ void update_rows_sqlite(void) {
   outlineSetMessage("%s",  msg);
 }
 
+/*
 int outlineGetResultSetRow(void) {
   return O.cy + O.rowoff; 
 }
@@ -4324,7 +4283,7 @@ int outlineGetResultSetRow(void) {
 int outlineGetFileCol(void) {
   return O.cx + O.coloff; ////////
 }
-
+*/
 int get_id(int fr) {
   if(fr==-1) fr = O.fr;
   int id = O.row[fr].id;
@@ -4332,8 +4291,8 @@ int get_id(int fr) {
 }
 
 void outlineChangeCase() {
-  orow *row = &O.row[O.cy];
-  char d = row->chars[O.cx];
+  orow *row = &O.row[O.fr];
+  char d = row->chars[O.fc];
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -4377,8 +4336,6 @@ void outlineYankString() {
 void outlinePasteString(void) {
   if (O.numrows == 0) return;
 
-  //int fr = outlineGetResultSetRow();
-
   orow *row = &O.row[O.fr];
   int len = strlen(string_buffer);
   row->chars = realloc(row->chars, row->size + len); 
@@ -4389,7 +4346,7 @@ void outlinePasteString(void) {
      memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
   */
 
-  memmove(&row->chars[O.cx + len], &row->chars[O.cx], row->size - O.cx); //****was O.cx + 1
+  memmove(&row->chars[O.fc + len], &row->chars[O.fc], row->size - O.fc); //****was O.cx + 1
 
   for (int i = 0; i < len; i++) {
     row->size++;
@@ -4400,8 +4357,6 @@ void outlinePasteString(void) {
 }
 
 void outlineDelWord() {
-  //int fr = outlineGetResultSetRow();
-  //int fc = outlineGetFileCol();
 
   orow *row = &O.row[O.fr];
   if (row->chars[O.fc] < 48) return;
@@ -4423,8 +4378,7 @@ void outlineDelWord() {
 }
 
 void outlineDeleteToEndOfLine(void) {
-  //int fr = outlineGetResultSetRow();
-  //int fc = outlineGetFileCol();
+
   orow *row = &O.row[O.fr];
   row->size = O.fc;
   //Arguably you don't have to reallocate when you reduce the length of chars
@@ -4434,14 +4388,13 @@ void outlineDeleteToEndOfLine(void) {
   }
 
 void outlineMoveCursorEOL() {
-  //int fr = outlineGetResultSetRow();
+
   O.fc = O.row[O.fr].size - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void outlineMoveEndWord2() {
   int j;
-  //int fr = outlineGetResultSetRow();
   orow row = O.row[O.fr];
 
   for (j = O.fc + 1; j < row.size ; j++) {
@@ -4454,7 +4407,6 @@ void outlineMoveEndWord2() {
 void outlineMoveNextWord() {
   // below is same is outlineMoveEndWord2
   int j;
-  //int fr = outlineGetResultSetRow();
   orow row = O.row[O.fr];
 
   for (j = O.fc + 1; j < row.size ; j++) {
@@ -4471,7 +4423,6 @@ void outlineMoveNextWord() {
 }
 
 void outlineMoveBeginningWord() {
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
   if (O.fc == 0) return;
   for (;;) {
@@ -4495,11 +4446,10 @@ void outlineMoveBeginningWord() {
 
 
 void outlineMoveEndWord() {
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
   if (O.fc == row->size - 1) return;
   for (;;) {
-    if (row->chars[O.fc + 1] < 48) O.cx++;
+    if (row->chars[O.fc + 1] < 48) O.fc++;
     else break;
     if (O.fc == row->size - 1) return;
   }
@@ -4513,7 +4463,6 @@ void outlineMoveEndWord() {
 }
 
 void outlineGetWordUnderCursor(){
-  //int fr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
   if (row->chars[O.fc] < 48) return;
 
@@ -4569,6 +4518,7 @@ void outlineFindNextWord() {
 */
 
 void editorScroll(void) {
+
   if (!E.row) return;
 
   /* this is the money shot -- derive E.cx and E.cy from file row and char/*/
@@ -4734,7 +4684,6 @@ void editorDrawStatusBar(struct abuf *ab) {
 
   int efr = (E.row) ? E.fr : -1;
 
-  //int ofr = outlineGetResultSetRow();
   orow *row = &O.row[O.fr];
 
   // position the cursor at the beginning of the editor status bar at correct indent
@@ -5048,7 +4997,7 @@ void editorProcessKeypress(void) {
     
         case SHIFT_TAB:
           editor_mode = false;
-          E.cx = E.cy = 0;
+          E.fc = E.fr = 0;
           return;
     
         case 'i':
@@ -5123,7 +5072,6 @@ void editorProcessKeypress(void) {
           return;
     
         case '0':
-          //E.cx = 0;
           editorMoveCursorBOL();
           E.command[0] = '\0';
           E.repeat = 0;
@@ -5217,7 +5165,6 @@ void editorProcessKeypress(void) {
     
         case '^':
         ;
-          //int ofr = outlineGetResultSetRow();
           orow *outline_row = &O.row[O.fr];
           view_html(outline_row->id);
 
@@ -5285,12 +5232,12 @@ void editorProcessKeypress(void) {
     
         case C_de:
           editorCreateSnapshot();
-          start = E.cx;
+          start = E.fc;
           editorMoveEndWord(); //correct one to use to emulate vim
-          end = E.cx;
-          E.cx = start; 
+          end = E.fc;
+          E.fc = start; 
           for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          E.cx = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
+          E.fc = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -5328,10 +5275,10 @@ void editorProcessKeypress(void) {
         case C_cw:
           editorCreateSnapshot();
           for (int j = 0; j < E.repeat; j++) {
-            start = E.cx;
+            start = E.fc;
             editorMoveEndWord();
-            end = E.cx;
-            E.cx = start;
+            end = E.fc;
+            E.fc = start;
             for (int j = 0; j < end - start + 1; j++) editorDelChar();
           }
           E.command[0] = '\0';
@@ -5371,8 +5318,8 @@ void editorProcessKeypress(void) {
           return;
     
         case C_gg:
-         E.cx = E.line_offset = 0;
-         E.cy = E.repeat-1;
+         E.fc = E.line_offset = 0;
+         E.fr = E.repeat-1;
          E.command[0] = '\0';
          E.repeat = 0;
          return;
@@ -5609,7 +5556,7 @@ void editorProcessKeypress(void) {
           for (int i = 0; i < E.repeat; i++) {
             editorDelChar2(E.fr, E.fc);
           }
-          E.fc--;
+          if (E.fc) E.fc--;
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
@@ -6143,11 +6090,7 @@ void editorDeleteToEndOfLine(void) {
 }
 
 void editorMoveCursorBOL(void) {
-
   if (E.row == NULL) return;
-
-  //erow row = E.row[E.fr];
-  //if (row.size) E.fc = 0; // may not need this check - commented out 02212019
   E.fc = 0;
 }
 
@@ -6602,7 +6545,7 @@ int main(int argc, char** argv) {
   
  // PQfinish(conn); // this should happen when exiting
 
-  O.cx = O.cy = O.rowoff = 0;
+  O.fc = O.fr = O.rowoff = 0; 
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenrows, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
 
