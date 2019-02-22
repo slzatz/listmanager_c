@@ -363,7 +363,6 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-//int editorGetLineCharCount (void); 
 void editorInsertRow(int fr, char *s, size_t len); 
 void abAppend(struct abuf *ab, const char *s, int len);
 
@@ -1929,7 +1928,7 @@ void outlineDrawRows(struct abuf *ab) {
         abAppend(ab, &O.row[result_set_row].chars[(result_set_row == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
     
-    abAppend(ab, offset_lf_ret, 6);
+    abAppend(ab, offset_lf_ret, 7);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
 }
@@ -2138,7 +2137,6 @@ void outlineMoveCursor(int key) {
       row = &O.row[rsr];
       //id = O.row[rsr].id;
       (*get_note)(row->id); //if id == -1 does not try to retrieve note 
-      //(*get_note)(row->id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
       return;
   }
@@ -3425,10 +3423,6 @@ void update_note_sqlite(void) {
 
 void update_context_pg(int context_tid) {
 
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
-  //row = &O.row[fr];
-
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
       outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
@@ -3455,10 +3449,6 @@ void update_context_pg(int context_tid) {
 }
 
 void update_context_sqlite(int context_tid) {
-
-  //orow *row;
-  //int fr = outlineGetResultSetRow();
-  //row = &O.row[fr];
 
   char query[300];
   int id = get_id(-1);
@@ -4324,7 +4314,7 @@ void update_rows_sqlite(void) {
 }
 
 int outlineGetResultSetRow(void) {
-  return O.cy + O.rowoff; ////////
+  return O.cy + O.rowoff; 
 }
 
 int outlineGetFileCol(void) {
@@ -4567,6 +4557,7 @@ void outlineFindNextWord() {
 void editorScroll(void) {
   if (!E.row) return;
 
+  /* this is the money shot -- derive E.cx and E.cy from file row and char/*/
   int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
   E.cx = screeny_screenx[1];
   E.cy = screeny_screenx[0];
@@ -4582,32 +4573,8 @@ void editorScroll(void) {
      //if (E.fr == 0) E.line_offset = 0; //? necessary - doubt it -02212019
   }
 
-  /*I don't think the below is necessary and it doesn't make sense that you can separate what happens to E.cx and E.fc
-  int line = editorGetLineInRowWW();
-  int line_char_count = editorGetLineCharCountWW(E.fr, line); 
-  if (E.cx && (E.cx >= line_char_count)) E.cx = line_char_count - (E.mode != INSERT);   */
-
-  //ignoring for now
-  //The idea below is that we want to scroll sufficiently to see all the lines when we scroll down (?or up)
-  //I believe vim also doesn't want partial lines at the top so balancing both concepts
-  //The lines you can view at the top and the bottom of the screen are 
-  //even if that means you scroll more than you have to to show complete lines at the top.
-
-  /* 
-  int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
-  if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
-  //if (E.cy >= E.screenlines) {
-  if (E.cy + lines - 1 >= E.screenlines) {
-    int first_row_lines = E.row[editorGetFileRowByLine(0)].size/E.screencols + 1;
-    if (E.row[editorGetFileRowByLineWW(0)].size && E.row[editorGetFileRowByLineWW(0)].size%E.screencols == 0) first_row_lines--;
-    int lines =  E.row[editorGetFileRow()].size/E.screencols + 1;
-    if (E.row[editorGetFileRow()].size%E.screencols == 0) lines--;
-    int delta = E.cy + lines - E.screenlines; //////
-    delta = (delta > first_row_lines) ? delta : first_row_lines; //
-    E.line_offset += delta;
-    E.cy-=delta;
-    }
-    */
+  // vim seems to want full rows to be displayed although I am not sure
+  // it's either helpful or worthit but this is a placeholder for the idea
 }
 
 void editorDrawRows(struct abuf *ab) {
@@ -4618,16 +4585,14 @@ void editorDrawRows(struct abuf *ab) {
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
 
   // this is the first visible row on the screen given E.line_offset
-  // and the length of the preceding rows
-  int filerow = editorGetFileRowByLineWW(0); //this is the first visible row on the screen given E.line_offset and the length of the preceding rows
-
-  // if not displaying the 0th row of the 0th filerow than increment one filerow - this is what vim does
+  // seems like it will always then display all top row's lines
+  int filerow = editorGetFileRowByLineWW(0); 
 
   for (;;){
     if (y >= E.screenlines) break; //somehow making this >= made all the difference
 
     // if there is still screen real estate but we've run out of text rows (E.numrows)
-    //drawing '~' below: first escape is red colr (31m) and K erases rest of line
+    //drawing '~' below: first escape is red color (31m) and K erases rest of line
     if (filerow > E.numrows - 1) { 
 
       //may not be worth this if else to not draw ~ in first row
@@ -4639,10 +4604,6 @@ void editorDrawRows(struct abuf *ab) {
 
     // this else is the main drawing code
     } else {
-
-      //int lines = E.row[filerow].size/E.screencols;
-      //if (E.row[filerow].size%E.screencols) lines++;
-      //if (lines == 0) lines = 1;
 
       int lines = editorGetLinesInRowWW(E.fr);
 
@@ -4668,7 +4629,7 @@ void editorDrawRows(struct abuf *ab) {
     width = E.screencols; //wrapping width
     
     //while(*start) //exit when hit the end of the string '\0' - #1
-    while(more_lines) {//exit when hit the end of the string '\0' - #1
+    while(more_lines) {
 
         if (left <= width) {//after creating whatever number of lines if remainer <= width: get out
           len = left;
@@ -4687,7 +4648,7 @@ void editorDrawRows(struct abuf *ab) {
 
           len = right_margin - start + 1;
           left -= right_margin-start+1;      /* +1 for the space */
-          //start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+          //start = [see below]
         }
         y++;
 
@@ -4738,7 +4699,7 @@ void editorDrawRows(struct abuf *ab) {
           } else abAppend(ab, start, len);
         } else abAppend(ab, start, len);
     
-      //"\x1b[K" erases the part of the line to the right of the cursor in case the
+      // "\x1b[K" erases the part of the line to the right of the cursor in case the
       // new line i shorter than the old
       abAppend(ab, "\x1b[K", 3); 
 
@@ -5992,30 +5953,6 @@ int *editorGetScreenPosFromRowCharPosWW(int r, int c) { //, int fc){
 /************************************* ESSENTIAL (above)  ************************************************/
 /************************************* end of WW ************************************************/
 
-
-// returns E.cy for a given filerow - right now just used for 'G' 
-// and for some reason editorFindNextWord
-// I think this assumes that E.cx is zero
-/*
-int editorGetScreenLineFromFileRow (int fr){
-  int screenline = -1;
-  int n = 0;
-  int rowlines;
-  if (fr == 0) return 0;
-  for (n=0;n < fr + 1;n++) {
-    rowlines = E.row[n].size/E.screencols;
-    if (E.row[n].size%E.screencols) rowlines++;
-
-    // a row with no characters still takes up a line may also deal with last line
-    if (rowlines == 0) rowlines = 1; 
-
-    screenline+= rowlines;
-  }
-  return screenline - E.line_offset;
-
-}
-*/
-
 void editorCreateSnapshot(void) {
   if ( E.numrows == 0 ) return; //don't create snapshot if there is no text
   for (int j = 0 ; j < E.prev_numrows ; j++ ) {
@@ -6048,8 +5985,8 @@ void editorRestoreSnapshot(void) {
 }
 
 void editorChangeCase(void) {
-  erow *row = &E.row[E.cy];
-  char d = row->chars[E.cx];
+  erow *row = &E.row[E.fr];
+  char d = row->chars[E.fc];
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -6387,17 +6324,17 @@ void editorDecorateWord(int c) {
 }
 
 void editorDecorateVisual(int c) {
-    E.cx = E.highlight[0]%E.screencols;
+    E.fc = E.highlight[0];
   if (c == CTRL_KEY('b')) {
     editorInsertChar('*');
     editorInsertChar('*');
-    E.cx = (E.highlight[1]+3)%E.screencols;
+    E.fc = E.highlight[1]+3;
     editorInsertChar('*');
     editorInsertChar('*');
   } else {
     char cc = (c ==CTRL_KEY('i')) ? '*' : '`';
     editorInsertChar(cc);
-    E.cx = (E.highlight[1]+2)%E.screencols;
+    E.fc = E.highlight[1]+2;
     editorInsertChar(cc);
   }
 }
