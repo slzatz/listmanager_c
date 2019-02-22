@@ -218,7 +218,7 @@ struct outlineConfig {
   int fc, fr; // file x and y position
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
   int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
-  int screenrows; //number of rows in the display available to text
+  int screenlines; //number of lines in the display available to text
   int screencols;  //number of columns in the display available to text
   int numrows; // the number of rows of items/tasks
   orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures 
@@ -244,7 +244,7 @@ struct editorConfig {
   int rx; //index into the render field - only nec b/o tabs
   int line_offset; //row the user is currently scrolled to
   int coloff; //column user is currently scrolled to
-  int screenlines; //number of rows in the display
+  int screenlines; //number of lines in the display
   int screencols;  //number of columns in the display
   int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
   erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
@@ -1289,21 +1289,24 @@ void outlineDelChar(void) {
 
   orow *row = &O.row[O.fr];
 
-  // note below order important because row->size undefined if O.numrows = 0 because O.row is NULL
+  // note below order important because row->size undefined if 
+  // O.numrows = 0 because O.row is NULL
   if (O.numrows == 0 || row->size == 0 ) return; 
 
   memmove(&row->chars[O.fc], &row->chars[O.fc + 1], row->size - O.fc);
-  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
+  row->chars = realloc(row->chars, row->size); 
   row->size--;
-  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
-  // don't know why the below is necessary - you have one row with no chars - that's fine
+  //shouldn't have to do this since trailing '\0' should move too
+  row->chars[row->size] = '\0'; 
+
+  // don't know if this is is necessary - you have one row i
+  // with no chars - that's fine
   if (O.numrows == 1 && row->size == 0) {
     O.numrows = 0;
     free(O.row);
     O.row = NULL;
   }
-  // else if (O.cx == row->size && O.cx) O.cx = row->size - 1;  //does outlineScroll handle?
 
   row->dirty = true;
 
@@ -1555,15 +1558,19 @@ void editorDelChar(void) {
 
   /* row size = 1 means there is 1 char; size 0 means 0 chars */
   /* Note that row->size does not count the terminating '\0' char*/
-  // note below order important because row->size undefined if E.numrows = 0 because E.row is NULL
+  // note below order important because row->size undefined if 
+  // E.numrows = 0 because E.row is NULL
   if (E.numrows == 0 || row->size == 0 ) return; 
 
   memmove(&row->chars[E.fc], &row->chars[E.fc + 1], row->size - E.fc);
   row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
   row->size--;
-  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
 
-  // don't know why the below is necessary - you have one row with no chars - that's fine
+  //shouldn't have to do this since trailing '\0' should move too
+  row->chars[row->size] = '\0'; 
+
+  // don't know if this is is necessary - you have one row i
+  // with no chars - that's fine
   if (E.numrows == 1 && row->size == 0) {
     E.numrows = 0;
     free(E.row);
@@ -1839,10 +1846,12 @@ void outlineScroll(void) {
   O.cy = O.fr - O.rowoff;
   O.cx = O.fc - O.coloff;
 
-  if (O.cy > O.screenrows - 1) {   //there was >= no -1 but changed on 02222019
-    O.cy--;
-    O.rowoff++;
-    //O.cy = O.screenrows - 1;
+  if (O.cy > O.screenlines - 1) {   //there was >= no -1 but changed on 02222019
+    //O.cy--;
+    O.cy = O.screenlines - 1;
+    O.rowoff = O.fr - O.cy;
+    //O.rowoff++;
+    //O.cy = O.screenlines - 1;
   } 
 
   if (O.cy < 0) {
@@ -1873,7 +1882,7 @@ void outlineDrawRows(struct abuf *ab) {
   //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", OUTLINE_LEFT_MARGIN, TOP_MARGIN); 
 
-  for (y = 0; y < O.screenrows; y++) {
+  for (y = 0; y < O.screenlines; y++) {
     int result_set_row = y + O.rowoff;
     if (result_set_row > O.numrows - 1) return;
     orow *row = &O.row[result_set_row];
@@ -1930,10 +1939,10 @@ void outlineDrawStatusBar(struct abuf *ab) {
 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             O.screenrows + TOP_MARGIN + 1,
+                             O.screenlines + TOP_MARGIN + 1,
                              O.screencols + OUTLINE_LEFT_MARGIN,
 
-                             O.screenrows + TOP_MARGIN + 1,
+                             O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
   abAppend(ab, buf, strlen(buf));
@@ -1981,9 +1990,9 @@ void outlineDrawMessageBar(struct abuf *ab) {
   // Erase from mid-screen to the left and then place cursor all the way left 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
-                             O.screenrows + 2 + TOP_MARGIN,
+                             O.screenlines + 2 + TOP_MARGIN,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-                             O.screenrows + 2 + TOP_MARGIN,
+                             O.screenlines + 2 + TOP_MARGIN,
                              //OUTLINE_LEFT_MARGIN + 1);
                              1);
 
@@ -2011,7 +2020,7 @@ void outlineRefreshScreen(void) {
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
-  for (int j=TOP_MARGIN; j < O.screenrows + 1;j++) {
+  for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
     O.screencols + OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
@@ -2111,7 +2120,7 @@ void outlineMoveCursor(int key) {
   }
 
   row = &O.row[O.fr];
-  if (O.fc >= row->size) O.cx = row->size - O.coloff - (O.mode != INSERT); 
+  if (O.fc >= row->size) O.fc = row->size - (O.mode != INSERT); 
 }
 
 // higher level outline function depends on readKey()
@@ -2144,7 +2153,7 @@ void outlineProcessKeypress() {
 
         case END_KEY:
           row = &O.row[O.fr];
-          if (row->size) O.fc = row->size - 1;
+          if (row->size) O.fc = row->size; // mimics vim to remove - 1;
           return;
 
         case BACKSPACE:
@@ -2154,6 +2163,7 @@ void outlineProcessKeypress() {
         case DEL_KEY:
           outlineDelChar();
           return;
+
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -2322,7 +2332,7 @@ void outlineProcessKeypress() {
 
         case 'G':
           O.fc = 0;
-          O.fr = E.numrows - 1;
+          O.fr = O.numrows - 1;
           O.command[0] = '\0';
           O.repeat = 0;
 
@@ -2381,6 +2391,17 @@ void outlineProcessKeypress() {
           */
 
           O.command[0] = '\0';
+          return;
+
+        case PAGE_UP:
+        case PAGE_DOWN:
+          if (c == PAGE_UP) {
+            O.fr -= O.screenlines; //should be screen lines although same
+            if (O.fr < 0) O.fr = 0;
+          } else if (c == PAGE_DOWN) {
+             O.fr += O.screenlines;
+             if (O.fr > O.numrows - 1) O.fr = O.numrows - 1;
+          }
           return;
 
         case ARROW_UP:
@@ -4888,6 +4909,7 @@ void editorProcessKeypress(void) {
     
         case END_KEY:
           editorMoveCursorEOL();
+          editorMoveCursor(ARROW_RIGHT);
           break;
     
         case BACKSPACE:
@@ -4900,23 +4922,6 @@ void editorProcessKeypress(void) {
           editorDelChar();
           break;
     
-        // need to look at these
-        case PAGE_UP:
-        case PAGE_DOWN:
-          // need to look at the below at some point ****************
-          if (c == PAGE_UP) {
-            E.cy = E.line_offset;
-          } else if (c == PAGE_DOWN) {
-            E.cy = E.line_offset + E.screenlines - 1;
-            if (E.cy > E.numrows) E.cy = E.numrows;
-          }
-    
-            int times = E.screenlines;
-            while (times--){
-              editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-              } 
-          
-          break;
     
         case ARROW_UP:
         case ARROW_DOWN:
@@ -5190,6 +5195,17 @@ void editorProcessKeypress(void) {
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
+          return;
+
+        case PAGE_UP:
+        case PAGE_DOWN:
+          if (c == PAGE_UP) {
+            E.fr -= E.screenlines;
+            if (E.fr < 0) E.fr = 0;
+          } else if (c == PAGE_DOWN) {
+            E.fr += E.screenlines;
+            if (E.fr > E.numrows - 1) E.fr = E.numrows - 1;
+          }
           return;
     
         case ARROW_UP:
@@ -6436,7 +6452,7 @@ void initOutline() {
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
   if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
-  O.screenrows = screenlines - 2 - TOP_MARGIN;
+  O.screenlines = screenlines - 2 - TOP_MARGIN;
   O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
 }
 
@@ -6547,7 +6563,7 @@ int main(int argc, char** argv) {
 
   O.fc = O.fr = O.rowoff = 0; 
   //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
-  outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenrows, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
+  outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenlines, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
 
   // putting this here seems to speed up first search but still slow
   // might make sense to do the module imports here too
