@@ -4,9 +4,10 @@
 //#define _BSD_SOURCE
 //#define _GNU_SOURCE
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define OUTLINE_ACTIVE 0 //tab should move back and forth between these
-#define EDITOR_ACTIVE 1
+//#define OUTLINE_ACTIVE 0 //tab should move back and forth between these
+//#define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
+//#define OUTLINE_RIGHT_MARGIN // need this if going to have modified col
 #define TOP_MARGIN 1
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
@@ -14,7 +15,7 @@
 #define ABUF_INIT {NULL, 0}
 #define DEBUG 1
 #define UNUSED(x) (void)(x)
-#define MAX 500
+#define MAX 500 // max rows to bring back
 
 #include <Python.h>
 #include <ctype.h>
@@ -2775,6 +2776,17 @@ void outlineProcessKeypress() {
     case DATABASE:
 
       switch (c) {
+
+        case PAGE_UP:
+        case PAGE_DOWN:
+          if (c == PAGE_UP) {
+            O.fr -= O.screenlines; //should be screen lines although same
+            if (O.fr < 0) O.fr = 0;
+          } else if (c == PAGE_DOWN) {
+             O.fr += O.screenlines;
+             if (O.fr > O.numrows - 1) O.fr = O.numrows - 1;
+          }
+          return;
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -6528,7 +6540,6 @@ int main(int argc, char** argv) {
   for (j=1; j < screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
-    //write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
 }
