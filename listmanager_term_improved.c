@@ -7,7 +7,7 @@
 //#define OUTLINE_ACTIVE 0 //tab should move back and forth between these
 //#define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
-//#define OUTLINE_RIGHT_MARGIN // need this if going to have modified col
+#define OUTLINE_RIGHT_MARGIN 20 // need this if going to have modified col
 #define TOP_MARGIN 1
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
@@ -199,6 +199,7 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
+  char *modified;
   
 } orow;
 
@@ -304,7 +305,7 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed); 
+void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified); 
 void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
@@ -482,7 +483,8 @@ void get_data_pg(char *context, int n) {
     bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
     int id = atoi(zz);
-    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+    char *modified = PQgetvalue(res, i, 16);
+    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
 
   PQclear(res);
@@ -585,7 +587,8 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   bool deleted = (atoi(argv[14]) == 1) ? true: false;
   bool completed = (argv[10]) ? true: false;
   int id = atoi(zz);
-  outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+  char *modified = argv[16];
+  outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   //outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, false); 
   return 0;
 }
@@ -650,7 +653,8 @@ void get_solr_data_pg(char *query) {
     bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
     int id = atoi(zz);
-    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed); 
+    char *modified = PQgetvalue(res, i, 16);
+    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
 
   PQclear(res);
@@ -1213,7 +1217,7 @@ void outlineFreeRow(orow *row) {
   free(row->chars);
 }
 
-void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed) {
+void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified) {
   /*O.row is a pointer to an array of database row structures
   The array of rows that O.row points to needs to have its memory enlarged when
   you add a row. Note that db row structures now include:
@@ -1246,13 +1250,17 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
   O.row[at].size = len;
   O.row[at].chars = malloc(len + 1);
   memcpy(O.row[at].chars, s, len);
+  O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
   O.row[at].id = id;
   O.row[at].star = star;
   O.row[at].deleted = deleted;
   O.row[at].completed = completed;
   O.row[at].dirty = (id != -1) ? false : true;
   //memcpy(O.row[at].chars, s, len);
-  O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
+  //O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
+  O.row[at].modified = malloc(strlen(modified) + 1);
+  memcpy(O.row[at].modified, modified, strlen(modified));
+  O.row[at].modified[strlen(modified)] = '\0';
   O.numrows++;
 
 }
@@ -1883,6 +1891,10 @@ void outlineDrawRows(struct abuf *ab) {
   //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
   snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", OUTLINE_LEFT_MARGIN, TOP_MARGIN); 
 
+  char column2[10];
+  int spaces;
+  //snprintf(column2, sizeof(column2), "\x1b[;%dH", OUTLINE_LEFT_MARGIN + O.screencols + 1);
+
   for (y = 0; y < O.screenlines; y++) {
     int result_set_row = y + O.rowoff;
     if (result_set_row > O.numrows - 1) return;
@@ -1918,7 +1930,13 @@ void outlineDrawRows(struct abuf *ab) {
         // below means that the only row that is scrolled is the row that is active
         abAppend(ab, &O.row[result_set_row].chars[(result_set_row == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
-    
+
+    //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+    spaces = O.screencols - len + OUTLINE_LEFT_MARGIN;
+    snprintf(column2, sizeof(column2), "\x1b[%dC", spaces);
+    abAppend(ab, column2, (spaces < 10) ? 4 : 5);
+    //abAppend(ab, row->modified, strlen(row->modified)); //***********************
+    abAppend(ab, row->modified, 16); //***********************
     abAppend(ab, offset_lf_ret, 7);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
@@ -2023,7 +2041,7 @@ void outlineRefreshScreen(void) {
   char buf[20];
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
-    O.screencols + OUTLINE_LEFT_MARGIN); 
+    O.screencols + OUTLINE_LEFT_MARGIN);  
     abAppend(&ab, buf, strlen(buf));
   }
 
@@ -2556,7 +2574,7 @@ void outlineProcessKeypress() {
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              outlineInsertRow2(0, "<new item>", 10, -1, true, false, false);
+              outlineInsertRow2(0, "<new item>", 10, -1, true, false, false, "now");
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
@@ -6464,8 +6482,8 @@ void initOutline() {
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
   if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
-  O.screenlines = screenlines - 2 - TOP_MARGIN;
-  O.screencols = -3 + screencols/2; //this can be whatever you want but will affect note editor
+  O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  O.screencols =  screencols/2 - (OUTLINE_RIGHT_MARGIN + OUTLINE_LEFT_MARGIN +1); 
 }
 
 void initEditor(void) {
@@ -6529,7 +6547,7 @@ int main(int argc, char** argv) {
     which_db = "postgres";
   }
 
-  int j;
+  //int j;
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   initOutline();
@@ -6537,13 +6555,16 @@ int main(int argc, char** argv) {
   int pos = screencols/2;
   char buf[32];
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-  for (j=1; j < screenlines + 1;j++) {
+  for (int j=1; j < screenlines + 1;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
 }
-
+  /*
   for (j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, j);
     write(STDOUT_FILENO, buf, strlen(buf));
@@ -6558,8 +6579,17 @@ int main(int argc, char** argv) {
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
   }
+  */
 
+  for (int k=1; k < screencols ;k++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+  }
 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
+  write(STDOUT_FILENO, buf, strlen(buf));
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
