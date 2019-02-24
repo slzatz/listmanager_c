@@ -7,7 +7,7 @@
 //#define OUTLINE_ACTIVE 0 //tab should move back and forth between these
 //#define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
-#define OUTLINE_RIGHT_MARGIN 20 // need this if going to have modified col
+#define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
 #define TOP_MARGIN 1
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
@@ -1680,8 +1680,9 @@ void editorEraseScreen(void) {
     E.numrows = 0;
   }
 
-  char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  char lf_ret[10];
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -1693,7 +1694,7 @@ void editorEraseScreen(void) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -1708,8 +1709,9 @@ void editorDisplayFile(char *filename) {
   FILE *fp = fopen(filename, "r");
   if (!fp) die("fopen");
 
-  char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  char lf_ret[10];
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -1721,7 +1723,7 @@ void editorDisplayFile(char *filename) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -1747,14 +1749,14 @@ void editorDisplayFile(char *filename) {
     for(;;) {
       if (linelen < (n+1)*E.screencols) break;
       abAppend(&ab, &line[n*E.screencols], E.screencols);
-      abAppend(&ab, offset_lf_ret, 7);
+      abAppend(&ab, lf_ret, nchars_lf_ret);
       //should be num_liness++ here
       n++;
     }
     abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
     file_line++;
     if (file_line > E.screenlines - 2) break; //was - 1
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
   abAppend(&ab, "\x1b[0m", 4);
 
@@ -1878,30 +1880,25 @@ void outlineScroll(void) {
   }
 }
 
-// "drawing" rows really means updating the ab buffer
-// filerow/filecol are the row/column of the titles regardless of scroll
-// result_set_row/filecol are the row/column of the titles regardless of scroll
+// "drawing" rows means writing to the ab buffer and then to the screen
+// fr is the file row and takes into account any scroll
 void outlineDrawRows(struct abuf *ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
 
-  if (!O.row) return; //***************************
+  if (!O.row) return; 
 
   int y;
-  char offset_lf_ret[20];
-  //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", OUTLINE_LEFT_MARGIN, TOP_MARGIN); 
+  char lf_ret[10];
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
 
-  char column2[10];
   int spaces;
-  //snprintf(column2, sizeof(column2), "\x1b[;%dH", OUTLINE_LEFT_MARGIN + O.screencols + 1);
 
   for (y = 0; y < O.screenlines; y++) {
-    int result_set_row = y + O.rowoff;
-    if (result_set_row > O.numrows - 1) return;
-    orow *row = &O.row[result_set_row];
+    int fr = y + O.rowoff;
+    if (fr > O.numrows - 1) return;
+    orow *row = &O.row[fr];
 
-    // below says that if a line is long you only draw what fits on the screen
-    //if (len > O.screencols) len = O.screencols;
+    // if a line is long you only draw what fits on the screen
     int len = (row->size > O.screencols) ? O.screencols : row->size;
     
     if (row->star) abAppend(ab, "\x1b[1m", 4); //bold
@@ -1910,11 +1907,14 @@ void outlineDrawRows(struct abuf *ab) {
     else if (row->completed) abAppend(ab, "\x1b[33m", 5); //yellow foreground
     else if (row->deleted) abAppend(ab, "\x1b[31m", 5); //red foreground
 
+    if (fr == O.fr) abAppend(ab, "\x1b[48;5;236m", 11); // 236 is a grey
+
     if (row->dirty) abAppend(ab, "\x1b[41m", 5); //red background
 
-    // below - only will get visual highlighting if it's the active row and 
-    //then also deals with column offset
-    if (O.mode == VISUAL && result_set_row == O.cy + O.rowoff) { 
+    // below - only will get visual highlighting if it's the active
+    // then also deals with column offset
+    // if (O.mode == VISUAL && fr == O.cy + O.rowoff) { 
+    if (O.mode == VISUAL && fr == O.fr) { 
             
        // below in case E.highlight[1] < E.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
@@ -1923,20 +1923,21 @@ void outlineDrawRows(struct abuf *ab) {
       abAppend(ab, "\x1b[48;5;242m", 11);
       abAppend(ab, &(row->chars[O.highlight[j]]), O.highlight[k]
                                              - O.highlight[j]);
-      abAppend(ab, "\x1b[49m", 5); //slz return background to normal
+      abAppend(ab, "\x1b[49m", 5); // return background to normal
       abAppend(ab, &(row->chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
       
     } else {
-        // below means that the only row that is scrolled is the row that is active
-        abAppend(ab, &O.row[result_set_row].chars[(result_set_row == O.cy + O.rowoff) ? O.coloff : 0], len);
+        // current row is only row that is scrolled if O.coloff != 0
+        abAppend(ab, &O.row[fr].chars[(fr == O.fr) ? O.coloff : 0], len);
     }
 
-    spaces = O.screencols - len + OUTLINE_LEFT_MARGIN;
-    snprintf(column2, sizeof(column2), "\x1b[%dC", spaces);
-    abAppend(ab, column2, (spaces < 10) ? 4 : 5);
-    abAppend(ab, row->modified, 16); //***********************
-    abAppend(ab, offset_lf_ret, 6);
-    abAppend(ab, "\x1b[0m", 4); //slz return background to normal
+    spaces = O.screencols - len; // + OUTLINE_LEFT_MARGIN - 1;
+    //for dirty(red) or selected row makes whole row colored
+    for (int i=0; i < spaces; i++) abAppend(ab, " ", 1); 
+    abAppend(ab, "\x1b[1C", 4); // move over vertical line
+    abAppend(ab, row->modified, 16); 
+    abAppend(ab, lf_ret, nchars_lf_ret);
+    abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
 
@@ -1957,7 +1958,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenlines + TOP_MARGIN + 1,
-                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             screencols/2,
 
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
@@ -1983,13 +1984,12 @@ void outlineDrawStatusBar(struct abuf *ab) {
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
                       mode_text[O.mode], row->id, O.fr + 1, O.numrows);
 
-  if (len > (O.screencols + OUTLINE_LEFT_MARGIN)) 
-    len = O.screencols + OUTLINE_LEFT_MARGIN;
+  if (len > screencols/2) len = screencols/2;
 
-  abAppend(ab, status, len+10);
+  abAppend(ab, status, len + 10);
 
-  while (len < (O.screencols + OUTLINE_LEFT_MARGIN)) {
-    if (O.screencols + OUTLINE_LEFT_MARGIN - len == rlen) {
+  while (len < screencols/2) {
+    if (screencols/2 - len == rlen) {
       abAppend(ab, rstatus, rlen);
       break;
     } else {
@@ -2008,14 +2008,14 @@ void outlineDrawMessageBar(struct abuf *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenlines + 2 + TOP_MARGIN,
-                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             screencols/2,
+
                              O.screenlines + 2 + TOP_MARGIN,
-                             //OUTLINE_LEFT_MARGIN + 1);
                              1);
 
   abAppend(ab, buf, strlen(buf));
   int msglen = strlen(O.message);
-  if (msglen > O.screencols) msglen = O.screencols;
+  if (msglen > screencols/2) msglen = screencols/2;
   abAppend(ab, O.message, msglen);
 }
 
@@ -2038,7 +2038,7 @@ void outlineRefreshScreen(void) {
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j +TOP_MARGIN, 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN, 
     O.screencols + OUTLINE_LEFT_MARGIN);  
     abAppend(&ab, buf, strlen(buf));
   }
@@ -2056,12 +2056,13 @@ void outlineRefreshScreen(void) {
   if (O.mode != DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); 
     abAppend(&ab, buf, strlen(buf));
-    abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
+    abAppend(&ab, "\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
   }
   else { 
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     abAppend(&ab, buf, strlen(buf));
 }
+
   // below restores the cursor position based on O.cx and O.cy + margin
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
   abAppend(&ab, buf, strlen(buf));
@@ -3072,8 +3073,9 @@ void display_item_info_pg(int id) {
     return;
   }    
 
-  char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  char lf_ret[10];
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -3085,7 +3087,7 @@ void display_item_info_pg(int id) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -3097,30 +3099,30 @@ void display_item_info_pg(int id) {
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
-  abAppend(&ab, offset_lf_ret, 7);
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
@@ -3133,7 +3135,7 @@ void display_item_info_pg(int id) {
 
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   abAppend(&ab, "\x1b[0m", 4);
@@ -3212,11 +3214,11 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   18: remind = NULL
   */
 
-  char offset_lf_ret[20];
+  char lf_ret[10];
   // note really have to take into account length of
   // EDITOR_LEFT_MARGIN and don't need to move things in the y direction
-  //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -3228,7 +3230,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -3240,33 +3242,33 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", argv[0]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mtid:\x1b[0;44m %s", argv[1]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (atoi(argv[14]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (argv[10]) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", argv[16]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, offset_lf_ret, 7);
-  abAppend(&ab, offset_lf_ret, 7);
-  abAppend(&ab, offset_lf_ret, 7);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars_lf_ret);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
@@ -3279,7 +3281,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, offset_lf_ret, 7);
+    abAppend(&ab, lf_ret, nchars_lf_ret);
   }
 
   abAppend(&ab, "\x1b[0m", 4);
@@ -4597,8 +4599,9 @@ void editorDrawRows(struct abuf *ab) {
   int y = 0;
   int len, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
-  char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  char lf_ret[10];
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
@@ -4615,7 +4618,7 @@ void editorDrawRows(struct abuf *ab) {
       //and probably there is a better way to do it
       if (y) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
       else abAppend(ab, "\x1b[K", 3); 
-      abAppend(ab, offset_lf_ret, 7);
+      abAppend(ab, lf_ret, nchars_lf_ret);
       y++;
 
     // this else is the main drawing code
@@ -4630,7 +4633,7 @@ void editorDrawRows(struct abuf *ab) {
           for (n=0; n < (E.screenlines - y);n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
-            abAppend(ab, offset_lf_ret, 7);
+            abAppend(ab, lf_ret, nchars_lf_ret);
           }
         break;
       }      
@@ -4719,7 +4722,7 @@ void editorDrawRows(struct abuf *ab) {
       // new line i shorter than the old
       abAppend(ab, "\x1b[K", 3); 
 
-      abAppend(ab, offset_lf_ret, 7);
+      abAppend(ab, lf_ret, nchars_lf_ret);
       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
 
       start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
@@ -6484,7 +6487,7 @@ void initOutline() {
 
   if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  O.screencols =  screencols/2 - (OUTLINE_RIGHT_MARGIN + OUTLINE_LEFT_MARGIN +1); 
+  O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
 }
 
 void initEditor(void) {
@@ -6557,7 +6560,7 @@ int main(int argc, char** argv) {
   char buf[32];
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
   for (int j=1; j < screenlines + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1);
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
@@ -6565,32 +6568,25 @@ int main(int argc, char** argv) {
     //below x = 0x78 vertical line and q = 0x71 is horizontal
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
 }
-  /*
-  for (j=1; j < O.screencols + OUTLINE_LEFT_MARGIN + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, j);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line q = 0x71
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, 1);
+  write(STDOUT_FILENO, buf, strlen(buf));
+  for (int k=1; k < screencols ;k++) {
+    // note: cursor advances automatically so don't need to 
+    // do that explicitly
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
   }
 
-  //write(STDOUT_FILENO, "\x1b[37;1mk", 8); //corner
+  // draw first column's 'T' corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - OUTLINE_RIGHT_MARGIN + 1);
+  write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
 
-  for (int k=j+1; k < screencols ;k++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-  }
-  */
-
-  for (int k=1; k < screencols ;k++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-  }
-
+  // draw first column's 'T' corner
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
   write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
