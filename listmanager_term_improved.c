@@ -1931,13 +1931,11 @@ void outlineDrawRows(struct abuf *ab) {
         abAppend(ab, &O.row[result_set_row].chars[(result_set_row == O.cy + O.rowoff) ? O.coloff : 0], len);
     }
 
-    //abAppend(ab, "\x1b[0m", 4); //slz return background to normal
     spaces = O.screencols - len + OUTLINE_LEFT_MARGIN;
     snprintf(column2, sizeof(column2), "\x1b[%dC", spaces);
     abAppend(ab, column2, (spaces < 10) ? 4 : 5);
-    //abAppend(ab, row->modified, strlen(row->modified)); //***********************
     abAppend(ab, row->modified, 16); //***********************
-    abAppend(ab, offset_lf_ret, 7);
+    abAppend(ab, offset_lf_ret, 6);
     abAppend(ab, "\x1b[0m", 4); //slz return background to normal
   }
 }
@@ -3215,7 +3213,10 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   */
 
   char offset_lf_ret[20];
-  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  // note really have to take into account length of
+  // EDITOR_LEFT_MARGIN and don't need to move things in the y direction
+  //snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
+  snprintf(offset_lf_ret, sizeof(offset_lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
