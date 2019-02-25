@@ -305,7 +305,7 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified); 
+void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified); 
 void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
@@ -316,11 +316,13 @@ void update_note_sqlite(void);
 void synchronize(int);
 
 //editor Prototypes
+int editorGetScreenYFromRowColWW(int, int);
 int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
 int *editorGetScreenPosFromRowCharPosWW(int, int); //ESENTIAL - do not delete
 
 int editorGetFileRowByLineWW(int);
-int editorGetLineInRowWW(void);
+//int editorGetLineInRowWW(void);
+int editorGetLineInRowWW(int, int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
@@ -484,7 +486,7 @@ void get_data_pg(char *context, int n) {
     bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
     int id = atoi(zz);
     char *modified = PQgetvalue(res, i, 16);
-    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
+    outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
 
   PQclear(res);
@@ -588,8 +590,7 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   bool completed = (argv[10]) ? true: false;
   int id = atoi(zz);
   char *modified = argv[16];
-  outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
-  //outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, false); 
+  outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   return 0;
 }
 
@@ -654,7 +655,7 @@ void get_solr_data_pg(char *query) {
     bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
     int id = atoi(zz);
     char *modified = PQgetvalue(res, i, 16);
-    outlineInsertRow2(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
+    outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
 
   PQclear(res);
@@ -1217,7 +1218,7 @@ void outlineFreeRow(orow *row) {
   free(row->chars);
 }
 
-void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified) {
+void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified) {
   /*O.row is a pointer to an array of database row structures
   The array of rows that O.row points to needs to have its memory enlarged when
   you add a row. Note that db row structures now include:
@@ -1269,7 +1270,6 @@ void outlineInsertRow2(int at, char *s, size_t len, int id, bool star, bool dele
 void outlineInsertChar(int c) {
 
   if ( O.numrows == 0 ) {
-    //outlineInsertRow(0, "", 0); //outlineInsertRow will insert '\0' should rev
     return;
   }
 
@@ -1302,6 +1302,7 @@ void outlineDelChar(void) {
   // O.numrows = 0 because O.row is NULL
   if (O.numrows == 0 || row->size == 0 ) return; 
 
+  /* valgrind issue below for memmove and realloc*/
   memmove(&row->chars[O.fc], &row->chars[O.fc + 1], row->size - O.fc);
   row->chars = realloc(row->chars, row->size); 
   row->size--;
@@ -1854,30 +1855,25 @@ void outlineScroll(void) {
 
   if(!O.row) return;
 
-  O.cy = O.fr - O.rowoff;
+  if (O.fr > O.screenlines + O.rowoff - 1) {
+    O.rowoff =  O.fr - O.screenlines + 1;
+  }
+
+  if (O.fr < O.rowoff) {
+    O.rowoff =  O.fr;
+  }
+
+  if (O.fc > O.screencols + O.coloff - 1) {
+    O.coloff =  O.fc - O.screencols + 1;
+  }
+
+  if (O.fc < O.coloff) {
+    O.coloff =  O.fc;
+  }
+
+
   O.cx = O.fc - O.coloff;
-
-  if (O.cy > O.screenlines - 1) {   //there was >= no -1 but changed on 02222019
-    //O.cy--;
-    O.cy = O.screenlines - 1;
-    O.rowoff = O.fr - O.cy;
-    //O.rowoff++;
-    //O.cy = O.screenlines - 1;
-  } 
-
-  if (O.cy < 0) {
-    O.rowoff+=O.cy;
-    O.cy = 0;
-  }
-
-  if (O.cx >= O.screencols) {
-    O.coloff = O.coloff + O.cx - O.screencols + 1;
-    O.cx = O.screencols - 1;
-  }
-  if (O.cx < 0) {
-    O.coloff+=O.cx;
-    O.cx = 0;
-  }
+  O.cy = O.fr - O.rowoff;
 }
 
 // "drawing" rows means writing to the ab buffer and then to the screen
@@ -1931,8 +1927,9 @@ void outlineDrawRows(struct abuf *ab) {
         abAppend(ab, &O.row[fr].chars[(fr == O.fr) ? O.coloff : 0], len);
     }
 
-    spaces = O.screencols - len; // + OUTLINE_LEFT_MARGIN - 1;
-    //for dirty(red) or selected row makes whole row colored
+    // for a 'dirty' (red) row or ithe selected row, the spaces make it look
+    // like the whole row is highlighted
+    spaces = O.screencols - len; 
     for (int i=0; i < spaces; i++) abAppend(ab, " ", 1); 
     abAppend(ab, "\x1b[1C", 4); // move over vertical line
     abAppend(ab, row->modified, 16); 
@@ -2430,7 +2427,7 @@ void outlineProcessKeypress() {
         case 'j':
         case 'k':
         case 'l':
-          outlineMoveCursor(c);
+          for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
           O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           O.repeat = 0;
           return;
@@ -2573,7 +2570,7 @@ void outlineProcessKeypress() {
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              outlineInsertRow2(0, "<new item>", 10, -1, true, false, false, "now");
+              outlineInsertRow(0, "<new item>", 10, -1, true, false, false, "1970-01-01 00:00");
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
@@ -4575,7 +4572,25 @@ void editorScroll(void) {
 
   if (!E.row) return;
 
-  /* this is the money shot -- derive E.cx and E.cy from file row and char/*/
+  //int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
+  E.cx = editorGetScreenXFromRowCharPosWW(E.fr, E.fc);
+  // int cy = screeny_screenx[0];
+  int cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
+
+  if (cy > E.screenlines + E.line_offset - 1) {
+    E.line_offset =  cy - E.screenlines + 1;
+  }
+
+  if (cy < E.line_offset) {
+    E.line_offset =  cy;
+  }
+
+  //screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
+  //E.cx = screeny_screenx[1];
+  //E.cy = screeny_screenx[0];
+  E.cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
+
+  /*
   int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
   E.cx = screeny_screenx[1];
   E.cy = screeny_screenx[0];
@@ -4590,6 +4605,7 @@ void editorScroll(void) {
      E.cy = 0;
      //if (E.fr == 0) E.line_offset = 0; //? necessary - doubt it -02212019
   }
+  */
 
   // vim seems to want full rows to be displayed although I am not sure
   // it's either helpful or worthit but this is a placeholder for the idea
@@ -4812,7 +4828,7 @@ void editorRefreshScreen(void) {
   if (DEBUG) {
     if (E.row){
       int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
-      int line = editorGetLineInRowWW();
+      int line = editorGetLineInRowWW(E.fr, E.fc);
       int line_char_count = editorGetLineCharCountWW(E.fr, line); 
 
       editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screeny_screenx[1], E.screencols);
@@ -5720,10 +5736,49 @@ int editorGetLinesInRowWW(int r) {
   }
   return num;
 }
+
+// new
+int editorGetLineInRowWW(int r, int c) {
+  erow *row = &E.row[r];
+
+  if (row->size == 0) return 1;
+
+  char *start,*right_margin;
+  int left, width, num;  //, len;
+  bool more_lines = true;
+
+  left = c + 1; //row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  num = 0;
+  while(more_lines) { 
+
+    //if(left <= width) { //after creating whatever number of lines if remainer <= width: get out
+    if (left <= (editorGetLineCharCountWW(r, num+1) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
+      more_lines = false;
+      num++; 
+          
+    } else {
+      right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+      while(!isspace(*right_margin)) { 
+        right_margin--;
+        if(right_margin == start) { // situation in which there were no spaces to break the link
+          right_margin += width - 1;
+          break; 
+        }    
+      } 
+      left -= right_margin-start+1;      /* +1 for the space */
+      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+      num++;
+    }
+  }
+  return num;
+}
 /****************************ESSENTIAL (above) *****************************/
 
-// right now only in use for debugging
-int editorGetLineInRowWW(void) {
+// old - not in use and if all works well, should be tossed
+int editorGetLineInRowWW_old(void) {
   int screenrow = -1;
   int linerows;
   int r = 0;
@@ -5741,6 +5796,7 @@ int editorGetLineInRowWW(void) {
   return linerows - screenrow + y;
 
 }
+
 // returns row, line in row and column
 // now only useful (possibly) for debugging
 int *editorGetRowLineCharWW(void) {
@@ -5960,6 +6016,19 @@ int *editorGetScreenPosFromRowCharPosWW(int r, int c) { //, int fc){
   screeny_screenx[0] = screenline + rowline_screenx[0] - 1; //new -1
   screeny_screenx[1] = rowline_screenx[1];
   return screeny_screenx;
+}
+
+int editorGetScreenYFromRowColWW(int r, int c) { //, int fc){
+  int screenline = 0;
+
+  for (int n = 0; n < r; n++) { 
+    screenline+= editorGetLinesInRowWW(n);
+  }
+
+  screenline = screenline + editorGetLineInRowWW(r, c) - E.line_offset - 1;
+
+  return screenline; // ? check if it's less than zero -- do it in editorScroll
+  
 }
 /************************************* ESSENTIAL (above)  ************************************************/
 /************************************* end of WW ************************************************/
