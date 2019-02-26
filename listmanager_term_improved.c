@@ -5754,7 +5754,9 @@ int editorGetLineInRowWW(int r, int c) {
   num = 0;
   while(more_lines) { 
 
-    //if(left <= width) { //after creating whatever number of lines if remainer <= width: get out
+    // not sure which of the two following are more correct
+    // or practically they may be equivalent
+    //if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
     if (left <= (editorGetLineCharCountWW(r, num+1) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
       more_lines = false;
       num++; 
@@ -5863,7 +5865,7 @@ int editorGetCharInRowWW(int rsr, int line) {
   }
   return length + E.cx;
 }
-
+// doesn't take into account insert mode (which seems to be OK)
 int editorGetLineCharCountWW(int rsr, int line) {
 
   erow *row = &E.row[rsr];
@@ -5903,6 +5905,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
 }
 
 // called in editScroll to get E.cx - function should be renamed editorGetScreenXFromRowCol
+// seems to correctly take into account insert mode which means you can go beyond chars in line
 int editorGetScreenXFromRowCharPosWW(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5919,9 +5922,10 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
 
   int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
-    //if (left < width) {
-    //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
-    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { //after creating whatever number of lines if remainer <= width: get out
+    // not sure which of the two following are more correct
+    // or practically they may be equivalent
+    //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) {  
+    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
      // more_lines = false;
       length += left;
       len = left;
@@ -5939,7 +5943,7 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
     left -= len;
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
-    if (c - (E.mode == INSERT) < length) break; //<= segfaults with either
+    if (c - (E.mode == INSERT) < length) break; // this seems to work
     num++;
     //length += len;
   }
