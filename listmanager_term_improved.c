@@ -326,7 +326,7 @@ int editorGetLineInRowWW(int, int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
-int editorGetScreenXFromRowCharPosWW(int, int);
+int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 
 void editorSetMessage(const char *fmt, ...);
@@ -774,17 +774,19 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   *out = '\0';
   */
 
+  char *note;
   if (argv[0] != NULL) { //added this guard 02052019 - not sure
-    char *note;
+    //char *note; //moved above on 02262019
     note = strdup(argv[0]); // ******************
     char *found;
-    while ((found = strsep(&note, "\r\n")) !=NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
+    while ((found = strsep(&note, "\r\n")) != NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
       editorInsertRow(E.numrows, found, strlen(found));
     }
-    free(note);
+    //free(note); //moved below on 02262019
   }
   E.dirty = 0;
   editorRefreshScreen();
+  free(note); //moved below on 02262019
   return 0;
 }
 
@@ -1529,7 +1531,7 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 // now 'o' and 'O' separated from '\r' (in INSERT mode)
 //'o' -> direction == 1 and 'O' direction == 0
 void editorInsertNewline(int direction) {
-  /* note this func does position cursor*/
+  /* note this func does position E.fc and E.fr*/
   if (E.numrows == 0) {
     editorInsertRow(0, "", 0);
     return;
@@ -1554,12 +1556,6 @@ void editorInsertNewline(int direction) {
 
   E.fr += direction;
   editorInsertRow(E.fr, spaces, indent);
-
-  /*
-  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(r, c); 
-  E.cx = screeny_screenx[1]; 
-  E.cy = screeny_screenx[0]; 
-  */
 }
 
 void editorDelChar(void) {
@@ -4573,7 +4569,7 @@ void editorScroll(void) {
   if (!E.row) return;
 
   //int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
-  E.cx = editorGetScreenXFromRowCharPosWW(E.fr, E.fc);
+  E.cx = editorGetScreenXFromRowCol(E.fr, E.fc);
   // int cy = screeny_screenx[0];
   int cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
 
@@ -4584,28 +4580,11 @@ void editorScroll(void) {
   if (cy < E.line_offset) {
     E.line_offset =  cy;
   }
+  
+  // I don't think you need to do the below again
+  //E.cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
 
-  //screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
-  //E.cx = screeny_screenx[1];
-  //E.cy = screeny_screenx[0];
-  E.cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
-
-  /*
-  int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
-  E.cx = screeny_screenx[1];
-  E.cy = screeny_screenx[0];
-
-  if (E.cy > E.screenlines - 1){
-    E.cy--;
-    E.line_offset++;
-  }
-
-  if (E.cy < 0) {
-     E.line_offset+=E.cy;
-     E.cy = 0;
-     //if (E.fr == 0) E.line_offset = 0; //? necessary - doubt it -02212019
-  }
-  */
+  E.cy = cy - E.line_offset;
 
   // vim seems to want full rows to be displayed although I am not sure
   // it's either helpful or worthit but this is a placeholder for the idea
@@ -5778,93 +5757,7 @@ int editorGetLineInRowWW(int r, int c) {
   }
   return num;
 }
-/****************************ESSENTIAL (above) *****************************/
 
-// old - not in use and if all works well, should be tossed
-int editorGetLineInRowWW_old(void) {
-  int screenrow = -1;
-  int linerows;
-  int r = 0;
-  int y = E.cy + E.line_offset; 
-
-  if (y == 0) return 1;
-
-  for (;;) {
-    linerows = editorGetLinesInRowWW(r);
-    screenrow += linerows;
-    if (screenrow >= y) break;
-    r++;
-  }
-
-  return linerows - screenrow + y;
-
-}
-
-// returns row, line in row and column
-// now only useful (possibly) for debugging
-int *editorGetRowLineCharWW(void) {
-  int screenrow = -1;
-  int r = 0;
-
-  //if not use static then it's a variable local to function
-  static int row_line_char[3];
-
-  int linerows;
-  int y = E.cy + E.line_offset; 
-  if (y == 0) {
-    row_line_char[0] = 0;
-    row_line_char[1] = 1;
-    row_line_char[2] = E.cx;
-    return row_line_char;
-  }
-  for (;;) {
-    linerows = editorGetLinesInRowWW(r);
-    screenrow += linerows;
-    if (screenrow >= y) break;
-    r++;
-  }
-
-  // right now this is necesssary for backspacing in a multiline filerow
-  // no longer seems necessary for insertchar
-  if (E.continuation) r--;
-
-  row_line_char[0] = r;
-  row_line_char[1] = linerows - screenrow + y;
-  row_line_char[2] = editorGetCharInRowWW(r, linerows - screenrow + y);
-
-  return row_line_char;
-}
-
-int editorGetCharInRowWW(int rsr, int line) {
-  erow *row = &E.row[rsr];
-  char *start,*right_margin;
-  int left, width, num, len, length;
-
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  length = 0;
-  num = 1; ////// Don't see how this works for line = 1
-  for (;;) {
-    if (left <= width) return length + E.cx; /////////////////////////////////////////////////////////////////////////////02182019 9:41 am 
-    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-    while(!isspace(*right_margin)) { //#2
-      right_margin--;
-      if( right_margin == start) { // situation in which there were no spaces to break the link
-        right_margin += width - 1;
-        break; 
-      }    
-    } 
-    len = right_margin - start + 1;
-    left -= right_margin-start+1;      // +1 for the space //
-    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-    if (num == line) break;
-    num++;
-    length += len;
-  }
-  return length + E.cx;
-}
 // doesn't take into account insert mode (which seems to be OK)
 int editorGetLineCharCountWW(int rsr, int line) {
 
@@ -5904,9 +5797,9 @@ int editorGetLineCharCountWW(int rsr, int line) {
   return len;
 }
 
-// called in editScroll to get E.cx - function should be renamed editorGetScreenXFromRowCol
+// called in editScroll to get E.cx
 // seems to correctly take into account insert mode which means you can go beyond chars in line
-int editorGetScreenXFromRowCharPosWW(int r, int c) {
+int editorGetScreenXFromRowCol(int r, int c) {
 
   erow *row = &E.row[r];
   if (row->size == 0) return 0;
@@ -5948,6 +5841,76 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
     //length += len;
   }
   return c - length + len;
+}
+/****************************ESSENTIAL (above) *****************************/
+
+// returns row, line in row and column
+// now only useful (possibly) for debugging
+int *editorGetRowLineCharWW(void) {
+  int screenrow = -1;
+  int r = 0;
+
+  //if not use static then it's a variable local to function
+  static int row_line_char[3];
+
+  int linerows;
+  int y = E.cy + E.line_offset; 
+  if (y == 0) {
+    row_line_char[0] = 0;
+    row_line_char[1] = 1;
+    row_line_char[2] = E.cx;
+    return row_line_char;
+  }
+  for (;;) {
+    linerows = editorGetLinesInRowWW(r);
+    screenrow += linerows;
+    if (screenrow >= y) break;
+    r++;
+  }
+
+  // right now this is necesssary for backspacing in a multiline filerow
+  // no longer seems necessary for insertchar
+  if (E.continuation) r--;
+
+  row_line_char[0] = r;
+  row_line_char[1] = linerows - screenrow + y;
+  row_line_char[2] = editorGetCharInRowWW(r, linerows - screenrow + y);
+
+  return row_line_char;
+}
+
+// below only used in editorGetRowLineChar which
+// returns row, line in row and column
+// now only useful (possibly) for debugging
+int editorGetCharInRowWW(int rsr, int line) {
+  erow *row = &E.row[rsr];
+  char *start,*right_margin;
+  int left, width, num, len, length;
+
+  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  width = E.screencols; //wrapping width
+  
+  length = 0;
+  num = 1; ////// Don't see how this works for line = 1
+  for (;;) {
+    if (left <= width) return length + E.cx; /////////////////////////////////////////////////////////////////////////////02182019 9:41 am 
+    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+    len = right_margin - start + 1;
+    left -= right_margin-start+1;      // +1 for the space //
+    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
+    if (num == line) break;
+    num++;
+    length += len;
+  }
+  return length + E.cx;
 }
 
 // debugging
@@ -6001,7 +5964,8 @@ int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
   return rowline_screenx;
 }
 
-/*********************************ESENTIAL*****************************/
+/*********************************MAY BE ESENTIAL*****************************/
+// was in used in editorScroll -- don't delete yet slim chance might go back there
 int *editorGetScreenPosFromRowCharPosWW(int r, int c) { //, int fc){
   static int screeny_screenx[2]; //if not use static then it's a variable local to function
   int screenline = 0;
@@ -6026,7 +5990,10 @@ int *editorGetScreenPosFromRowCharPosWW(int r, int c) { //, int fc){
   screeny_screenx[1] = rowline_screenx[1];
   return screeny_screenx;
 }
+/*************************************MAY BE ESSENTIAL (above)  ************************************************/
 
+// ESSENTIAL - used in editScroll
+// not 100% sure this should take into account E.line_offset
 int editorGetScreenYFromRowColWW(int r, int c) { //, int fc){
   int screenline = 0;
 
@@ -6034,12 +6001,13 @@ int editorGetScreenYFromRowColWW(int r, int c) { //, int fc){
     screenline+= editorGetLinesInRowWW(n);
   }
 
-  screenline = screenline + editorGetLineInRowWW(r, c) - E.line_offset - 1;
+  // now doubting this should include E.line_offset but not sure
+  //screenline = screenline + editorGetLineInRowWW(r, c) - E.line_offset - 1;
+  screenline = screenline + editorGetLineInRowWW(r, c) - 1;
 
   return screenline; // ? check if it's less than zero -- do it in editorScroll
   
 }
-/************************************* ESSENTIAL (above)  ************************************************/
 /************************************* end of WW ************************************************/
 
 void editorCreateSnapshot(void) {
