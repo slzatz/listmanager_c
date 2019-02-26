@@ -5739,8 +5739,8 @@ int editorGetLinesInRowWW(int r) {
 
 // new
 int editorGetLineInRowWW(int r, int c) {
-  erow *row = &E.row[r];
 
+  erow *row = &E.row[r];
   if (row->size == 0) return 1;
 
   char *start,*right_margin;
@@ -5760,7 +5760,8 @@ int editorGetLineInRowWW(int r, int c) {
       num++; 
           
     } else {
-      right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+      right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+      if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02252019 ? kluge
       while(!isspace(*right_margin)) { 
         right_margin--;
         if(right_margin == start) { // situation in which there were no spaces to break the link
@@ -5768,7 +5769,7 @@ int editorGetLineInRowWW(int r, int c) {
           break; 
         }    
       } 
-      left -= right_margin-start+1;      /* +1 for the space */
+      left -= right_margin - start + 1;      /* +1 for the space */
       start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
       num++;
     }
@@ -5904,6 +5905,8 @@ int editorGetLineCharCountWW(int rsr, int line) {
 int editorGetScreenXFromRowCharPosWW(int r, int c) {
 
   erow *row = &E.row[r];
+  if (row->size == 0) return 0;
+
   char *start,*right_margin;
   int width, len, left, length;  //num 
 
@@ -5913,16 +5916,16 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
   
   length = 0;
 
-  if (row->size == 0) return 0;
-
-  //num = 1; ////// Don't see how this works for line = 1
+  int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
-    if (left < width) {
+    //if (left < width) {
+    if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
+     // more_lines = false;
       length += left;
       len = left;
       break;
     }
-    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -5935,7 +5938,7 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
     if (c < length) break; //<= segfaults with either
-    //num++;
+    num++;
     //length += len;
   }
   return c - length + len;
