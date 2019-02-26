@@ -5737,7 +5737,7 @@ int editorGetLinesInRowWW(int r) {
   return num;
 }
 
-// new
+// new  called by editorGetScreenYFromRowColWW that is in editScroll
 int editorGetLineInRowWW(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5883,7 +5883,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
   num = 1; ////// Don't see how this works for line = 1
   for (;;) {
     if (left <= width) return left; // <
-    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -5902,6 +5902,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
   return len;
 }
 
+// called in editScroll to get E.cx - function should be renamed editorGetScreenXFromRowCol
 int editorGetScreenXFromRowCharPosWW(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5919,7 +5920,8 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
   int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
     //if (left < width) {
-    if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
+    //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
+    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { //after creating whatever number of lines if remainer <= width: get out
      // more_lines = false;
       length += left;
       len = left;
@@ -5937,7 +5939,7 @@ int editorGetScreenXFromRowCharPosWW(int r, int c) {
     left -= len;
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
-    if (c < length) break; //<= segfaults with either
+    if (c - (E.mode == INSERT) < length) break; //<= segfaults with either
     num++;
     //length += len;
   }
