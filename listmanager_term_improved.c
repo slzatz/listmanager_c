@@ -282,6 +282,7 @@ void (*update_rows)(void);
 void (*update_row)(void);
 int (*insert_row)(int); 
 void (*display_item_info)(int);
+void (*touch)(void);
 int data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
@@ -2814,20 +2815,24 @@ void outlineProcessKeypress() {
           return;
 
         case 'x':
-          O.fc = 0;
-          O.repeat = 0;
+         // O.fc = 0;
+         // O.repeat = 0;
           (*toggle_completed)();
           return;
 
         case 'd':
-          O.fc = 0;
-          O.repeat = 0;
+         // O.fc = 0;
+         // O.repeat = 0;
           (*toggle_deleted)();
           return;
 
+        case 't': //touch
+          (*touch)();
+          return;
+
         case '*':
-          O.fc = 0;
-          O.repeat = 0;
+         // O.fc = 0;
+         // O.repeat = 0;
           (*toggle_star)();
           return;
 
@@ -2839,8 +2844,8 @@ void outlineProcessKeypress() {
           return;
 
         case 'r':
-          O.fc = 0;
-          O.repeat = 0;
+         // O.fc = 0;
+         // O.repeat = 0;
           (*get_data)(O.context, MAX);
           return;
 
@@ -3597,16 +3602,11 @@ void toggle_deleted_pg(void) {
 
   char query[300];
   int id = get_id(-1);
-  if (row->deleted) 
-     sprintf(query, "UPDATE task SET deleted=False, " 
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                    id);
-  else 
-     sprintf(query, "UPDATE task SET deleted=True, " 
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                    id);
+
+  sprintf(query, "UPDATE task SET deleted=%s, " 
+                 "modified=LOCALTIMESTAMP - interval '5 hours' "
+                 "WHERE id=%d", //tid
+                 (row->deleted) ? "False" : "True", id);
 
   PGresult *res = PQexec(conn, query); 
     
@@ -3616,10 +3616,72 @@ void toggle_deleted_pg(void) {
   else {
     outlineSetMessage("Toggle deleted succeeded");
     row->deleted = !row->deleted;
-    row->dirty = true;
   }
   PQclear(res);
   return;
+}
+
+void touch_pg(void) {
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  }
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET modified=LOCALTIMESTAMP - interval '5 hours' "
+                 "WHERE id=%d", id); 
+
+  PGresult *res = PQexec(conn, query); 
+    
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
+  }
+  else {
+    outlineSetMessage("'Touch' succeeded");
+  }
+  PQclear(res);
+  return;
+}
+
+
+void touch_sqlite(void) {
+
+  char query[300];
+  int id = get_id(-1);
+
+  sprintf(query, "UPDATE task SET modified=datetime('now', '-5 hours') "
+                 "WHERE id=%d", id); 
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB, &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("'Touch' succeeded");
+  }
+
+  sqlite3_close(db);
+
 }
 
 void toggle_deleted_sqlite(void) {
@@ -3653,7 +3715,6 @@ void toggle_deleted_sqlite(void) {
   } else {
     outlineSetMessage("Toggle deleted succeeded");
     row->deleted = !row->deleted;
-    //row->dirty = true;
   }
 
   sqlite3_close(db);
@@ -5758,8 +5819,11 @@ int editorGetLineInRowWW(int r, int c) {
   return num;
 }
 
-// doesn't take into account insert mode (which seems to be OK)
+// ESSENTIAL*********************************************
+// used by editorGetScreenXFromRowCol and by
+// editorGetLineInRow
 int editorGetLineCharCountWW(int rsr, int line) {
+// doesn't take into account insert mode (which seems to be OK)
 
   erow *row = &E.row[rsr];
   if (row->size == 0) return 0;
@@ -5797,8 +5861,10 @@ int editorGetLineCharCountWW(int rsr, int line) {
   return len;
 }
 
+// ESSENTIAL ***************************************************
 // called in editScroll to get E.cx
 // seems to correctly take into account insert mode which means you can go beyond chars in line
+// although two ways to account of INSERT mode and not sure which is correct (see below)
 int editorGetScreenXFromRowCol(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5819,7 +5885,6 @@ int editorGetScreenXFromRowCol(int r, int c) {
     // or practically they may be equivalent
     //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) {  
     if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
-     // more_lines = false;
       length += left;
       len = left;
       break;
@@ -5838,7 +5903,6 @@ int editorGetScreenXFromRowCol(int r, int c) {
     length += len;
     if (c - (E.mode == INSERT) < length) break; // this seems to work
     num++;
-    //length += len;
   }
   return c - length + len;
 }
@@ -6579,6 +6643,7 @@ int main(int argc, char** argv) {
     update_row = &update_row_sqlite;
     update_context = &update_context_sqlite;
     display_item_info = &display_item_info_sqlite;
+    touch = &touch_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
@@ -6594,6 +6659,7 @@ int main(int argc, char** argv) {
     update_row = &update_row_pg;
     update_context = &update_context_pg;
     display_item_info = &display_item_info_pg;
+    touch = &touch_pg;
     which_db = "postgres";
   }
 
