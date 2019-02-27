@@ -362,7 +362,7 @@ void editorRestoreSnapshot(void);
 void editorCreateSnapshot(void); 
 void editorInsertRow(int fr, char *s, size_t len); 
 void abAppend(struct abuf *ab, const char *s, int len);
-
+void EraseRedrawLines(void);
 // config struct for reading db.ini file
 
 struct config {
@@ -444,8 +444,9 @@ void get_data_pg(char *context, int n) {
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
-                    "AND (task.deleted = %s "
-                    "OR task.completed = %s) "
+                    "AND task.deleted = %s "
+                    //"AND task.completed = %s "
+                    "AND task.completed IS %s "
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
                     "False",
@@ -783,11 +784,10 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     while ((found = strsep(&note, "\r\n")) != NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
       editorInsertRow(E.numrows, found, strlen(found));
     }
-    //free(note); //moved below on 02262019
-  }
   E.dirty = 0;
   editorRefreshScreen();
   free(note); //moved below on 02262019
+  }
   return 0;
 }
 
@@ -822,11 +822,11 @@ void get_note_pg(int id) {
     while ((found = strsep(&note, "\r\n")) !=NULL) {
       editorInsertRow(E.numrows, found, strlen(found));
     }
-    free(note);
-  }
-  PQclear(res);
   E.dirty = 0;
   editorRefreshScreen();
+  free(note);
+  }
+  PQclear(res);
   return;
 }
 
@@ -1748,6 +1748,7 @@ void editorDisplayFile(char *filename) {
       if (linelen < (n+1)*E.screencols) break;
       abAppend(&ab, &line[n*E.screencols], E.screencols);
       abAppend(&ab, lf_ret, nchars_lf_ret);
+      file_line++; //**********************
       //should be num_liness++ here
       n++;
     }
@@ -1921,7 +1922,7 @@ void outlineDrawRows(struct abuf *ab) {
       
     } else {
         // current row is only row that is scrolled if O.coloff != 0
-        abAppend(ab, &O.row[fr].chars[(fr == O.fr) ? O.coloff : 0], len);
+        abAppend(ab, &O.row[fr].chars[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
@@ -2679,6 +2680,7 @@ void outlineProcessKeypress() {
                  O.command_line[1] = '\0';
                  return;
                }
+               EraseRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", new_context);
                (*get_data)(new_context, MAX); 
                O.context = new_context; 
@@ -4905,7 +4907,7 @@ void editorRefreshScreen(void) {
       //write(STDOUT_FILENO, "\x1b[31;1mq", 8); //horizontal line
       write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
     }
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + OUTLINE_RIGHT_MARGIN + 1);
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
     write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
@@ -5843,6 +5845,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
   for (;;) {
     if (left <= width) return left; // <
     right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+      if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02262019 ? kluge
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -6567,6 +6570,42 @@ void editorMarkupLink(void) {
   E.dirty++;
 }
 
+void EraseRedrawLines(void) {
+  int pos = screencols/2;
+  char buf[32];
+
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Enter line drawing mode
+  write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+  for (int j=1; j < screenlines + 1;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    //below x = 0x78 vertical line and q = 0x71 is horizontal
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+}
+
+  write(STDOUT_FILENO, "\x1b[1;1H", 6);
+  for (int k=1; k < screencols ;k++) {
+    // note: cursor advances automatically so don't need to 
+    // do that explicitly
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+  }
+
+  // draw first column's 'T' corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - OUTLINE_RIGHT_MARGIN + 1);
+  write(STDOUT_FILENO, buf, strlen(buf));
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
+  // draw next column's 'T' corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
+  write(STDOUT_FILENO, buf, strlen(buf));
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
+  write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
+  write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+}
 /* below was used for testing
 void getcharundercursor(void) {
   erow *row = &E.row[E.cy];
@@ -6694,7 +6733,7 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
 
-  // draw first column's 'T' corner
+  // draw next column's 'T' corner
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
   write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
