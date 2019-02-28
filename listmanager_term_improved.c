@@ -81,11 +81,11 @@ enum Mode {
   NORMAL = 0,
   INSERT = 1,
   COMMAND_LINE = 2,
-  VISUAL_LINE = 3, //outline mode does not have VISUAL_LINE
+  VISUAL_LINE = 3, // only editor mode
   VISUAL = 4,
   REPLACE = 5,
-  DATABASE = 6,
-  FILE_DISPLAY = 7
+  DATABASE = 6, // only outline mode
+  FILE_DISPLAY = 7 // only outline mode
 };
 
 char *mode_text[] = {
@@ -130,7 +130,9 @@ enum Command {
 
   C_help,
 
-  C_edit
+  C_edit,
+
+  C_valgrind
 };
 
 //below is for multi-character commands
@@ -171,7 +173,9 @@ static t_symstruct lookuptable[] = {
   {"quit", C_quit},
   {"quit!", C_quit0},
   {"q!", C_quit0},
-  {"edit", C_edit}
+  {"edit", C_edit},
+  {"val", C_valgrind},
+  {"valgrind", C_valgrind}
   //{"e", C_edit}
 };
 
@@ -286,7 +290,7 @@ void (*touch)(void);
 int data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
-int tid_callback(void *, int, char **, char **);
+//int tid_callback(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -322,7 +326,7 @@ int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
 int *editorGetScreenPosFromRowCharPosWW(int, int); //ESENTIAL - do not delete
 
 int editorGetFileRowByLineWW(int);
-//int editorGetLineInRowWW(void);
+int editorGetLineInRowWW(int, int);
 int editorGetLineInRowWW(int, int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
@@ -445,7 +449,6 @@ void get_data_pg(char *context, int n) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
                     "AND task.deleted = %s "
-                    //"AND task.completed = %s "
                     "AND task.completed IS %s "
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
@@ -495,7 +498,6 @@ void get_data_pg(char *context, int n) {
   // PQfinish(conn);
 
   O.fc = O.fr = O.rowoff = 0;
-  //O.context = context;
 }
 
 void get_data_sqlite(char *context, int n) {
@@ -526,7 +528,7 @@ void get_data_sqlite(char *context, int n) {
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
                     "AND task.deleted = %s "
-                    "AND task.completed IS %s " // has to be IS NULL
+                    "AND task.completed IS %s " 
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
                     "False",
@@ -666,6 +668,7 @@ void get_solr_data_pg(char *query) {
   O.fc = O.fr = O.rowoff = 0;
 }
 
+/*
 void get_tid_sqlite(int id) {
   if (id ==-1) return;
 
@@ -673,6 +676,7 @@ void get_tid_sqlite(int id) {
   for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
+
   free(E.row);
   E.row = NULL; 
   E.numrows = 0;
@@ -701,7 +705,6 @@ void get_tid_sqlite(int id) {
   sqlite3_close(db);
 }
 
-
 int tid_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
   UNUSED(NotUsed);
@@ -714,14 +717,16 @@ int tid_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   }
   return 0;
 }
+*/
 
 void get_note_sqlite(int id) {
   if (id ==-1) return;
 
   // free the E.row[j].chars
-  for (int j = 0 ; j < E.numrows ; j++ ) {
+  for (int j = 0; j < E.numrows; j++) {
     free(E.row[j].chars);
   } 
+
   free(E.row);
   E.row = NULL; 
   E.numrows = 0;
@@ -798,6 +803,7 @@ void get_note_pg(int id) {
   for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
+
   free(E.row);
   E.row = NULL; 
   E.numrows = 0;
@@ -935,9 +941,13 @@ void solr_find(char *search_terms) {
               char *put;
 
               if (which_db[0] == 'p') {
-                strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
+                strncpy(query, "SELECT * FROM task WHERE "
+                               "task.deleted = False and task.id IN (",
+                               sizeof(query));
               } else {
-                strncpy(query, "SELECT * FROM task WHERE task.tid IN (", sizeof(query));
+                strncpy(query, "SELECT * FROM task WHERE "
+                               "task.deleted = False and task.tid IN (",
+                               sizeof(query));
               }
 
               put = &query[strlen(query)];
@@ -1673,6 +1683,7 @@ void editorEraseScreen(void) {
     for (int j = 0 ; j < E.numrows ; j++ ) {
       free(E.row[j].chars);
     } 
+
     free(E.row);
     E.row = NULL; 
     E.numrows = 0;
@@ -2320,8 +2331,6 @@ void outlineProcessKeypress() {
             return;
 
         case '0':
-          //O.cx = -O.coloff; //surprisingly seems to work
-
           if (O.row != NULL) O.fc = 0;
           O.command[0] = '\0';
           O.repeat = 0;
@@ -2430,11 +2439,11 @@ void outlineProcessKeypress() {
           O.repeat = 0;
           return;
 
-        // for testing purposes I am using CTRL-h in normal mode
+        // not sure that this should be CTRL-h; maybe CTRL-m
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           editorRefreshScreen();
-          (*update_note)(); //not going this in EDITOR mode but should catch it because note dirty
+          (*update_note)(); // write updated note to database
           O.command[0] = '\0';
           return;
 
@@ -2606,6 +2615,8 @@ void outlineProcessKeypress() {
                 outlineSetMessage("You need more characters");
                 return;
               }  
+
+              EraseRedrawLines(); //*****************************
               solr_find(&O.command_line[pos + 1]);
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
@@ -2690,37 +2701,45 @@ void outlineProcessKeypress() {
                return;
 
             case C_synch:
-              synchronize(0); //1 -> report_only
+              synchronize(0); // do actual sync
 
-              // free the E.row[j].chars not sure this has to be done
+              /*
               if (E.row) {
                 for (int j = 0 ; j < E.numrows ; j++ ) {
                   free(E.row[j].chars);
                 } 
+
                 free(E.row);
                 E.row = NULL; 
                 E.numrows = 0;
               }
+              */
+
               editorDisplayFile("log");//put them in the command mode case synch
-              //editorRefreshScreen();
               O.mode = NORMAL;
               return;
 
             case C_synch_test:
               synchronize(1); //1 -> report_only
 
-              // free the E.row[j].chars
+              /*
               if (E.row) {
                 for (int j = 0 ; j < E.numrows ; j++ ) {
                   free(E.row[j].chars);
                 } 
+
                 free(E.row);
                 E.row = NULL; 
                 E.numrows = 0;
               }
+              */
+
               editorDisplayFile("log");//put them in the command mode case synch
-              //editorRefreshScreen();
               O.mode = NORMAL;
+              return;
+
+             case C_valgrind:
+              editorDisplayFile("valgrind_log_file");
               return;
 
              case C_quit:
@@ -2846,9 +2865,10 @@ void outlineProcessKeypress() {
           return;
 
         case 'r':
-         // O.fc = 0;
-         // O.repeat = 0;
-          (*get_data)(O.context, MAX);
+          outlineSetMessage("\'%s\' will be refreshed", O.context);
+          if (strcmp(O.context, "search") == 0) solr_find(search_terms);
+          else (*get_data)(O.context, MAX); 
+          O.mode = NORMAL;
           return;
 
         case ARROW_RIGHT:
@@ -2870,7 +2890,10 @@ void outlineProcessKeypress() {
           
           row = &O.row[O.fr];
           view_html(row->id);
-          /* not getting error messages with qutebrowser so below not necessary (for the moment)
+
+          /* when I switched from chrome to qutebrowser I thought I was not
+          getting error/status messages to stdout but they do appear to 
+          occur sometimes and so may need to do a clear screen
           write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
           outlineRefreshScreen();
           editorRefreshScreen();
@@ -4631,9 +4654,15 @@ void editorScroll(void) {
 
   if (!E.row) return;
 
-  //int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
+
+  // This check used to be in editorMoveCursor but there are other ways like
+  // issuring 'd$' that will shorten the row but cursor will be beyond the line
+  int row_size = E.row[E.fr].size;
+  if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT); 
+
+  if (E.fc < 0) E.fc = 0;
+
   E.cx = editorGetScreenXFromRowCol(E.fr, E.fc);
-  // int cy = screeny_screenx[0];
   int cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
 
   if (cy > E.screenlines + E.line_offset - 1) {
@@ -4644,9 +4673,6 @@ void editorScroll(void) {
     E.line_offset =  cy;
   }
   
-  // I don't think you need to do the below again
-  //E.cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
-
   E.cy = cy - E.line_offset;
 
   // vim seems to want full rows to be displayed although I am not sure
@@ -4701,19 +4727,20 @@ void editorDrawRows(struct abuf *ab) {
     int left, width;
     bool more_lines = true;
 
-    left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-    start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+    left = row->size; //although maybe time to use strlen(preamble); 
+    start = row->chars; //char * to string that is going to be wrapped
     width = E.screencols; //wrapping width
     
-    //while(*start) //exit when hit the end of the string '\0' - #1
     while(more_lines) {
 
         if (left <= width) {//after creating whatever number of lines if remainer <= width: get out
           len = left;
           more_lines = false;
         } else {
-          right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+          // each time start pointer moves you are adding the width to it and checking for spaces
+          right_margin = start+width - 1; 
 
+          if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02272019
           while(!isspace(*right_margin)) { //#2
             right_margin--;
             if( right_margin == start) {// situation in which there were no spaces to break the link
@@ -4869,11 +4896,12 @@ void editorRefreshScreen(void) {
 
   if (DEBUG) {
     if (E.row){
-      int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
+      //int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
+      int screenx = editorGetScreenXFromRowCol(E.fr, E.fc); 
       int line = editorGetLineInRowWW(E.fr, E.fc);
       int line_char_count = editorGetLineCharCountWW(E.fr, line); 
 
-      editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screeny_screenx[1], E.screencols);
+      editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screenx, E.screencols);
     } else
       editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
   }
@@ -4964,9 +4992,11 @@ void editorMoveCursor(int key) {
       if (E.fr < E.numrows - 1) E.fr++;
       break;
   }
-
+  /*
+  // now testing putting this in editorScroll
   int row_size = E.row[E.fr].size;
-  if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT); 
+  if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT);
+  */
 }
 
 // calls readKey()
@@ -5313,7 +5343,6 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           return;
     
-        // for testing purposes I am using CTRL-h in normal mode
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           return;
@@ -5780,7 +5809,12 @@ int editorGetLinesInRowWW(int r) {
 }
 
 // new  called by editorGetScreenYFromRowColWW that is in editScroll
-int editorGetLineInRowWW(int r, int c) {
+// this doesn't seem right to me
+// should be a self-contained version that
+// may look almost identical to editorGetLineCharCount
+// also right now only looks like it works for first row
+// not sure if problem is here or elsewhere
+int editorGetLineInRowWW__old(int r, int c) {
 
   erow *row = &E.row[r];
   if (row->size == 0) return 1;
@@ -5799,7 +5833,8 @@ int editorGetLineInRowWW(int r, int c) {
     // not sure which of the two following are more correct
     // or practically they may be equivalent
     //if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
-    if (left <= (editorGetLineCharCountWW(r, num+1) + (E.mode == INSERT))) { //after creating whatever number of lines if remainer <= width: get out
+    //if (left <= (editorGetLineCharCountWW(r, num + 1) + (E.mode == INSERT))) { 
+    if (left <= ((E.mode == INSERT && c >= row->size) ? E.screencols  + 1 : editorGetLineCharCountWW(r, num + 1))) { 
       more_lines = false;
       num++; 
           
@@ -5824,10 +5859,10 @@ int editorGetLineInRowWW(int r, int c) {
 // ESSENTIAL*********************************************
 // used by editorGetScreenXFromRowCol and by
 // editorGetLineInRow
-int editorGetLineCharCountWW(int rsr, int line) {
+int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
-  erow *row = &E.row[rsr];
+  erow *row = &E.row[r];
   if (row->size == 0) return 0;
 
   char *start,*right_margin;
@@ -5841,11 +5876,13 @@ int editorGetLineCharCountWW(int rsr, int line) {
 
   if (row->size == 0) return 0;
 
-  num = 1; ////// Don't see how this works for line = 1
+  num = 1; 
   for (;;) {
-    if (left <= width) return left; // <
-    right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-      if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02262019 ? kluge
+    if (left <= width) return left; 
+
+    // each time start pointer moves you are adding the width to it and checking for spaces
+    right_margin = start + width - 1; 
+    if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02262019 ? kluge
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -5854,7 +5891,7 @@ int editorGetLineCharCountWW(int rsr, int line) {
       }    
     } 
     len = right_margin - start + 1;
-    left -= right_margin - start+1;      // +1 for the space //
+    left = left - (right_margin - start + 1); 
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     //length += len;
     if (num == line) break;
@@ -5865,13 +5902,12 @@ int editorGetLineCharCountWW(int rsr, int line) {
 }
 
 // ESSENTIAL ***************************************************
-// called in editScroll to get E.cx
-// seems to correctly take into account insert mode which means you can go beyond chars in line
-// although two ways to account of INSERT mode and not sure which is correct (see below)
-int editorGetScreenXFromRowCol(int r, int c) {
+// now not exactly the same as editorGetScreenXFromRowCol
+// if it works should combine them
+int editorGetLineInRowWW(int r, int c) {
 
   erow *row = &E.row[r];
-  if (row->size == 0) return 0;
+  if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
 
   char *start,*right_margin;
   int width, len, left, length;  //num 
@@ -5884,6 +5920,10 @@ int editorGetScreenXFromRowCol(int r, int c) {
 
   int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
+
+    /*This is not present in editorGetScreenXFromRowCol
+    I should probably try to understand that*/
+
     // not sure which of the two following are more correct
     // or practically they may be equivalent
     //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) {  
@@ -5892,6 +5932,11 @@ int editorGetScreenXFromRowCol(int r, int c) {
       len = left;
       break;
     }
+
+
+
+
+
     right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
     while(!isspace(*right_margin)) { //#2
       right_margin--;
@@ -5907,6 +5952,58 @@ int editorGetScreenXFromRowCol(int r, int c) {
     if (c - (E.mode == INSERT) < length) break; // this seems to work
     num++;
   }
+  //return c - length + len;
+  return num;
+}
+// called in editScroll to get E.cx
+// seems to correctly take into account insert mode which means you can go beyond chars in line
+// although two ways to account of INSERT mode and not sure which is correct (see below)
+int editorGetScreenXFromRowCol(int r, int c) {
+
+  erow *row = &E.row[r];
+  if ((row->size == 0) || (c == 0)) return 0;
+
+  char *start,*right_margin;
+  int width, len, left, length;
+
+  left = row->size; 
+  start = row->chars; 
+  width = E.screencols; // width we are wrapping to
+  
+  length = 0;
+
+  //int num = 1;
+  for (;;) {
+
+    //each time start pointer moves you are adding the width to it and checking for spaces
+    right_margin = start + width - 1; 
+    while(!isspace(*right_margin)) { //#2
+      right_margin--;
+      if( right_margin == start) { // situation in which there were no spaces to break the link
+        right_margin += width - 1;
+        break; 
+      }    
+    } 
+
+    len = right_margin - start + 1; // the length of the row just analyzed
+    left -= len; // how much of the row is left to be analyzed
+    start = right_margin + 1; // The pointer to the beginning of the next line to be analyzed
+    length += len; // the total length we've analyzed
+
+    /* if the char position in the row (usually E.fc) is less than the
+       length we've already analyzed then we can break since we know we've
+       gone too far*/
+
+    //if (c - (E.mode == INSERT) < length) break; //this works, just confusing 
+    if (c < (length + (E.mode == INSERT))) break; // c gets to stay on line for extra char in INSERT mode
+    //num++;
+  }
+  
+  /* The below says to find the x position we need to know how many chars
+     make up the preceding n lines before the line that C is in and that
+     would be c - (length - len) --> c - length + len
+  */
+
   return c - length + len;
 }
 /****************************ESSENTIAL (above) *****************************/
@@ -5949,8 +6046,8 @@ int *editorGetRowLineCharWW(void) {
 // below only used in editorGetRowLineChar which
 // returns row, line in row and column
 // now only useful (possibly) for debugging
-int editorGetCharInRowWW(int rsr, int line) {
-  erow *row = &E.row[rsr];
+int editorGetCharInRowWW(int r, int line) {
+  erow *row = &E.row[r];
   char *start,*right_margin;
   int left, width, num, len, length;
 
@@ -5959,10 +6056,10 @@ int editorGetCharInRowWW(int rsr, int line) {
   width = E.screencols; //wrapping width
   
   length = 0;
-  num = 1; ////// Don't see how this works for line = 1
+  num = 1; 
   for (;;) {
-    if (left <= width) return length + E.cx; /////////////////////////////////////////////////////////////////////////////02182019 9:41 am 
-    right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+    if (left <= width) return length + E.cx; 
+    right_margin = start+width - 1; 
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -6574,16 +6671,21 @@ void EraseRedrawLines(void) {
   int pos = screencols/2;
   char buf[32];
 
-  write(STDOUT_FILENO, "\x1b[2J", 4); // Enter line drawing mode
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-  for (int j=1; j < screenlines + 1;j++) {
+  for (int j = 1; j < screenlines + 1; j++) {
+
+    // First vertical line
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1);
     write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8);
+
+    // Second vertical line
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
     write(STDOUT_FILENO, buf, strlen(buf));
-    //below x = 0x78 vertical line and q = 0x71 is horizontal
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); 
 }
 
   write(STDOUT_FILENO, "\x1b[1;1H", 6);
@@ -6764,11 +6866,18 @@ int main(int argc, char** argv) {
       editorScroll();
       editorRefreshScreen();
       editorProcessKeypress();
+    } else if (O.mode != FILE_DISPLAY) { 
+      outlineScroll();
+      outlineRefreshScreen();
+      outlineProcessKeypress();
+    } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
+    /*
     } else {
       outlineScroll();
       outlineRefreshScreen();
       outlineProcessKeypress();
     }
+    */
   }
   return 0;
 }
