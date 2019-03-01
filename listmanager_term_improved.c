@@ -5930,31 +5930,19 @@ int editorGetLineInRowWW(int r, int c) {
       len = left;
       break;
     }
-*/
-
-
-
+    */
 
     // each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
 
-
-
-// Alternative that if it works doesn't depend on knowing the line cout!!
-//seems to work
-       if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
-          //printf("I got here2\n");
-         //length += left;
-         //len = left;
-         break; 
-         }
-
-
-
-
-
-
-
+    // Alternative that if it works doesn't depend on knowing the line cout!!
+    //seems to work
+    if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+      //printf("I got here2\n");
+      //length += left;
+      //len = left;
+      break; 
+    }
 
     while(!isspace(*right_margin)) { //#2
       right_margin--;
@@ -5967,9 +5955,11 @@ int editorGetLineInRowWW(int r, int c) {
     left -= len;
     start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
     length += len;
-    if (c - (E.mode == INSERT) < length) break; // this seems to work
+    //if (c - (E.mode == INSERT) < length) break; // this seems to work
+    if (c < length) break; // I think best solution because handles end of line/beginning of next better
     num++;
   }
+
   //return c - length + len;
   return num;
 }
@@ -5995,37 +5985,26 @@ int editorGetScreenXFromRowCol(int r, int c) {
   int num = 1;
   for (;;) {
 
-   /*
-   // now seems necessary when it didn't before baffling
+    /*
+    // this is neccessry here or the alternative solution below
     if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
       length += left;
       len = left;
       break;
     }
-*/
+    */
 
 
     //each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
 
-
-
-// Alternative that if it works doesn't depend on knowing the line cout!!
-//seems to work
-       if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
-          //printf("I got here2\n");
-         length += left;
-         len = left;
-         break; 
-         }
-
-
-
-
-
-
-
-
+    // Alternative that if it works doesn't depend on knowing the line count
+    //seems to work
+    if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+       length += left;
+       len = left;
+       break; 
+       }
 
     while(!isspace(*right_margin)) { //#2
       right_margin--;
@@ -6044,8 +6023,8 @@ int editorGetScreenXFromRowCol(int r, int c) {
        length we've already analyzed then we can break since we know we've
        gone too far*/
 
-    //if (c < (length + (E.mode == INSERT))) break; // c gets to stay on line for extra char in INSERT mode
-    if (c - (E.mode == INSERT) < length) break; // c gets to stay on line for extra char in INSERT mode
+    //if (c - (E.mode == INSERT) < length) break; // c gets to stay on line for extra char in INSERT mode
+    if (c < length) break; // I think best solution because handles end of line/beginning of next better
     num++;
   }
   
