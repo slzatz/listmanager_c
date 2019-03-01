@@ -5924,23 +5924,38 @@ int editorGetLineInRowWW(int r, int c) {
   int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
 
-    /*This is not present in editorGetScreenXFromRowCol
-    I should probably try to understand that*/
-
-    // not sure which of the two following are more correct
-    // or practically they may be equivalent
-    //if (left <= (editorGetLineCharCountWW(r, num) + (E.mode == INSERT))) {  
+    /*
     if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
       length += left;
       len = left;
       break;
     }
+*/
+
+
+
+
+    // each time start pointer moves you are adding the width to it and checking for spaces
+    right_margin = start + width - 1; 
+
+
+
+// Alternative that if it works doesn't depend on knowing the line cout!!
+//seems to work
+       if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+          //printf("I got here2\n");
+         //length += left;
+         //len = left;
+         break; 
+         }
 
 
 
 
 
-    right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
+
+
+
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -5980,22 +5995,38 @@ int editorGetScreenXFromRowCol(int r, int c) {
   int num = 1;
   for (;;) {
 
-
+   /*
    // now seems necessary when it didn't before baffling
     if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
       length += left;
       len = left;
       break;
     }
-
-
-
-
-
+*/
 
 
     //each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
+
+
+
+// Alternative that if it works doesn't depend on knowing the line cout!!
+//seems to work
+       if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+          //printf("I got here2\n");
+         length += left;
+         len = left;
+         break; 
+         }
+
+
+
+
+
+
+
+
+
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
