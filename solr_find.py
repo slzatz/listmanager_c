@@ -44,3 +44,6 @@ def solr_find(search_terms):
     solr_ids = [x['id'] for x in items]
     return solr_ids 
 
+if __name__ == "__main__":
+  results = solr_find("marty")
+  print(results)
