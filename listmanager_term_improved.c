@@ -43,6 +43,7 @@ int EDITOR_LEFT_MARGIN;
 int NN = 0; //which context is being displayed on message line (if none then NN==0)
 struct termios orig_termios;
 int screenlines, screencols;
+char display_file[30];
 int initial_file_row = 0; //for arrowing or displaying files
 bool editor_mode;
 char search_terms[50];
@@ -367,6 +368,7 @@ void editorCreateSnapshot(void);
 void editorInsertRow(int fr, char *s, size_t len); 
 void abAppend(struct abuf *ab, const char *s, int len);
 void EraseRedrawLines(void);
+void editorDisplayFile(void);
 // config struct for reading db.ini file
 
 struct config {
@@ -1713,9 +1715,10 @@ void editorEraseScreen(void) {
   abFree(&ab); 
 }
 
-void editorDisplayFile(char *filename) {
+void editorDisplayFile(void) {
 
-  FILE *fp = fopen(filename, "r");
+  //FILE *fp = fopen(filename, "r");
+  FILE *fp = fopen(display_file, "r");
   if (!fp) die("fopen");
 
   char lf_ret[10];
@@ -2721,8 +2724,10 @@ void outlineProcessKeypress() {
               }
               */
 
-              editorDisplayFile("log");//put them in the command mode case synch
-              O.mode = NORMAL;
+              strncpy(display_file, "log", sizeof(display_file));
+              initial_file_row = 0; //for arrowing or displaying files
+              editorDisplayFile();//put them in the command mode case synch
+              O.mode = FILE_DISPLAY;
               return;
 
             case C_synch_test:
@@ -2740,17 +2745,21 @@ void outlineProcessKeypress() {
               }
               */
 
-              editorDisplayFile("log");//put them in the command mode case synch
+              strncpy(display_file, "log", sizeof(display_file));
+              initial_file_row = 0; //for arrowing or displaying files
+              editorDisplayFile();//put them in the command mode case synch
+              O.mode = FILE_DISPLAY;
+              return;
+
+            case C_valgrind:
+              strncpy(display_file, "valgrind_log_file", sizeof(display_file));
+              initial_file_row = 0; //for arrowing or displaying files
+              editorDisplayFile();//put them in the command mode case synch
               O.mode = NORMAL;
               return;
 
-             case C_valgrind:
-               editorDisplayFile("valgrind_log_file");
-               O.mode = FILE_DISPLAY;
-              return;
-
-             case C_quit:
-             case 'q':
+            case C_quit:
+            case 'q':
                ;
                bool unsaved_changes = false;
                for (int i=0;i<O.numrows;i++) {
@@ -2773,7 +2782,7 @@ void outlineProcessKeypress() {
                }
                return;
 
-             case C_quit0: //catches both :q! and :quit!
+            case C_quit0: //catches both :q! and :quit!
                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
                Py_FinalizeEx();
@@ -2784,7 +2793,9 @@ void outlineProcessKeypress() {
             case C_help:
               initial_file_row = 0;
               O.mode = FILE_DISPLAY;
-              editorDisplayFile("listmanager_commands");
+              strncpy(display_file, "listmanager_commands", sizeof(display_file));
+              initial_file_row = 0; //for arrowing or displaying files
+              editorDisplayFile();//put them in the command mode case synch
               return;
 
             default: // default for commandfromstring
@@ -2995,25 +3006,21 @@ void outlineProcessKeypress() {
         case 'k':
           initial_file_row--;
           initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
-          editorDisplayFile("listmanager_commands");
-          return;
+          break;
 
         case ARROW_DOWN:
         case 'j':
           initial_file_row++;
-          editorDisplayFile("listmanager_commands");
-          return;
+          break;
 
         case PAGE_UP:
           initial_file_row = initial_file_row - E.screenlines;
           initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
-          editorDisplayFile("listmanager_commands");
-          return;
+          break;
 
         case PAGE_DOWN:
           initial_file_row = initial_file_row + E.screenlines;
-          editorDisplayFile("listmanager_commands");
-          return;
+          break;
 
         case '\x1b':
           O.mode = NORMAL;
@@ -3022,6 +3029,9 @@ void outlineProcessKeypress() {
           outlineSetMessage("");
           return;
       }
+
+      editorDisplayFile();
+
       return;
   } //End of outer switch(O.mode)
 }
