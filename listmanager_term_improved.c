@@ -13,7 +13,7 @@
 //#define EDITOR_LEFT_MARGIN 55
 #define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define ABUF_INIT {NULL, 0}
-#define DEBUG 1
+#define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
 
@@ -1964,7 +1964,8 @@ void outlineDrawStatusBar(struct abuf *ab) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
                              O.screenlines + TOP_MARGIN + 1,
-                             screencols/2,
+                             //screencols/2,
+                             O.screencols + OUTLINE_LEFT_MARGIN,
 
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
@@ -1979,23 +1980,28 @@ void outlineDrawStatusBar(struct abuf *ab) {
   memcpy(truncated_title, row->chars, len); //had issues with strncpy so changed to memcpy
   truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
-  len = snprintf(status, sizeof(status), "%s%s%s - %d rows - %.15s... - \x1b[1m%s\x1b[0;7m",
+  len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s...\x1b[0;7m %d %d/%d %s",
                               O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               (strcmp(O.context, "search") == 0) ? search_terms : "",
-                              O.numrows, truncated_title, which_db);
+                              truncated_title, row->id, O.fr + 1, O.numrows, mode_text[O.mode]);
 
   //because of escapes
   len-=10;
 
+  /*
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
-                      mode_text[O.mode], row->id, O.fr + 1, O.numrows);
+                      mode_text[O.mode], row->id, O.fr + 1, O.numrows); which_db
+  */
 
-  if (len > screencols/2) len = screencols/2;
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s\x1b[0;7m ", which_db);
+
+  //if (len > screencols/2) len = screencols/2;
+  if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
 
   abAppend(ab, status, len + 10);
 
-  while (len < screencols/2) {
-    if (screencols/2 - len == rlen) {
+  while (len < O.screencols + OUTLINE_LEFT_MARGIN) {
+    if ((O.screencols + OUTLINE_LEFT_MARGIN - len) == rlen - 10) { //10 of chars not printable
       abAppend(ab, rstatus, rlen);
       break;
     } else {
@@ -2739,7 +2745,8 @@ void outlineProcessKeypress() {
               return;
 
              case C_valgrind:
-              editorDisplayFile("valgrind_log_file");
+               editorDisplayFile("valgrind_log_file");
+               O.mode = FILE_DISPLAY;
               return;
 
              case C_quit:
@@ -4821,7 +4828,7 @@ void editorDrawRows(struct abuf *ab) {
 
 //status bar has inverted colors
 void editorDrawStatusBar(struct abuf *ab) {
-
+/*
   int efr = (E.row) ? E.fr : -1;
 
   orow *row = &O.row[O.fr];
@@ -4829,7 +4836,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
-                                            EDITOR_LEFT_MARGIN);//+1 
+                                            EDITOR_LEFT_MARGIN + 1);//+1 
   abAppend(ab, buf, strlen(buf));
 
   abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
@@ -4854,10 +4861,51 @@ void editorDrawStatusBar(struct abuf *ab) {
     efr + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
+ */
+  int len;
+  char status[80];
+  // position the cursor at the beginning of the editor status bar at correct indent
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
+                                            //EDITOR_LEFT_MARGIN);//+1 
+                                            EDITOR_LEFT_MARGIN - OUTLINE_RIGHT_MARGIN);
+  abAppend(ab, buf, strlen(buf));
+
+  abAppend(ab, "\x1b[K", 3); //cursor in middle of screen and doesn't move on erase
+
+  abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
+  //                                          EDITOR_LEFT_MARGIN + 1);// move 1 to right
   
+  abAppend(ab, " ", 1);
+  //abAppend(ab, buf, strlen(buf));
+
+  if (E.row){
+    int line = editorGetLineInRowWW(E.fr, E.fc);
+    int line_char_count = editorGetLineCharCountWW(E.fr, line); 
+
+    len = snprintf(status, 
+                   sizeof(status), "E.fr(0)=%d line(1)=%d E.fc(0)=%d line chrs(1)="
+                                   "%d E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d", 
+                                   E.fr, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
+  } else {
+    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
+                                      E.cx, E.cy, E.numrows, E.line_offset); 
+  }
+
+  if (len > E.screencols + OUTLINE_RIGHT_MARGIN) len = E.screencols + OUTLINE_RIGHT_MARGIN;
+  abAppend(ab, status, len);
+
+  while (len < E.screencols + OUTLINE_RIGHT_MARGIN) {
+      abAppend(ab, " ", 1);
+      len++;
+    }
+
+  abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
+
   /* add spaces until you just have enough room
      left to print the status message  */
-
+ /*
   while (len < E.screencols) {
     if (E.screencols - len == rlen) {
       abAppend(ab, rstatus, rlen);
@@ -4869,6 +4917,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   }
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
   free(truncated_title);
+  */
 }
 
 void editorDrawMessageBar(struct abuf *ab) {
@@ -4896,7 +4945,6 @@ void editorRefreshScreen(void) {
 
   if (DEBUG) {
     if (E.row){
-      //int *screeny_screenx = editorGetScreenPosFromRowCharPosWW(E.fr, E.fc); 
       int screenx = editorGetScreenXFromRowCol(E.fr, E.fc); 
       int line = editorGetLineInRowWW(E.fr, E.fc);
       int line_char_count = editorGetLineCharCountWW(E.fr, line); 
