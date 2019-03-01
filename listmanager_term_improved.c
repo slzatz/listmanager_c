@@ -5902,8 +5902,11 @@ int editorGetLineCharCountWW(int r, int line) {
 }
 
 // ESSENTIAL ***************************************************
-// now not exactly the same as editorGetScreenXFromRowCol
-// if it works should combine them
+// if it works should combine them -- not sure there is any benefit to combining
+// used by editorGetScreenYFromRowColWW
+// there is a corner case of INSERT mode when you really can't know if you
+//should be beyond the end of the line in a multiline or in the zeroth position
+// of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetLineInRowWW(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5957,7 +5960,9 @@ int editorGetLineInRowWW(int r, int c) {
 }
 // called in editScroll to get E.cx
 // seems to correctly take into account insert mode which means you can go beyond chars in line
-// although two ways to account of INSERT mode and not sure which is correct (see below)
+// there is a corner case of INSERT mode when you really can't know if you
+//should be beyond the end of the line in a multiline or in the zeroth position
+// of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetScreenXFromRowCol(int r, int c) {
 
   erow *row = &E.row[r];
@@ -5972,8 +5977,22 @@ int editorGetScreenXFromRowCol(int r, int c) {
   
   length = 0;
 
-  //int num = 1;
+  int num = 1;
   for (;;) {
+
+
+   // now seems necessary when it didn't before baffling
+    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
+      length += left;
+      len = left;
+      break;
+    }
+
+
+
+
+
+
 
     //each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
@@ -5994,9 +6013,9 @@ int editorGetScreenXFromRowCol(int r, int c) {
        length we've already analyzed then we can break since we know we've
        gone too far*/
 
-    //if (c - (E.mode == INSERT) < length) break; //this works, just confusing 
-    if (c < (length + (E.mode == INSERT))) break; // c gets to stay on line for extra char in INSERT mode
-    //num++;
+    //if (c < (length + (E.mode == INSERT))) break; // c gets to stay on line for extra char in INSERT mode
+    if (c - (E.mode == INSERT) < length) break; // c gets to stay on line for extra char in INSERT mode
+    num++;
   }
   
   /* The below says to find the x position we need to know how many chars
