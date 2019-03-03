@@ -1323,7 +1323,7 @@ void outlineDelChar(void) {
   row->size--;
 
   //shouldn't have to do this since trailing '\0' should move too
-  row->chars[row->size] = '\0'; 
+  //row->chars[row->size] = '\0'; commented out 03022019
 
   // don't know if this is is necessary - you have one row i
   // with no chars - that's fine
@@ -1419,6 +1419,13 @@ void editorInsertRow(int fr, char *s, size_t len) {
   memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
 
   // section below creates an erow struct for the new row
+
+  // I have no idea if this is a problem but if we are inserting a 
+  // row fr and there was something previously there
+  // don't we have to free it? added 03022019 and could be a bad idea
+
+  //if (E.numrows > fr) free(E.row[fr].chars); // ************************************
+
   E.row[fr].size = len;
   E.row[fr].chars = malloc(len + 1);
   memcpy(E.row[fr].chars, s, len);
@@ -1563,7 +1570,9 @@ void editorInsertNewline(int direction) {
   for (int j=0; j < indent; j++) {
     spaces[j] = ' ';
   }
-  spaces[indent] = '\0';
+
+  // not sure this is  necessary since editorInsertRow is going to terminate the string
+  spaces[indent] = '\0'; //not sure this is  necessary since editorInsertRow is going to terminate string with
 
   E.fc = indent;
 
@@ -1586,7 +1595,7 @@ void editorDelChar(void) {
   row->size--;
 
   //shouldn't have to do this since trailing '\0' should move too
-  row->chars[row->size] = '\0'; 
+  row->chars[row->size] = '\0'; // commented out 03022019 and put back
 
   // don't know if this is is necessary - you have one row i
   // with no chars - that's fine
@@ -1892,11 +1901,12 @@ void outlineScroll(void) {
 // fr is the file row and takes into account any scroll
 void outlineDrawRows(struct abuf *ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
+  char buf[32];
 
   if (!O.row) return; 
 
   int y;
-  char lf_ret[10];
+  char lf_ret[16];
   int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
 
   int spaces;
@@ -1907,7 +1917,13 @@ void outlineDrawRows(struct abuf *ab) {
     orow *row = &O.row[fr];
 
     // if a line is long you only draw what fits on the screen
-    int len = (row->size > O.screencols) ? O.screencols : row->size;
+    //below solves  problem when deleting chars from a scrolled long line
+    int len = (fr == O.fr) ? row->size - O.coloff : row->size; //can run into this problem when deleting chars from a scrolled log line
+    if (len > O.screencols) len = O.screencols; 
+
+    // was the below for a long time but changed on 03022019 to deal with scrolled line
+    // that has chars deleted from it so it doesn't take up the full row anymone
+    //int len = (row->size > O.screencols) ? O.screencols : row->size;
     
     if (row->star) abAppend(ab, "\x1b[1m", 4); //bold
 
@@ -1943,7 +1959,9 @@ void outlineDrawRows(struct abuf *ab) {
     // like the whole row is highlighted
     spaces = O.screencols - len; 
     for (int i=0; i < spaces; i++) abAppend(ab, " ", 1); 
-    abAppend(ab, "\x1b[1C", 4); // move over vertical line
+    //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
+    abAppend(ab, buf, strlen(buf));
     abAppend(ab, row->modified, 16); 
     abAppend(ab, lf_ret, nchars_lf_ret);
     abAppend(ab, "\x1b[0m", 4); // return background to normal
@@ -2755,7 +2773,7 @@ void outlineProcessKeypress() {
               strncpy(display_file, "valgrind_log_file", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
               editorDisplayFile();//put them in the command mode case synch
-              O.mode = NORMAL;
+              O.mode = FILE_DISPLAY;
               return;
 
             case C_quit:
@@ -4873,7 +4891,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, status, len);
  */
   int len;
-  char status[80];
+  char status[100];
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
@@ -4945,6 +4963,7 @@ void editorDrawMessageBar(struct abuf *ab) {
 
 void editorRefreshScreen(void) {
   char buf[32];
+  //int len;
   editorScroll(); 
 
     /* struct abuf {
@@ -4967,7 +4986,7 @@ void editorRefreshScreen(void) {
 
   abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
   //char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   abAppend(&ab, buf, strlen(buf));
   //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
@@ -4979,7 +4998,7 @@ void editorRefreshScreen(void) {
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
     //char buf[32];
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
     abAppend(&ab, buf, strlen(buf));
   }
 
@@ -4993,7 +5012,8 @@ void editorRefreshScreen(void) {
       //write(STDOUT_FILENO, "\x1b[31;1mq", 8); //horizontal line
       write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
     }
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + OUTLINE_RIGHT_MARGIN + 1);
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + OUTLINE_RIGHT_MARGIN + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2); // added len 03022019
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
     write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
@@ -5130,6 +5150,7 @@ void editorProcessKeypress(void) {
           if (E.row[E.fr].size) {
             int n = editorIndentAmount(E.fr);
             if (n == E.row[E.fr].size) {
+              E.fc = 0;
               for (int i = 0; i < n; i++) {
                 editorDelChar();
               }
@@ -5834,6 +5855,9 @@ int editorGetFileRowByLineWW(int y){
 /****************************ESSENTIAL*****************************/
 int editorGetLinesInRowWW(int r) {
   erow *row = &E.row[r];
+
+  if (row->size <= E.screencols) return 1; //seems obvious but not added until 03022019
+
   char *start,*right_margin;
   int left, width, num;  //, len;
   bool more_lines = true;
