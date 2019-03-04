@@ -47,6 +47,8 @@ char display_file[30];
 int initial_file_row = 0; //for arrowing or displaying files
 bool editor_mode;
 char search_terms[50];
+int fts5_ids[50];
+int fts5_counter;
 
 char *context[] = {
                         "", //maybe should be "search" - we'll see
@@ -116,6 +118,7 @@ enum Command {
   C_open,
 
   C_find,
+  C_fts,
 
   C_new, //create a new item
 
@@ -159,6 +162,7 @@ static t_symstruct lookuptable[] = {
   {"o", C_open}, //need 'o' because this is command with target word
   {"fin", C_find},
   {"find", C_find},
+  {"fts", C_fts},
   {"new", C_new}, //don't need "n" because there is no target
   {"context", C_context},
   {"con", C_context},
@@ -288,6 +292,8 @@ void (*update_row)(void);
 int (*insert_row)(int); 
 void (*display_item_info)(int);
 void (*touch)(void);
+void fts5_sqlite(char *);
+int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
@@ -1397,12 +1403,14 @@ void outlineSave() {
 
 /*** editor row operations ***/
 
-//fr is the row number of the row to insert
+// used by numerous other functions to sometimes insert zero length rows
+// and other times rows with characters like when retrieving a note
+// fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, char *s, size_t len) {
 
   /*E.row is a pointer to an array of erow structures
   The array of erows that E.row points to needs to have its memory enlarged when
-  you add a row. Note that erow structues are just a size and a char pointer*/
+  you add a row. Note that erow structure includes the row size and char pointer*/
 
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
 
@@ -1411,9 +1419,8 @@ void editorInsertRow(int fr, char *s, size_t len) {
   moves the line at fr to fr+1 and all the other erow structs until the end
   when you insert into the last row E.numrows==fr then no memory is moved
   apparently ok if there is no E.row[fr+1] if number of bytes = 0
-  so below we are moving the row structure currently at *fr* to x+1
-  and all the rows below *fr* to a new location to make room at *fr*
-  to create room for the line that we are inserting
+  so below we are moving the row structures currently at fr and below to fr+1
+  to make room at E.row[fr] to create the line that we are inserting
   */
 
   memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
@@ -1424,7 +1431,10 @@ void editorInsertRow(int fr, char *s, size_t len) {
   // row fr and there was something previously there
   // don't we have to free it? added 03022019 and could be a bad idea
 
-  //if (E.numrows > fr) free(E.row[fr].chars); // ************************************
+  // not necessary/doesn't work because E.row[fr].chars points to same location as 
+  // E.row[fr+1].chars after the memmove above so freeing that memory destroys
+  // whatever string E.row[fr+1].chars points to
+  //if (E.numrows > fr) free(E.row[fr].chars);
 
   E.row[fr].size = len;
   E.row[fr].chars = malloc(len + 1);
@@ -1702,7 +1712,7 @@ void editorEraseScreen(void) {
 
   char lf_ret[10];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -1714,7 +1724,7 @@ void editorEraseScreen(void) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -1732,7 +1742,7 @@ void editorDisplayFile(void) {
 
   char lf_ret[10];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -1744,7 +1754,7 @@ void editorDisplayFile(void) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -1770,7 +1780,7 @@ void editorDisplayFile(void) {
     for(;;) {
       if (linelen < (n+1)*E.screencols) break;
       abAppend(&ab, &line[n*E.screencols], E.screencols);
-      abAppend(&ab, lf_ret, nchars_lf_ret);
+      abAppend(&ab, lf_ret, nchars);
       file_line++; //**********************
       //should be num_liness++ here
       n++;
@@ -1778,7 +1788,7 @@ void editorDisplayFile(void) {
     abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
     file_line++;
     if (file_line > E.screenlines - 2) break; //was - 1
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
   abAppend(&ab, "\x1b[0m", 4);
 
@@ -1907,7 +1917,7 @@ void outlineDrawRows(struct abuf *ab) {
 
   int y;
   char lf_ret[16];
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
 
   int spaces;
 
@@ -1963,7 +1973,7 @@ void outlineDrawRows(struct abuf *ab) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
     abAppend(ab, buf, strlen(buf));
     abAppend(ab, row->modified, 16); 
-    abAppend(ab, lf_ret, nchars_lf_ret);
+    abAppend(ab, lf_ret, nchars);
     abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
@@ -2652,6 +2662,21 @@ void outlineProcessKeypress() {
               (*get_note)(get_id(-1));
               return;
 
+            case C_fts: 
+              if (strlen(O.command_line) < 6) {
+                outlineSetMessage("You need more characters");
+                return;
+              }  
+
+              EraseRedrawLines(); //*****************************
+              fts5_sqlite(&O.command_line[pos + 1]);
+              outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
+              O.mode = NORMAL;
+              O.context = "search";
+              strcpy(search_terms, &O.command_line[pos + 1]);
+              (*get_note)(get_id(-1));
+              return;
+
             case C_update: //update solr
               update_solr();
               O.mode = NORMAL;
@@ -3133,7 +3158,7 @@ void display_item_info_pg(int id) {
 
   char lf_ret[10];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -3145,7 +3170,7 @@ void display_item_info_pg(int id) {
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -3157,30 +3182,30 @@ void display_item_info_pg(int id) {
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
-  abAppend(&ab, lf_ret, nchars_lf_ret);
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
+  abAppend(&ab, lf_ret, nchars);
+  abAppend(&ab, lf_ret, nchars);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
@@ -3193,7 +3218,7 @@ void display_item_info_pg(int id) {
 
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   abAppend(&ab, "\x1b[0m", 4);
@@ -3207,14 +3232,91 @@ void display_item_info_pg(int id) {
   PQclear(res);
 }
 
+void fts5_sqlite(char *search_terms) {
+
+  char fts_query[200];
+
+  sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\'", search_terms);
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open("fts5.db", &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  fts5_counter = 0;
+
+  rc = sqlite3_exec(db, fts_query, fts5_callback, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } 
+  sqlite3_close(db);
+
+  char query[2000];
+  char *put;
+
+  strncpy(query, "SELECT * FROM task WHERE "
+                   "task.deleted = False and task.id IN (",
+                   sizeof(query));
+  
+
+  put = &query[strlen(query)];
+
+  for (int i = 0; i < fts5_counter; i++) {
+    put += snprintf(put, sizeof(query) - (put - query), "%d, ", fts5_ids[i]);
+  }
+
+  int slen = strlen(query);
+  query[slen-2] = ')'; //last IN id has a trailing space and comma 
+  query[slen-1] = '\0';
+
+  put = &query[strlen(query)];
+  put += snprintf(put, sizeof(query) - (put - query), "%s", " ORDER BY ");
+
+  for (int i = 0; i < fts5_counter;i++) {
+    put += snprintf(put, sizeof(query) - (put - query), "task.id = %d DESC, ", fts5_ids[i]);
+  }
+
+  slen = strlen(query);
+  query[slen-2] = '\0'; //have extra comma space
+
+ //this is where you would do the search
+ (*get_solr_data)(query);
+
+
+}
+
+int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  if (fts5_counter >= 50) return 0;
+
+  fts5_ids[fts5_counter] = atoi(argv[0]);
+  fts5_counter++;
+
+  return 0;
+}
+
 void display_item_info_sqlite(int id) {
 
+  /* 03042019
   for (int j = 0 ; j < E.numrows ; j++ ) {
     free(E.row[j].chars);
   } 
   free(E.row);
   E.row = NULL; 
   E.numrows = 0;
+  */
 
   if (id ==-1) return;
 
@@ -3276,7 +3378,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   // note really have to take into account length of
   // EDITOR_LEFT_MARGIN and don't need to move things in the y direction
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -3288,7 +3390,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
     abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -3300,33 +3402,33 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", argv[0]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mtid:\x1b[0;44m %s", argv[1]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (atoi(argv[14]) == 1) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (argv[10]) ? "true": "false");
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", argv[16]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
   abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars_lf_ret);
-  abAppend(&ab, lf_ret, nchars_lf_ret);
-  abAppend(&ab, lf_ret, nchars_lf_ret);
+  abAppend(&ab, lf_ret, nchars);
+  abAppend(&ab, lf_ret, nchars);
+  abAppend(&ab, lf_ret, nchars);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
@@ -3339,7 +3441,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, lf_ret, nchars_lf_ret);
+    abAppend(&ab, lf_ret, nchars);
   }
 
   abAppend(&ab, "\x1b[0m", 4);
@@ -4718,9 +4820,9 @@ void editorDrawRows(struct abuf *ab) {
   int y = 0;
   int len, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
-  char lf_ret[10];
+  char lf_ret[16];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars_lf_ret = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
@@ -4737,7 +4839,7 @@ void editorDrawRows(struct abuf *ab) {
       //and probably there is a better way to do it
       if (y) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
       else abAppend(ab, "\x1b[K", 3); 
-      abAppend(ab, lf_ret, nchars_lf_ret);
+      abAppend(ab, lf_ret, nchars);
       y++;
 
     // this else is the main drawing code
@@ -4752,7 +4854,7 @@ void editorDrawRows(struct abuf *ab) {
           for (n=0; n < (E.screenlines - y);n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
-            abAppend(ab, lf_ret, nchars_lf_ret);
+            abAppend(ab, lf_ret, nchars);
           }
         break;
       }      
@@ -4842,7 +4944,7 @@ void editorDrawRows(struct abuf *ab) {
       // new line i shorter than the old
       abAppend(ab, "\x1b[K", 3); 
 
-      abAppend(ab, lf_ret, nchars_lf_ret);
+      abAppend(ab, lf_ret, nchars);
       abAppend(ab, "\x1b[0m", 4); //slz return background to normal
 
       start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
