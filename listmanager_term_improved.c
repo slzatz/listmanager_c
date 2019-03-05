@@ -2209,7 +2209,7 @@ void outlineProcessKeypress() {
           update_row();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
-          outlineSetMessage("");
+          //outlineSetMessage("");
           return;
 
         case HOME_KEY:
@@ -3240,7 +3240,8 @@ void fts5_sqlite(char *search_terms) {
 
   char fts_query[200];
 
-  sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\'", search_terms);
+  //sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\'", search_terms);
+  sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\' ORDER By rank", search_terms);
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -4392,7 +4393,7 @@ int insert_row_sqlite(int ofr) {
   rc = sqlite3_exec(db, query, 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -4400,11 +4401,40 @@ int insert_row_sqlite(int ofr) {
   row->id =  sqlite3_last_insert_rowid(db);
   row->dirty = false;
         
+  //free(title);
+  //free(query);
+  sqlite3_close(db);
+  //outlineSetMessage("Successfully inserted new row with id %d", row->id);
+    
+  /*virtual table insert*/
+  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", escaped_title, row->id);
+
+  //sqlite3 *db;
+  //err_msg = 0;
+    
+  rc = sqlite3_open(FTS_DB, &db);
+    
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open FTS database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return row->id;
+  }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+
   free(title);
   free(query);
-  sqlite3_close(db);
-  outlineSetMessage("Successfully inserted new row with id %d", row->id);
     
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    return row->id;
+  } 
+  sqlite3_close(db);
+  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row->id);
+  //free(title);
+  //free(query);
+
   return row->id;
 }
 
