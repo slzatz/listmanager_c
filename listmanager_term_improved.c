@@ -744,7 +744,20 @@ void get_note_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  //This is trickier than I thought because don't think you can bring back one note so would have to do this
+  //in the search that brings back all the ids and that is getting complicated.
+  char query[200];
+  int rc;
+  if (editor_mode || strcmp(O.context, "search")) {
+    sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
+    rc = sqlite3_open(SQLITE_DB, &db);
+  } else {
+    sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;166m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    rc = sqlite3_open(FTS_DB, &db);
+  }
+
+  //int rc = sqlite3_open(SQLITE_DB, &db); 
     
   if (rc != SQLITE_OK) {
         
@@ -752,14 +765,14 @@ void get_note_sqlite(int id) {
     sqlite3_close(db);
     }
 
-  char query[100];
-  sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
+  //char query[100]; 
+  //sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid 
 
   // callback does *not* appear to be called if result (argv) is null
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("Database %s SQL error: %s\n", FTS_DB, err_msg);
     sqlite3_free(err_msg);
     sqlite3_close(db);
   } 
@@ -2622,12 +2635,13 @@ void outlineProcessKeypress() {
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
-              O.mode = NORMAL;
+              //O.mode = NORMAL;
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("");
               editorEraseScreen();
               editorRefreshScreen();
+              O.mode = INSERT;
               return;
 
             case 'e':
@@ -2637,8 +2651,10 @@ void outlineProcessKeypress() {
                if (id != -1) {
                  outlineSetMessage("Edit note %d", id);
                  outlineRefreshScreen();
-                 (*get_note)(id); //if id == -1 does not try to retrieve note
+                 //editor_mode needs go before get_note in case we retrieved item via a search
                  editor_mode = true;
+                 (*get_note)(id); //if id == -1 does not try to retrieve note
+                 //editor_mode = true;
                  E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
                  E.mode = NORMAL;
                  E.command[0] = '\0';
@@ -3241,7 +3257,7 @@ void fts5_sqlite(char *search_terms) {
   char fts_query[200];
 
   //sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\'", search_terms);
-  sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\' ORDER By rank", search_terms);
+  sprintf(fts_query, "SELECT lm_id FROM fts WHERE fts MATCH \'%s\' ORDER By rank", search_terms);
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -4124,7 +4140,7 @@ void update_row_sqlite(void) {
     
     /************************************/
   
-    sprintf(query, "Update fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
+    sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
     //f"INSERT INTO fts (title, note, lm_id) VALUES (\'{title}\',\'{note}\', {task.id});")
   
     //sqlite3 *db;
@@ -4145,7 +4161,7 @@ void update_row_sqlite(void) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
       } else {
-        row->dirty = false;    
+        //row->dirty = false;    
         outlineSetMessage("Updated title and fts entry for item %d", row->id);
       }
   
@@ -4616,9 +4632,9 @@ void update_rows_sqlite(void) {
     return;
   }
 
-  outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
+  //outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
   
-  outlineSetMessage("Rows successfully updated ... ");
+  //outlineSetMessage("Rows successfully updated ... ");
   char msg[200];
   strncpy(msg, "Rows successfully updated: ", sizeof(msg));
   char *put;
@@ -4633,15 +4649,6 @@ void update_rows_sqlite(void) {
   outlineSetMessage("%s",  msg);
 }
 
-/*
-int outlineGetResultSetRow(void) {
-  return O.cy + O.rowoff; 
-}
-
-int outlineGetFileCol(void) {
-  return O.cx + O.coloff; ////////
-}
-*/
 int get_id(int fr) {
   if(fr==-1) fr = O.fr;
   int id = O.row[fr].id;
