@@ -38,6 +38,7 @@
 /*** defines ***/
 
 char *SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+char *FTS_DB = "fts5.db";
 char *which_db; //which db (sqlite or pg) are we using - command line ./listmanager_term s
 int EDITOR_LEFT_MARGIN;
 int NN = 0; //which context is being displayed on message line (if none then NN==0)
@@ -378,10 +379,10 @@ void editorDisplayFile(void);
 // config struct for reading db.ini file
 
 struct config {
-  const char * user;
-  const char * password;
-  const char * dbname;
-  const char * hostaddr;
+  const char *user;
+  const char *password;
+  const char *dbname;
+  const char *hostaddr;
   int port;
 };
 
@@ -395,11 +396,12 @@ void do_exit(PGconn *conn) {
     exit(1);
 }
 
-int parse_ini_file(char * ini_name)
+int parse_ini_file(char *ini_name)
 {
-    dictionary  *   ini ;
+    dictionary  *ini;
 
     ini = iniparser_load(ini_name);
+
     if (ini==NULL) {
         fprintf(stderr, "cannot parse file: %s\n", ini_name);
         return -1 ;
@@ -749,6 +751,7 @@ void get_note_sqlite(int id) {
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
+
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
 
@@ -760,6 +763,7 @@ void get_note_sqlite(int id) {
     sqlite3_free(err_msg);
     sqlite3_close(db);
   } 
+
   sqlite3_close(db);
 }
 
@@ -2365,7 +2369,7 @@ void outlineProcessKeypress() {
           outlineMoveEndWord();
           O.command[0] = '\0';
           O.repeat = 0;
-            return;
+          return;
 
         case '0':
           if (O.row != NULL) O.fc = 0;
@@ -3241,7 +3245,7 @@ void fts5_sqlite(char *search_terms) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open("fts5.db", &db);
+  int rc = sqlite3_open(FTS_DB, &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3263,9 +3267,8 @@ void fts5_sqlite(char *search_terms) {
   char query[2000];
   char *put;
 
-  strncpy(query, "SELECT * FROM task WHERE "
-                   "task.deleted = False and task.id IN (",
-                   sizeof(query));
+  strncpy(query, "SELECT * FROM task WHERE task.deleted = False and task.id IN (",
+                 sizeof(query));
   
 
   put = &query[strlen(query)];
@@ -3308,15 +3311,6 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
 }
 
 void display_item_info_sqlite(int id) {
-
-  /* 03042019
-  for (int j = 0 ; j < E.numrows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-  free(E.row);
-  E.row = NULL; 
-  E.numrows = 0;
-  */
 
   if (id ==-1) return;
 
@@ -3552,8 +3546,8 @@ void update_note_sqlite(void) {
   // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
   const char *str = note;
   int cnt = strlen(str)+1;
-   for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-          ;
+   for (const char *p = str ; *p ; cnt += (*p++ == 39)); //39 -> ' *p terminates for at the end of the string where *p == 0
+
   //VLA
   char escaped_note[cnt];
   char *out = escaped_note;
@@ -3602,6 +3596,38 @@ void update_note_sqlite(void) {
   }
 
   sqlite3_close(db);
+
+  /************************************/
+
+  sprintf(query, "Update fts SET note=\'%s\' WHERE lm_id=%d", escaped_note, id);
+  //f"INSERT INTO fts (title, note, lm_id) VALUES (\'{title}\',\'{note}\', {task.id});")
+
+  //sqlite3 *db;
+  //char *err_msg = 0;
+    
+  rc = sqlite3_open(FTS_DB, &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Updated note and fts entry for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded"); 
+  }
+   
+  sqlite3_close(db);
+
+  /************************************/
 
   free(note);
   free(query);
@@ -4093,11 +4119,43 @@ void update_row_sqlite(void) {
       outlineSetMessage("Successfully updated row %d", row->id);
     }
 
-    free(query);
-    free(title);
     sqlite3_close(db);
+    
+    /************************************/
+  
+    sprintf(query, "Update fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
+    //f"INSERT INTO fts (title, note, lm_id) VALUES (\'{title}\',\'{note}\', {task.id});")
+  
+    //sqlite3 *db;
+    //char *err_msg = 0;
+      
+    rc = sqlite3_open(FTS_DB, &db);
+      
+    if (rc != SQLITE_OK) {
+          
+      outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+  
+    rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+      
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+      } else {
+        row->dirty = false;    
+        outlineSetMessage("Updated title and fts entry for item %d", row->id);
+      }
+  
+      sqlite3_close(db);
+  
+      free(query);
+      free(title);
+      //sqlite3_close(db);
 
   } else { 
+
     insert_row_sqlite(O.fr);
   }  
 }
@@ -7017,7 +7075,6 @@ int main(int argc, char** argv) {
     which_db = "postgres";
   }
 
-  //int j;
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   initOutline();
