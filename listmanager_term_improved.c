@@ -133,6 +133,8 @@ enum Command {
   C_quit,
   C_quit0,
 
+  C_recent,
+
   C_help,
 
   C_edit,
@@ -180,6 +182,8 @@ static t_symstruct lookuptable[] = {
   {"quit!", C_quit0},
   {"q!", C_quit0},
   {"edit", C_edit},
+  {"rec", C_recent},
+  {"recent", C_recent},
   {"val", C_valgrind},
   {"valgrind", C_valgrind}
   //{"e", C_edit}
@@ -281,6 +285,7 @@ struct editorConfig E;
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
 void (*get_data)(char *, int);
+void (*get_recent)(int);
 void (*get_solr_data)(char *);
 void (*get_note)(int);
 void (*update_note)(void); 
@@ -323,6 +328,7 @@ void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
 int insert_row_pg(int); 
+void get_recent_sqlite(int);
 int insert_row_sqlite(int); 
 void update_note_pg(void); 
 void update_note_sqlite(void); 
@@ -509,6 +515,56 @@ void get_data_pg(char *context, int n) {
 
   O.fc = O.fr = O.rowoff = 0;
 }
+
+
+void get_recent_sqlite(int n) {
+// identical to get_data_sqlite (which is really get_items_by_context) except for query so should combine
+  char query[400];
+
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB, &db);
+    
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  // why does this have substitutions since !O.show_deleted determines them
+  if (!O.show_deleted) {
+    sprintf(query, "SELECT * FROM task WHERE "
+                    "task.deleted = False "
+                    "AND task.completed IS NULL " 
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    n);
+  }
+  else {
+
+    sprintf(query, "SELECT * FROM task "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    n);
+  }
+        
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    } 
+  sqlite3_close(db);
+}
+
 
 void get_data_sqlite(char *context, int n) {
   char query[400];
@@ -744,15 +800,13 @@ void get_note_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  //This is trickier than I thought because don't think you can bring back one note so would have to do this
-  //in the search that brings back all the ids and that is getting complicated.
   char query[200];
   int rc;
-  if (editor_mode || strcmp(O.context, "search")) {
+  if (editor_mode || strcmp(O.context, "search") || strcmp(O.context, "recent")) {
     sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
     rc = sqlite3_open(SQLITE_DB, &db);
   } else {
-    sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    //sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;166m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     rc = sqlite3_open(FTS_DB, &db);
   }
@@ -2624,6 +2678,7 @@ void outlineProcessKeypress() {
              case 'r':
                outlineSetMessage("\'%s\' will be refreshed", O.context);
                if (strcmp(O.context, "search") == 0) solr_find(search_terms);
+               else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
                else (*get_data)(O.context, MAX); 
                O.mode = NORMAL;
                return;
@@ -2767,6 +2822,16 @@ void outlineProcessKeypress() {
                outlineSetMessage("\'%s\' will be opened", new_context);
                (*get_data)(new_context, MAX); 
                O.context = new_context; 
+               O.mode = NORMAL;
+               (*get_note)(O.row[0].id);
+               //editorRefreshScreen(); //in get_note
+               return;
+
+            case C_recent:
+               EraseRedrawLines(); //*****************************
+               outlineSetMessage("Will retrieve recent items");
+               (*get_recent)(20); 
+               O.context = "search";
                O.mode = NORMAL;
                (*get_note)(O.row[0].id);
                //editorRefreshScreen(); //in get_note
@@ -7093,6 +7158,7 @@ int main(int argc, char** argv) {
     update_context = &update_context_sqlite;
     display_item_info = &display_item_info_sqlite;
     touch = &touch_sqlite;
+    get_recent = &get_recent_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
