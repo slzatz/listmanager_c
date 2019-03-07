@@ -711,7 +711,8 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   if (strcmp(O.context, "search") == 0) title = fts_titles[O.numrows];
   else title = argv[3];
 
-  //char *title = argv[3]; //********************************************
+  /*
+  //char *title = argv[3]; 
   char *zz = argv[0]; // ? use tid? = argv[1] see note above
   bool star = (atoi(argv[8]) == 1) ? true: false;
   bool deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -719,6 +720,27 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   int id = atoi(zz);
   char *modified = argv[16];
   outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
+  return 0;
+  */
+
+  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
+  orow *row = &O.row[O.numrows];
+  int len = strlen(title);
+  row->size = len;
+  row->chars = malloc(len + 1);
+  memcpy(row->chars, title, len);
+  row->chars[len] = '\0'; 
+  row->id = atoi(argv[0]);
+  row->star = (atoi(argv[8]) == 1) ? true: false;
+  row->deleted = (atoi(argv[14]) == 1) ? true: false;
+  row->completed = (argv[10]) ? true: false;
+  row->dirty = false;
+  len = strlen(argv[16]);
+  row->modified = malloc(len + 1); // I think all modifieds have the same length so this may not be necessary
+  memcpy(row->modified, argv[16], len);
+  row->modified[len] = '\0';
+  O.numrows++;
+
   return 0;
 }
 
@@ -867,7 +889,7 @@ void get_note_sqlite(int id) {
     rc = sqlite3_open(SQLITE_DB, &db);
   } else {
     //sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
-    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;88m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     rc = sqlite3_open(FTS_DB, &db);
   }
 
@@ -3382,7 +3404,7 @@ void fts5_sqlite(char *search_terms) {
   char fts_query[200];
 
   //sprintf(fts_query, "SELECT lm_id FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
-  sprintf(fts_query, "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;88m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
+  sprintf(fts_query, "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3588,7 +3610,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
-  note = strdup(argv[12]); // ******************
+  note = (argv[12]) ? strdup(argv[12]) : "NULL"; // 03072019
   char *found;
 
   for (int k=0; k < 4; k++) {
@@ -4272,6 +4294,8 @@ void update_row_sqlite(void) {
       row->dirty = false;    
       outlineSetMessage("Successfully updated row %d", row->id);
     }
+
+    /********************** note that we are not updating modified and either need to read out of database or just use c time function********/
 
     sqlite3_close(db);
     
