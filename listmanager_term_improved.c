@@ -214,7 +214,8 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
-  char *modified;
+  //char *modified;
+  char modified[17]; // display 16 chars plus need terminating '\0'
   
 } orow;
 
@@ -492,8 +493,9 @@ void get_recent_pg(int max) {
   } 
   free(O.row);
   O.row = NULL; 
-  O.numrows = 0;
+  //O.numrows = 0;
 
+  /*
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *title = PQgetvalue(res, i, 3);
@@ -505,7 +507,27 @@ void get_recent_pg(int max) {
     char *modified = PQgetvalue(res, i, 16);
     outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
+  */
 
+  int len, i;
+  int rows = PQntuples(res);
+  for(i=0; i<rows; i++) {
+    O.row = realloc(O.row, sizeof(orow) * (i + 1));
+    orow *row = &O.row[i];
+    len = strlen(PQgetvalue(res, i, 3));
+    row->size = len;
+    row->chars = malloc(len + 1);
+    memcpy(row->chars, PQgetvalue(res, i, 3), len);
+    row->id = atoi(PQgetvalue(res, i, 0));
+    row->star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    row->deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    row->dirty = false;
+    len = strlen(PQgetvalue(res, i, 16));
+    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    row->modified[len] = '\0';
+  }
+  O.numrows = i;
   PQclear(res);
   // PQfinish(conn);
 
@@ -549,8 +571,9 @@ void get_items_by_context_pg(char *context, int max) {
   } 
   free(O.row);
   O.row = NULL; 
-  O.numrows = 0;
+  //O.numrows = 0; //doesn't hurt but shouldn't need it
 
+  /*
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *title = PQgetvalue(res, i, 3);
@@ -562,6 +585,27 @@ void get_items_by_context_pg(char *context, int max) {
     char *modified = PQgetvalue(res, i, 16);
     outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
+  */
+
+  int len, i;
+  int rows = PQntuples(res);
+  for(i=0; i<rows; i++) {
+    O.row = realloc(O.row, sizeof(orow) * (i + 1));
+    orow *row = &O.row[i];
+    len = strlen(PQgetvalue(res, i, 3));
+    row->size = len;
+    row->chars = malloc(len + 1);
+    memcpy(row->chars, PQgetvalue(res, i, 3), len);
+    row->id = atoi(PQgetvalue(res, i, 0));
+    row->star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    row->deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    row->dirty = false;
+    len = strlen(PQgetvalue(res, i, 16));
+    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    row->modified[len] = '\0';
+  }
+  O.numrows = i;
 
   PQclear(res);
   // PQfinish(conn);
@@ -736,8 +780,7 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   row->completed = (argv[10]) ? true: false;
   row->dirty = false;
   len = strlen(argv[16]);
-  row->modified = malloc(len + 1); // I think all modifieds have the same length so this may not be necessary
-  memcpy(row->modified, argv[16], len);
+  strncpy(row->modified, argv[16], (len > 16) ? 16 : len);
   row->modified[len] = '\0';
   O.numrows++;
 
@@ -793,9 +836,10 @@ void get_items_by_id_pg(char *query) {
   } 
   free(O.row);
   O.row = NULL; 
-  O.numrows = 0;
+  //O.numrows = 0; // shouldn't be necessary unless things blow up but then we have bigger problems
   }
 
+  /*
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
     char *title = PQgetvalue(res, i, 3);
@@ -807,7 +851,27 @@ void get_items_by_id_pg(char *query) {
     char *modified = PQgetvalue(res, i, 16);
     outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
   }
+  */
 
+  int len, i;
+  int rows = PQntuples(res);
+  for(i=0; i<rows; i++) {
+    O.row = realloc(O.row, sizeof(orow) * (i + 1));
+    orow *row = &O.row[i];
+    len = strlen(PQgetvalue(res, i, 3));
+    row->size = len;
+    row->chars = malloc(len + 1);
+    memcpy(row->chars, PQgetvalue(res, i, 3), len);
+    row->id = atoi(PQgetvalue(res, i, 0));
+    row->star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    row->deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    row->dirty = false;
+    len = strlen(PQgetvalue(res, i, 16));
+    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    row->modified[len] = '\0';
+  }
+  O.numrows = i;
   PQclear(res);
  // PQfinish(conn);
 
@@ -1431,13 +1495,9 @@ void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool delet
   O.row[at].deleted = deleted;
   O.row[at].completed = completed;
   O.row[at].dirty = (id != -1) ? false : true;
-  //memcpy(O.row[at].chars, s, len);
-  //O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
-  O.row[at].modified = malloc(strlen(modified) + 1);
-  memcpy(O.row[at].modified, modified, strlen(modified));
-  O.row[at].modified[strlen(modified)] = '\0';
+  strncpy(O.row[at].modified, modified, 16);
+  O.row[at].modified[16] = '\0';
   O.numrows++;
-
 }
 
 /*** outline operations ***/
@@ -2768,7 +2828,8 @@ void outlineProcessKeypress() {
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              outlineInsertRow(0, "<new item>", 10, -1, true, false, false, "1970-01-01 00:00");
+              //outlineInsertRow(0, "<new item>", 10, -1, true, false, false, "1970-01-01 00:00");
+              outlineInsertRow(0, "", 10, -1, true, false, false, "1970-01-01 00:00");
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
@@ -2826,10 +2887,10 @@ void outlineProcessKeypress() {
               }  
 
               EraseRedrawLines(); //*****************************
+              O.context = "search";
               fts5_sqlite(&O.command_line[pos + 1]);
               outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
-              O.context = "search";
               strcpy(search_terms, &O.command_line[pos + 1]);
               (*get_note)(get_id(-1));
               return;
@@ -3697,7 +3758,8 @@ void update_note_pg(void) {
   } else {
     outlineSetMessage("Updated note for item %d", id);
     outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded"); 
+    //editorSetMessage("Note update succeeeded"); 
+    /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
   
   free(note);
@@ -3726,7 +3788,7 @@ void update_note_sqlite(void) {
   memcpy(note, text, len);
   note[len] = '\0'; 
 
-  //Below replaces single quotes with two single quotes which escapes the single quote
+  // Replace single quotes with two single quotes which escapes the single quote
   // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
   const char *str = note;
   int cnt = strlen(str)+1;
@@ -3776,8 +3838,10 @@ void update_note_sqlite(void) {
   } else {
     outlineSetMessage("Updated note for item %d", id);
     outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded"); 
+    //editorSetMessage("Note update succeeeded"); 
+    /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
+
 
   sqlite3_close(db);
 
