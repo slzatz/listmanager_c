@@ -48,8 +48,9 @@ char display_file[30];
 int initial_file_row = 0; //for arrowing or displaying files
 bool editor_mode;
 char search_terms[50];
-int fts5_ids[50];
-int fts5_counter;
+int fts_ids[50];
+char *fts_titles[50];
+int fts_counter;
 
 char *context[] = {
                         "", //maybe should be "search" - we'll see
@@ -284,9 +285,9 @@ struct editorConfig E;
 
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
-void (*get_data)(char *, int);
+void (*get_items_by_context)(char *, int);
 void (*get_recent)(int);
-void (*get_solr_data)(char *);
+void (*get_items_by_id)(char *);
 void (*get_note)(int);
 void (*update_note)(void); 
 void (*toggle_star)(void);
@@ -327,8 +328,9 @@ void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool delet
 void outlineDrawRows(struct abuf *ab);
 void outlineScroll(void); 
 int get_id(int fr);
-int insert_row_pg(int); 
+void get_recent_pg(int);
 void get_recent_sqlite(int);
+int insert_row_pg(int); 
 int insert_row_sqlite(int); 
 void update_note_pg(void); 
 void update_note_sqlite(void); 
@@ -459,7 +461,58 @@ void get_conn(void) {
   } 
 }
 
-void get_data_pg(char *context, int n) {
+void get_recent_pg(int max) {
+  char query[400];
+  if (!O.show_deleted) {
+    sprintf(query, "SELECT * FROM task WHERE "
+                    "task.deleted = False "
+                    "AND task.completed IS NULL " 
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    max);
+  }
+  else {
+
+    sprintf(query, "SELECT * FROM task "
+                    "ORDER BY task.modified DESC LIMIT %d",
+                    max);
+  }
+
+  PGresult *res = PQexec(conn, query);    
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");        
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }    
+  
+  for (int j = 0 ; j < O.numrows ; j++ ) {
+    free(O.row[j].chars);
+  } 
+  free(O.row);
+  O.row = NULL; 
+  O.numrows = 0;
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    char *title = PQgetvalue(res, i, 3);
+    char *zz = PQgetvalue(res, i, 0);
+    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
+    int id = atoi(zz);
+    char *modified = PQgetvalue(res, i, 16);
+    outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
+  }
+
+  PQclear(res);
+  // PQfinish(conn);
+
+  O.fc = O.fr = O.rowoff = 0;
+}
+
+void get_items_by_context_pg(char *context, int max) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
@@ -470,7 +523,7 @@ void get_data_pg(char *context, int n) {
                     context,
                     "False",
                     "NULL",
-                    n);
+                    max);
   }
   else {
 
@@ -478,7 +531,7 @@ void get_data_pg(char *context, int n) {
                     "WHERE context.title = \'%s\' "
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
-                    n);
+                    max);
   }
 
   PGresult *res = PQexec(conn, query);    
@@ -517,8 +570,8 @@ void get_data_pg(char *context, int n) {
 }
 
 
-void get_recent_sqlite(int n) {
-// identical to get_data_sqlite (which is really get_items_by_context) except for query so should combine
+void get_recent_sqlite(int max) {
+// identical to get_items_by_context_sqlite
   char query[400];
 
   for (int j = 0 ; j < O.numrows ; j++ ) {
@@ -541,19 +594,18 @@ void get_recent_sqlite(int n) {
     return;
     }
 
-  // why does this have substitutions since !O.show_deleted determines them
   if (!O.show_deleted) {
     sprintf(query, "SELECT * FROM task WHERE "
                     "task.deleted = False "
                     "AND task.completed IS NULL " 
                     "ORDER BY task.modified DESC LIMIT %d",
-                    n);
+                    max);
   }
   else {
 
     sprintf(query, "SELECT * FROM task "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    n);
+                    max);
   }
         
     rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
@@ -566,7 +618,7 @@ void get_recent_sqlite(int n) {
 }
 
 
-void get_data_sqlite(char *context, int n) {
+void get_items_by_context_sqlite(char *context, int max) {
   char query[400];
 
   for (int j = 0 ; j < O.numrows ; j++ ) {
@@ -593,13 +645,15 @@ void get_data_sqlite(char *context, int n) {
   if (!O.show_deleted) {
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
-                    "AND task.deleted = %s "
-                    "AND task.completed IS %s " 
+                    //"AND task.deleted = %s "
+                    "AND task.deleted = False "
+                    //"AND task.completed IS %s " 
+                    "AND task.completed IS NULL " 
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
-                    "False",
-                    "NULL",
-                    n);
+                    //"False",
+                    //"NULL",
+                    max);
   }
   else {
 
@@ -607,7 +661,7 @@ void get_data_sqlite(char *context, int n) {
                     "WHERE context.title = \'%s\' "
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
-                    n);
+                    max);
   }
         
     rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
@@ -653,7 +707,11 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   store the tid in orow row
   */
 
-  char *title = argv[3];
+  char *title;
+  if (strcmp(O.context, "search") == 0) title = fts_titles[O.numrows];
+  else title = argv[3];
+
+  //char *title = argv[3]; //********************************************
   char *zz = argv[0]; // ? use tid? = argv[1] see note above
   bool star = (atoi(argv[8]) == 1) ? true: false;
   bool deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -664,7 +722,7 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void get_solr_data_sqlite(char *query) {
+void get_items_by_id_sqlite(char *query) {
 
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
@@ -696,7 +754,7 @@ void get_solr_data_sqlite(char *query) {
 }
 
 //brings back a set of ids generated by solr search
-void get_solr_data_pg(char *query) {
+void get_items_by_id_pg(char *query) {
   PGresult *res = PQexec(conn, query);    
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
@@ -802,12 +860,14 @@ void get_note_sqlite(int id) {
     
   char query[200];
   int rc;
-  if (editor_mode || strcmp(O.context, "search") || strcmp(O.context, "recent")) {
+
+  if (editor_mode || strcmp(O.context, "search") != 0) {
+  //if (editor_mode || strcmp(O.context, "search") || strcmp(O.context, "recent")) {
     sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
     rc = sqlite3_open(SQLITE_DB, &db);
   } else {
     //sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
-    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;166m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;88m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     rc = sqlite3_open(FTS_DB, &db);
   }
 
@@ -1052,7 +1112,7 @@ void solr_find(char *search_terms) {
               Py_DECREF(pValue);
 
              //this is where you would do the search
-             (*get_solr_data)(query);
+             (*get_items_by_id)(query);
 
 
           }
@@ -2679,7 +2739,7 @@ void outlineProcessKeypress() {
                outlineSetMessage("\'%s\' will be refreshed", O.context);
                if (strcmp(O.context, "search") == 0) solr_find(search_terms);
                else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
-               else (*get_data)(O.context, MAX); 
+               else (*get_items_by_context)(O.context, MAX); 
                O.mode = NORMAL;
                return;
 
@@ -2820,7 +2880,7 @@ void outlineProcessKeypress() {
                }
                EraseRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", new_context);
-               (*get_data)(new_context, MAX); 
+               (*get_items_by_context)(new_context, MAX); 
                O.context = new_context; 
                O.mode = NORMAL;
                (*get_note)(O.row[0].id);
@@ -3006,14 +3066,14 @@ void outlineProcessKeypress() {
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          (*get_data)(O.context, MAX);
+          (*get_items_by_context)(O.context, MAX);
             
           return;
 
         case 'r':
           outlineSetMessage("\'%s\' will be refreshed", O.context);
           if (strcmp(O.context, "search") == 0) solr_find(search_terms);
-          else (*get_data)(O.context, MAX); 
+          else (*get_items_by_context)(O.context, MAX); 
           O.mode = NORMAL;
           return;
 
@@ -3321,8 +3381,8 @@ void fts5_sqlite(char *search_terms) {
 
   char fts_query[200];
 
-  //sprintf(fts_query, "SELECT lm_id from fts where fts match \'%s\'", search_terms);
-  sprintf(fts_query, "SELECT lm_id FROM fts WHERE fts MATCH \'%s\' ORDER By rank", search_terms);
+  //sprintf(fts_query, "SELECT lm_id FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
+  sprintf(fts_query, "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;88m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3336,7 +3396,7 @@ void fts5_sqlite(char *search_terms) {
     return;
   }
 
-  fts5_counter = 0;
+  fts_counter = 0;
 
   rc = sqlite3_exec(db, fts_query, fts5_callback, 0, &err_msg);
     
@@ -3355,27 +3415,27 @@ void fts5_sqlite(char *search_terms) {
 
   put = &query[strlen(query)];
 
-  for (int i = 0; i < fts5_counter; i++) {
-    put += snprintf(put, sizeof(query) - (put - query), "%d, ", fts5_ids[i]);
+  for (int i = 0; i < fts_counter; i++) {
+    put += snprintf(put, sizeof(query) - (put - query), "%d, ", fts_ids[i]);
   }
 
   int slen = strlen(query);
   query[slen-2] = ')'; //last IN id has a trailing space and comma 
   query[slen-1] = '\0';
 
+  // see https://stackoverflow.com/questions/3091800/order-by-field-with-sqlite for an alternative
   put = &query[strlen(query)];
   put += snprintf(put, sizeof(query) - (put - query), "%s", " ORDER BY ");
 
-  for (int i = 0; i < fts5_counter;i++) {
-    put += snprintf(put, sizeof(query) - (put - query), "task.id = %d DESC, ", fts5_ids[i]);
+  for (int i = 0; i < fts_counter;i++) {
+    put += snprintf(put, sizeof(query) - (put - query), "task.id = %d DESC, ", fts_ids[i]);
   }
 
   slen = strlen(query);
   query[slen-2] = '\0'; //have extra comma space
 
- //this is where you would do the search
- (*get_solr_data)(query);
 
+ (*get_items_by_id)(query);
 
 }
 
@@ -3384,10 +3444,30 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
-  if (fts5_counter >= 50) return 0;
+  if (fts_counter >= 50) return 0;
 
-  fts5_ids[fts5_counter] = atoi(argv[0]);
-  fts5_counter++;
+  fts_ids[fts_counter] = atoi(argv[0]);
+
+  /*
+  //would need to malloc a new structure along the lines of O.row like FTS_titles
+  //memcopy each one and then in data_callback have some switch that
+  //says use FTS_titles[O.numrows], strlen(FTS_titles[O.numrows]
+  //seems pretty fragile
+  char * FTS_titles[50];
+
+  len = strlen(argv[1]);
+  FTS_titles[fts_counter] = malloc(len + 1);
+  memcpy(FTS_titles[fts_counter], argv[1], len);
+  FTS_titles[fts_counter][len] = '\0';
+  */
+
+  int len = strlen(argv[1]);
+  free(fts_titles[fts_counter]);
+  fts_titles[fts_counter] = malloc(len + 1);
+  memcpy(fts_titles[fts_counter], argv[1], len);
+  fts_titles[fts_counter][len] = '\0';
+
+  fts_counter++;
 
   return 0;
 }
@@ -3679,18 +3759,13 @@ void update_note_sqlite(void) {
 
   sqlite3_close(db);
 
-  /************************************/
+  /***************fts virtual table update*********************/
 
   sprintf(query, "Update fts SET note=\'%s\' WHERE lm_id=%d", escaped_note, id);
-  //f"INSERT INTO fts (title, note, lm_id) VALUES (\'{title}\',\'{note}\', {task.id});")
 
-  //sqlite3 *db;
-  //char *err_msg = 0;
-    
   rc = sqlite3_open(FTS_DB, &db);
     
   if (rc != SQLITE_OK) {
-        
     outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
@@ -3708,8 +3783,6 @@ void update_note_sqlite(void) {
   }
    
   sqlite3_close(db);
-
-  /************************************/
 
   free(note);
   free(query);
@@ -4185,11 +4258,10 @@ void update_row_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB, &db);
       
     if (rc != SQLITE_OK) {
-          
       outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
-      }
+    }
   
     rc = sqlite3_exec(db, query, 0, 0, &err_msg);
       
@@ -4203,14 +4275,10 @@ void update_row_sqlite(void) {
 
     sqlite3_close(db);
     
-    /************************************/
+    /**************fts virtual table update**********************/
   
     sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
-    //f"INSERT INTO fts (title, note, lm_id) VALUES (\'{title}\',\'{note}\', {task.id});")
   
-    //sqlite3 *db;
-    //char *err_msg = 0;
-      
     rc = sqlite3_open(FTS_DB, &db);
       
     if (rc != SQLITE_OK) {
@@ -4226,7 +4294,6 @@ void update_row_sqlite(void) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
       } else {
-        //row->dirty = false;    
         outlineSetMessage("Updated title and fts entry for item %d", row->id);
       }
   
@@ -4234,7 +4301,6 @@ void update_row_sqlite(void) {
   
       free(query);
       free(title);
-      //sqlite3_close(db);
 
   } else { 
 
@@ -7145,8 +7211,8 @@ void initEditor(void) {
 int main(int argc, char** argv) { 
 
   if (argc > 1 && argv[1][0] == 's') {
-    get_data = &get_data_sqlite;
-    get_solr_data = &get_solr_data_sqlite;
+    get_items_by_context = &get_items_by_context_sqlite;
+    get_items_by_id = &get_items_by_id_sqlite;
     get_note = &get_note_sqlite;
     update_note = &update_note_sqlite;
     toggle_star = &toggle_star_sqlite;
@@ -7162,8 +7228,8 @@ int main(int argc, char** argv) {
     which_db = "sqlite";
   } else {
     get_conn();
-    get_data = &get_data_pg;
-    get_solr_data = &get_solr_data_pg;
+    get_items_by_context = &get_items_by_context_pg;
+    get_items_by_id = &get_items_by_id_pg;
     get_note = &get_note_pg;
     update_note = &update_note_pg;
     toggle_star = &toggle_star_pg;
@@ -7175,6 +7241,7 @@ int main(int argc, char** argv) {
     update_context = &update_context_pg;
     display_item_info = &display_item_info_pg;
     touch = &touch_pg;
+    get_recent = &get_recent_pg;
     which_db = "postgres";
   }
 
@@ -7216,7 +7283,7 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  (*get_data)(O.context, MAX); //? brings back deleted/completed-type data
+  (*get_items_by_context)(O.context, MAX); //? brings back deleted/completed-type data
   // I need to look at below when incorrect queries were bringing back nother
   // without the guard segfault and even now searches could bring back nothing
   if (O.row)
