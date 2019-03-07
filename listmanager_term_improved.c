@@ -524,7 +524,8 @@ void get_recent_pg(int max) {
     row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row->dirty = false;
     len = strlen(PQgetvalue(res, i, 16));
-    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    len = (len > 16) ? 16 : len;
+    strncpy(row->modified, PQgetvalue(res, i, 16), len);
     row->modified[len] = '\0';
   }
   O.numrows = i;
@@ -602,7 +603,8 @@ void get_items_by_context_pg(char *context, int max) {
     row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row->dirty = false;
     len = strlen(PQgetvalue(res, i, 16));
-    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    len = (len > 16) ? 16 : len;
+    strncpy(row->modified, PQgetvalue(res, i, 16), len);
     row->modified[len] = '\0';
   }
   O.numrows = i;
@@ -652,7 +654,9 @@ void get_recent_sqlite(int max) {
                     max);
   }
         
-    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    int any_results = 0;
+    rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
     
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -668,6 +672,7 @@ void get_items_by_context_sqlite(char *context, int max) {
   for (int j = 0 ; j < O.numrows ; j++ ) {
     free(O.row[j].chars);
   } 
+
   free(O.row);
   O.row = NULL; 
   O.numrows = 0;
@@ -685,18 +690,13 @@ void get_items_by_context_sqlite(char *context, int max) {
     return;
     }
 
-  // why does this have substitutions since !O.show_deleted determines them
   if (!O.show_deleted) {
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
-                    //"AND task.deleted = %s "
                     "AND task.deleted = False "
-                    //"AND task.completed IS %s " 
                     "AND task.completed IS NULL " 
                     "ORDER BY task.modified DESC LIMIT %d",
                     context,
-                    //"False",
-                    //"NULL",
                     max);
   }
   else {
@@ -708,20 +708,28 @@ void get_items_by_context_sqlite(char *context, int max) {
                     max);
   }
         
-    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    // rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    int any_results = 0;
+    rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
     
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
     } 
   sqlite3_close(db);
+
+  if (!any_results) outlineSetMessage("No results were returned");
 }
 
-int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+//int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int data_callback(void *any_results, int argc, char **argv, char **azColName) {
     
-  UNUSED(NotUsed);
+  //UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
+
+  int *flag = (int*)any_results; // used to tell if no results were returned
+  *flag = 1; // used to tell if no results were returned
     
   /*
   0: id = 1
@@ -767,8 +775,10 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   return 0;
   */
 
-  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
+  if (!O.row) O.row = malloc(sizeof(orow));
+  else O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
   orow *row = &O.row[O.numrows];
+  //int len = strlen(title);
   int len = strlen(title);
   row->size = len;
   row->chars = malloc(len + 1);
@@ -780,7 +790,8 @@ int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   row->completed = (argv[10]) ? true: false;
   row->dirty = false;
   len = strlen(argv[16]);
-  strncpy(row->modified, argv[16], (len > 16) ? 16 : len);
+  len = (len > 16) ? 16 : len;
+  strncpy(row->modified, argv[16], len);
   row->modified[len] = '\0';
   O.numrows++;
 
@@ -808,12 +819,15 @@ void get_items_by_id_sqlite(char *query) {
     sqlite3_close(db);
     }
 
-    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    int any_results = 0;
+    rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
     
     if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
+        return; // can't close db twice
     } 
   sqlite3_close(db);
 }
@@ -868,7 +882,8 @@ void get_items_by_id_pg(char *query) {
     row->completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row->dirty = false;
     len = strlen(PQgetvalue(res, i, 16));
-    strncpy(row->modified, PQgetvalue(res, i, 16), (len > 16) ? 16 : len);
+    len = (len > 16) ? 16 : len;
+    strncpy(row->modified, PQgetvalue(res, i, 16), len);
     row->modified[len] = '\0';
   }
   O.numrows = i;
@@ -972,7 +987,7 @@ void get_note_sqlite(int id) {
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("Database %s SQL error: %s\n", FTS_DB, err_msg);
+    outlineSetMessage("In get_note_sqlite: %s SQL error: %s\n", FTS_DB, err_msg);
     sqlite3_free(err_msg);
     sqlite3_close(db);
   } 
@@ -1006,18 +1021,17 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   *out = '\0';
   */
 
-  char *note;
-  if (argv[0] != NULL) { //added this guard 02052019 - not sure
-    //char *note; //moved above on 02262019
+  if (argv[0] != NULL) { //added 02262019 - not sure necessary but seems to be
+    char *note;
     note = strdup(argv[0]); // ******************
     char *found;
     while ((found = strsep(&note, "\r\n")) != NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
       editorInsertRow(E.numrows, found, strlen(found));
     }
+    free(note); //moved below on 02262019
+  }
   E.dirty = 0;
   editorRefreshScreen();
-  free(note); //moved below on 02262019
-  }
   return 0;
 }
 
@@ -2194,10 +2208,7 @@ void outlineDrawRows(struct abuf *ab) {
 //status bar has inverted colors
 void outlineDrawStatusBar(struct abuf *ab) {
 
-  if (!O.row) return; //**********************************
-
-  orow *row = &O.row[O.fr];
-
+  int len;
   /*
   so the below should 1) position the cursor on the status
   bar row and midscreen and 2) erase previous statusbar
@@ -2219,19 +2230,30 @@ void outlineDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-  int len = (row->size < 20) ? row->size : 19;
-  char *truncated_title = malloc(len + 1);
-  memcpy(truncated_title, row->chars, len); //had issues with strncpy so changed to memcpy
-  truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
 
-  len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s...\x1b[0;7m %d %d/%d %s",
+  if (!O.row) { //********************************** or (!O.numrows)
+    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%d %s",
+                              O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
+                              (strcmp(O.context, "search") == 0) ? search_terms : "",
+                              "     No Results   ", -1, 0, O.numrows, mode_text[O.mode]);
+  } else {
+
+    orow *row = &O.row[O.fr];
+    int title_len = (row->size < 20) ? row->size : 19;
+    char *truncated_title = malloc(title_len + 1);
+    memcpy(truncated_title, row->chars, title_len); //had issues with strncpy so changed to memcpy
+    truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
+
+    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s...\x1b[0;7m %d %d/%d %s",
                               O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               (strcmp(O.context, "search") == 0) ? search_terms : "",
                               truncated_title, row->id, O.fr + 1, O.numrows, mode_text[O.mode]);
 
-  //because of escapes
-  len-=10;
+    //because of escapes
+    free(truncated_title);
+  }
 
+  len-=10;
   /*
   int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
                       mode_text[O.mode], row->id, O.fr + 1, O.numrows); which_db
@@ -2255,7 +2277,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   }
 
   abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-  free(truncated_title);
+  //free(truncated_title);
 }
 
 void outlineDrawMessageBar(struct abuf *ab) {
@@ -2303,9 +2325,10 @@ void outlineRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
 
   abAppend(&ab, buf, strlen(buf));
-  outlineDrawRows(&ab);
+  if (O.numrows) outlineDrawRows(&ab);
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
+  
 
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
@@ -2829,7 +2852,7 @@ void outlineProcessKeypress() {
             case 'n':
             case C_new: 
               //outlineInsertRow(0, "<new item>", 10, -1, true, false, false, "1970-01-01 00:00");
-              outlineInsertRow(0, "", 10, -1, true, false, false, "1970-01-01 00:00");
+              outlineInsertRow(0, "", 0, -1, true, false, false, "1970-01-01 00:00");
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
@@ -2892,7 +2915,7 @@ void outlineProcessKeypress() {
               outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               strcpy(search_terms, &O.command_line[pos + 1]);
-              (*get_note)(get_id(-1));
+              if (O.numrows)(*get_note)(get_id(-1));
               return;
 
             case C_update: //update solr
@@ -2974,7 +2997,7 @@ void outlineProcessKeypress() {
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
                (*get_recent)(20); 
-               O.context = "search";
+               O.context = "recent";
                O.mode = NORMAL;
                (*get_note)(O.row[0].id);
                //editorRefreshScreen(); //in get_note
