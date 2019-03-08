@@ -91,6 +91,7 @@ enum Mode {
   REPLACE = 5,
   DATABASE = 6, // only outline mode
   FILE_DISPLAY = 7 // only outline mode
+  NO_ROWS = 8 // find produces no results and (I guess) on starting new db
 };
 
 char *mode_text[] = {
@@ -121,6 +122,8 @@ enum Command {
 
   C_find,
   C_fts,
+
+  C_refresh,
 
   C_new, //create a new item
 
@@ -167,6 +170,7 @@ static t_symstruct lookuptable[] = {
   {"fin", C_find},
   {"find", C_find},
   {"fts", C_fts},
+  {"refresh", C_refresh},
   {"new", C_new}, //don't need "n" because there is no target
   {"context", C_context},
   {"con", C_context},
@@ -300,6 +304,9 @@ void (*update_row)(void);
 int (*insert_row)(int); 
 void (*display_item_info)(int);
 void (*touch)(void);
+void (*search_db)(char *);
+void solr_find(char *);
+void fts_sqlite(char *);
 void fts5_sqlite(char *);
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
@@ -654,9 +661,11 @@ void get_recent_sqlite(int max) {
                     max);
   }
         
-    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    /*
     int any_results = 0;
     rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
+    */
     
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -708,9 +717,11 @@ void get_items_by_context_sqlite(char *context, int max) {
                     max);
   }
         
-    // rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    /*
     int any_results = 0;
     rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
+    */
     
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -718,19 +729,21 @@ void get_items_by_context_sqlite(char *context, int max) {
     } 
   sqlite3_close(db);
 
-  if (!any_results) outlineSetMessage("No results were returned");
+  //if (!any_results) outlineSetMessage("No results were returned");
 }
 
-//int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
-int data_callback(void *any_results, int argc, char **argv, char **azColName) {
+int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+//int data_callback(void *any_results, int argc, char **argv, char **azColName) {
     
-  //UNUSED(NotUsed);
+  UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
+  /*
   int *flag = (int*)any_results; // used to tell if no results were returned
-  *flag = 1; // used to tell if no results were returned
-    
+  *flag = 1; 
+  */
+
   /*
   0: id = 1
   1: tid = 1
@@ -763,22 +776,11 @@ int data_callback(void *any_results, int argc, char **argv, char **azColName) {
   if (strcmp(O.context, "search") == 0) title = fts_titles[O.numrows];
   else title = argv[3];
 
-  /*
-  //char *title = argv[3]; 
-  char *zz = argv[0]; // ? use tid? = argv[1] see note above
-  bool star = (atoi(argv[8]) == 1) ? true: false;
-  bool deleted = (atoi(argv[14]) == 1) ? true: false;
-  bool completed = (argv[10]) ? true: false;
-  int id = atoi(zz);
-  char *modified = argv[16];
-  outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
-  return 0;
-  */
+  /* note my take is that memcpy and strncpy are essentially equivalent if
+  you check the size of the string you are copying before the copy*/
 
-  if (!O.row) O.row = malloc(sizeof(orow));
-  else O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
+  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
   orow *row = &O.row[O.numrows];
-  //int len = strlen(title);
   int len = strlen(title);
   row->size = len;
   row->chars = malloc(len + 1);
@@ -819,9 +821,11 @@ void get_items_by_id_sqlite(char *query) {
     sqlite3_close(db);
     }
 
-    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
+    /*
     int any_results = 0;
     rc = sqlite3_exec(db, query, data_callback, &any_results, &err_msg);
+    */
     
     if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
@@ -2547,7 +2551,7 @@ void outlineProcessKeypress() {
           for (int i = 0; i < O.repeat; i++) outlineDelChar();
           O.command[0] = '\0';
           O.repeat = 0;
-          O.mode = 1;
+          O.mode = INSERT;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           return;
 
@@ -2841,8 +2845,9 @@ void outlineProcessKeypress() {
                return;
 
              case 'r':
+             case C_refresh:
                outlineSetMessage("\'%s\' will be refreshed", O.context);
-               if (strcmp(O.context, "search") == 0) solr_find(search_terms);
+               if (strcmp(O.context, "search") == 0) solr_find(search_terms); //should have a if (which_db[0] == 'p') 
                else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
                else (*get_items_by_context)(O.context, MAX); 
                O.mode = NORMAL;
@@ -2895,10 +2900,11 @@ void outlineProcessKeypress() {
               }  
 
               EraseRedrawLines(); //*****************************
-              solr_find(&O.command_line[pos + 1]);
+              //solr_find(&O.command_line[pos + 1]);   // should have an if (which_db[0] == 'p') 
+              O.context = "search";
+              (*search_db)(&O.command_line[pos + 1]);
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
-              O.context = "search";
               strcpy(search_terms, &O.command_line[pos + 1]);
               (*get_note)(get_id(-1));
               return;
@@ -2915,7 +2921,7 @@ void outlineProcessKeypress() {
               outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               strcpy(search_terms, &O.command_line[pos + 1]);
-              if (O.numrows)(*get_note)(get_id(-1));
+              if (O.numrows) (*get_note)(get_id(-1));
               return;
 
             case C_update: //update solr
@@ -7336,6 +7342,7 @@ int main(int argc, char** argv) {
     display_item_info = &display_item_info_sqlite;
     touch = &touch_sqlite;
     get_recent = &get_recent_sqlite;
+    search_db = &fts5_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
@@ -7353,6 +7360,7 @@ int main(int argc, char** argv) {
     display_item_info = &display_item_info_pg;
     touch = &touch_pg;
     get_recent = &get_recent_pg;
+    search_db = &solr_find;
     which_db = "postgres";
   }
 
