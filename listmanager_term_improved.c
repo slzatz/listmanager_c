@@ -5141,8 +5141,10 @@ void outlineFindNextWord() {
 
 void editorScroll(void) {
 
-  if (!E.row) return;
-
+  if (!E.row) {
+    E.cx = E.cy = E.fr = E.fc = 0;
+    return;
+  }
 
   // This check used to be in editorMoveCursor but there are other ways like
   // issuring 'd$' that will shorten the row but cursor will be beyond the line
@@ -5451,7 +5453,6 @@ void editorRefreshScreen(void) {
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
-    //char buf[32];
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
     abAppend(&ab, buf, strlen(buf));
   }
@@ -5463,10 +5464,8 @@ void editorRefreshScreen(void) {
     for (int k = OUTLINE_LEFT_MARGIN + O.screencols + 1; k < screencols ;k++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
       write(STDOUT_FILENO, buf, strlen(buf));
-      //write(STDOUT_FILENO, "\x1b[31;1mq", 8); //horizontal line
       write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
     }
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + OUTLINE_RIGHT_MARGIN + 1);
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2); // added len 03022019
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
@@ -5705,7 +5704,7 @@ void editorProcessKeypress(void) {
     
         case 'A':
           editorMoveCursorEOL();
-          E.mode = 1; //needs to be here for movecursor to work at EOLs
+          E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorMoveCursor(ARROW_RIGHT);
           E.command[0] = '\0';
           E.repeat = 0;
@@ -6771,6 +6770,7 @@ void editorRestoreSnapshot(void) {
 }
 
 void editorChangeCase(void) {
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   char d = row->chars[E.fc];
   if (d < 91 && d > 64) d = d + 32;
@@ -6804,6 +6804,7 @@ void editorYankString(void) {
   // doesn't cross rows right now
   int n,x;
 
+  if (E.numrows == 0) editorInsertRow(0, "", 0);
   erow *row = &E.row[E.fr];
   for (x = E.highlight[0], n = 0; x < E.highlight[1]+1; x++, n++) {
       string_buffer[n] = row->chars[x];
@@ -6814,6 +6815,7 @@ void editorYankString(void) {
 
 void editorPasteString(void) {
 
+  if (E.numrows == 0) editorInsertRow(0, "", 0);
   erow *row = &E.row[E.fr];
   int len = strlen(string_buffer);
 
@@ -6850,6 +6852,7 @@ void editorPasteLine(void){
 
 void editorIndentRow(void) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   if (row->size == 0) return;
   E.fc = editorIndentAmount(E.fr);
@@ -6859,6 +6862,7 @@ void editorIndentRow(void) {
 
 void editorUnIndentRow(void) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   if (row->size == 0) return;
   E.fc = 0;
@@ -6887,6 +6891,7 @@ int editorIndentAmount(int r) {
 // called by caw and daw
 void editorDelWord(void) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   if (row->chars[E.fc] < 48) return;
 
@@ -6921,6 +6926,7 @@ void editorMoveCursorBOL(void) {
 
 void editorMoveCursorEOL(void) {
 
+  if (!E.row) return;
   erow row = E.row[E.fr];
   if (row.size) E.fc = row.size - 1;
 }
@@ -6930,6 +6936,7 @@ void editorMoveCursorEOL(void) {
 void editorMoveEndWord2() {
   int j;
 
+  if (!E.row) return;
   erow row = E.row[E.fr];
 
   for (j = E.fc + 1; j < row.size ; j++) {
@@ -6945,6 +6952,7 @@ void editorMoveNextWord(void) {
 // doesn't handle multiple white space characters at EOL
   int i,j;
 
+  if (!E.row) return;
   erow row = E.row[E.fr];
 
   if (row.chars[E.fc] < 48) j = E.fc;
@@ -6986,6 +6994,7 @@ void editorMoveNextWord(void) {
 // normal mode 'b'
 void editorMoveBeginningWord(void) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   int j = E.fc;
 
@@ -7026,6 +7035,7 @@ void editorMoveBeginningWord(void) {
 // normal mode 'e' - seems to handle all corner cases
 void editorMoveEndWord(void) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
 
   int j = (row->chars[E.fc + 1] < 48) ? E.fc + 1 : E.fc;
@@ -7061,6 +7071,7 @@ void editorMoveEndWord(void) {
 
 void editorDecorateWord(int c) {
 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   char cc;
   if (row->chars[E.fc] < 48) return;
@@ -7106,7 +7117,8 @@ void editorDecorateWord(int c) {
 }
 
 void editorDecorateVisual(int c) {
-    E.fc = E.highlight[0];
+  if (!E.row) return;
+  E.fc = E.highlight[0];
   if (c == CTRL_KEY('b')) {
     editorInsertChar('*');
     editorInsertChar('*');
@@ -7122,7 +7134,8 @@ void editorDecorateVisual(int c) {
 }
 
 void getWordUnderCursor(void){
-
+ 
+  if (!E.row) return;
   erow *row = &E.row[E.fr];
   if (row->chars[E.fc] < 48) return;
 
@@ -7147,6 +7160,7 @@ void getWordUnderCursor(void){
 
 // needs a little work and needs to wrap back on itself something odd about wrapping matches
 void editorFindNextWord(void) {
+  if (!E.row) return;
   int y, x;
   char *z;
 
