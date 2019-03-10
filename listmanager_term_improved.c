@@ -3154,6 +3154,15 @@ void outlineProcessKeypress() {
           outlineMoveCursor(c);
           return;
 
+        case ARROW_RIGHT:
+        //case ARROW_LEFT:
+        case '\x1b':
+        //case SHIFT_TAB:
+        //case '\t':
+          O.mode = NORMAL;
+          outlineSetMessage("");
+          return;
+
         case ':':
           NN = 0; //index to contexts
           O.command[0] = '\0';
@@ -3197,15 +3206,6 @@ void outlineProcessKeypress() {
           else (*get_items_by_context)(O.context, MAX); 
           O.mode = NORMAL;
           return;
-
-        case ARROW_RIGHT:
-        case '\x1b':
-        case '>':
-        case SHIFT_TAB:
-        case '\t':
-          O.mode = NORMAL;
-          outlineSetMessage("");
-          return;
   
         case 'i': //display item info
           ;
@@ -3228,7 +3228,8 @@ void outlineProcessKeypress() {
           return;
 
         default:
-          outlineSetMessage("I don't recognize %c", c);
+          if (c < 33 || c > 127) outlineSetMessage("<%d> doesn't do anything in DATABASE mode", c);
+          else outlineSetMessage("<%c> doesn't do anything in DATABASE mode", c);
           return;
       } // end of switch(c) in case DATABASLE
 
@@ -3707,14 +3708,12 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   abAppend(&ab, lf_ret, nchars);
   abAppend(&ab, lf_ret, nchars);
 
-  //note strsep handles multiple \n\n and strtok did not
-  char *note;
-  note = (argv[12]) ? strdup(argv[12]) : "NULL"; // 03072019
   char *found;
 
   for (int k=0; k < 4; k++) {
 
-    if ((found = strsep(&note, "\n")) == NULL) break; 
+    //if ((found = strsep(&note, "\n")) == NULL) break; 
+    if ((found = strsep(&argv[12], "\n")) == NULL) break; 
 
     size_t len = E.screencols;
     abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
@@ -3726,10 +3725,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   write(STDOUT_FILENO, ab.b, ab.len);
 
   abFree(&ab); 
-  free(note);
-  note = NULL; //? not necessary
 
-  //editorRefreshScreen();
   return 0;
 }
 
