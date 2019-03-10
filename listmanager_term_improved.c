@@ -2215,6 +2215,16 @@ void outlineDrawRows(struct abuf *ab) {
         // if fts seach active right now have no solution for half of a word
         // being higlighted although could do if xx in len and xx not then shorten len
         len += strlen(fts_titles[fr]) - row->size;
+
+        if (row->size > O.screencols) {
+          for (;;) {
+            //len--;
+            if (isspace(fts_titles[fr][len + ((fr == O.fr) ? O.coloff : 0)])) break;
+            // if DATABASE mode doesn't scroll then O.coloff = 0
+            if (isspace(fts_titles[fr][len])) break;
+            len--;
+          }
+        }
         abAppend(ab, &fts_titles[fr][((fr == O.fr) ? O.coloff : 0)], len);
 
     } else {
@@ -2412,6 +2422,7 @@ void outlineMoveCursor(int key) {
     case ARROW_LEFT:
     case 'h':
       if (O.fc > 0) O.fc--; 
+      // arowing left in NORMAL puts you into DATABASE mode
       else {
         O.mode = DATABASE;
         O.command[0] = '\0';
