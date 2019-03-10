@@ -137,7 +137,7 @@ enum Command {
   C_synch, // synchronixe sqlite and postgres dbs
   C_synch_test,//show what sync would do but don't do it 
 
-  C_highlight,
+  //C_highlight,
 
   C_quit,
   C_quit0,
@@ -188,9 +188,9 @@ static t_symstruct lookuptable[] = {
   {"test", C_synch_test},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
-  {"highlight", C_highlight},
-  {"show", C_highlight},
-  {"sh", C_highlight},
+  //{"highlight", C_highlight},
+  //{"show", C_highlight},
+  //{"sh", C_highlight},
   {"quit", C_quit},
   {"quit!", C_quit0},
   {"q!", C_quit0},
@@ -264,7 +264,7 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
-  bool show_highlight;
+  //bool show_highlight;
 };
 
 struct outlineConfig O;
@@ -782,20 +782,24 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   store the tid in orow row
   */
 
+  /*
   char *title;
-  //if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
-  //else title = argv[3];
+  if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
+  else title = argv[3];
   title = argv[3];
+  */
 
   /* note my take is that memcpy and strncpy are essentially equivalent if
   you check the size of the string you are copying before the copy*/
 
   O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
   orow *row = &O.row[O.numrows];
-  int len = strlen(title);
+  //int len = strlen(title);
+  int len = strlen(argv[3]);
   row->size = len;
   row->chars = malloc(len + 1);
-  memcpy(row->chars, title, len);
+  //memcpy(row->chars, title, len);
+  memcpy(row->chars, argv[3], len);
   row->chars[len] = '\0'; 
   row->id = atoi(argv[0]);
   row->star = (atoi(argv[8]) == 1) ? true: false;
@@ -2206,7 +2210,8 @@ void outlineDrawRows(struct abuf *ab) {
         abAppend(ab, &O.row[fr].chars[((fr == O.fr) ? O.coloff : 0)], len);
     */
 
-    } else if (strcmp(O.context, "search") == 0 && O.show_highlight && O.mode == DATABASE){
+    //} else if (strcmp(O.context, "search") == 0 && O.show_highlight && O.mode == DATABASE){
+    } else if (strcmp(O.context, "search") == 0 && O.mode == DATABASE){
         // if fts seach active right now have no solution for half of a word
         // being higlighted although could do if xx in len and xx not then shorten len
         len += strlen(fts_titles[fr]) - row->size;
@@ -3061,12 +3066,14 @@ void outlineProcessKeypress() {
               O.mode = FILE_DISPLAY;
               return;
 
+            /*
             case C_highlight:
               // need to refresh to see the change
               O.show_highlight = !O.show_highlight;
               O.mode = NORMAL;
               outlineSetMessage("Search result titles will %shave search times highlighted", (O.show_highlight) ? "" : "not ");
               return;
+              */
 
             case C_valgrind:
               strncpy(display_file, "valgrind_log_file", sizeof(display_file));
@@ -7313,7 +7320,7 @@ void initOutline() {
   O.context = "todo"; 
   O.show_deleted = false;
   O.show_completed = true;
-  O.show_highlight = true;
+  //O.show_highlight = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
