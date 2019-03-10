@@ -315,7 +315,6 @@ void (*display_item_info)(int);
 void (*touch)(void);
 void (*search_db)(char *);
 void solr_find(char *);
-void fts_sqlite(char *);
 void fts5_sqlite(char *);
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
@@ -784,8 +783,9 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   */
 
   char *title;
-  if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
-  else title = argv[3];
+  //if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
+  //else title = argv[3];
+  title = argv[3];
 
   /* note my take is that memcpy and strncpy are essentially equivalent if
   you check the size of the string you are copying before the copy*/
@@ -842,7 +842,10 @@ void get_items_by_id_sqlite(char *query) {
         sqlite3_close(db);
         return; // can't close db twice
     } 
+
   sqlite3_close(db);
+
+  // created a new mode when no rows since really can only do command line
   if (no_rows) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
@@ -980,27 +983,20 @@ void get_note_sqlite(int id) {
   int rc;
 
   if (editor_mode || strcmp(O.context, "search") != 0) {
-  //if (editor_mode || strcmp(O.context, "search") || strcmp(O.context, "recent")) {
     sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
     rc = sqlite3_open(SQLITE_DB, &db);
   } else {
-    //sprintf(query, "SELECT highlight(fts, 1, '[', ']') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     rc = sqlite3_open(FTS_DB, &db);
   }
 
-  //int rc = sqlite3_open(SQLITE_DB, &db); 
-    
   if (rc != SQLITE_OK) {
         
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
 
-  //char query[100]; 
-  //sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid 
-
-  // callback does *not* appear to be called if result (argv) is null
+  // callback is *not* appear to be called if result (argv) is null
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
@@ -2204,9 +2200,21 @@ void outlineDrawRows(struct abuf *ab) {
       abAppend(ab, "\x1b[49m", 5); // return background to normal
       abAppend(ab, &(row->chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
       
+    /*
     } else {
         // current row is only row that is scrolled if O.coloff != 0
         abAppend(ab, &O.row[fr].chars[((fr == O.fr) ? O.coloff : 0)], len);
+    */
+
+    } else if (strcmp(O.context, "search") == 0 && O.show_highlight && O.mode == DATABASE){
+        // if fts seach active right now have no solution for half of a word
+        // being higlighted although could do if xx in len and xx not then shorten len
+        len += strlen(fts_titles[fr]) - row->size;
+        abAppend(ab, &fts_titles[fr][((fr == O.fr) ? O.coloff : 0)], len);
+
+    } else {
+        // current row is only row that is scrolled if O.coloff != 0
+        abAppend(ab, &row->chars[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
@@ -3531,9 +3539,9 @@ void fts5_sqlite(char *search_terms) {
   char query[2000];
   char *put;
 
-  strncpy(query, "SELECT * FROM task WHERE task.deleted = False and task.id IN (",
-                 sizeof(query));
-  
+  // need to think about this because WHERE task.deleted means can be out of sync with fts query
+  //strncpy(query, "SELECT * FROM task WHERE task.deleted = False and task.id IN (",
+  strncpy(query, "SELECT * FROM task WHERE task.id IN (", sizeof(query));
 
   put = &query[strlen(query)];
 
@@ -3558,7 +3566,6 @@ void fts5_sqlite(char *search_terms) {
 
 
  (*get_items_by_id)(query);
-
 }
 
 int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
@@ -3584,6 +3591,7 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   */
 
   int len = strlen(argv[1]);
+  // could just realloc
   free(fts_titles[fts_counter]);
   fts_titles[fts_counter] = malloc(len + 1);
   memcpy(fts_titles[fts_counter], argv[1], len);
