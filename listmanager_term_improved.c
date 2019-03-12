@@ -979,6 +979,8 @@ void get_note_sqlite(int id) {
   free(E.row);
   E.row = NULL; 
   E.numrows = 0;
+  //seems like you'd also want to do:
+  E.fr = E.fc = E.cy = E.cx = 0; /*******03102019***********/
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1010,6 +1012,8 @@ void get_note_sqlite(int id) {
   } 
 
   sqlite3_close(db);
+
+  editorRefreshScreen(); /****03102019*****/
 }
 
 // doesn't appear to be called if row is NULL
@@ -1048,7 +1052,10 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     free(note); //moved below on 02262019
   }
   E.dirty = 0;
-  editorRefreshScreen();
+  // put this here because it has to happen and this forces it but not sure
+  // that it's the best idea - at least should be in get_note_sqlite
+  // and not the callback
+  //editorRefreshScreen();
   return 0;
 }
 
@@ -2896,8 +2903,10 @@ void outlineProcessKeypress() {
 
              case 'r':
              case C_refresh:
+               EraseRedrawLines(); //****03102019*************************
                outlineSetMessage("\'%s\' will be refreshed", O.context);
-               if (strcmp(O.context, "search") == 0)  (*search_db)(search_terms); //solr_find(search_terms);
+               //solr_find(search_terms) for pg or fts5_sqlite
+               if (strcmp(O.context, "search") == 0)  (*search_db)(search_terms); 
                else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
                else (*get_items_by_context)(O.context, MAX); 
                O.mode = NORMAL;
