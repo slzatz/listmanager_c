@@ -324,6 +324,7 @@ int display_item_info_callback(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
+void outlineDrawStatusBar(struct abuf *);
 void outlineDelWord();
 void outlineMoveCursor(int key);
 void outlineBackspace(void);
@@ -2043,6 +2044,9 @@ void editorDisplayFile(void) {
   }
   abAppend(&ab, "\x1b[0m", 4);
 
+  // not a huge deal but updating status bar here would mean mode would be correct
+  outlineDrawStatusBar(&ab); // 03162019
+
   write(STDOUT_FILENO, ab.b, ab.len);
 
   abFree(&ab); 
@@ -2221,17 +2225,20 @@ void outlineDrawRows(struct abuf *ab) {
     } else if (strcmp(O.context, "search") == 0 && O.mode == DATABASE){
         // if fts seach active right now have no solution for half of a word
         // being higlighted although could do if xx in len and xx not then shorten len
+        /******************** had a valgrind identified segfault here *********************/
         len += strlen(fts_titles[fr]) - row->size;
 
-        if (row->size > O.screencols) {
+        // essentially doing word wrap so don't get the highlighting escape
+        // without the return to normal escape but much easier would be
+        //to apply the clearing escape regardless
+        if (0) {
+        //if (row->size > O.screencols) {
           for (;;) {
-            //len--;
             if (isspace(fts_titles[fr][len + ((fr == O.fr) ? O.coloff : 0)])) break;
-            // if DATABASE mode doesn't scroll then O.coloff = 0
-            if (isspace(fts_titles[fr][len])) break;
             len--;
           }
         }
+
         abAppend(ab, &fts_titles[fr][((fr == O.fr) ? O.coloff : 0)], len);
 
     } else {
@@ -2245,10 +2252,11 @@ void outlineDrawRows(struct abuf *ab) {
     for (int i=0; i < spaces; i++) abAppend(ab, " ", 1); 
     //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
+    abAppend(ab, "\x1b[0m", 4); // return background to normal
     abAppend(ab, buf, strlen(buf));
     abAppend(ab, row->modified, 16); 
     abAppend(ab, lf_ret, nchars);
-    abAppend(ab, "\x1b[0m", 4); // return background to normal
+    //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
 
@@ -2291,27 +2299,25 @@ void outlineDrawStatusBar(struct abuf *ab) {
     memcpy(truncated_title, row->chars, title_len); //had issues with strncpy so changed to memcpy
     truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
 
-    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s...\x1b[0;7m %d %d/%d %s",
+    len = snprintf(status, sizeof(status), 
+                              // because video is reversted [42 sets text to green and 49 undoes it
+                              // I think the [0;7m is revert to normal and reverse video
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%d \x1b[1;42m%s\x1b[49m",
                               O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               (strcmp(O.context, "search") == 0) ? search_terms : "",
                               truncated_title, row->id, O.fr + 1, O.numrows, mode_text[O.mode]);
 
-    //because of escapes
     free(truncated_title);
   }
-
-  len-=10;
-  /*
-  int rlen = snprintf(rstatus, sizeof(rstatus), "mode: %s id: %d %d/%d",
-                      mode_text[O.mode], row->id, O.fr + 1, O.numrows); which_db
-  */
+  //because of escapes
+  len-=22;
 
   int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s\x1b[0;7m ", which_db);
 
   //if (len > screencols/2) len = screencols/2;
   if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
 
-  abAppend(ab, status, len + 10);
+  abAppend(ab, status, len + 22);
 
   while (len < O.screencols + OUTLINE_LEFT_MARGIN) {
     if ((O.screencols + OUTLINE_LEFT_MARGIN - len) == rlen - 10) { //10 of chars not printable
@@ -3073,8 +3079,8 @@ void outlineProcessKeypress() {
 
               strncpy(display_file, "log", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
+              O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               editorDisplayFile();//put them in the command mode case synch
-              O.mode = FILE_DISPLAY;
               return;
 
             case C_synch_test:
@@ -3082,8 +3088,8 @@ void outlineProcessKeypress() {
 
               strncpy(display_file, "log", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
+              O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               editorDisplayFile();//put them in the command mode case synch
-              O.mode = FILE_DISPLAY;
               return;
 
             /*
@@ -3194,8 +3200,22 @@ void outlineProcessKeypress() {
         case '\x1b':
         //case SHIFT_TAB:
         //case '\t':
+          O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
           outlineSetMessage("");
+          return;
+
+        case HOME_KEY:
+          O.fc = 0;
+          return;
+
+        case END_KEY:
+          row = &O.row[O.fr];
+          if (row->size < O.screencols) return;
+          // don't love the below because that O.fc is beyond the
+          // length of the true (non-escaped) string but it works
+          // Better make sure O.fc = 0 when leaving DATABASE mode for NORMAL mode
+          O.fc = (strcmp(O.context, "search") == 0) ? (int)strlen(fts_titles[O.fr]) : row->size;
           return;
 
         case ':':
@@ -4434,6 +4454,9 @@ void update_row_sqlite(void) {
     
     /**************fts virtual table update**********************/
   
+    // note if this was a title brought back by search we're
+    // not updating fts_titles[O.fr] which is lm_id row->id
+    // probably should address this but not a high priority
     sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
   
     rc = sqlite3_open(FTS_DB, &db);
@@ -7484,6 +7507,7 @@ int main(int argc, char** argv) {
       outlineScroll();
       outlineRefreshScreen();
       outlineProcessKeypress();
+      // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
     /*
     } else {
