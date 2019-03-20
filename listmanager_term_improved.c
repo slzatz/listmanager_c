@@ -1548,7 +1548,8 @@ void outlineInsertChar(int c) {
 
   orow *row = &O.row[O.fr];
 
-  row->chars = realloc(row->chars, row->size + 2); // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
+  // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
+  row->chars = realloc(row->chars, row->size + 2); 
 
   /* moving all the chars at the current x cursor position one char
      farther down the char string to make room for the new character
@@ -5650,11 +5651,13 @@ void editorProcessKeypress(void) {
           break;
     
         case '\x1b':
+          if (E.mode == NORMAL) return;
           E.mode = NORMAL;
           E.continuation = 0; // right now used by backspace in multi-line filerow
           if (E.fc > 0) E.fc--;
           // below - if the indent amount == size of line then it's all blanks
-          if (E.row[E.fr].size) {
+          // can hit escape with E.row == NULL or E.row[E.fr].size == 0
+          if (E.row && E.row[E.fr].size) {
             int n = editorIndentAmount(E.fr);
             if (n == E.row[E.fr].size) {
               E.fc = 0;
@@ -6873,7 +6876,11 @@ void editorPasteString(void) {
   erow *row = &E.row[E.fr];
   int len = strlen(string_buffer);
 
-  row->chars = realloc(row->chars, row->size + len); 
+  // 03202019 saw a valgrind error here and it seems
+  // obvious that the pre-existing malloc'ed memory
+  // is row->size + 1 = number of chars plus terminating '\0'
+  //row->chars = realloc(row->chars, row->size + len); 
+  row->chars = realloc(row->chars, row->size + 1 + len); 
 
   /* moving all the chars at the current x cursor position on char
      farther down the char string to make room for the new character
@@ -6883,11 +6890,21 @@ void editorPasteString(void) {
 
   memmove(&row->chars[E.fc + len], &row->chars[E.fc], row->size - E.fc);
 
+  /*
+  // couldn't this just be a memcpy?? 03202019
   for (int i = 0; i < len; i++) {
-    row->size++;
+    //row->size++;
     row->chars[E.fc] = string_buffer[i];
     E.fc++;
   }
+  */
+
+  memcpy(&row->chars[E.fc], string_buffer, len);
+  // 03202019 seems like we should ensure null termination but now 
+  // making two changes below and the one above
+
+  row->size += len;
+  row->chars[row->size] = '\0';
 
   E.dirty++;
 }
