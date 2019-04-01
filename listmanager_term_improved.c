@@ -2595,6 +2595,8 @@ void outlineProcessKeypress() {
           O.command[0] = '\0';
           return;
 
+        // should look at these since using arrow key and 
+        // don't use these at all
         case '<':
         case '\t':
         case SHIFT_TAB:
@@ -2922,12 +2924,10 @@ void outlineProcessKeypress() {
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              //outlineInsertRow(0, "<new item>", 10, -1, true, false, false, "1970-01-01 00:00");
               outlineInsertRow(0, "", 0, -1, true, false, false, "1970-01-01 00:00");
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
-              //O.mode = NORMAL;
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("");
@@ -4729,10 +4729,7 @@ int insert_row_sqlite(int ofr) {
   row->id =  sqlite3_last_insert_rowid(db);
   row->dirty = false;
         
-  //free(title);
-  //free(query);
   sqlite3_close(db);
-  //outlineSetMessage("Successfully inserted new row with id %d", row->id);
     
   /*virtual table insert*/
   sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", escaped_title, row->id);
@@ -4760,8 +4757,6 @@ int insert_row_sqlite(int ofr) {
   } 
   sqlite3_close(db);
   outlineSetMessage("Successfully inserted new row with id %d and indexed it", row->id);
-  //free(title);
-  //free(query);
 
   return row->id;
 }
@@ -5227,7 +5222,7 @@ void editorScroll(void) {
 
 void editorDrawRows(struct abuf *ab) {
   int y = 0;
-  int len, n;
+  int len; //, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char lf_ret[16];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
@@ -5254,13 +5249,15 @@ void editorDrawRows(struct abuf *ab) {
     // this else is the main drawing code
     } else {
 
-      int lines = editorGetLinesInRowWW(E.fr);
+      int lines = editorGetLinesInRowWW(filerow); // changed from E.fr to filerow 04012019
 
-      // below is trying to emulate what vim does when it can't show an entire row (which will be multi-screen-line)
-      // at the bottom of the screen because of where the screen scroll is.  It shows nothing of the row
-      // rather than show a partial row.  May not be worth it.
+      // below is trying to emulate what vim does when it can't show an entire row (because it generates
+      // multiple screen lines that can't all be displayed at the bottom of the screen because of where
+      // the screen scroll is.)  It shows nothing of the row rather than show a partial row.  May not be worth it.
+      // And *may* actually be causing problems
+
       if ((y + lines) > E.screenlines) {
-          for (n=0; n < (E.screenlines - y);n++) {
+          for (int n = 0; n < (E.screenlines - y); n++) {
             abAppend(ab, "@", 2);
             abAppend(ab, "\x1b[K", 3); 
             abAppend(ab, lf_ret, nchars);
