@@ -226,7 +226,6 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
-  //char *modified;
   char modified[17]; // display 16 chars plus need terminating '\0'
   
 } orow;
@@ -590,20 +589,6 @@ void get_items_by_context_pg(char *context, int max) {
   O.row = NULL; 
   //O.numrows = 0; //doesn't hurt but shouldn't need it
 
-  /*
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    char *title = PQgetvalue(res, i, 3);
-    char *zz = PQgetvalue(res, i, 0);
-    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    int id = atoi(zz);
-    char *modified = PQgetvalue(res, i, 16);
-    outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
-  }
-  */
-
   int len, i;
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
@@ -877,20 +862,6 @@ void get_items_by_id_pg(char *query) {
   O.row = NULL; 
   //O.numrows = 0; // shouldn't be necessary unless things blow up but then we have bigger problems
   }
-
-  /*
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    char *title = PQgetvalue(res, i, 3);
-    char *zz = PQgetvalue(res, i, 0);
-    bool star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    bool deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    bool completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    int id = atoi(zz);
-    char *modified = PQgetvalue(res, i, 16);
-    outlineInsertRow(O.numrows, title, strlen(title), id, star, deleted, completed, modified); 
-  }
-  */
 
   int len, i;
   int rows = PQntuples(res);
@@ -3838,6 +3809,7 @@ void update_note_pg(void) {
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
+                   //"modified=LOCALTIMESTAMP - interval '4 hours' "
                    "WHERE id=%d",
                    escaped_note, id);
 
@@ -3903,7 +3875,8 @@ void update_note_sqlite(void) {
   char *query = malloc(cnt + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
-                   "modified=datetime('now', '-5 hours') "
+                   //"modified=datetime('now', '-5 hours') "
+                   "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
                    escaped_note, id);
 
@@ -3999,7 +3972,8 @@ void update_context_sqlite(int context_tid) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET context_tid=%d, " 
-                 "modified=datetime('now', '-5 hours') "
+                 //"modified=datetime('now', '-5 hours') "
+                 "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d",
                     context_tid,
                     id);
@@ -4075,7 +4049,8 @@ void toggle_completed_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET completed=%s, " 
-                   "modified=datetime('now', '-5 hours') "
+                   //"modified=datetime('now', '-5 hours') "
+                   "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
                    (row->completed) ? "NULL" : "date()", id);
 
@@ -4175,7 +4150,8 @@ void touch_sqlite(void) {
   char query[300];
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET modified=datetime('now', '-5 hours') "
+  //sprintf(query, "UPDATE task SET modified=datetime('now', '-5 hours') "
+  sprintf(query, "UPDATE task SET modified=datetime('now', '-4 hours') "
                  "WHERE id=%d", id); 
 
   sqlite3 *db;
@@ -4211,7 +4187,8 @@ void toggle_deleted_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET deleted=%s, " 
-                 "modified=datetime('now', '-5 hours') "
+                 //"modified=datetime('now', '-5 hours') "
+                 "modified=datetime('now', '-4 hours') "
                  "WHERE id=%d", //tid
                  (row->deleted) ? "False" : "True", id);
   sqlite3 *db;
@@ -4288,7 +4265,8 @@ void toggle_star_sqlite(void) {
   int id = get_id(-1);
 
   sprintf(query, "UPDATE task SET star=%s, " 
-                 "modified=datetime('now', '-5 hours') "
+                 //"modified=datetime('now', '-5 hours') "
+                 "modified=datetime('now', '-4 hours') "
                  "WHERE id=%d", //tid
                  (row->star) ? "False" : "True", id);
   sqlite3 *db;
@@ -4424,7 +4402,8 @@ void update_row_sqlite(void) {
     char *query = malloc(cnt + 100);
   
     sprintf(query, "UPDATE task SET title=\'%s\', "
-                     "modified=datetime('now', '-5 hours') "
+                     //"modified=datetime('now', '-5 hours') "
+                     "modified=datetime('now', '-4 hours') "
                      "WHERE id=%d",
                      escaped_title, row->id);
   
@@ -4700,8 +4679,10 @@ int insert_row_sqlite(int ofr) {
                                    "<This is a new note from sqlite>", //note, 
                                    //repeat, 
                                    "False", //deleted 
-                                   "datetime()", //created, 
-                                   "datetime()", //modified 
+                                   //"datetime()", //created 
+                                   //"datetime()", //modified 
+                                   "datetime('now', '-4 hours')", //created 
+                                   "datetime('now', '-4 hours')", //modified
                                    "date()" //startdate  
                                    //remind
                                    );
@@ -4892,7 +4873,8 @@ void update_rows_sqlite(void) {
       char *query = malloc(cnt + 200);
 
       sprintf(query, "UPDATE task SET title=\'%s\', "
-                   "modified=datetime('now', '-5 hours') "
+                   //"modified=datetime('now', '-5 hours') "
+                   "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
                    escaped_title, row->id);
 
