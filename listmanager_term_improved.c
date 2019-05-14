@@ -57,7 +57,7 @@ char *context[] = {
                         "No Context", // 1
                         "financial", // 2
                         "health", // 3
-                        "industry",// 4
+                        "wisdom",// 4
                         "journal",// 5
                         "facts", // 6
                         "not work",// 7
