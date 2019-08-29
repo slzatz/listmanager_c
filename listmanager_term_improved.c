@@ -32,7 +32,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 #include <libpq-fe.h>
-#include <iniparser.h>
+#include "iniparser.h"
 #include <sqlite3.h>
 
 /*** defines ***/
@@ -2676,6 +2676,19 @@ void outlineProcessKeypress() {
 
           return;
       
+        case 'O': //C_new: 
+          outlineInsertRow(0, "", 0, -1, true, false, false, "1970-01-01 00:00");
+          O.fc = O.fr = O.rowoff = 0;
+          outlineScroll();
+          outlineRefreshScreen();  //? necessary
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("");
+          editorEraseScreen();
+          editorRefreshScreen();
+          O.mode = INSERT;
+          return;
+
         case ':':
           NN = 0; //index to contexts
           O.command[0] = '\0';
