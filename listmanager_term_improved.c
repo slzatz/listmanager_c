@@ -2187,14 +2187,8 @@ void outlineDrawRows(struct abuf *ab) {
       abAppend(ab, "\x1b[49m", 5); // return background to normal
       abAppend(ab, &(row->chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
       
-    /*
-    } else {
-        // current row is only row that is scrolled if O.coloff != 0
-        abAppend(ab, &O.row[fr].chars[((fr == O.fr) ? O.coloff : 0)], len);
-    */
-
-    //} else if (strcmp(O.context, "search") == 0 && O.show_highlight && O.mode == DATABASE){
-    } else if (strcmp(O.context, "search") == 0 && O.mode == DATABASE){
+    } else if (0){ 
+    //} else if (strcmp(O.context, "search") == 0 && O.mode == DATABASE){
         // if fts seach active right now have no solution for half of a word
         // being higlighted although could do if xx in len and xx not then shorten len
         /******************** had a valgrind identified segfault here *********************/
@@ -2212,7 +2206,7 @@ void outlineDrawRows(struct abuf *ab) {
         }
 
         abAppend(ab, &fts_titles[fr][((fr == O.fr) ? O.coloff : 0)], len);
-
+    
     } else {
         // current row is only row that is scrolled if O.coloff != 0
         abAppend(ab, &row->chars[((fr == O.fr) ? O.coloff : 0)], len);
