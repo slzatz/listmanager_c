@@ -1,12 +1,14 @@
 # This is the CMakeLists.txt for compiling listmanager_term_improved.c
 # with QT Creator.
+# This works for C and is called CMakeLists.txt.works so that 
+# I could start working on a c++ CMakeLists.txt (09012019)
 # The only change that was made was changing include <iniparser.h> to "iniparser.h"
 # The output executable is listmanager_term_improved_qtc and I moved it from
 # the build directory to ~/c_stuff/listmanager
 
 cmake_minimum_required(VERSION 3.15)
 
-project(listmanager_term_improved_qtc C)
+project(listmanager_term_improved_cpp)
 
 find_package(SQLite3 REQUIRED)
 find_package(PythonLibs REQUIRED)
@@ -18,10 +20,10 @@ find_package(PostgreSQL REQUIRED)
 set (source_dir "${PROJECT_SOURCE_DIR}/")
 
 # the below obviously shouldn't be a GLOB since only one source file
-file (GLOB source_files "${source_dir}/listmanager_term_improved.*")
+#file (GLOB source_files "${source_dir}/listmanager_term_improved.*")
 
 #add_subdirectory("${source_dir}/tests") #new
-add_executable(${PROJECT_NAME} ${source_files})
+add_executable(${PROJECT_NAME} listmanager_term_improved.cpp)
 
 # note that for what we're doing doesn't matter whether PUBLIC or PRIVATE (see CMAKE docs)
 target_include_directories(${PROJECT_NAME} PUBLIC "${source_dir}")
