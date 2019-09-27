@@ -239,7 +239,8 @@ typedef struct orow {
 
 typedef struct erow {
   int size; //the number of characters in the line
-  char *chars; //points at the character array of a row - mem assigned by malloc
+  //char *chars; //points at the character array of a row - mem assigned by malloc
+  std::vector<char> chars;
 } erow;
 
 /*** append buffer used for writing to the screen***/
@@ -286,6 +287,7 @@ struct editorConfig {
   int screencols;  //number of columns in the display
   int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
   erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
+  std::vector<erow> rows;
   int prev_numrows; // the number of rows of text so last text row is always row numrows
   erow *prev_row; //for undo purposes
   int dirty; //file changes since last save
@@ -302,7 +304,6 @@ struct editorConfig {
 };
 
 struct editorConfig E;
-
 
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
@@ -448,25 +449,6 @@ int parse_ini_file(char *ini_name)
   return 0;
 }
 
-/*
-//seems you don't need this and you open sqlite db each time
-void get_conn_sqlite(void) {
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open("test.db", &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-        
-    //return 1;
-  }
-}
-*/
-
 void get_conn(void) {
   char conninfo[250];
   parse_ini_file("db.ini");
@@ -518,9 +500,7 @@ void get_recent_pg(int max) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
     row.size = len;
-    for (int j=0; j < len +1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
-    //row.chars = malloc(len + 1);
-    //memcpy(row->chars, PQgetvalue(res, i, 3), len);
+    for (int j=0; j < len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -580,7 +560,7 @@ void get_items_by_context_pg(char *context, int max) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
     row.size = len;
-    for (int j=0; j < len +1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
+    for (int j=0; j<len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -754,10 +734,10 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   you check the size of the string you are copying before the copy*/
 
   orow row;
-  //int len = strlen(title);
+
   int len = strlen(argv[3]);
   row.size = len;
-  for (int i=0; i < len +1; i++) {row.chars.emplace_back(argv[3][i]);}
+  for (int j=0; j<len+1; j++) {row.chars.emplace_back(argv[3][j]);}
   row.chars[len] = '\0';
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
@@ -847,57 +827,6 @@ void get_items_by_id_pg(char *query) {
 
   O.fc = O.fr = O.rowoff = 0;
 }
-
-/*
-void get_tid_sqlite(int id) {
-  if (id ==-1) return;
-
-  // free the E.row[j].chars
-  for (int j = 0 ; j < E.numrows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-
-  free(E.row);
-  E.row = NULL; 
-  E.numrows = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB, &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    }
-  char query[100];
-  sprintf(query, "SELECT tid FROM task WHERE id = %d", id); //tid
-
-  // callback does *not* appear to be called if result (argv) is null
-  rc = sqlite3_exec(db, query, tid_callback, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
-  } 
-  sqlite3_close(db);
-}
-
-int tid_callback (void *NotUsed, int argc, char **argv, char **azColName) {
-
-  UNUSED(NotUsed);
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  //note strsep handles multiple \n\n and strtok did not
-  if (argv[0] != NULL) { //added this guard 02052019 - not sure
-    //tid = atoi(argv[0]);
-  }
-  return 0;
-}
-*/
 
 void get_note_sqlite(int id) {
   if (id ==-1) return;
