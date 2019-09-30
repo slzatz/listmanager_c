@@ -38,7 +38,8 @@
 #include <string>
 #include <vector>
 #include <map>
-
+#include <cstdio>
+#include <cstring>
 /*** defines ***/
 
 typedef void (*pfunc)(void);
@@ -47,6 +48,7 @@ static std::map<int, pfunc> outline_normal_map;
 static std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static std::string FTS_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static std::string which_db = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+static std::string DB_INI = "db.ini";
 static int EDITOR_LEFT_MARGIN;
 static int NN = 0; //which context is being displayed on message line (if none then NN==0)
 static struct termios orig_termios;
@@ -162,6 +164,53 @@ enum Command {
 //so can be used in a case statement
 typedef struct {std::string key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
+  {"caw", C_caw},
+  {"cw", C_cw},
+  {"daw", C_daw},
+  {"dw", C_dw},
+  {"de", C_de},
+  {"dd", C_dd},
+  {">>", C_indent},
+  {"<<", C_unindent},
+  {"gg", C_gg},
+  {"yy", C_yy},
+  {"d$", C_d$},
+
+  {"help", C_help},
+  {"open", C_open},
+  // doesn't work if you use arrow keys
+  {"o", C_open}, //need 'o' because this is command with target word
+  {"fin", C_find},
+  {"find", C_find},
+  {"fts", C_fts},
+  {"refresh", C_refresh},
+  {"new", C_new}, //don't need "n" because there is no target
+  {"context", C_context},
+  {"con", C_context},
+  // doesn't work if you use arrow keys
+  {"c", C_context}, //need because there is a target
+  {"update", C_update},
+  {"sync", C_synch},
+  {"synch", C_synch},
+  {"synchronize", C_synch},
+  {"test", C_synch_test},
+  {"synchtest", C_synch_test},
+  {"synch_test", C_synch_test},
+  //{"highlight", C_highlight},
+  //{"show", C_highlight},
+  //{"sh", C_highlight},
+  {"quit", C_quit},
+  {"quit!", C_quit0},
+  {"q!", C_quit0},
+  {"edit", C_edit},
+  {"rec", C_recent},
+  {"recent", C_recent},
+  {"val", C_valgrind},
+  {"valgrind", C_valgrind}
+  //{"e", C_edit}
+};
+
+std::map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
   {"daw", C_daw},
@@ -429,7 +478,7 @@ void do_exit(PGconn *conn) {
     exit(1);
 }
 
-int parse_ini_file(char *ini_name)
+int parse_ini_file(const char *ini_name)
 {
     dictionary  *ini;
 
@@ -451,7 +500,7 @@ int parse_ini_file(char *ini_name)
 
 void get_conn(void) {
   char conninfo[250];
-  parse_ini_file("db.ini");
+  parse_ini_file(DB_INI.c_str());
   
   sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
           c.user, c.password, c.dbname, c.hostaddr, c.port);
@@ -831,13 +880,7 @@ void get_items_by_id_pg(char *query) {
 void get_note_sqlite(int id) {
   if (id ==-1) return;
 
-  // free the E.row[j].chars
-  for (int j = 0; j < E.numrows; j++) {
-    free(E.row[j].chars);
-  } 
-
-  free(E.row);
-  E.row = NULL; 
+  E.rows.clear();
   E.numrows = 0;
   //seems like you'd also want to do:
   E.fr = E.fc = E.cy = E.cx = 0; /*******03102019***********/
@@ -866,7 +909,7 @@ void get_note_sqlite(int id) {
   rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SQL error: %s\n", FTS_DB, err_msg);
+    outlineSetMessage("In get_note_sqlite: %s SAL error: %s\n", FTS_DB.c_str(), err_msg);
     sqlite3_free(err_msg);
     sqlite3_close(db);
   } 
@@ -922,13 +965,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 void get_note_pg(int id) {
   if (id ==-1) return;
 
-  // free the E.row[j].chars
-  for (int j = 0 ; j < E.numrows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-
-  free(E.row);
-  E.row = NULL; 
+  E.rows.clear();
   E.numrows = 0;
 
   char query[100];
@@ -1183,18 +1220,28 @@ void update_solr(void) {
   outlineSetMessage("%d items were added/updated to solr db", num);
 }
 
-// for starters am going to use this in c++ - less rewriting
+/*
 int keyfromstring(char *key) {
 
   //if (strlen(key) == 1) return key[0]; //catching this before calling keyfromstring
 
   int i;
   for (i=0; i <  NKEYS; i++) {
-    if (strcmp(lookuptable[i].key, key) == 0) return lookuptable[i].val;
+    if (std::strcmp(lookuptable[i].key, key) == 0) return lookuptable[i].val;
     }
 
     //nothing should match -1
     return -1;
+}
+*/
+
+int keyfromstringcpp(std::string key) {
+  std::map<std::string,int>::iterator it;
+    it = lookuptablemap.find(key);
+    if (it != lookuptablemap.end())
+      return it->second;
+    else
+      return -1;
 }
 
 //through pointer passes back position of space (if there is one)
@@ -1230,6 +1277,15 @@ int commandfromstring(char *key, int *p) { //for commands like find nemo - that 
   //if don't match anything and not a single char then just return -1
   if (pos) free(command);
   return -1;
+}
+
+int commandfromstringcpp(std::string key, int *p) { //for commands like find nemo - that consist of a command a space and further info
+  std::size_t found = key.find(' ');
+  if (found != std:string::npos)
+    std:string command = key.substr(0, found);
+    return keyfromstringcpp(command);
+  else:
+      command
 }
 
 void die(const char *s) {
@@ -1274,11 +1330,12 @@ void move_up(void)
 }
 /*** end vim-like functions***/
 
+/*
 outline_normal_map = move_up;
 outline_normal_map[ARROW_UP] = move_up();
 outline_normal_map['j'] = move_down();
 outline_normal_map[ARROW_DOWN] = move_down()
-
+*/
 int readKey() {
   int nread;
   char c;
@@ -2216,7 +2273,7 @@ void outlineRefreshScreen(void) {
   //if (!O.numrows) O.mode = NO_ROWS; //*********************************** this doesn't work needs to be NO_ROW with only command line
 
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.row[O.cy].size, O.cx, O.cy, O.fc, O.fr, get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows[O.cy].size, O.cx, O.cy, O.fc, O.fr, get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -2273,7 +2330,7 @@ void outlineSetMessage(const char *fmt, ...) {
   /* vsnprint from <stdio.h> writes to the character string str
      vsnprint(char *str,size_t size, const char *format, va_list ap)*/
 
-  vsnprintf(O.message, sizeof(O.message), fmt, ap);
+  std::vsnprintf(O.message, sizeof(O.message), fmt, ap);
   va_end(ap); //free a va_list
   //O.message_time = time(NULL);
 }
@@ -2438,7 +2495,8 @@ void outlineProcessKeypress() {
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
-      command = (n && c < 128) ? keyfromstring(O.command) : c;
+      //command = (n && c < 128) ? keyfromstring(O.command) : c;
+      command = (n && c < 128) ? keyfromstringcpp(std::string(O.command)) : c;
 
       switch(command) {  
 
