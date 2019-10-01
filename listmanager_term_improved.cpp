@@ -42,6 +42,7 @@
 #include <cstring>
 /*** defines ***/
 
+/***the following is not yet in use and would get rid of swith statements***/
 typedef void (*pfunc)(void);
 static std::map<int, pfunc> outline_normal_map;
 
@@ -114,6 +115,8 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
+//static const std::array<char,17> = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'"1970-01-01 00:00""
+static const std::array<char,17> BASE_DATE = "1970-01-01 00:00";
 
 enum Command {
   C_caw = 2000,
@@ -162,6 +165,9 @@ enum Command {
 //below is for multi-character commands
 //does a lookup to see which enum (representing a corresponding command) was matched
 //so can be used in a case statement
+
+/***this is being converted to map in the c++ version***/
+/*
 typedef struct {std::string key; int val; } t_symstruct;
 static t_symstruct lookuptable[] = {
   {"caw", C_caw},
@@ -209,7 +215,9 @@ static t_symstruct lookuptable[] = {
   {"valgrind", C_valgrind}
   //{"e", C_edit}
 };
+*/
 
+/***new way to do lookuptable is with a map***/
 std::map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
@@ -282,7 +290,7 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
-  char modified[17]; // display 16 chars plus need terminating '\0'
+  std::array<char,16> modified; // display 16 chars plus need terminating '\0'
   
 } orow;
 
@@ -335,10 +343,11 @@ struct editorConfig {
   int screenlines; //number of lines in the display
   int screencols;  //number of columns in the display
   int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
-  erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
+  //erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
   std::vector<erow> rows;
   int prev_numrows; // the number of rows of text so last text row is always row numrows
-  erow *prev_row; //for undo purposes
+  //erow *prev_row; //for undo purposes
+  std::vector<erow> prev_rows;
   int dirty; //file changes since last save
   char *filename;
   char message[120]; //status msg is a character array max 80 char
@@ -1246,6 +1255,7 @@ int keyfromstringcpp(std::string key) {
 
 //through pointer passes back position of space (if there is one)
 // for starters am going to use this in c++ - less rewriting
+/*
 int commandfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
 
   if (strlen(key) == 1) return key[0];  //need this
@@ -1278,14 +1288,16 @@ int commandfromstring(char *key, int *p) { //for commands like find nemo - that 
   if (pos) free(command);
   return -1;
 }
+*/
 
-int commandfromstringcpp(std::string key, int *p) { //for commands like find nemo - that consist of a command a space and further info
+int commandfromstringcpp(std::string key, std::size_t found) { //for commands like find nemo - that consist of a command a space and further info
   std::size_t found = key.find(' ');
+  found = key.find(' ');
   if (found != std:string::npos)
-    std:string command = key.substr(0, found);
+    std::string command = key.substr(0, found);
     return keyfromstringcpp(command);
   else:
-      command
+    return keyfromstringcpp(key)
 }
 
 void die(const char *s) {
@@ -1426,52 +1438,25 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline row operations ***/
 
-void outlineFreeRow(orow *row) {
-  free(row->chars);
-}
+void outlineInsertRow(int at, vector<char> s, size_t len, int id, bool star, bool deleted, bool completed, std::array<char,17> modified) {
+  /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
-void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified) {
-  /*O.row is a pointer to an array of database row structures
-  The array of rows that O.row points to needs to have its memory enlarged when
-  you add a row. Note that db row structures now include:
+  orow row;
 
-  int size; //the number of characters in the line
-  char *chars; //pointer to the character array of the item title
+  row.size = len;
+  row.chars = s;
+  row.chars.push_back('\0'); //each line is made into a c-string (maybe for searching)
+  row.id = id;
+  row.star = star;
+  row.deleted = deleted;
+  row.completed = completed;
+  row.dirty = (id != -1) ? false : true;
+  row.modified = modified;
+  O.numrows++; // not necessary since this is O.rows.size() when it is needed.
 
-  int id; //listmanager db id of the row
-  bool star;
-  bool deleted;
-  bool completed;
-  bool dirty;
-  */
 
-  O.row = realloc(O.row, sizeof(orow) * (O.numrows + 1));
-
-  /*
-  memmove(dest, source, number of bytes to move?)
-  moves the line at at to at+1 and all the other orow structs until the end
-  when you insert into the last row O.numrows==at then no memory is moved
-  apparently ok if there is no O.row[at+1] if number of bytes = 0
-  so below we are moving the row structure currently at *at* to x+1
-  and all the rows below *at* to a new location to make room at *at*
-  to create room for the line that we are inserting
-  */
-
-  memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
-
-  // section below creates an orow struct for the new row
-  O.row[at].size = len;
-  O.row[at].chars = malloc(len + 1);
-  memcpy(O.row[at].chars, s, len);
-  O.row[at].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
-  O.row[at].id = id;
-  O.row[at].star = star;
-  O.row[at].deleted = deleted;
-  O.row[at].completed = completed;
-  O.row[at].dirty = (id != -1) ? false : true;
-  strncpy(O.row[at].modified, modified, 16);
-  O.row[at].modified[16] = '\0';
-  O.numrows++;
+  auto pos = O.rows.begin() + at;
+  O.rows.insert(pos, row)
 }
 
 /*** outline operations ***/
