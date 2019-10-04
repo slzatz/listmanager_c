@@ -11,7 +11,7 @@
 #define TOP_MARGIN 1
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
-#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
+//#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define ABUF_INIT {NULL, 0}
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
@@ -115,8 +115,8 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
-//static const std::array<char,17> = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'"1970-01-01 00:00""
-static const std::array<char,17> BASE_DATE = "1970-01-01 00:00";
+//static const std::array<char,17> BASE_DATE = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'};
+static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"};
 
 enum Command {
   C_caw = 2000,
@@ -161,61 +161,6 @@ enum Command {
 
   C_valgrind
 };
-
-//below is for multi-character commands
-//does a lookup to see which enum (representing a corresponding command) was matched
-//so can be used in a case statement
-
-/***this is being converted to map in the c++ version***/
-/*
-typedef struct {std::string key; int val; } t_symstruct;
-static t_symstruct lookuptable[] = {
-  {"caw", C_caw},
-  {"cw", C_cw},
-  {"daw", C_daw},
-  {"dw", C_dw},
-  {"de", C_de},
-  {"dd", C_dd},
-  {">>", C_indent},
-  {"<<", C_unindent},
-  {"gg", C_gg},
-  {"yy", C_yy},
-  {"d$", C_d$},
-
-  {"help", C_help},
-  {"open", C_open},
-  // doesn't work if you use arrow keys
-  {"o", C_open}, //need 'o' because this is command with target word
-  {"fin", C_find},
-  {"find", C_find},
-  {"fts", C_fts},
-  {"refresh", C_refresh},
-  {"new", C_new}, //don't need "n" because there is no target
-  {"context", C_context},
-  {"con", C_context},
-  // doesn't work if you use arrow keys
-  {"c", C_context}, //need because there is a target
-  {"update", C_update},
-  {"sync", C_synch},
-  {"synch", C_synch},
-  {"synchronize", C_synch},
-  {"test", C_synch_test},
-  {"synchtest", C_synch_test},
-  {"synch_test", C_synch_test},
-  //{"highlight", C_highlight},
-  //{"show", C_highlight},
-  //{"sh", C_highlight},
-  {"quit", C_quit},
-  {"quit!", C_quit0},
-  {"q!", C_quit0},
-  {"edit", C_edit},
-  {"rec", C_recent},
-  {"recent", C_recent},
-  {"val", C_valgrind},
-  {"valgrind", C_valgrind}
-  //{"e", C_edit}
-};
-*/
 
 /***new way to do lookuptable is with a map***/
 std::map<std::string, int> lookuptablemap {
@@ -281,7 +226,7 @@ char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be mallo
 */
 
 typedef struct orow {
-  int size; //the number of characters in the line -- doesn't seem necessary - why not just use strlen(chars) [renamed to title]
+  //int size; //the number of characters in the line -- doesn't seem necessary - why not just use strlen(chars) [renamed to title]
   //char *chars; //points at the character array of a row - mem assigned by malloc
   std::vector<char> chars;
 
@@ -290,16 +235,19 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
-  std::array<char,16> modified; // display 16 chars plus need terminating '\0'
+  char modified[17]; // display 16 chars plus need terminating '\0'
+  //std::array<char,16> modified; // display 16 chars plus need terminating '\0'
   
 } orow;
 
-typedef struct erow {
+//don't really need a struct just erow_chars
+/*typedef struct erow {
   int size; //the number of characters in the line
   //char *chars; //points at the character array of a row - mem assigned by malloc
   std::vector<char> chars;
 } erow;
-
+*/
+//typedef std::vector<char> erow_chars;
 /*** append buffer used for writing to the screen***/
 
 struct abuf {
@@ -314,7 +262,7 @@ struct outlineConfig {
   int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
   int screenlines; //number of lines in the display available to text
   int screencols;  //number of columns in the display available to text
-  int numrows; // the number of rows of items/tasks
+  //int numrows; // the number of rows of items/tasks
   //orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures
   std::vector<orow> rows;
   //orow *prev_row; //for undo purposes
@@ -342,12 +290,14 @@ struct editorConfig {
   int coloff; //column user is currently scrolled to
   int screenlines; //number of lines in the display
   int screencols;  //number of columns in the display
-  int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
+  //int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
   //erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
-  std::vector<erow> rows;
+  //std::vector<erow> rows;
+  //std::vector<erow_chars> rows;
+  std::vector<std::vector<char>> rows;
   int prev_numrows; // the number of rows of text so last text row is always row numrows
   //erow *prev_row; //for undo purposes
-  std::vector<erow> prev_rows;
+  std::vector<std::vector<char>> prev_rows;
   int dirty; //file changes since last save
   char *filename;
   char message[120]; //status msg is a character array max 80 char
@@ -557,8 +507,12 @@ void get_recent_pg(int max) {
   for(i=0; i<rows; i++) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
-    row.size = len;
-    for (int j=0; j < len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
+    //row.size = len;
+    //std::vector<char> temp(argv[3], argv[3] + len);
+    //row.chars = temp;
+    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.chars = temp;
+    //for (int j=0; j < len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -571,7 +525,7 @@ void get_recent_pg(int max) {
 
     O.rows.push_back(row);
   }
-  O.numrows = i;
+  //O.numrows = i;
   PQclear(res);
   // PQfinish(conn);
 
@@ -617,8 +571,10 @@ void get_items_by_context_pg(char *context, int max) {
   for(i=0; i<rows; i++) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
-    row.size = len;
-    for (int j=0; j<len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
+    //row.size = len;
+    //for (int j=0; j<len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
+    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.chars = temp;
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -630,7 +586,7 @@ void get_items_by_context_pg(char *context, int max) {
     row.modified[len] = '\0';
     O.rows.push_back(row);
   }
-  O.numrows = i;
+  //O.numrows = i;
 
   PQclear(res);
   // PQfinish(conn);
@@ -644,7 +600,7 @@ void get_recent_sqlite(int max) {
   char query[400];
 
   O.rows.clear();
-  O.numrows = 0;
+  //O.numrows = 0;
 
   O.fc = O.fr = O.rowoff = 0;
 
@@ -694,7 +650,7 @@ void get_items_by_context_sqlite(char *context, int max) {
   char query[400];
 
   O.rows.clear();
-  O.numrows = 0;
+  //O.numrows = 0;
 
   O.fc = O.fr = O.rowoff = 0;
 
@@ -794,9 +750,11 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   orow row;
 
   int len = strlen(argv[3]);
-  row.size = len;
-  for (int j=0; j<len+1; j++) {row.chars.emplace_back(argv[3][j]);}
-  row.chars[len] = '\0';
+  //row.size = len;
+  //for (int j=0; j<len+1; j++) {row.chars.emplace_back(argv[3][j]);}
+  std::vector<char> temp(argv[3], argv[3] + len);
+  row.chars = temp;
+  //row.chars.push_back('\0');
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -806,7 +764,8 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   len = (len > 16) ? 16 : len;
   strncpy(row.modified, argv[16], len);
   row.modified[len] = '\0';
-  O.numrows++;
+  //O.numrows++;
+  O.rows.push_back(row);
 
   return 0;
 }
@@ -814,7 +773,7 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
 void get_items_by_id_sqlite(char *query) {
 
   O.rows.clear();
-  O.numrows = 0;
+  //O.numrows = 0;
 
   O.fc = O.fr = O.rowoff = 0;
 
@@ -867,8 +826,10 @@ void get_items_by_id_pg(char *query) {
   for(i=0; i<rows; i++) {
     orow row;
     len = strlen(PQgetvalue(res, i, 3));
-    row.size = len;
-    for (i=0; i<len+1; i++) {row.chars.emplace_back(PQgetvalue(res, i, i));}
+    //row.size = len;
+    //for (i=0; i<len+1; i++) {row.chars.emplace_back(PQgetvalue(res, i, i));}
+    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.chars = temp;
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -879,7 +840,7 @@ void get_items_by_id_pg(char *query) {
     strncpy(row.modified, PQgetvalue(res, i, 16), len);
     row.modified[len] = '\0';
   }
-  O.numrows = i;
+  //O.numrows = i;
   PQclear(res);
  // PQfinish(conn);
 
@@ -890,7 +851,7 @@ void get_note_sqlite(int id) {
   if (id ==-1) return;
 
   E.rows.clear();
-  E.numrows = 0;
+  //E.numrows = 0;
   //seems like you'd also want to do:
   E.fr = E.fc = E.cy = E.cx = 0; /*******03102019***********/
 
@@ -959,7 +920,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     note = strdup(argv[0]); // ******************
     char *found;
     while ((found = strsep(&note, "\r\n")) != NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
-      editorInsertRow(E.numrows, found, strlen(found));
+      editorInsertRow(E.rows.size(), found, strlen(found));
     }
     free(note); //moved below on 02262019
   }
@@ -975,7 +936,7 @@ void get_note_pg(int id) {
   if (id ==-1) return;
 
   E.rows.clear();
-  E.numrows = 0;
+  //E.numrows = 0;
 
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id);
@@ -995,7 +956,7 @@ void get_note_pg(int id) {
     note = strdup(PQgetvalue(res, 0, 0)); // ******************
     char *found;
     while ((found = strsep(&note, "\r\n")) !=NULL) {
-      editorInsertRow(E.numrows, found, strlen(found));
+      editorInsertRow(E.rows.size(), found, strlen(found));
     }
   E.dirty = 0;
   editorRefreshScreen();
@@ -1290,14 +1251,14 @@ int commandfromstring(char *key, int *p) { //for commands like find nemo - that 
 }
 */
 
-int commandfromstringcpp(std::string key, std::size_t found) { //for commands like find nemo - that consist of a command a space and further info
-  std::size_t found = key.find(' ');
+int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
+  //std::size_t found = key.find(' ');
   found = key.find(' ');
-  if (found != std:string::npos)
+  if (found != std::string::npos) {
     std::string command = key.substr(0, found);
     return keyfromstringcpp(command);
-  else:
-    return keyfromstringcpp(key)
+  } else
+    return keyfromstringcpp(key);
 }
 
 void die(const char *s) {
@@ -1438,12 +1399,12 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline row operations ***/
 
-void outlineInsertRow(int at, vector<char> s, size_t len, int id, bool star, bool deleted, bool completed, std::array<char,17> modified) {
+void outlineInsertRow(int at, std::vector<char> s, size_t len, int id, bool star, bool deleted, bool completed, char* modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
 
-  row.size = len;
+  //row.size = len;
   row.chars = s;
   row.chars.push_back('\0'); //each line is made into a c-string (maybe for searching)
   row.id = id;
@@ -1451,84 +1412,54 @@ void outlineInsertRow(int at, vector<char> s, size_t len, int id, bool star, boo
   row.deleted = deleted;
   row.completed = completed;
   row.dirty = (id != -1) ? false : true;
-  row.modified = modified;
-  O.numrows++; // not necessary since this is O.rows.size() when it is needed.
+  strncpy(row.modified, modified, 16);
+  row.modified[16] = '\0';
+  //O.numrows++; // not necessary since this is O.rows.size() when it is needed.
 
 
   auto pos = O.rows.begin() + at;
-  O.rows.insert(pos, row)
+  O.rows.insert(pos, row);
 }
 
 /*** outline operations ***/
 void outlineInsertChar(int c) {
 
-  if ( O.numrows == 0 ) {
-    return;
-  }
+  if (O.rows.size() == 0) return;
 
-  orow *row = &O.row[O.fr];
-
-  // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
-  row->chars = realloc(row->chars, row->size + 2); 
-
-  /* moving all the chars at the current x cursor position one char
-     farther down the char string to make room for the new character
-     Note that if fc = row->size then beyond last character in insert
-     mode and char is inserted before the closing '\0'
-     Maybe a clue from outlineInsertRow - it's memmove is below
-     memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
-  */
-
-  memmove(&row->chars[O.fc + 1], &row->chars[O.fc], row->size - O.fc + 1); 
-
-  row->size++;
-  row->chars[O.fc] = c;
-  row->chars[row->size] = '\0'; //????
-  row->dirty = true;
+  orow& row = O.rows.at(O.fr);
+  row.chars.at(O.fc) = c;
+  //row.size++;
+  row.dirty = true;
   O.fc++;
 }
 
 void outlineDelChar(void) {
 
-  orow *row = &O.row[O.fr];
+  //orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   // note below order important because row->size undefined if 
   // O.numrows = 0 because O.row is NULL
-  if (O.numrows == 0 || row->size == 0 ) return; 
+  if (O.rows.size() == 0 || row.chars.size() == 0 ) return;
 
-  /* valgrind issue below for memmove and realloc*/
-  memmove(&row->chars[O.fc], &row->chars[O.fc + 1], row->size - O.fc);
-  row->chars = realloc(row->chars, row->size); 
-  row->size--;
-
-  //shouldn't have to do this since trailing '\0' should move too
-  //row->chars[row->size] = '\0'; commented out 03022019
-
-  // don't know if this is is necessary - you have one row i
-  // with no chars - that's fine
-  if (O.numrows == 1 && row->size == 0) {
-    O.numrows = 0;
-    free(O.row);
-    O.row = NULL;
-  }
-
-  row->dirty = true;
+  row.chars.erase(row.chars.begin() + O.fc);
+  //row.size--;
+  row.dirty = true;
 
 }
 
 void outlineBackspace(void) {
 
-  if (O.fc == 0) return;
+  orow& row = O.rows.at(O.fr);
 
-  orow *row = &O.row[O.fr];
+  if (O.rows.size() == 0 || row.chars.size() == 0 ) return;
 
-  memmove(&row->chars[O.fc - 1], &row->chars[O.fc], row->size - O.fc + 1);
-  row->chars = realloc(row->chars, row->size); 
-  row->size--;
-  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
+  row.chars.erase(row.chars.begin() + O.fc);
+  //row.size--;
+  row.dirty = true;
+
   O.fc--; //if O.cx goes negative outlineScroll should handle it
  
-  row->dirty = true;
 }
 
 /*** file i/o ***/
@@ -1536,15 +1467,16 @@ void outlineBackspace(void) {
 char *outlineRowsToString(int *buflen) {
   int totlen = 0;
   int j;
-  for (j = 0; j < O.numrows; j++)
-    totlen += O.row[j].size + 1;
+  for (j = 0; j < O.rows.size(); j++)
+    totlen += O.rows.at(j).chars.size() + 1;
   *buflen = totlen;
 
-  char *buf = malloc(totlen);
+  //char *buf = malloc(totlen);
+  char *buf = (char *) malloc(totlen);
   char *p = buf;
-  for (j = 0; j < O.numrows; j++) {
-    memcpy(p, O.row[j].chars, O.row[j].size);
-    p += O.row[j].size;
+  for (j = 0; j < O.rows.size(); j++) {
+    memcpy(p, &O.rows[j].chars, O.rows.at(j).chars.size());
+    p += O.rows.at(j).chars.size();
     *p = '\n';
     p++;
   }
@@ -1581,72 +1513,50 @@ void outlineSave() {
 // fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, char *s, size_t len) {
 
-  /*E.row is a pointer to an array of erow structures
-  The array of erows that E.row points to needs to have its memory enlarged when
-  you add a row. Note that erow structure includes the row size and char pointer*/
-
-  E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1));
-
-  /*
-  memmove(dest, source, number of bytes to move?)
-  moves the line at fr to fr+1 and all the other erow structs until the end
-  when you insert into the last row E.numrows==fr then no memory is moved
-  apparently ok if there is no E.row[fr+1] if number of bytes = 0
-  so below we are moving the row structures currently at fr and below to fr+1
-  to make room at E.row[fr] to create the line that we are inserting
-  */
-
-  memmove(&E.row[fr + 1], &E.row[fr], sizeof(erow) * (E.numrows - fr));
-
-  // section below creates an erow struct for the new row
-
-  // I have no idea if this is a problem but if we are inserting a 
-  // row fr and there was something previously there
-  // don't we have to free it? added 03022019 and could be a bad idea
-
-  // not necessary/doesn't work because E.row[fr].chars points to same location as 
-  // E.row[fr+1].chars after the memmove above so freeing that memory destroys
-  // whatever string E.row[fr+1].chars points to
-  //if (E.numrows > fr) free(E.row[fr].chars);
-
-  E.row[fr].size = len;
-  E.row[fr].chars = malloc(len + 1);
-  memcpy(E.row[fr].chars, s, len);
-  E.row[fr].chars[len] = '\0'; //each line is made into a c-string (maybe for searching)
-  E.numrows++;
+  //erow_chars row(s, s + len);
+  std::vector<char> row(s, s + len);
+  auto pos = E.rows.begin() + fr;
+  E.rows.insert(pos, row);
   E.dirty++;
 }
 
-void editorFreeRow(erow *row) {
-  free(row->chars);
-}
 
 // untested
 void editorDelRow(int r) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
-  if (E.numrows == 0) return; // some calls may duplicate this guard
+  if (E.rows.size() == 0) return; // some calls may duplicate this guard
 
-  editorFreeRow(&E.row[r]); 
-  memmove(&E.row[r], &E.row[r + 1], sizeof(erow) * (E.numrows - r - 1));
-  E.numrows--; 
-  if (E.numrows == 0) {
-    E.row = NULL;
+  E.rows.erase(E.rows.begin() + r);
+  //E.numrows--;
+  if (E.rows.size() == 0) {
+    E.rows.clear();
     E.fr = 0;
     E.fc = 0;
     return;
-  } else if (r == E.numrows) r--;
+  }
 
   E.dirty++;
   //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.numrows, E.cx, E.row[fr].size); 
 }
 
 // only used by editorBackspace
-void editorRowAppendString(erow *row, char *s, size_t len) {
-  row->chars = realloc(row->chars, row->size + len + 1);
-  memcpy(&row->chars[row->size], s, len);
-  row->size += len;
-  row->chars[row->size] = '\0';
+void editorRowAppendString(std::vector<char>& row, std::vector<char>& s) {
+  //row->chars = realloc(row->chars, row->size + len + 1);
+  //memcpy(&row->chars[row->size], s, len);
+  //ow->size += len;
+  //row->chars[row->size] = '\0';
+  //E.dirty++;
+
+  //std::vector<char> temp(s, s+ len);
+  row.insert(row.end() - 1, s.begin(), s.end());
+  //row.size += len;
+  //row.chars.at(len) = '\0';
   E.dirty++;
+
+
+
+
+
 }
 
 /* not in use right now
@@ -1664,14 +1574,15 @@ void editorRowDelChar(erow *row, int fr) {
 /*** editor operations ***/
 void editorInsertChar(int chr) {
 
-  if ( E.numrows == 0 ) {
+  if ( E.rows.size() == 0 ) {
     editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
-  erow *row = &E.row[E.fr];
+  //erow_chars& row = E.rows.at(E.fr);
+  std::vector<char>& row = E.rows.at(E.fr);
 
   // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
-  row->chars = realloc(row->chars, row->size + 2); 
+  //row->chars = realloc(row->chars, row->size + 2);
 
   /* moving all the chars r the current x cursor position on char
      farther down the char string to make room for the new character
@@ -1680,17 +1591,18 @@ void editorInsertChar(int chr) {
   */
 
    //if (E.fc == -1) E.fc = 0;// may not set E.fc = -1 so wouldn't need this check
-  memmove(&row->chars[E.fc + 1], &row->chars[E.fc], row->size - E.fc + 1); 
+  //memmove(&row->chars[E.fc + 1], &row->chars[E.fc], row->size - E.fc + 1);
+  row.insert(row.begin() + E.fc, chr);
 
-  row->size++;
-  row->chars[E.fc] = chr;
+  //row->size++;
+  //row->chars[E.fc] = chr;
   E.dirty++;
 
   E.fc++;
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
-  if (E.numrows == 0) {
+  if (E.rows.size() == 0) {
     editorInsertRow(0, "", 0);
     editorInsertRow(0, "", 0);
     //E.fc = -1;
@@ -1699,16 +1611,20 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
     return;
   }
     
-  erow *row = &E.row[E.fr];
+  std::vector<char>& current_row = E.rows.at(E.fr);
+  std::vector<char> new_row1(current_row.begin(), current_row.begin() + E.fc);
+  std::vector<char> new_row2(current_row.begin() + E.fc, current_row.end());
+
+
   //could use VLA
-  int len = row->size - E.fc;
+  //int len = row->size - E.fc;
   //note that you need row-size - fc + 1 but InsertRow will take care of that
   //here you just need to copy the actual characters without the terminating '\0'
   //note below we indent but could be combined so that inserted into
   //the new line both the chars and the number of indent spaces
-  char *moved_chars = malloc(len);
+  //char *moved_chars = malloc(len);
   //if (E.fc == -1) E.fc = 0;
-  memcpy(moved_chars, &row->chars[E.fc], len); //? I had issues with strncpy so changed to memcpy
+  //memcpy(moved_chars, &row->chars[E.fc], len); //? I had issues with strncpy so changed to memcpy
   
   //This is the row from which the return took place which is now smaller 
   //because some characters where moved into the next row(although could
@@ -1717,15 +1633,17 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
   // in that case the realloc should do nothing - assume that it behaves correctly
   // when there is no actual change in the memory allocation
   // also malloc and memcpy should behave ok with zero arguments
-  row->size = E.fc;
-  row->chars[row->size] = '\0';//someday may actually figure out if row-chars has to be a c-string 
-  row->chars = realloc(row->chars, row->size + 1); 
+  //row->size = E.fc;
+  //row->chars[row->size] = '\0';//someday may actually figure out if row-chars has to be a c-string
+  //row->chars = realloc(row->chars, row->size + 1);
 
   int indent = (E.smartindent) ? editorIndentAmount(E.fr) : 0;
 
   E.fr++;
-  editorInsertRow(E.fr, moved_chars, len);
-  free(moved_chars);
+  current_row = new_row1;
+  E.rows.insert(E.rows.begin() + E.fr, new_row2);
+  //editorInsertRow(E.fr, moved_chars, len);
+  //free(moved_chars);
 
   E.fc = 0;
   for (int j=0; j < indent; j++) editorInsertChar(' ');
@@ -1735,7 +1653,7 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 //'o' -> direction == 1 and 'O' direction == 0
 void editorInsertNewline(int direction) {
   /* note this func does position E.fc and E.fr*/
-  if (E.numrows == 0) {
+  if (E.rows.size() == 0) {
     editorInsertRow(0, "", 0);
     return;
   }
@@ -1764,51 +1682,17 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
-
-  erow *row = &E.row[E.fr];
-
-  /* row size = 1 means there is 1 char; size 0 means 0 chars */
-  /* Note that row->size does not count the terminating '\0' char*/
-  // note below order important because row->size undefined if 
-  // E.numrows = 0 because E.row is NULL
-  if (E.numrows == 0 || row->size == 0 ) return; 
-
-  memmove(&row->chars[E.fc], &row->chars[E.fc + 1], row->size - E.fc);
-  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
-  row->size--;
-
-  //shouldn't have to do this since trailing '\0' should move too
-  row->chars[row->size] = '\0'; // commented out 03022019 and put back
-
-  // don't know if this is is necessary - you have one row i
-  // with no chars - that's fine
-  if (E.numrows == 1 && row->size == 0) {
-    E.numrows = 0;
-    free(E.row);
-    E.row = NULL;
-  }
+  std::vector<char>& row = E.rows.at(E.fr);
+  if (E.rows.size() == 0 || row.size() == 0 ) return;
+  row.erase(row.begin() + E.fc);
   E.dirty++;
 }
 
 // used by 'x' in editor/visual mode
 void editorDelChar2(int fr, int fc) {
-  erow *row = &E.row[fr];
-
-  /* row size = 1 means there is 1 char; size 0 means 0 chars */
-  /* Note that row->size does not count the terminating '\0' char*/
-  // note below order important because row->size undefined if E.numrows = 0 because E.row is NULL
-  if (E.numrows == 0 || row->size == 0 ) return; 
-
-  memmove(&row->chars[fc], &row->chars[fc + 1], row->size - fc);
-  row->chars = realloc(row->chars, row->size); // ******* this is untested but similar to outlineBackspace
-  row->size--;
-  row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
-
-  if (E.numrows == 1 && row->size == 0) {
-    E.numrows = 0;
-    free(E.row);
-    E.row = NULL;
-  }
+  std::vector<char>& row = E.rows.at(fr);
+  if (E.rows.size() == 0 || row.size() == 0 ) return;
+  row.erase(row.begin() + fc);
   E.dirty++;
 }
 
@@ -1817,12 +1701,14 @@ void editorBackspace(void) {
 
   if (E.fc == 0 && E.fr == 0) return;
 
-  erow *row = &E.row[E.fr];
+  std::vector<char>& row = E.rows.at(E.fr);
 
   if (E.fc > 0) {
     if (E.cx > 0) { // We want this E.cx - don't change to E.fc!!!
-      memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
-      row->size--;
+      //memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
+      //row->size--;
+
+      row.erase(row.begin() + E.fc -1);
 
      // below seems like a complete kluge but definitely want that E.cx!!!!!
       if (E.cx == 1 && E.fc > 1) E.continuation = 1; //right now only backspace in multi-line
@@ -1830,20 +1716,22 @@ void editorBackspace(void) {
       E.fc--;
 
     } else { 
+
+      row.erase(row.begin() + E.fc -1);
+
+      /*
       memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
       row->chars = realloc(row->chars, row->size); 
       row->size--;
       row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
+      */
       E.fc--;
       E.continuation = 0;
     } 
   } else {// this means we're at fc == 0 so we're in the first filecolumn
-    editorRowAppendString(&E.row[E.fr - 1], row->chars, row->size); //only use of this function
-    editorFreeRow(&E.row[E.fr]);
-    memmove(&E.row[E.fr], &E.row[E.fr + 1], sizeof(erow) * (E.numrows - E.fr - 1));
-    E.numrows--;
+    editorRowAppendString(E.rows.at(E.fr - 1), row); //only use of this function
     E.fr--;
-    E.fc = E.row[E.fr].size;
+    E.fc = E.rows.at(E.fr).size();
   }
   E.dirty++;
 }
@@ -1851,8 +1739,9 @@ void editorBackspace(void) {
 /*** file i/o ***/
 
 // have not looked at this 02212019
-char *editorRowsToString(int *buflen) {
-  int totlen = 0;
+std::string editorRowsToString(void) {
+  /*
+    int totlen = 0;
   int j;
   for (j = 0; j < E.numrows; j++)
     totlen += E.row[j].size + 1;
@@ -1869,19 +1758,21 @@ char *editorRowsToString(int *buflen) {
   }
   *p = '\0'; //does not work if this is missing
   return buf;
+  */
+
+  std::string z = "";
+  for (auto i: E.rows) {
+      std::string s(i.data(), i.size());
+      z += s;
+      return z;
+  }
+
+
 }
 
 void editorEraseScreen(void) {
 
-  if (E.row) {
-    for (int j = 0 ; j < E.numrows ; j++ ) {
-      free(E.row[j].chars);
-    } 
-
-    free(E.row);
-    E.row = NULL; 
-    E.numrows = 0;
-  }
+  E.rows.clear();
 
   char lf_ret[10];
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
@@ -1990,7 +1881,7 @@ void editorOpen(char *filename) {
     while (linelen > 0 && (line[linelen - 1] == '\n' ||
                            line[linelen - 1] == '\r'))
       linelen--;
-    editorInsertRow(E.numrows, line, linelen);
+    editorInsertRow(E.rows.size(), line, linelen);
   }
   free(line);
   fclose(fp);
@@ -1999,15 +1890,15 @@ void editorOpen(char *filename) {
 
 void editorSave(void) {
   if (E.filename == NULL) return;
-  int len;
-  char *buf = editorRowsToString(&len);
+  std::string s = editorRowsToString();
+  size_t len = s.size();
+
 
   int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
   if (fd != -1) {
     if (ftruncate(fd, len) != -1) {
-      if (write(fd, buf, len) == len) {
+      if (write(fd, s.c_str(), len) == len) {
         close(fd);
-        free(buf);
         E.dirty = 0;
         editorSetMessage("%d bytes written to disk", len);
         return;
@@ -2016,7 +1907,6 @@ void editorSave(void) {
     close(fd);
   }
 
-  free(buf);
   editorSetMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
