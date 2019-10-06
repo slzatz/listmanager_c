@@ -267,7 +267,8 @@ struct outlineConfig {
   std::vector<orow> rows;
   //orow *prev_row; //for undo purposes
   //int dirty; //each row has a row->dirty
-  char *context;
+  //char *context;
+  std::string context;
   char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
@@ -315,7 +316,7 @@ struct editorConfig E;
 
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
-void (*get_items_by_context)(char *, int);
+void (*get_items_by_context)(std::string, int);
 void (*get_recent)(int);
 void (*get_items_by_id)(char *);
 void (*get_note)(int);
@@ -364,8 +365,10 @@ int get_id(int fr);
 void get_recent_pg(int);
 void get_recent_sqlite(int);
 int insert_row_pg(int); 
-int insert_row_sqlite(int); 
-void update_note_pg(void); 
+int insert_row_pg_new(orow);
+int insert_row_sqlite(int);
+int insert_row_sqlite_new(orow);
+void update_note_pg(void);
 void update_note_sqlite(void); 
 void synchronize(int);
 
@@ -532,7 +535,7 @@ void get_recent_pg(int max) {
   O.fc = O.fr = O.rowoff = 0;
 }
 
-void get_items_by_context_pg(char *context, int max) {
+void get_items_by_context_pg(std::string context, int max) {
   char query[400];
   if (!O.show_deleted) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
@@ -540,7 +543,7 @@ void get_items_by_context_pg(char *context, int max) {
                     "AND task.deleted = %s "
                     "AND task.completed IS %s "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    context,
+                    context.c_str(),
                     "False",
                     "NULL",
                     max);
@@ -550,7 +553,7 @@ void get_items_by_context_pg(char *context, int max) {
   sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    context,
+                    context.c_str(),
                     max);
   }
 
@@ -646,7 +649,7 @@ void get_recent_sqlite(int max) {
 }
 
 
-void get_items_by_context_sqlite(char *context, int max) {
+void get_items_by_context_sqlite(std::string context, int max) {
   char query[400];
 
   O.rows.clear();
@@ -671,7 +674,7 @@ void get_items_by_context_sqlite(char *context, int max) {
                     "AND task.deleted = False "
                     "AND task.completed IS NULL " 
                     "ORDER BY task.modified DESC LIMIT %d",
-                    context,
+                    context.c_str(),
                     max);
   }
   else {
@@ -679,7 +682,7 @@ void get_items_by_context_sqlite(char *context, int max) {
     sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
                     "WHERE context.title = \'%s\' "
                     "ORDER BY task.modified DESC LIMIT %d",
-                    context,
+                    context.c_str(),
                     max);
   }
         
@@ -861,7 +864,8 @@ void get_note_sqlite(int id) {
   char query[200];
   int rc;
 
-  if (editor_mode || strcmp(O.context, "search") != 0) {
+  //if (editor_mode || strcmp(O.context, "search") != 0) {
+  if (editor_mode || O.context != "search") {
     sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
     rc = sqlite3_open(SQLITE_DB.c_str(), &db);
   } else {
@@ -1485,7 +1489,7 @@ char *outlineRowsToString(int *buflen) {
 }
 
 void outlineSave() {
-  if (O.context == NULL) return;
+  if (O.context.empty()) return;
   int len;
   char *buf = outlineRowsToString(&len);
 
@@ -1929,17 +1933,17 @@ void abAppend(struct abuf *ab, const char *s, int len) {
   */
 
   /*realloc's first argument is the current pointer to memory and the second argumment is the size_t needed*/
-  char *new = realloc(ab->b, ab->len + len); 
+  char *new_x = (char*)realloc(ab->b, ab->len + len);
 
-  if (new == NULL) return;
+  if (new_x == NULL) return;
   /*new is the new pointer to the string
     new[len] is a value and memcpy needs a pointer
     to the location in the string where s is being copied*/
 
   //copy s on to the end of whatever string was there
-  memcpy(&new[ab->len], s, len); 
+  memcpy(&new_x[ab->len], s, len);
 
-  ab->b = new;
+  ab->b = new_x;
   ab->len += len;
 }
 
@@ -1950,7 +1954,7 @@ void abFree(struct abuf *ab) {
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
-  if(!O.row) return;
+  if(O.rows.empty()) return;
 
   if (O.fr > O.screenlines + O.rowoff - 1) {
     O.rowoff =  O.fr - O.screenlines + 1;
@@ -1979,7 +1983,7 @@ void outlineDrawRows(struct abuf *ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
   char buf[32];
 
-  if (!O.row) return; 
+  if (O.rows.empty()) return;
 
   int y;
   char lf_ret[16];
@@ -1989,27 +1993,27 @@ void outlineDrawRows(struct abuf *ab) {
 
   for (y = 0; y < O.screenlines; y++) {
     int fr = y + O.rowoff;
-    if (fr > O.numrows - 1) return;
-    orow *row = &O.row[fr];
+    if (fr > O.rows.size() - 1) return;
+    orow& row = O.rows[fr];
 
     // if a line is long you only draw what fits on the screen
     //below solves  problem when deleting chars from a scrolled long line
-    int len = (fr == O.fr) ? row->size - O.coloff : row->size; //can run into this problem when deleting chars from a scrolled log line
+    int len = (fr == O.fr) ? row.chars.size() - O.coloff : row.chars.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > O.screencols) len = O.screencols; 
 
     // was the below for a long time but changed on 03022019 to deal with scrolled line
     // that has chars deleted from it so it doesn't take up the full row anymone
     //int len = (row->size > O.screencols) ? O.screencols : row->size;
     
-    if (row->star) abAppend(ab, "\x1b[1m", 4); //bold
+    if (row.star) abAppend(ab, "\x1b[1m", 4); //bold
 
-    if (row->completed && row->deleted) abAppend(ab, "\x1b[32m", 5); //green foreground
-    else if (row->completed) abAppend(ab, "\x1b[33m", 5); //yellow foreground
-    else if (row->deleted) abAppend(ab, "\x1b[31m", 5); //red foreground
+    if (row.completed && row.deleted) abAppend(ab, "\x1b[32m", 5); //green foreground
+    else if (row.completed) abAppend(ab, "\x1b[33m", 5); //yellow foreground
+    else if (row.deleted) abAppend(ab, "\x1b[31m", 5); //red foreground
 
     if (fr == O.fr) abAppend(ab, "\x1b[48;5;236m", 11); // 236 is a grey
 
-    if (row->dirty) abAppend(ab, "\x1b[41m", 5); //red background
+    if (row.dirty) abAppend(ab, "\x1b[41m", 5); //red background
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
@@ -2019,16 +2023,16 @@ void outlineDrawRows(struct abuf *ab) {
        // below in case E.highlight[1] < E.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
       j =!k;
-      abAppend(ab, &(row->chars[O.coloff]), O.highlight[j] - O.coloff);
+      abAppend(ab, &(row.chars[O.coloff]), O.highlight[j] - O.coloff);
       abAppend(ab, "\x1b[48;5;242m", 11);
-      abAppend(ab, &(row->chars[O.highlight[j]]), O.highlight[k]
+      abAppend(ab, &(row.chars[O.highlight[j]]), O.highlight[k]
                                              - O.highlight[j]);
       abAppend(ab, "\x1b[49m", 5); // return background to normal
-      abAppend(ab, &(row->chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+      abAppend(ab, &(row.chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
       
     } else {
         // current row is only row that is scrolled if O.coloff != 0
-        abAppend(ab, &row->chars[((fr == O.fr) ? O.coloff : 0)], len);
+        abAppend(ab, &row.chars[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
@@ -2039,7 +2043,7 @@ void outlineDrawRows(struct abuf *ab) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
     abAppend(ab, "\x1b[0m", 4); // return background to normal
     abAppend(ab, buf, strlen(buf));
-    abAppend(ab, row->modified, 16); 
+    abAppend(ab, row.modified, 16);
     abAppend(ab, lf_ret, nchars);
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
@@ -2070,34 +2074,39 @@ void outlineDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-
-  if (!O.row) { //********************************** or (!O.numrows)
+  char zz = '\0';
+  char * zzz = &zz;
+  if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%d %s",
-                              O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
-                              (strcmp(O.context, "search") == 0) ? search_terms : "",
-                              "     No Results   ", -1, 0, O.numrows, mode_text[O.mode]);
+                              //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
+                              O.context.c_str(), (O.context == "search")  ? " - " : "",
+                              //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
+                              (O.context == "search") ? search_terms : zzz,
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
-    orow *row = &O.row[O.fr];
-    int title_len = (row->size < 20) ? row->size : 19;
-    char *truncated_title = malloc(title_len + 1);
-    memcpy(truncated_title, row->chars, title_len); //had issues with strncpy so changed to memcpy
+    orow& row = O.rows.at(O.fr);
+    int title_len = (row.chars.size() < 20) ? row.chars.size() : 19;
+    char *truncated_title = (char*)malloc(title_len + 1);
+    memcpy(truncated_title, &row.chars, title_len); //had issues with strncpy so changed to memcpy
     truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
 
     len = snprintf(status, sizeof(status), 
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%d \x1b[1;42m%s\x1b[49m",
-                              O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
-                              (strcmp(O.context, "search") == 0) ? search_terms : "",
-                              truncated_title, row->id, O.fr + 1, O.numrows, mode_text[O.mode]);
+                              //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
+                              //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
+                              O.context.c_str(), (O.context == "search")  ? " - " : "",
+                              (O.context == "search") ? search_terms : zzz,
+                              truncated_title, row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
     free(truncated_title);
   }
   //because of escapes
   len-=22;
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s\x1b[0;7m ", which_db);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s\x1b[0;7m ", which_db.c_str());
 
   //if (len > screencols/2) len = screencols/2;
   if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
@@ -2148,7 +2157,7 @@ void outlineRefreshScreen(void) {
   //if (!O.numrows) O.mode = NO_ROWS; //*********************************** this doesn't work needs to be NO_ROW with only command line
 
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows[O.cy].size, O.cx, O.cy, O.fc, O.fr, get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).chars.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
 
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -2166,7 +2175,7 @@ void outlineRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
 
   abAppend(&ab, buf, strlen(buf));
-  if (O.numrows) outlineDrawRows(&ab);
+  if (!O.rows.empty()) outlineDrawRows(&ab);
   outlineDrawStatusBar(&ab);
   outlineDrawMessageBar(&ab);
   
@@ -2214,7 +2223,7 @@ void outlineSetMessage(const char *fmt, ...) {
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
   int id;
-  orow *row;
+  //orow *row;
 
   switch (key) {
     case ARROW_LEFT:
@@ -2230,35 +2239,39 @@ void outlineMoveCursor(int key) {
 
     case ARROW_RIGHT:
     case 'l':
-      row = &O.row[O.fr];
-      if (row) O.fc++;  //segfaults on opening if you arrow right w/o row
+    {
+      orow& row = O.rows.at(O.fr);
+      if (!O.rows.empty()) O.fc++;  //segfaults on opening if you arrow right w/o row
       break;
-
+    }
     case ARROW_UP:
     case 'k':
       if (O.fr > 0) O.fr--; 
       O.fc = O.coloff = 0; 
 
       // note need to determine row after moving cursor
-      id = O.row[O.fr].id;
+      id = O.rows.at(O.fr).id;
       (*get_note)(id); //if id == -1 does not try to retrieve note 
       //editorRefreshScreen(); //in get_note
       break;
 
     case ARROW_DOWN:
     case 'j':
-      if (O.fr < O.numrows - 1) O.fr++;
+      if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
 
       // note need to determine row after moving cursor
-      row = &O.row[O.fr];
-      (*get_note)(row->id); //if id == -1 does not try to retrieve note 
+     {
+      orow& row = O.rows.at(O.fr);
+      //row = &O.row[O.fr];
+      (*get_note)(row.id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
+     }
   }
 
-  row = &O.row[O.fr];
-  if (O.fc >= row->size) O.fc = row->size - (O.mode != INSERT); 
+  orow& row = O.rows.at(O.fr);
+  if (O.fc >= row.chars.size()) O.fc = row.chars.size() - (O.mode != INSERT);
 }
 
 // higher level outline function depends on readKey()
@@ -2270,10 +2283,11 @@ void outlineProcessKeypress() {
 
   int c = readKey();
 
-  orow *row;
+  //orow *row;
 
   switch (O.mode) { 
 
+    int n; // need because of c++ initialization in switch
     case NO_ROWS:
 
       if (c==':'){
@@ -2301,9 +2315,11 @@ void outlineProcessKeypress() {
           return;
 
         case END_KEY:
-          row = &O.row[O.fr];
-          if (row->size) O.fc = row->size; // mimics vim to remove - 1;
+          {
+            orow& row = O.rows.at(O.fr);
+          if (row.chars.size()) O.fc = row.chars.size(); // mimics vim to remove - 1;
           return;
+          }
 
         case BACKSPACE:
           outlineBackspace();
@@ -2365,7 +2381,9 @@ void outlineProcessKeypress() {
 
       if ( O.repeat == 0 ) O.repeat = 1;
 
-      int n = strlen(O.command);
+      //{ /***********************************************************************************
+      //int n = strlen(O.command);
+      n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
@@ -2459,7 +2477,7 @@ void outlineProcessKeypress() {
           return;
 
         case '0':
-          if (O.row != NULL) O.fc = 0;
+          if (!O.rows.empty()) O.fc = 0;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2471,7 +2489,7 @@ void outlineProcessKeypress() {
           return;
 
         case 'I':
-          if (O.row != NULL) {
+          if (!O.rows.empty()) {
             O.fc = 0;
             O.mode = 1;
             outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -2482,11 +2500,11 @@ void outlineProcessKeypress() {
 
         case 'G':
           O.fc = 0;
-          O.fr = O.numrows - 1;
+          O.fr = O.rows.size() - 1;
           O.command[0] = '\0';
           O.repeat = 0;
 
-         (*get_note)(O.row[O.fr].id); //if id == -1 does not try to retrieve note 
+         (*get_note)(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
           return;
       
@@ -2542,8 +2560,9 @@ void outlineProcessKeypress() {
           return;
 
         case '^':
-          row = &O.row[O.fr];
-          view_html(row->id);
+          {
+          orow& row = O.rows.at(O.fr);
+          view_html(row.id);
 
           /*
           not getting error messages with qutebrowser
@@ -2555,7 +2574,7 @@ void outlineProcessKeypress() {
 
           O.command[0] = '\0';
           return;
-
+          }
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
@@ -2563,7 +2582,7 @@ void outlineProcessKeypress() {
             if (O.fr < 0) O.fr = 0;
           } else if (c == PAGE_DOWN) {
              O.fr += O.screenlines;
-             if (O.fr > O.numrows - 1) O.fr = O.numrows - 1;
+             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
           }
           return;
 
@@ -2612,7 +2631,7 @@ void outlineProcessKeypress() {
           end = O.fc;
           O.fc = start; 
           for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          O.fc = (start < O.row[O.cy].size) ? start : O.row[O.cy].size -1;
+          O.fc = (start < O.rows.at(O.cy).chars.size()) ? start : O.rows.at(O.cy).chars.size() -1;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2653,7 +2672,7 @@ void outlineProcessKeypress() {
          O.fr = O.repeat-1; //this needs to take into account O.rowoff
          O.command[0] = '\0';
          O.repeat = 0;
-         (*get_note)(O.row[O.fr].id); //if id == -1 does not try to retrieve note 
+         (*get_note)(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
          return;
 
         default:
@@ -2677,22 +2696,25 @@ void outlineProcessKeypress() {
         case ARROW_UP:
             if (NN == 11) NN = 1;
             else NN++;
-            outlineSetMessage(":%s %s", O.command_line, context[NN]);
+            outlineSetMessage(":%s %s", O.command_line, context[NN].c_str());
             return;
 
         case ARROW_DOWN:
             if (NN < 2) NN = 11;
             else NN--;
-            outlineSetMessage(":%s %s", O.command_line, context[NN]);
+            outlineSetMessage(":%s %s", O.command_line, context[NN].c_str());
             return;
 
         case '\r':
           ;
-          int pos;
-          char *new_context;
+          //int pos;
+          std::size_t pos;
+          //char *new_context;
+
           //pointer passes back position of space (if there is one) in var pos
           //switch (commandfromstring(O.command_line, &pos))  
-          command = commandfromstring(O.command_line, &pos); 
+          //command = commandfromstring(O.command_line, &pos);
+          command = commandfromstringcpp(O.command_line, pos);
           switch(command) {
 
             case 'w':
@@ -2711,11 +2733,13 @@ void outlineProcessKeypress() {
              case 'r':
              case C_refresh:
                EraseRedrawLines(); //****03102019*************************
-               outlineSetMessage("\'%s\' will be refreshed", O.context);
+               outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
                //solr_find(search_terms) for pg or fts5_sqlite
-               if (strcmp(O.context, "search") == 0)  (*search_db)(search_terms); 
-               else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
-               else (*get_items_by_context)(O.context, MAX); 
+               //if (strcmp(O.context, "search") == 0)  (*search_db)(search_terms);
+               if (O.context == "search")  (*search_db)(search_terms);
+               //else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
+               else if (O.context == "recent") (*get_recent)(MAX);
+               else (*get_items_by_context)(O.context.c_str(), MAX);
                O.mode = NORMAL;
                return;
 
@@ -2736,7 +2760,8 @@ void outlineProcessKeypress() {
 
             case 'e':
             case C_edit: //edit the note of the current item
-              ;
+             // ;
+               {
                int id = get_id(-1);
                if (id != -1) {
                  outlineSetMessage("Edit note %d", id);
@@ -2755,7 +2780,7 @@ void outlineProcessKeypress() {
                O.command[0] = '\0';
                O.mode = NORMAL;
                return;
-
+               }
             case 'f':
             case C_find: //catches 'fin' and 'find' 
               if (strlen(O.command_line) < 6) {
@@ -2770,7 +2795,7 @@ void outlineProcessKeypress() {
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               strcpy(search_terms, &O.command_line[pos + 1]);
-              if (O.numrows) (*get_note)(get_id(-1));
+              if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
             case C_fts: 
@@ -2785,7 +2810,7 @@ void outlineProcessKeypress() {
               outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
               O.mode = NORMAL;
               strcpy(search_terms, &O.command_line[pos + 1]);
-              if (O.numrows) (*get_note)(get_id(-1));
+              if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
             case C_update: //update solr
@@ -2795,16 +2820,19 @@ void outlineProcessKeypress() {
 
             case C_context:
               //NN is set to zero when entering COMMAND_LINE mode
-               ;
+               //;
+               {
                int context_tid;
                //char *new_context;
+               std::string new_context;
                if (NN) {
                  new_context = context[NN];
                  context_tid = NN;
                } else if (strlen(O.command_line) > 7) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
-                   if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
+                   //if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
+                   if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      context_tid = k;
                      success = true;
@@ -2826,21 +2854,23 @@ void outlineProcessKeypress() {
                }
 
                outlineSetMessage("Item %d will get context \'%s\'(%d)",
-                                 get_id(-1), new_context, context_tid);
+                                 get_id(-1), new_context.c_str(), context_tid);
 
                (*update_context)(context_tid); 
                O.mode = NORMAL;
                O.command_line[0] = '\0'; //probably not necessary 
                return;
-
+               }
             case C_open:
               //NN is set to zero when entering COMMAND_LINE mode
+               {
+               std::string new_context;
                if (NN) {
                  new_context = context[NN];
                } else if (pos) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
-                   if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
+                   if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      success = true;
                      break;
@@ -2855,21 +2885,21 @@ void outlineProcessKeypress() {
                  return;
                }
                EraseRedrawLines(); //*****************************
-               outlineSetMessage("\'%s\' will be opened", new_context);
+               outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
                (*get_items_by_context)(new_context, MAX); 
                O.mode = NORMAL;
-               (*get_note)(O.row[0].id);
+               (*get_note)(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
-
+               }
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
                (*get_recent)(20); 
                O.context = "recent";
                O.mode = NORMAL;
-               (*get_note)(O.row[0].id);
+               (*get_note)(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
 
@@ -2909,11 +2939,12 @@ void outlineProcessKeypress() {
 
             case C_quit:
             case 'q':
-               ;
+               {
                bool unsaved_changes = false;
-               for (int i=0;i<O.numrows;i++) {
-                 orow *row = &O.row[i];
-                 if (row->dirty) {
+               for (int i=0;i<O.rows.size();i++) {
+                 orow& row = O.rows.at(i);
+                 //orow *row = &O.row[i];
+                 if (row.dirty) {
                    unsaved_changes = true;
                    break;
                  }
@@ -2930,6 +2961,7 @@ void outlineProcessKeypress() {
                  exit(0);
                }
                return;
+               }
 
             case C_quit0: //catches both :q! and :quit!
                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -2983,7 +3015,7 @@ void outlineProcessKeypress() {
             if (O.fr < 0) O.fr = 0;
           } else if (c == PAGE_DOWN) {
              O.fr += O.screenlines;
-             if (O.fr > O.numrows - 1) O.fr = O.numrows - 1;
+             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
           }
           return;
 
@@ -3009,13 +3041,15 @@ void outlineProcessKeypress() {
           return;
 
         case END_KEY:
-          row = &O.row[O.fr];
-          if (row->size < O.screencols) return;
+          {
+          orow& row = O.rows.at(O.fr);
+          if (row.chars.size() < O.screencols) return;
           // don't love the below because that O.fc is beyond the
           // length of the true (non-escaped) string but it works
           // Better make sure O.fc = 0 when leaving DATABASE mode for NORMAL mode
-          O.fc = (strcmp(O.context, "search") == 0) ? (int)strlen(fts_titles[O.fr]) : row->size;
+          O.fc = (O.context == "search") ? (int)strlen(fts_titles[O.fr]) : row.chars.size();
           return;
+          }
 
         case ':':
           NN = 0; //index to contexts
@@ -3055,22 +3089,22 @@ void outlineProcessKeypress() {
           return;
 
         case 'r':
-          outlineSetMessage("\'%s\' will be refreshed", O.context);
-          if (strcmp(O.context, "search") == 0) solr_find(search_terms);
+          outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
+          if (O.context == "search") solr_find(search_terms);
           else (*get_items_by_context)(O.context, MAX); 
           O.mode = NORMAL;
           return;
   
         case 'i': //display item info
-          ;
-          orow *row = &O.row[O.fr];
-          display_item_info(row->id);
+          //;
+          //orow *row = &O.row[O.fr];
+          display_item_info(O.rows.at(O.fr).id);
           return;
   
         case 'v': //render in browser
           
-          row = &O.row[O.fr];
-          view_html(row->id);
+          //row = &O.row[O.fr];
+          view_html(O.rows.at(O.fr).id);
 
           /* when I switched from chrome to qutebrowser I thought I was not
           getting error/status messages to stdout but they do appear to 
@@ -3307,7 +3341,7 @@ void display_item_info_pg(int id) {
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, lf_ret, nchars);
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))]);
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))].c_str());
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
@@ -3363,7 +3397,7 @@ void fts5_sqlite(char *search_terms) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(FTS_DB, &db);
+  int rc = sqlite3_open(FTS_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3439,7 +3473,7 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   int len = strlen(argv[1]);
   // could just realloc
   free(fts_titles[fts_counter]);
-  fts_titles[fts_counter] = malloc(len + 1);
+  fts_titles[fts_counter] = (char*)malloc(len + 1);
   memcpy(fts_titles[fts_counter], argv[1], len);
   fts_titles[fts_counter][len] = '\0';
 
@@ -3458,7 +3492,7 @@ void display_item_info_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3541,7 +3575,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, lf_ret, nchars);
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])]);
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])].c_str());
   abAppend(&ab, str, strlen(str));
   abAppend(&ab, lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
@@ -3594,24 +3628,31 @@ void update_note_pg(void) {
     }
   }
 
-  int len;
-  char *text = editorRowsToString(&len);
-
+  //int len;
+  std::string text = editorRowsToString();
+  size_t pos = text.find("'");
+  while(pos != std::string::npos)
+    {
+      text.replace(pos, 1, "''");
+      pos = text.find("'", pos + 2);
+    }
  /*
  Note previously had used strncpy but  Valgrind just does not seem to like strncpy
  and no one else seems to like it as well
  */
 
-  char *note = malloc(len + 1);
+  /*
+  char *note = (char*)malloc(len + 1);
   memcpy(note, text, len);
   note[len] = '\0'; 
-
+  */
   /*
   Below replaces single quotes with two single quotes which escapes the 
   single quote see:
   https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
   */
 
+  /*
   const char *str = note;
   int cnt = strlen(str)+1;
    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
@@ -3629,16 +3670,16 @@ void update_note_pg(void) {
   }
 
   *out = '\0';
-
+*/
   int id = get_id(O.fr);
 
-  char *query = malloc(cnt + 100);
+  char *query = (char*)malloc(text.size() + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    //"modified=LOCALTIMESTAMP - interval '4 hours' "
                    "WHERE id=%d",
-                   escaped_note, id);
+                   text.c_str(), id);
 
   PGresult *res = PQexec(conn, query); 
     
@@ -3651,11 +3692,11 @@ void update_note_pg(void) {
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
   
-  free(note);
+  //free(note);
   free(query);
   PQclear(res);
   //do_exit(conn);
-  free(text);
+  //free(text);
   E.dirty = 0;
 
   outlineSetMessage("Updated %d", id);
@@ -3665,53 +3706,30 @@ void update_note_pg(void) {
 
 void update_note_sqlite(void) {
 
-  int len;
-  char *text = editorRowsToString(&len);
-
- /*
- Note previously had used strncpy but  Valgrind just does not seem to like strncpy
- and no one else seems to like it as well
- */
-
-  char *note = malloc(len + 1);
-  memcpy(note, text, len);
-  note[len] = '\0'; 
-
-  // Replace single quotes with two single quotes which escapes the single quote
-  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-  const char *str = note;
-  int cnt = strlen(str)+1;
-   for (const char *p = str ; *p ; cnt += (*p++ == 39)); //39 -> ' *p terminates for at the end of the string where *p == 0
-
-  //VLA
-  char escaped_note[cnt];
-  char *out = escaped_note;
-  const char *in = str;
-  while (*in) {
-      *out++ = *in;
-      if (*in == 39) *out++ = 39;
-      //if (*in == 133) *out++ = 32;
-
-      in++;
+  std::string text = editorRowsToString();
+  // need to escape single quotes with two single quotes
+  size_t pos = text.find("'");
+  while(pos != std::string::npos)
+    {
+      text.replace(pos, 1, "''");
+      pos = text.find("'", pos + 2);
   }
-
-  *out = '\0';
 
   int id = get_id(O.fr);
 
-  char *query = malloc(cnt + 100);
+  char *query = (char*)malloc(text.size() + 100);
 
   sprintf(query, "UPDATE task SET note=\'%s\', "
                    //"modified=datetime('now', '-5 hours') "
                    "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
-                   escaped_note, id);
+                   text.c_str(), id);
 
 
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3737,9 +3755,9 @@ void update_note_sqlite(void) {
 
   /***************fts virtual table update*********************/
 
-  sprintf(query, "Update fts SET note=\'%s\' WHERE lm_id=%d", escaped_note, id);
+  sprintf(query, "Update fts SET note=\'%s\' WHERE lm_id=%d", text.c_str(), id);
 
-  rc = sqlite3_open(FTS_DB, &db);
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
     outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
@@ -3760,9 +3778,7 @@ void update_note_sqlite(void) {
    
   sqlite3_close(db);
 
-  free(note);
   free(query);
-  free(text);
   E.dirty = 0;
 }
 
@@ -3788,7 +3804,7 @@ void update_context_pg(int context_tid) {
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
   } else {
-    outlineSetMessage("Setting context to %s succeeded", context[context_tid]);
+    outlineSetMessage("Setting context to %s succeeded", context[context_tid].c_str());
   }
   PQclear(res);
 }
@@ -3808,7 +3824,7 @@ void update_context_sqlite(int context_tid) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3823,7 +3839,7 @@ void update_context_sqlite(int context_tid) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Setting context to %s succeeded", context[context_tid]);
+    outlineSetMessage("Setting context to %s succeeded", context[context_tid].c_str());
   }
 
   sqlite3_close(db);
@@ -3831,7 +3847,7 @@ void update_context_sqlite(int context_tid) {
 
 void toggle_completed_pg(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -3844,7 +3860,7 @@ void toggle_completed_pg(void) {
 
   char query[300];
   int id = get_id(-1);
-  if (row->completed) 
+  if (row.completed)
      sprintf(query, "UPDATE task SET completed=NULL, " 
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
@@ -3862,7 +3878,7 @@ void toggle_completed_pg(void) {
   }
   else {
     outlineSetMessage("Toggle completed succeeded");
-    row->completed = !row->completed;
+    row.completed = !row.completed;
     //row->dirty = true;
   }
   PQclear(res);
@@ -3870,7 +3886,7 @@ void toggle_completed_pg(void) {
 
 void toggle_completed_sqlite(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   char query[300];
   int id = get_id(-1);
@@ -3879,12 +3895,12 @@ void toggle_completed_sqlite(void) {
                    //"modified=datetime('now', '-5 hours') "
                    "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
-                   (row->completed) ? "NULL" : "date()", id);
+                   (row.completed) ? "NULL" : "date()", id);
 
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -3900,7 +3916,7 @@ void toggle_completed_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle completed succeeded");
-    row->completed = !row->completed;
+    row.completed = !row.completed;
     //row->dirty = true;
   }
 
@@ -3910,7 +3926,7 @@ void toggle_completed_sqlite(void) {
 
 void toggle_deleted_pg(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -3927,7 +3943,7 @@ void toggle_deleted_pg(void) {
   sprintf(query, "UPDATE task SET deleted=%s, " 
                  "modified=LOCALTIMESTAMP - interval '5 hours' "
                  "WHERE id=%d", //tid
-                 (row->deleted) ? "False" : "True", id);
+                 (row.deleted) ? "False" : "True", id);
 
   PGresult *res = PQexec(conn, query); 
     
@@ -3936,7 +3952,7 @@ void toggle_deleted_pg(void) {
   }
   else {
     outlineSetMessage("Toggle deleted succeeded");
-    row->deleted = !row->deleted;
+    row.deleted = !row.deleted;
   }
   PQclear(res);
   return;
@@ -3984,7 +4000,7 @@ void touch_sqlite(void) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -4008,7 +4024,7 @@ void touch_sqlite(void) {
 
 void toggle_deleted_sqlite(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   char query[300];
   int id = get_id(-1);
@@ -4017,11 +4033,11 @@ void toggle_deleted_sqlite(void) {
                  //"modified=datetime('now', '-5 hours') "
                  "modified=datetime('now', '-4 hours') "
                  "WHERE id=%d", //tid
-                 (row->deleted) ? "False" : "True", id);
+                 (row.deleted) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -4037,7 +4053,7 @@ void toggle_deleted_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle deleted succeeded");
-    row->deleted = !row->deleted;
+    row.deleted = !row.deleted;
   }
 
   sqlite3_close(db);
@@ -4046,7 +4062,7 @@ void toggle_deleted_sqlite(void) {
 
 void toggle_star_pg(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -4059,7 +4075,7 @@ void toggle_star_pg(void) {
 
   char query[300];
   int id = get_id(-1);
-  if (row->star) 
+  if (row.star)
      sprintf(query, "UPDATE task SET star=False, " 
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
@@ -4077,8 +4093,8 @@ void toggle_star_pg(void) {
   }
   else {
     outlineSetMessage("Toggle star succeeded");
-    row->star = !row->star;
-    row->dirty = true;
+    row.star = !row.star;
+    row.dirty = true;
   }
   PQclear(res);
   return;
@@ -4086,7 +4102,7 @@ void toggle_star_pg(void) {
 
 void toggle_star_sqlite(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
   char query[300];
   int id = get_id(-1);
@@ -4095,11 +4111,11 @@ void toggle_star_sqlite(void) {
                  //"modified=datetime('now', '-5 hours') "
                  "modified=datetime('now', '-4 hours') "
                  "WHERE id=%d", //tid
-                 (row->star) ? "False" : "True", id);
+                 (row.star) ? "False" : "True", id);
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -4115,7 +4131,7 @@ void toggle_star_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle star succeeded");
-    row->star = !row->star;
+    row.star = !row.star;
     //row->dirty = true;
   }
 
@@ -4125,14 +4141,14 @@ void toggle_star_sqlite(void) {
 
 void update_row_pg(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
-  if (!row->dirty) {
+  if (!row.dirty) {
     outlineSetMessage("Row has not been changed");
     return;
   }
 
-  if (row->id != -1) {
+  if (row.id != -1) {
 
     if (PQstatus(conn) != CONNECTION_OK){
       if (PQstatus(conn) == CONNECTION_BAD) {
@@ -4142,48 +4158,33 @@ void update_row_pg(void) {
           do_exit(conn);
       }
     }
-  
-    int len = row->size;
-    char *title = malloc(len + 1);
-    memcpy(title, row->chars, len);
-    title[len] = '\0';
-  
-    // Need to replace single quotes with two single quotes which escapes the single quote 
-    // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-    const char *str = title;
-    int cnt = strlen(str)+1;
-    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-            ;
-    //VLA
-    char escaped_title[cnt];
-    escaped_title[cnt - 1] = '\0';
-    char *out = escaped_title;
-    const char *in = str;
-    while (*in) {
-      *out++ = *in;
-      if (*in == 39) *out++ = 39;
-      in++;
+
+    //With C++11, you can do std::string(v.data()) or, if your vector does not contain a '\0' at the end, std::string(v.data(), v.size())
+
+  std::string title(row.chars.data(), row.chars.size());
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
     }
-  
-    *out = '\0';
-  
-    char *query = malloc(cnt + 100);
+
+    char *query = (char*)malloc(title.size() + 100);
   
     sprintf(query, "UPDATE task SET title=\'%s\', "
                      "modified=LOCALTIMESTAMP - interval '5 hours' "
                      "WHERE id=%d",
-                     escaped_title, row->id);
+                     title.c_str(), row.id);
   
     PGresult *res = PQexec(conn, query); 
       
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
       outlineSetMessage(PQerrorMessage(conn));
     } else {
-      row->dirty = false;    
-      outlineSetMessage("Successfully update row %d", row->id);
+      row.dirty = false;
+      outlineSetMessage("Successfully update row %d", row.id);
     }  
     free(query);
-    free(title);
     PQclear(res);
 
   } else { 
@@ -4193,51 +4194,34 @@ void update_row_pg(void) {
 
 void update_row_sqlite(void) {
 
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
-  if (!row->dirty) {
+  if (!row.dirty) {
     outlineSetMessage("Row has not been changed");
     return;
   }
 
-  if (row->id != -1) {
+  if (row.id != -1) {
+    std::string title(row.chars.data(), row.chars.size());
+    size_t pos = title.find("'");
+    while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
 
-    int len = row->size;
-    char *title = malloc(len + 1);
-    memcpy(title, row->chars, len);
-    title[len] = '\0';
-  
-    // Need to replace single quotes with two single quotes which escapes the single quote 
-    // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-    const char *str = title;
-    int cnt = strlen(str)+1;
-    for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-            ;
-    //VLA
-    char escaped_title[cnt];
-    escaped_title[cnt - 1] = '\0';
-    char *out = escaped_title;
-    const char *in = str;
-    while (*in) {
-      *out++ = *in;
-      if (*in == 39) *out++ = 39;
-      in++;
-    }
-  
-    *out = '\0';
-  
-    char *query = malloc(cnt + 100);
-  
+    char *query = (char*)malloc(title.size() + 100);
+
     sprintf(query, "UPDATE task SET title=\'%s\', "
                      //"modified=datetime('now', '-5 hours') "
                      "modified=datetime('now', '-4 hours') "
                      "WHERE id=%d",
-                     escaped_title, row->id);
+                     title.c_str(), row.id);
   
     sqlite3 *db;
     char *err_msg = 0;
       
-    int rc = sqlite3_open(SQLITE_DB, &db);
+    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
       
     if (rc != SQLITE_OK) {
       outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
@@ -4251,8 +4235,8 @@ void update_row_sqlite(void) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
     } else {
-      row->dirty = false;    
-      outlineSetMessage("Successfully updated row %d", row->id);
+      row.dirty = false;
+      outlineSetMessage("Successfully updated row %d", row.id);
     }
 
     /********************** note that we are not updating modified and either need to read out of database or just use c time function********/
@@ -4264,9 +4248,9 @@ void update_row_sqlite(void) {
     // note if this was a title brought back by search we're
     // not updating fts_titles[O.fr] which is lm_id row->id
     // probably should address this but not a high priority
-    sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", escaped_title, row->id);
+    sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", title.c_str(), row.id);
   
-    rc = sqlite3_open(FTS_DB, &db);
+    rc = sqlite3_open(FTS_DB.c_str(), &db);
       
     if (rc != SQLITE_OK) {
           
@@ -4281,13 +4265,12 @@ void update_row_sqlite(void) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
       } else {
-        outlineSetMessage("Updated title and fts entry for item %d", row->id);
+        outlineSetMessage("Updated title and fts entry for item %d", row.id);
       }
   
       sqlite3_close(db);
   
       free(query);
-      free(title);
 
   } else { 
 
@@ -4297,39 +4280,26 @@ void update_row_sqlite(void) {
 
 int insert_row_pg(int ofr) {
 
-  orow *row = &O.row[ofr];
+  orow& row = O.rows.at(ofr);
 
-  int len = row->size;
-  char *title = malloc(len + 1);
-  memcpy(title, row->chars, len);
-  title[len] = '\0';
-
-  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
-  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-  const char *str = title;
-  int cnt = strlen(str)+1;
-  for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates at the end of the string where *p == 0
-          ;
-  //VLA
-  char escaped_title[cnt];
-  escaped_title[cnt - 1] = '\0';
-  char *out = escaped_title;
-  const char *in = str;
-  while (*in) {
-    *out++ = *in;
-    if (*in == 39) *out++ = 39;
-      in++;
+  std::string title(row.chars.data(), row.chars.size());
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
     }
 
  int context_tid = 1; //just in case there isn't a match but there has to be
  for (int k = 1; k < 12; k++) { 
-   if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
+   if (O.context.compare(0,3, context[k]) == 0) {
+   //if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
      context_tid = k;
      break;
    }
  }
 
- char *query = malloc(cnt + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+ char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
 
  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
  sprintf(query, "INSERT INTO task ("
@@ -4374,7 +4344,7 @@ int insert_row_pg(int ofr) {
                                      
                                    //tid, 
                                    3, //priority, 
-                                   escaped_title, 
+                                   title.c_str(),
                                    //tag, 
                                    1, //folder_tid,
                                    context_tid, 
@@ -4404,52 +4374,143 @@ int insert_row_pg(int ofr) {
     return -1;
   }
 
-  row->id = atoi(PQgetvalue(res, 0, 0));
-  row->dirty = false;
+  row.id = atoi(PQgetvalue(res, 0, 0));
+  row.dirty = false;
         
-  free(title);
   free(query);
   PQclear(res);
-  outlineSetMessage("Successfully inserted new row with id %d", row->id);
+  outlineSetMessage("Successfully inserted new row with id %d", row.id);
     
-  return row->id;
+  return row.id;
 }
 
-int insert_row_sqlite(int ofr) {
+int insert_row_pg_new(orow row) {
 
-  orow *row = &O.row[ofr];
+  //orow& row = O.rows.at(ofr);
 
-  int len = row->size;
-  char *title = malloc(len + 1);
-  memcpy(title, row->chars, len);
-  title[len] = '\0';
-
-  //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
-  // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-  const char *str = title;
-  int cnt = strlen(str)+1;
-  for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates at the end of the string where *p == 0
-          ;
-  //VLA
-  char escaped_title[cnt];
-  escaped_title[cnt - 1] = '\0';
-  char *out = escaped_title;
-  const char *in = str;
-  while (*in) {
-    *out++ = *in;
-    if (*in == 39) *out++ = 39;
-      in++;
+  std::string title(row.chars.data(), row.chars.size());
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
     }
 
  int context_tid = 1; //just in case there isn't a match but there has to be
- for (int k = 1; k < 12; k++) { 
-   if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
+ for (int k = 1; k < 12; k++) {
+   if (O.context.compare(0,3, context[k]) == 0) {
+   //if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
      context_tid = k;
      break;
    }
  }
 
- char *query = malloc(cnt + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+ char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+
+ //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
+ sprintf(query, "INSERT INTO task ("
+                                   //"tid, "
+                                   "priority, "
+                                   "title, "
+                                   //"tag, "
+                                   "folder_tid, "
+                                   "context_tid, "
+                                   //"duetime, "
+                                   "star, "
+                                   "added, "
+                                   //"completed, "
+                                   //"duedate, "
+                                   "note, "
+                                   //"repeat, "
+                                   "deleted, "
+                                   "created, "
+                                   "modified, "
+                                   "startdate "
+                                   //"remind) "
+                                   ") VALUES ("
+                                   //"%s," //tid
+                                   " %d," //priority
+                                   " \'%s\',"//title
+                                   //%s //tag
+                                   " %d," //folder_tid
+                                   " %d," //context_tid
+                                   //%s, //duetime
+                                   " %s," //star
+                                   "%s," //added
+                                   //"%s," //completed
+                                   //"%s," //duedate
+                                   " \'%s\'," //note
+                                   //s% //repeat
+                                   " %s," //deleted
+                                   " %s," //created
+                                   " %s," //modified
+                                   " %s" //startdate
+                                   //%s //remind
+                                   ") RETURNING id;",
+
+                                   //tid,
+                                   3, //priority,
+                                   title.c_str(),
+                                   //tag,
+                                   1, //folder_tid,
+                                   context_tid,
+                                   //duetime,
+                                   "True", //star,
+                                   "CURRENT_DATE", //starttime
+                                   //completed,
+                                   //duedate,
+                                   "<This is a new note>", //note,
+                                   //repeat,
+                                   "False", //deleted
+                                   "LOCALTIMESTAMP - interval '5 hours'", //created,
+                                   "LOCALTIMESTAMP - interval '5 hours'", //modified
+                                   "CURRENT_DATE" //startdate
+                                   //remind
+                                   );
+
+
+
+
+  PGresult *res = PQexec(conn, query);
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
+    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    PQclear(res);
+    return -1;
+  }
+
+  row.id = atoi(PQgetvalue(res, 0, 0));
+  row.dirty = false;
+
+  free(query);
+  PQclear(res);
+  outlineSetMessage("Successfully inserted new row with id %d", row.id);
+
+  return row.id;
+}
+
+int insert_row_sqlite(int ofr) {
+
+  orow& row = O.rows.at(ofr);
+
+  std::string title(row.chars.data(), row.chars.size());
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+ int context_tid = 1; //just in case there isn't a match but there has to be
+ for (int k = 1; k < 12; k++) { 
+   if (O.context.compare(0, 3, context[k]) == 0) { //2 chars all you need
+     context_tid = k;
+     break;
+   }
+ }
+
+ char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
 
  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
  sprintf(query, "INSERT INTO task ("
@@ -4494,7 +4555,7 @@ int insert_row_sqlite(int ofr) {
                                      
                                    //tid, 
                                    3, //priority, 
-                                   escaped_title, 
+                                   title.c_str(),
                                    //tag, 
                                    1, //folder_tid,
                                    context_tid, 
@@ -4517,7 +4578,7 @@ int insert_row_sqlite(int ofr) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  int rc = sqlite3_open(SQLITE_DB, &db);
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
         
@@ -4534,41 +4595,178 @@ int insert_row_sqlite(int ofr) {
     return -1;
   }
 
-  row->id =  sqlite3_last_insert_rowid(db);
-  row->dirty = false;
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
         
   sqlite3_close(db);
     
   /*virtual table insert*/
-  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", escaped_title, row->id);
+  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", title.c_str(), row.id);
 
   //sqlite3 *db;
   //err_msg = 0;
     
-  rc = sqlite3_open(FTS_DB, &db);
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
     outlineSetMessage("Cannot open FTS database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
-    return row->id;
+    return row.id;
   }
 
   rc = sqlite3_exec(db, query, 0, 0, &err_msg);
 
-  free(title);
   free(query);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
     sqlite3_free(err_msg);
-    return row->id;
+    return row.id;
   } 
   sqlite3_close(db);
-  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row->id);
+  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
 
-  return row->id;
+  return row.id;
 }
 
+int insert_row_sqlite_new(orow row) {
+
+  //orow& row = O.rows.at(ofr);
+
+  std::string title(row.chars.data(), row.chars.size());
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+ int context_tid = 1; //just in case there isn't a match but there has to be
+ for (int k = 1; k < 12; k++) {
+   if (O.context.compare(0, 3, context[k]) == 0) { //2 chars all you need
+     context_tid = k;
+     break;
+   }
+ }
+
+ char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+
+ //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
+ sprintf(query, "INSERT INTO task ("
+                                   //"tid, "
+                                   "priority, "
+                                   "title, "
+                                   //"tag, "
+                                   "folder_tid, "
+                                   "context_tid, "
+                                   //"duetime, "
+                                   "star, "
+                                   "added, "
+                                   //"completed, "
+                                   //"duedate, "
+                                   "note, "
+                                   //"repeat, "
+                                   "deleted, "
+                                   "created, "
+                                   "modified, "
+                                   "startdate "
+                                   //"remind) "
+                                   ") VALUES ("
+                                   //"%s," //tid
+                                   " %d," //priority
+                                   " \'%s\',"//title
+                                   //%s //tag
+                                   " %d," //folder_tid
+                                   " %d," //context_tid
+                                   //%s, //duetime
+                                   " %s," //star
+                                   "%s," //added
+                                   //"%s," //completed
+                                   //"%s," //duedate
+                                   " \'%s\'," //note
+                                   //s% //repeat
+                                   " %s," //deleted
+                                   " %s," //created
+                                   " %s," //modified
+                                   " %s" //startdate
+                                   //%s //remind
+                                   ");", // RETURNING id;", // ************************************
+
+                                   //tid,
+                                   3, //priority,
+                                   title.c_str(),
+                                   //tag,
+                                   1, //folder_tid,
+                                   context_tid,
+                                   //duetime,
+                                   "True", //star,
+                                   "date()", //starttime
+                                   //completed,
+                                   //duedate,
+                                   "<This is a new note from sqlite>", //note,
+                                   //repeat,
+                                   "False", //deleted
+                                   //"datetime()", //created
+                                   //"datetime()", //modified
+                                   "datetime('now', '-4 hours')", //created
+                                   "datetime('now', '-4 hours')", //modified
+                                   "date()" //startdate
+                                   //remind
+                                   );
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  /*virtual table insert*/
+  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", title.c_str(), row.id);
+
+  //sqlite3 *db;
+  //err_msg = 0;
+
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open FTS database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return row.id;
+  }
+
+  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+
+  free(query);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    return row.id;
+  }
+  sqlite3_close(db);
+  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
+
+  return row.id;
+}
 void update_rows_pg(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
@@ -4581,43 +4779,28 @@ void update_rows_pg(void) {
     }
   }
 
-  for (int i=0; i < O.numrows;i++) {
-    orow *row = &O.row[i];
+  //for (int i=0; i < O.rows.size();i++) {
+  for (auto row: O.rows) {
+    //orow& row = O.rows.at(i]);
 
-    if (!(row->dirty)) continue;
+    if (!(row.dirty)) continue;
 
-    if (row->id != -1) {
+    if (row.id != -1) {
 
-      int len = row->size;
-      char *title = malloc(len + 1);
-      memcpy(title, row->chars, len); //seems to me I could also memcpy len + 1 and get the '\0' and not have to set it below
-      title[len] = '\0';
-
-      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
-      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-      const char *str = title;
-      int cnt = strlen(str)+1;
-      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-          ;
-      //VLA
-      char escaped_title[cnt];
-      escaped_title[cnt - 1] = '\0';
-      char *out = escaped_title;
-      const char *in = str;
-      while (*in) {
-          *out++ = *in;
-          if (*in == 39) *out++ = 39;
-          in++;
+      std::string title(row.chars.data(), row.chars.size());
+      size_t pos = title.find("'");
+      while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
       }
 
-      *out = '\0';
-
-      char *query = malloc(cnt + 200);
+      char *query = (char*)malloc(title.size() + 200);
 
       sprintf(query, "UPDATE task SET title=\'%s\', "
                    "modified=LOCALTIMESTAMP - interval '5 hours' "
                    "WHERE id=%d",
-                   escaped_title, row->id);
+                   title.c_str(), row.id);
 
       PGresult *res = PQexec(conn, query); 
   
@@ -4626,15 +4809,15 @@ void update_rows_pg(void) {
         PQclear(res);
         return;
       } else {
-        row->dirty = false;    
-        updated_rows[n] = row->id;
+        row.dirty = false;
+        updated_rows[n] = row.id;
         n++;
         free(query);
-        free(title);
         PQclear(res);
       }  
     } else { 
-      int id  = insert_row_pg(i);
+      //int id  = insert_row_pg(i);
+      int id  = insert_row_pg_new(row);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -4666,50 +4849,35 @@ void update_rows_sqlite(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
-  for (int i=0; i < O.numrows;i++) {
-    orow *row = &O.row[i];
+  //for (int i=0; i < O.numrows;i++) {
+  for (auto row: O.rows) {
+    //orow *row = &O.row[i];
 
-    if (!(row->dirty)) continue;
+    if (!(row.dirty)) continue;
 
-    if (row->id != -1) {
+    if (row.id != -1) {
 
-      int len = row->size;
-      char *title = malloc(len + 1);
-      memcpy(title, row->chars, len); //seems to me I could also memcpy len + 1 and get the '\0' and not have to set it below
-      title[len] = '\0';
-
-      //Below is the code that replaces single quotes with two single quotes which escapes the single quote - this is required.
-      // see https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-      const char *str = title;
-      int cnt = strlen(str)+1;
-      for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-          ;
-      //VLA
-      char escaped_title[cnt];
-      escaped_title[cnt - 1] = '\0';
-      char *out = escaped_title;
-      const char *in = str;
-      while (*in) {
-          *out++ = *in;
-          if (*in == 39) *out++ = 39;
-          in++;
+      std::string title(row.chars.data(), row.chars.size());
+      size_t pos = title.find("'");
+      while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
       }
 
-      *out = '\0';
-
-      char *query = malloc(cnt + 200);
+      char *query = (char*)malloc(title.size() + 200);
 
       sprintf(query, "UPDATE task SET title=\'%s\', "
                    //"modified=datetime('now', '-5 hours') "
                    "modified=datetime('now', '-4 hours') "
                    "WHERE id=%d", //tid
-                   escaped_title, row->id);
+                   title.c_str(), row.id);
 
   
       sqlite3 *db;
       char *err_msg = 0;
         
-      int rc = sqlite3_open(SQLITE_DB, &db);
+      int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
         
       if (rc != SQLITE_OK) {
             
@@ -4724,20 +4892,18 @@ void update_rows_sqlite(void) {
         outlineSetMessage("SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
         free(query);
-        free(title);
         sqlite3_close(db);
         return; // ? should we abort all other rows
       } else {
-        row->dirty = false;    
-        updated_rows[n] = row->id;
+        row.dirty = false;
+        updated_rows[n] = row.id;
         n++;
         free(query);
-        free(title);
         sqlite3_close(db);
       }
     
     } else { 
-      int id  = insert_row_sqlite(i);
+      int id  = insert_row_sqlite_new(row);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -4767,13 +4933,13 @@ void update_rows_sqlite(void) {
 
 int get_id(int fr) {
   if(fr==-1) fr = O.fr;
-  int id = O.row[fr].id;
+  int id = O.rows.at(fr).id;
   return id;
 }
 
 void outlineChangeCase() {
-  orow *row = &O.row[O.fr];
-  char d = row->chars[O.fc];
+  orow& row = O.rows.at(O.fr);
+  char d = row.chars.at(O.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -5290,7 +5456,7 @@ void editorRefreshScreen(void) {
     */
 
   if (DEBUG) {
-    if (E.row){
+    if (!E.rows.empty()){
       int screenx = editorGetScreenXFromRowCol(E.fr, E.fc); 
       int line = editorGetLineInRowWW(E.fr, E.fc);
       int line_char_count = editorGetLineCharCountWW(E.fr, line); 
@@ -5361,7 +5527,7 @@ void editorSetMessage(const char *fmt, ...) {
 
 void editorMoveCursor(int key) {
 
-  if (!E.row) return; //could also be !E.numrows
+  if (E.rows.empty()) return; //could also be !E.numrows
 
   switch (key) {
     case ARROW_LEFT:
@@ -5381,7 +5547,7 @@ void editorMoveCursor(int key) {
 
     case ARROW_DOWN:
     case 'j':
-      if (E.fr < E.numrows - 1) E.fr++;
+      if (E.fr < E.rows.size() - 1) E.fr++;
       break;
   }
   /*
@@ -5997,7 +6163,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'x':
-          if (E.numrows != 0) {
+          if (!E.rows.empty()) {
             editorCreateSnapshot();
             E.repeat = E.highlight[1] - E.highlight[0] + 1;
             E.fr = E.highlight[0]; 
@@ -7092,7 +7258,7 @@ void editorMarkupLink(void) {
     }
 
     int len = j-p;
-    char *zz = malloc(len + 1);
+    char *zz = (char*)malloc(len + 1);
     memcpy(zz, z, len);
     zz[len] = '\0';
 
@@ -7104,16 +7270,16 @@ void editorMarkupLink(void) {
     editorInsertChar(48+n);
     editorInsertChar(']');
 
-    if ( E.row[numrows-1].chars[0] != '[' ) {
-      E.fr = E.numrows - 1; //check why need - 1 otherwise seg faults
+    if ( E.rows.at(E.rows.size() - 1).at(0) != '[' ) {
+      E.fr = E.rows.size() - 1; //check why need - 1 otherwise seg faults
       E.fc = 0;
       editorInsertNewline(1);
       }
 
-    editorInsertRow(E.numrows, zz, len); 
+    editorInsertRow(E.rows.size(), zz, len);
     free(zz);
     E.fc = 0;
-    E.fr = E.numrows - 1;
+    E.fr = E.rows.size() - 1;
     editorInsertChar('[');
     editorInsertChar(48+n);
     editorInsertChar(']');
@@ -7183,8 +7349,8 @@ void initOutline() {
   O.fr = 0; //file y position
   O.rowoff = 0;  //number of rows scrolled off the screen
   O.coloff = 0;  //col the user is currently scrolled to  
-  O.numrows = 0; //number of rows of text
-  O.row = NULL; //pointer to the orow structure 'array'
+  //O.numrows = 0; //number of rows of text
+  //O.row = NULL; //pointer to the orow structure 'array'
   O.context = "todo"; 
   O.show_deleted = false;
   O.show_completed = true;
@@ -7207,10 +7373,10 @@ void initEditor(void) {
   E.fr = 0; //file y position
   E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
-  E.numrows = 0; //number of rows (lines) of text delineated by a return
-  E.row = NULL; //pointer to the erow structure 'array'
-  E.prev_numrows = 0; //number of rows of text in snapshot
-  E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
+  //E.numrows = 0; //number of rows (lines) of text delineated by a return
+  //E.row = NULL; //pointer to the erow structure 'array'
+  //E.prev_numrows = 0; //number of rows of text in snapshot
+  //E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
   E.filename = NULL;
   E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -7311,8 +7477,8 @@ int main(int argc, char** argv) {
   (*get_items_by_context)(O.context, MAX); //? brings back deleted/completed-type data
   // I need to look at below when incorrect queries were bringing back nother
   // without the guard segfault and even now searches could bring back nothing
-  if (O.row)
-  (*get_note)(O.row[0].id);
+  if (O.rows.size())
+  (*get_note)(O.rows.at(0).id);
    //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
