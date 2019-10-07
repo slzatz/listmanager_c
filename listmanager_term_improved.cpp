@@ -212,8 +212,10 @@ std::map<std::string, int> lookuptablemap {
 
 static char search_string[30] = {'\0'}; //used for '*' and 'n' searches
 // buffers below for yanking
-char *line_buffer[20] = {NULL}; //yanking lines
-char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
+//char *line_buffer[20] = {NULL}; //yanking lines
+static std::vector<std::vector<char>> line_buffer;
+//char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
+std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
 
 /*** data ***/
 
@@ -2538,7 +2540,7 @@ void outlineProcessKeypress() {
           return;
 
         case 'p':  
-          if (strlen(string_buffer)) outlinePasteString();
+          if (!string_buffer.empty()) outlinePasteString();
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -4951,29 +4953,30 @@ void outlineChangeCase() {
 }
 
 void outlineYankLine(int n){
-  for (int i=0; i < 10; i++) {
-    free(line_buffer[i]);
-    line_buffer[i] = NULL;
-    }
+
+  line_buffer.clear();
 
   for (int i=0; i < n; i++) {
-    int len = O.row[O.cy+i].size;
-    line_buffer[i] = malloc(len + 1);
-    memcpy(line_buffer[i], O.row[O.cy+i].chars, len);
-    line_buffer[i][len] = '\0';
+    line_buffer.push_back(O.rows.at(O.cy+i).chars);
+    //int len = O.row[O.cy+i].size;
+    //line_buffer[i] = malloc(len + 1);
+    //memcpy(line_buffer[i], O.row[O.cy+i].chars, len);
+    //line_buffer[i][len] = '\0';
   }
   // set string_buffer to "" to signal should paste line and not chars
-  string_buffer[0] = '\0';
+ // string_buffer[0] = '\0';
+  string_buffer.clear();
 }
 
 void outlineYankString() {
-  int n,x;
-  orow *row = &O.row[O.cy];
-  for (x = O.highlight[0], n = 0; x < O.highlight[1]+1; x++, n++) {
-      string_buffer[n] = row->chars[x];
-  }
+  orow& row = O.rows.at(O.cy);
+  string_buffer.clear();
 
-  string_buffer[n] = '\0';
+  std::vector<char>::const_iterator first = row.chars.begin() + O.highlight[0];
+  std::vector<char>::const_iterator last = row.chars.begin() + O.highlight[1];
+  std::vector<char> temp(first, last);
+  string_buffer = temp;
+
 }
 
 /*************started here*****************/
@@ -4981,7 +4984,7 @@ void outlineYankString() {
 
 
 void outlinePasteString(void) {
-  if (O.numrows == 0) return;
+  if (O.rows.empty()) return;
 
   orow *row = &O.row[O.fr];
   int len = strlen(string_buffer);
