@@ -40,6 +40,7 @@
 #include <map>
 #include <cstdio>
 #include <cstring>
+#include <algorithm>
 /*** defines ***/
 
 /***the following is not yet in use and would get rid of switch statements***/
@@ -210,12 +211,13 @@ std::map<std::string, int> lookuptablemap {
   //{"e", C_edit}
 };
 
-static char search_string[30] = {'\0'}; //used for '*' and 'n' searches
+//static char search_string[30] = {'\0'}; //used for '*' and 'n' searches
+static std::vector<char> search_string;
 // buffers below for yanking
 //char *line_buffer[20] = {NULL}; //yanking lines
 static std::vector<std::vector<char>> line_buffer;
 //char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
-std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
+static std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
 
 /*** data ***/
 
@@ -4984,70 +4986,53 @@ void outlineYankString() {
 
 
 void outlinePasteString(void) {
-  if (O.rows.empty()) return;
+  orow& row = O.rows.at(O.fr);
 
-  orow *row = &O.row[O.fr];
-  int len = strlen(string_buffer);
-  row->chars = realloc(row->chars, row->size + len); 
+  if (O.rows.empty() || string_buffer.empty()) return;
 
-  /* moving all the chars at the current x cursor position on char
-     farther down the char string to make room for the new character
-     Maybe a clue from outlineInsertRow - it's memmove is below
-     memmove(&O.row[at + 1], &O.row[at], sizeof(orow) * (O.numrows - at));
-  */
-
-  memmove(&row->chars[O.fc + len], &row->chars[O.fc], row->size - O.fc); //****was O.cx + 1
-
-  for (int i = 0; i < len; i++) {
-    row->size++;
-    row->chars[O.fc] = string_buffer[i];
-    O.fc++;
-  }
-  row->dirty = true;
+  row.chars.insert(row.chars.begin() + O.fc, string_buffer.begin(), string_buffer.end());
+  O.fc += string_buffer.size();
+  row.dirty = true;
 }
 
 void outlineDelWord() {
 
-  orow *row = &O.row[O.fr];
-  if (row->chars[O.fc] < 48) return;
+  orow& row = O.rows.at(O.fr);
+  if (row.chars[O.fc] < 48) return;
 
   int i,j,x;
   for (i = O.fc; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (row.chars[i] < 48) break;
     }
-  for (j = O.fc; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = O.fc; j < row.chars.size() ; j++) {
+    if (row.chars[j] < 48) break;
   }
   O.fc = i+1;
 
   for (x = 0 ; x < j-i; x++) {
       outlineDelChar();
   }
-  row->dirty = true;
+  row.dirty = true;
   //outlineSetMessage("i = %d, j = %d", i, j ); 
 }
 
 void outlineDeleteToEndOfLine(void) {
-
-  orow *row = &O.row[O.fr];
-  row->size = O.fc;
-  //Arguably you don't have to reallocate when you reduce the length of chars
-  row->chars = realloc(row->chars, O.fc + 1); //added 10042018 - before wasn't reallocating memory
-  row->chars[O.fc] = '\0';
-  row->dirty = true;
+  orow& row = O.rows.at(O.fr);
+  row.chars.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  row.dirty = true;
   }
 
 void outlineMoveCursorEOL() {
 
-  O.fc = O.row[O.fr].size - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
+  O.fc = O.rows.at(O.fr).chars.size() - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void outlineMoveEndWord2() {
   int j;
-  orow row = O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
-  for (j = O.fc + 1; j < row.size ; j++) {
+  for (j = O.fc + 1; j < row.chars.size() ; j++) {
     if (row.chars[j] < 48) break;
   }
 
@@ -5057,33 +5042,33 @@ void outlineMoveEndWord2() {
 void outlineMoveNextWord() {
   // below is same is outlineMoveEndWord2
   int j;
-  orow row = O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
 
-  for (j = O.fc + 1; j < row.size ; j++) {
+  for (j = O.fc + 1; j < row.chars.size(); j++) {
     if (row.chars[j] < 48) break;
   }
 
   O.fc = j - 1;
   // end outlineMoveEndWord2
 
-  for (j = O.fc + 1; j < row.size ; j++) { //+1
+  for (j = O.fc + 1; j < row.chars.size() ; j++) { //+1
     if (row.chars[j] > 48) break;
   }
   O.fc = j;
 }
 
 void outlineMoveBeginningWord() {
-  orow *row = &O.row[O.fr];
+  orow& row = O.rows.at(O.fr);
   if (O.fc == 0) return;
   for (;;) {
-    if (row->chars[O.fc - 1] < 48) O.fc--;
+    if (row.chars[O.fc - 1] < 48) O.fc--;
     else break;
     if (O.fc == 0) return;
   }
 
   int i;
   for (i = O.fc - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (row.chars[i] < 48) break;
   }
 
   O.fc = i + 1;
@@ -5096,64 +5081,65 @@ void outlineMoveBeginningWord() {
 
 
 void outlineMoveEndWord() {
-  orow *row = &O.row[O.fr];
-  if (O.fc == row->size - 1) return;
+  orow& row = O.rows.at(O.fr);
+  if (O.fc == row.chars.size() - 1) return;
   for (;;) {
-    if (row->chars[O.fc + 1] < 48) O.fc++;
+    if (row.chars[O.fc + 1] < 48) O.fc++;
     else break;
-    if (O.fc == row->size - 1) return;
+    if (O.fc == row.chars.size() - 1) return;
   }
 
   int j;
-  for (j = O.fc + 1; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = O.fc + 1; j < row.chars.size() ; j++) {
+    if (row.chars[j] < 48) break;
   }
 
   O.fc = j - 1;
 }
 
 void outlineGetWordUnderCursor(){
-  orow *row = &O.row[O.fr];
-  if (row->chars[O.fc] < 48) return;
+  //orow *row = &O.row[O.fr];
+  std::vector<char>& chars = O.rows.at(O.fr).chars;
+  if (chars[O.fc] < 48) return;
 
   int i,j,n,x;
 
   for (i = O.fc - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (chars[i] < 48) break;
   }
 
-  for (j = O.fc + 1; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = O.fc + 1; j < chars.size() ; j++) {
+    if (chars[j] < 48) break;
   }
 
   for (x = i + 1, n = 0; x < j; x++, n++) {
-      search_string[n] = row->chars[x];
+      search_string[n] = chars[x];
   }
 
   search_string[n] = '\0';
-  outlineSetMessage("word under cursor: <%s>", search_string); 
+  std::string temp(search_string.data(), search_string.size());
+  outlineSetMessage("word under cursor: <%s>", temp.c_str());
 
 }
 
 void outlineFindNextWord() {
+
   int y, x;
   char *z;
   y = O.fr;
   x = O.fc + 1; //in case sitting on beginning of the word
- 
-  /*n counter so we can exit for loop if there are  no matches for command 'n'*/
-  for ( int n=0; n < O.numrows; n++ ) {
-    orow *row = &O.row[y];
-    z = strstr(&(row->chars[x]), search_string);
-    if ( z != NULL ) {
-      O.fr = y;
-      O.fc = z - row->chars;
-      break;
-    }
-    y++;
-    x = 0;
-    if ( y == O.numrows ) y = 0;
-  }
+   for (unsigned int n=0; n < O.rows.size(); n++) {
+     std::vector<char>& chars = O.rows.at(y).chars;
+     auto res = std::search(std::begin(chars) + x, std::end(chars), std::begin(search_string), std::end(search_string));
+     if (res != std::end(chars)) {
+         O.fr = y;
+         O.fc = res - chars.begin();
+         break;
+     }
+     y++;
+     x = 0;
+     if (y == O.rows.size()) y = 0;
+   }
 
     outlineSetMessage("x = %d; y = %d", x, y); 
 }
@@ -5169,14 +5155,14 @@ void outlineFindNextWord() {
 
 void editorScroll(void) {
 
-  if (!E.row) {
+  if (E.rows.empty()) {
     E.cx = E.cy = E.fr = E.fc = 0;
     return;
   }
 
   // This check used to be in editorMoveCursor but there are other ways like
   // issuring 'd$' that will shorten the row but cursor will be beyond the line
-  int row_size = E.row[E.fr].size;
+  int row_size = E.rows.at(E.fr).size();
   if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT); 
 
   if (E.fc < 0) E.fc = 0;
@@ -5215,7 +5201,7 @@ void editorDrawRows(struct abuf *ab) {
 
     // if there is still screen real estate but we've run out of text rows (E.numrows)
     //drawing '~' below: first escape is red color (31m) and K erases rest of line
-    if (filerow > E.numrows - 1) { 
+    if (filerow > E.rows.size() - 1) {
 
       //may not be worth this if else to not draw ~ in first row
       //and probably there is a better way to do it
@@ -5243,13 +5229,14 @@ void editorDrawRows(struct abuf *ab) {
         break;
       }      
 
-    erow *row = &E.row[filerow];
+    //erow *row = &E.row[filerow];
+    std::vector<char> row = E.rows.at(filerow);
     char *start,*right_margin;
     int left, width;
     bool more_lines = true;
 
-    left = row->size; //although maybe time to use strlen(preamble); 
-    start = row->chars; //char * to string that is going to be wrapped
+    left = row.size(); //although maybe time to use strlen(preamble);
+    start = &row[0]; //char * to string that is going to be wrapped
     width = E.screencols; //wrapping width
     
     while(more_lines) {
@@ -5261,7 +5248,7 @@ void editorDrawRows(struct abuf *ab) {
           // each time start pointer moves you are adding the width to it and checking for spaces
           right_margin = start+width - 1; 
 
-          if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02272019
+          if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02272019
           while(!isspace(*right_margin)) { //#2
             right_margin--;
             if( right_margin == start) {// situation in which there were no spaces to break the link
@@ -5295,8 +5282,8 @@ void editorDrawRows(struct abuf *ab) {
           k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
           j =!k;
 
-          char *Ehj = &(row->chars[E.highlight[j]]);
-          char *Ehk = &(row->chars[E.highlight[k]]);
+          char *Ehj = &(row[E.highlight[j]]);
+          char *Ehk = &(row[E.highlight[k]]);
 
           if ((Ehj >= start) && (Ehj < start + len)) {
             abAppend(ab, start, Ehj - start);
@@ -5394,7 +5381,7 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, " ", 1);
   //abAppend(ab, buf, strlen(buf));
 
-  if (E.row){
+  if (!E.rows.empty()){
     int line = editorGetLineInRowWW(E.fr, E.fc);
     int line_char_count = editorGetLineCharCountWW(E.fr, line); 
 
@@ -5404,7 +5391,7 @@ void editorDrawStatusBar(struct abuf *ab) {
                                    E.fr, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
-                                      E.cx, E.cy, E.numrows, E.line_offset); 
+                                      E.cx, E.cy, E.rows.size(), E.line_offset);
   }
 
   if (len > E.screencols + OUTLINE_RIGHT_MARGIN) len = E.screencols + OUTLINE_RIGHT_MARGIN;
@@ -5466,7 +5453,7 @@ void editorRefreshScreen(void) {
 
       editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screenx, E.screencols);
     } else
-      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.numrows, E.line_offset); 
+      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.rows.size(), E.line_offset);
   }
   struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
 
@@ -5632,9 +5619,9 @@ void editorProcessKeypress(void) {
           if (E.fc > 0) E.fc--;
           // below - if the indent amount == size of line then it's all blanks
           // can hit escape with E.row == NULL or E.row[E.fr].size == 0
-          if (E.row && E.row[E.fr].size) {
+          if (!E.rows.empty() && E.rows[E.fr].size()) {
             int n = editorIndentAmount(E.fr);
-            if (n == E.row[E.fr].size) {
+            if (n == E.rows[E.fr].size()) {
               E.fc = 0;
               for (int i = 0; i < n; i++) {
                 editorDelChar();
@@ -5682,7 +5669,7 @@ void editorProcessKeypress(void) {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
-      command = (n && c < 128) ? keyfromstring(E.command) : c;
+      command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
     
       switch (command) {
     
@@ -5803,7 +5790,7 @@ void editorProcessKeypress(void) {
     
         case 'G':
           E.fc = 0;
-          E.fr = E.numrows - 1;
+          E.fr = E.rows.size() - 1;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -5833,7 +5820,7 @@ void editorProcessKeypress(void) {
     
         case 'p':  
           editorCreateSnapshot();
-          if (strlen(string_buffer)) editorPasteString();
+          if (!string_buffer.empty()) editorPasteString();
           else editorPasteLine();
           E.command[0] = '\0';
           E.repeat = 0;
