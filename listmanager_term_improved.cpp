@@ -42,7 +42,7 @@
 #include <cstring>
 /*** defines ***/
 
-/***the following is not yet in use and would get rid of swith statements***/
+/***the following is not yet in use and would get rid of switch statements***/
 typedef void (*pfunc)(void);
 static std::map<int, pfunc> outline_normal_map;
 
