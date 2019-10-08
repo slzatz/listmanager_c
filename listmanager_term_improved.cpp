@@ -1521,8 +1521,16 @@ void outlineSave() {
 // fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, char *s, size_t len) {
 
-  //erow_chars row(s, s + len);
-  std::vector<char> row(s, s + len);
+  std::vector<char> row;
+
+  if (s==nullptr) {
+    std::vector<char> temp {};
+    row = temp;
+  } else {
+    std::vector<char> temp(s, s + len);
+    row = temp;
+  }
+
   auto pos = E.rows.begin() + fr;
   E.rows.insert(pos, row);
   E.dirty++;
@@ -5230,7 +5238,7 @@ void editorDrawRows(struct abuf *ab) {
       }      
 
     //erow *row = &E.row[filerow];
-    std::vector<char> row = E.rows.at(filerow);
+    std::vector<char>& row = E.rows.at(filerow);
     char *start,*right_margin;
     int left, width;
     bool more_lines = true;
@@ -6331,7 +6339,7 @@ int editorGetFileRowByLineWW(int y){
 /****************************ESSENTIAL*****************************/
 int editorGetLinesInRowWW(int r) {
   //erow *row = &E.row[r];
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
@@ -6376,7 +6384,7 @@ int editorGetLinesInRowWW(int r) {
 int editorGetLineInRowWW__old(int r, int c) {
 
   //erow *row = &E.row[r];
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   if (row.empty()) return 1;
 
   char *start,*right_margin;
@@ -6424,7 +6432,7 @@ int editorGetLineCharCountWW(int r, int line) {
 
   //erow *row = &E.row[r];
   //if (row->size == 0) return 0;
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   if (row.empty()) return 0;
 
   char *start,*right_margin;
@@ -6473,7 +6481,7 @@ int editorGetLineInRowWW(int r, int c) {
 
   //erow *row = &E.row[r];
   //if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   if (row.empty()) return 0;
 
   char *start,*right_margin;
@@ -6536,7 +6544,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
 
   //erow *row = &E.row[r];
   //if ((row->size == 0) || (c == 0)) return 0;
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   if (row.empty() || (c == 0)) return 0;
 
   char *start,*right_margin;
@@ -6643,7 +6651,7 @@ int *editorGetRowLineCharWW(void) {
 // now only useful (possibly) for debugging
 int editorGetCharInRowWW(int r, int line) {
   //erow *row = &E.row[r];
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   char *start,*right_margin;
   int left, width, num, len, length;
 
@@ -6678,7 +6686,7 @@ int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
 
   static int rowline_screenx[2]; //if not use static then it's a variable local to function
   //erow *row = &E.row[r];
-  std::vector<char> row = E.rows.at(r);
+  std::vector<char>& row = E.rows.at(r);
   char *start,*right_margin;
   int width, len, left, length, num; //, prev_length;  
 
@@ -6784,7 +6792,7 @@ void editorRestoreSnapshot(void) {
 void editorChangeCase(void) {
   if (E.rows.empty()) return;
   //erow *row = &E.row[E.fr];
-  std::vector<char> row = E.rows.at(E.fr);
+  std::vector<char>& row = E.rows.at(E.fr);
   char d = row.at(E.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
@@ -6827,7 +6835,7 @@ void editorPasteString(void) {
 
   //if (E.numrows == 0) editorInsertRow(0, "", 0);
   if (E.rows.empty() || string_buffer.empty()) return;
-  std::vector<char> row = E.rows.at(E.fr);
+  std::vector<char>& row = E.rows.at(E.fr);
 
   row.insert(row.begin() + E.fc, string_buffer.begin(), string_buffer.end());
   E.fc += string_buffer.size();
@@ -6849,9 +6857,10 @@ void editorPasteLine(void){
 
 void editorIndentRow(void) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
-  if (row->size == 0) return;
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
+  //erow *row = &E.row[E.fr];
+  if (row.empty()) return;
   E.fc = editorIndentAmount(E.fr);
   for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
   E.dirty++;
@@ -6859,12 +6868,12 @@ void editorIndentRow(void) {
 
 void editorUnIndentRow(void) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
-  if (row->size == 0) return;
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
+  if (row.empty()) return;
   E.fc = 0;
   for (int i = 0; i < E.indent; i++) {
-    if (row->chars[0] == ' ') {
+    if (row[0] == ' ') {
       editorDelChar();
     }
   }
@@ -6874,13 +6883,13 @@ void editorUnIndentRow(void) {
 int editorIndentAmount(int r) {
   int i;
 
-  if (E.row == NULL) return 0;
+  if (E.rows.empty()) return 0;
 
-  erow *row = &E.row[r];
+  std::vector<char>& row = E.rows.at(r);
   //if (row->size == 0) return 0; //below should catch this
 
-  for ( i = 0; i < row->size; i++) {
-    if (row->chars[i] != ' ') break;}
+  for ( i = 0; i < row.size(); i++) {
+    if (row[i] != ' ') break;}
 
   return i;
 }
@@ -6888,16 +6897,16 @@ int editorIndentAmount(int r) {
 // called by caw and daw
 void editorDelWord(void) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
-  if (row->chars[E.fc] < 48) return;
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
+  if (row[E.fc] < 48) return;
 
   int i,j,x;
   for (i = E.fc; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (row[i] < 48) break;
     }
-  for (j = E.fc; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = E.fc; j < row.size() ; j++) {
+    if (row[j] < 48) break;
   }
 
   for (x = 0 ; x < j-i; x++) {
@@ -6909,8 +6918,18 @@ void editorDelWord(void) {
 
 void editorDeleteToEndOfLine(void) {
 
-  erow *row = &E.row[E.fr];
-  row->size = E.fc;
+  //erow *row = &E.row[E.fr];
+  std::vector<char>& row = E.rows.at(E.fr);
+
+
+  orow& row = O.rows.at(O.fr);
+  row.chars.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  row.dirty = true;
+
+
+
+
+  row.size() = E.fc;
 
   row->chars = realloc(row->chars, E.fc + 1); 
   row->chars[E.fc] = '\0';
