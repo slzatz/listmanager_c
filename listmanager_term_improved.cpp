@@ -300,7 +300,7 @@ struct editorConfig {
   //std::vector<erow> rows;
   //std::vector<erow_chars> rows;
   std::vector<std::vector<char>> rows;
-  int prev_numrows; // the number of rows of text so last text row is always row numrows
+  //int prev_numrows; // the number of rows of text so last text row is always row numrows
   //erow *prev_row; //for undo purposes
   std::vector<std::vector<char>> prev_rows;
   int dirty; //file changes since last save
@@ -5666,11 +5666,12 @@ void editorProcessKeypress(void) {
       if ( E.repeat == 0 ) E.repeat = 1;
     
       
+      {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
-    
+      }
       switch (command) {
     
         case SHIFT_TAB:
@@ -5842,10 +5843,11 @@ void editorProcessKeypress(void) {
           return;
     
         case '^':
-        ;
-      {
-          orow *outline_row = &O.row[O.fr];
-          view_html(outline_row->id);
+        //;
+      //{
+          //orow *outline_row = &O.row[O.fr];
+          //view_html(outline_row->id);
+          view_html(O.rows.at(O.fr).id);
 
           /*
           not getting error messages with qutebrowser
@@ -5856,7 +5858,7 @@ void editorProcessKeypress(void) {
           */
 
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
-          O.command[0] = '\0';}
+          O.command[0] = '\0';//}
           return;
 
         case CTRL_KEY('z'):
@@ -5879,7 +5881,7 @@ void editorProcessKeypress(void) {
             if (E.fr < 0) E.fr = 0;
           } else if (c == PAGE_DOWN) {
             E.fr += E.screenlines;
-            if (E.fr > E.numrows - 1) E.fr = E.numrows - 1;
+            if (E.fr > E.rows.size() - 1) E.fr = E.rows.size() - 1;
           }
           return;
     
@@ -5927,20 +5929,20 @@ void editorProcessKeypress(void) {
           end = E.fc;
           E.fc = start; 
           for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          E.fc = (start < E.row[E.cy].size) ? start : E.row[E.cy].size -1;
+          E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case C_dd:
-          ;
-          int fr = E.fr;
-          if (E.numrows != 0) {
-            int r = E.numrows - fr;
+          //;
+          //int fr = E.fr;
+          if (!E.rows.empty()) {
+            int r = E.rows.size() - E.fr;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
             editorCreateSnapshot();
             editorYankLine(E.repeat);
-            for (int i = 0; i < E.repeat ; i++) editorDelRow(fr);
+            for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
           }
           E.fc = 0;
           E.command[0] = '\0';
@@ -5950,8 +5952,8 @@ void editorProcessKeypress(void) {
         case C_d$:
           editorCreateSnapshot();
           editorDeleteToEndOfLine();
-          if (E.numrows != 0) {
-            int r = E.numrows - E.fr;
+          if (!E.rows.empty()) {
+            int r = E.rows.size() - E.fr;
             E.repeat--;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
             //editorYankLine(E.repeat); //b/o 2 step won't really work right
@@ -6328,16 +6330,17 @@ int editorGetFileRowByLineWW(int y){
 
 /****************************ESSENTIAL*****************************/
 int editorGetLinesInRowWW(int r) {
-  erow *row = &E.row[r];
+  //erow *row = &E.row[r];
+  std::vector<char> row = E.rows.at(r);
 
-  if (row->size <= E.screencols) return 1; //seems obvious but not added until 03022019
+  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
   char *start,*right_margin;
   int left, width, num;  //, len;
   bool more_lines = true;
 
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   num = 0;
@@ -6372,15 +6375,16 @@ int editorGetLinesInRowWW(int r) {
 // not sure if problem is here or elsewhere
 int editorGetLineInRowWW__old(int r, int c) {
 
-  erow *row = &E.row[r];
-  if (row->size == 0) return 1;
+  //erow *row = &E.row[r];
+  std::vector<char> row = E.rows.at(r);
+  if (row.empty()) return 1;
 
   char *start,*right_margin;
   int left, width, num;  //, len;
   bool more_lines = true;
 
   left = c + 1; //row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   num = 0;
@@ -6390,13 +6394,13 @@ int editorGetLineInRowWW__old(int r, int c) {
     // or practically they may be equivalent
     //if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
     //if (left <= (editorGetLineCharCountWW(r, num + 1) + (E.mode == INSERT))) { 
-    if (left <= ((E.mode == INSERT && c >= row->size) ? E.screencols  + 1 : editorGetLineCharCountWW(r, num + 1))) { 
+    if (left <= ((E.mode == INSERT && c >= row.size()) ? E.screencols  + 1 : editorGetLineCharCountWW(r, num + 1))) {
       more_lines = false;
       num++; 
           
     } else {
       right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-      if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02252019 ? kluge
+      if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02252019 ? kluge
       while(!isspace(*right_margin)) { 
         right_margin--;
         if(right_margin == start) { // situation in which there were no spaces to break the link
@@ -6418,19 +6422,21 @@ int editorGetLineInRowWW__old(int r, int c) {
 int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
-  erow *row = &E.row[r];
-  if (row->size == 0) return 0;
+  //erow *row = &E.row[r];
+  //if (row->size == 0) return 0;
+  std::vector<char> row = E.rows.at(r);
+  if (row.empty()) return 0;
 
   char *start,*right_margin;
   int width, num, len, left;  //length left
 
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   //length = 0;
 
-  if (row->size == 0) return 0;
+  //if (row->size == 0) return 0;///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   num = 1; 
   for (;;) {
@@ -6438,7 +6444,7 @@ int editorGetLineCharCountWW(int r, int line) {
 
     // each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
-    if (right_margin > row->chars + row->size - 1) right_margin = row->chars + row->size - 1; //02262019 ? kluge
+    if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02262019 ? kluge
     while(!isspace(*right_margin)) { //#2
       right_margin--;
       if( right_margin == start) { // situation in which there were no spaces to break the link
@@ -6465,14 +6471,16 @@ int editorGetLineCharCountWW(int r, int line) {
 // of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetLineInRowWW(int r, int c) {
 
-  erow *row = &E.row[r];
-  if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
+  //erow *row = &E.row[r];
+  //if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
+  std::vector<char> row = E.rows.at(r);
+  if (row.empty()) return 0;
 
   char *start,*right_margin;
   int width, len, left, length;  //num 
 
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   length = 0;
@@ -6493,7 +6501,7 @@ int editorGetLineInRowWW(int r, int c) {
 
     // Alternative that if it works doesn't depend on knowing the line cout!!
     //seems to work
-    if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+    if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
       //printf("I got here2\n");
       //length += left;
       //len = left;
@@ -6526,14 +6534,16 @@ int editorGetLineInRowWW(int r, int c) {
 // of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetScreenXFromRowCol(int r, int c) {
 
-  erow *row = &E.row[r];
-  if ((row->size == 0) || (c == 0)) return 0;
+  //erow *row = &E.row[r];
+  //if ((row->size == 0) || (c == 0)) return 0;
+  std::vector<char> row = E.rows.at(r);
+  if (row.empty() || (c == 0)) return 0;
 
   char *start,*right_margin;
   int width, len, left, length;
 
-  left = row->size; 
-  start = row->chars; 
+  left = row.size();
+  start = &row[0];
   width = E.screencols; // width we are wrapping to
   
   length = 0;
@@ -6556,7 +6566,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
 
     // Alternative that if it works doesn't depend on knowing the line count
     //seems to work
-    if ((right_margin - row->chars) >= (row->size + (E.mode == INSERT))) {
+    if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
        length += left;
        len = left;
        break; 
@@ -6632,12 +6642,13 @@ int *editorGetRowLineCharWW(void) {
 // returns row, line in row and column
 // now only useful (possibly) for debugging
 int editorGetCharInRowWW(int r, int line) {
-  erow *row = &E.row[r];
+  //erow *row = &E.row[r];
+  std::vector<char> row = E.rows.at(r);
   char *start,*right_margin;
   int left, width, num, len, length;
 
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   length = 0;
@@ -6666,18 +6677,19 @@ int editorGetCharInRowWW(int r, int line) {
 int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
 
   static int rowline_screenx[2]; //if not use static then it's a variable local to function
-  erow *row = &E.row[r];
+  //erow *row = &E.row[r];
+  std::vector<char> row = E.rows.at(r);
   char *start,*right_margin;
   int width, len, left, length, num; //, prev_length;  
 
-  left = row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = row->chars; //char * to string that is going to be wrapped ? better named remainder?
+  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
+  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
   length = 0;
 
   // not 100% sure where this if should be maybe editorScroll /********************************************/
-  if (row->size == 0) {
+  if (row.size() == 0) {
     //E.fc = -1;
     E.fc = 0;
     rowline_screenx[1] = 0;
@@ -6760,40 +6772,20 @@ int editorGetScreenYFromRowColWW(int r, int c) { //, int fc){
 /************************************* end of WW ************************************************/
 
 void editorCreateSnapshot(void) {
-  if ( E.numrows == 0 ) return; //don't create snapshot if there is no text
-  for (int j = 0 ; j < E.prev_numrows ; j++ ) {
-    free(E.prev_row[j].chars);
-  }
-  E.prev_row = realloc(E.prev_row, sizeof(erow) * E.numrows );
-  for ( int i = 0 ; i < E.numrows ; i++ ) {
-    int len = E.row[i].size;
-    E.prev_row[i].chars = malloc(len + 1);
-    E.prev_row[i].size = len;
-    memcpy(E.prev_row[i].chars, E.row[i].chars, len);
-    E.prev_row[i].chars[len] = '\0';
-  }
-  E.prev_numrows = E.numrows;
+  if (E.rows.empty()) return; //don't create snapshot if there is no text
+  E.prev_rows = E.rows;
 }
 
 void editorRestoreSnapshot(void) {
-  for (int j = 0 ; j < E.numrows ; j++ ) {
-    free(E.row[j].chars);
-  } 
-  E.row = realloc(E.row, sizeof(erow) * E.prev_numrows );
-  for (int i = 0 ; i < E.prev_numrows ; i++ ) {
-    int len = E.prev_row[i].size;
-    E.row[i].chars = malloc(len + 1);
-    E.row[i].size = len;
-    memcpy(E.row[i].chars, E.prev_row[i].chars, len);
-    E.row[i].chars[len] = '\0';
-  }
-  E.numrows = E.prev_numrows;
+    if (E.prev_rows.empty()) return;
+    E.rows = E.prev_rows;
 }
 
 void editorChangeCase(void) {
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
-  char d = row->chars[E.fc];
+  if (E.rows.empty()) return;
+  //erow *row = &E.row[E.fr];
+  std::vector<char> row = E.rows.at(E.fr);
+  char d = row.at(E.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -6805,83 +6797,53 @@ void editorChangeCase(void) {
 }
 
 void editorYankLine(int n){
-  for (int i=0; i < 10; i++) {
-    free(line_buffer[i]);
-    line_buffer[i] = NULL;
-    }
 
+  line_buffer.clear();
 
   for (int i=0; i < n; i++) {
-    int len = E.row[E.fr + i].size;
-    line_buffer[i] = malloc(len + 1);
-    memcpy(line_buffer[i], E.row[E.fr + i].chars, len);
-    line_buffer[i][len] = '\0';
+    line_buffer.push_back(E.rows.at(E.cy+i));
   }
-  // set string_buffer to "" to signal should paste line and not chars
-  string_buffer[0] = '\0';
+
+  string_buffer.clear();
+
 }
 
 void editorYankString(void) {
   // doesn't cross rows right now
-  int n,x;
+  //if (E.rows.empty()) editorInsertRow(0, "", 0);
+  if (E.rows.empty()) return;
 
-  if (E.numrows == 0) editorInsertRow(0, "", 0);
-  erow *row = &E.row[E.fr];
-  for (x = E.highlight[0], n = 0; x < E.highlight[1]+1; x++, n++) {
-      string_buffer[n] = row->chars[x];
-  }
+  std::vector<char>& row = E.rows.at(E.fr);
+  string_buffer.clear();
 
-  string_buffer[n] = '\0';
+  std::vector<char>::const_iterator first = row.begin() + E.highlight[0];
+  std::vector<char>::const_iterator last = row.begin() + E.highlight[1];
+  std::vector<char> temp(first, last);
+  string_buffer = temp;
 }
 
 void editorPasteString(void) {
 
-  if (E.numrows == 0) editorInsertRow(0, "", 0);
-  erow *row = &E.row[E.fr];
-  int len = strlen(string_buffer);
 
-  // 03202019 saw a valgrind error here and it seems
-  // obvious that the pre-existing malloc'ed memory
-  // is row->size + 1 = number of chars plus terminating '\0'
-  //row->chars = realloc(row->chars, row->size + len); 
-  row->chars = realloc(row->chars, row->size + 1 + len); 
+  //if (E.numrows == 0) editorInsertRow(0, "", 0);
+  if (E.rows.empty() || string_buffer.empty()) return;
+  std::vector<char> row = E.rows.at(E.fr);
 
-  /* moving all the chars at the current x cursor position on char
-     farther down the char string to make room for the new character
-     Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[r + 1], &E.row[r], sizeof(erow) * (E.numrows - r));
-  */
-
-  memmove(&row->chars[E.fc + len], &row->chars[E.fc], row->size - E.fc);
-
-  /*
-  // couldn't this just be a memcpy?? 03202019
-  for (int i = 0; i < len; i++) {
-    //row->size++;
-    row->chars[E.fc] = string_buffer[i];
-    E.fc++;
-  }
-  */
-
-  memcpy(&row->chars[E.fc], string_buffer, len);
-  // 03202019 seems like we should ensure null termination but now 
-  // making two changes below and the one above
-
-  row->size += len;
-  row->chars[row->size] = '\0';
-
+  row.insert(row.begin() + E.fc, string_buffer.begin(), string_buffer.end());
+  E.fc += string_buffer.size();
   E.dirty++;
 }
 
 void editorPasteLine(void){
-  if (E.numrows == 0) editorInsertRow(0, "", 0);
+  if (E.rows.empty())  editorInsertRow(0, nullptr, 0);
 
-  for (int i=0; i < 10; i++) {
-    if (line_buffer[i] == NULL) break;
+  for (int i=0; i < line_buffer.size(); i++) {
+    //if (line_buffer[i] == NULL) break;
 
-    int len = strlen(line_buffer[i]);
+    //int len = strlen(line_buffer[i]);
+    int len = (line_buffer[i].size());
     E.fr++;
-    editorInsertRow(E.fr, line_buffer[i], len);
+    editorInsertRow(E.fr, &line_buffer[i][0], len);
   }
 }
 
