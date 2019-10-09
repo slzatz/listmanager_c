@@ -1407,13 +1407,20 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline row operations ***/
 
-void outlineInsertRow(int at, std::vector<char> s, size_t len, int id, bool star, bool deleted, bool completed, char* modified) {
+void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool deleted, bool completed, char* modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
 
   //row.size = len;
-  row.chars = s;
+  if (s==nullptr) {
+    std::vector<char> temp {};
+    row.chars = temp;
+  } else {
+    std::vector<char> temp(s, s + len);
+    row.chars = temp;
+  }
+  //row.chars = s;
   row.chars.push_back('\0'); //each line is made into a c-string (maybe for searching)
   row.id = id;
   row.star = star;
@@ -1427,6 +1434,10 @@ void outlineInsertRow(int at, std::vector<char> s, size_t len, int id, bool star
 
   auto pos = O.rows.begin() + at;
   O.rows.insert(pos, row);
+
+
+
+
 }
 
 /*** outline operations ***/
@@ -5124,7 +5135,7 @@ void outlineGetWordUnderCursor(){
       search_string[n] = chars[x];
   }
 
-  search_string[n] = '\0';
+  //search_string[n] = '\0';
   std::string temp(search_string.data(), search_string.size());
   outlineSetMessage("word under cursor: <%s>", temp.c_str());
 
@@ -6920,31 +6931,20 @@ void editorDeleteToEndOfLine(void) {
 
   //erow *row = &E.row[E.fr];
   std::vector<char>& row = E.rows.at(E.fr);
+  row.resize(E.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
 
-
-  orow& row = O.rows.at(O.fr);
-  row.chars.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
-  row.dirty = true;
-
-
-
-
-  row.size() = E.fc;
-
-  row->chars = realloc(row->chars, E.fc + 1); 
-  row->chars[E.fc] = '\0';
+  E.dirty++;
 }
 
 void editorMoveCursorBOL(void) {
-  if (E.row == NULL) return;
+  if (E.rows.empty()) return;
   E.fc = 0;
 }
 
 void editorMoveCursorEOL(void) {
-
-  if (!E.row) return;
-  erow row = E.row[E.fr];
-  if (row.size) E.fc = row.size - 1;
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
+  if (row.size()) E.fc = row.size() - 1;
 }
 
 // not same as 'e' but moves to end of word or stays put if already
@@ -6952,11 +6952,11 @@ void editorMoveCursorEOL(void) {
 void editorMoveEndWord2() {
   int j;
 
-  if (!E.row) return;
-  erow row = E.row[E.fr];
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
 
-  for (j = E.fc + 1; j < row.size ; j++) {
-    if (row.chars[j] < 48) break;
+  for (j = E.fc + 1; j < row.size() ; j++) {
+    if (row[j] < 48) break;
   }
 
   E.fc = j - 1;
@@ -6968,39 +6968,40 @@ void editorMoveNextWord(void) {
 // doesn't handle multiple white space characters at EOL
   int i,j;
 
-  if (!E.row) return;
-  erow row = E.row[E.fr];
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
 
-  if (row.chars[E.fc] < 48) j = E.fc;
+  if (row[E.fc] < 48) j = E.fc;
   else {
-    for (j = E.fc + 1; j < row.size; j++) { 
-      if (row.chars[j] < 48) break;
+    for (j = E.fc + 1; j < row.size(); j++) {
+      if (row[j] < 48) break;
     }
   } 
 
-  if (j >= row.size - 1) { // at end of line was ==
+  if (j >= row.size() - 1) { // at end of line was ==
 
-    if (E.fr == E.numrows - 1) return; // no more rows
+    if (E.fr == E.rows.size() - 1) return; // no more rows
     
     for (;;) {
       E.fr++;
-      row = E.row[E.fr];
-      if (row.size == 0 && E.fr == E.numrows - 1) return;
-      if (row.size) break;
+      std::vector<char>& row = E.rows.at(E.fr);
+      //row = E.row[E.fr];
+      if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
+      if (row.size()) break;
       }
   
-    if (row.chars[0] > 47) {
+    if (row[0] > 47) {
       E.fc = 0;
       return;
     } else {
-      for (j = E.fc + 1; j < row.size; j++) { 
-        if (row.chars[j] < 48) break;
+      for (j = E.fc + 1; j < row.size(); j++) {
+        if (row[j] < 48) break;
       }
     }
   }
 
-  for (i = j + 1; j < row.size ; i++) { //+1
-    if (row.chars[i] > 48) {
+  for (i = j + 1; j < row.size() ; i++) { //+1
+    if (row[i] > 48) {
       E.fc = i;
       break;
     }
@@ -7010,38 +7011,39 @@ void editorMoveNextWord(void) {
 // normal mode 'b'
 void editorMoveBeginningWord(void) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
   int j = E.fc;
 
-  if (E.fc == 0 || (E.fc == 1 && row->chars[0] < 48)) { 
+  if (E.fc == 0 || (E.fc == 1 && row[0] < 48)) {
     if (E.fr == 0) return;
     for (;;) {
       E.fr--;
-      row = &E.row[E.fr];
-      if (E.fr == 0 && row->size == 0) return;
-      if (row->size == 0) continue;
-      if (row->size) {
-        j = row->size - 1;
+      std::vector<char>& row = E.rows.at(E.fr);
+      //row = &E.row[E.fr];
+      if (E.fr == 0 && row.size() == 0) return;
+      if (row.size() == 0) continue;
+      if (row.size()) {
+        j = row.size() - 1;
         break;
       }
     } 
   }
 
   for (;;) {
-    if (j > 1 && row->chars[j - 1] < 48) j--;
+    if (j > 1 && row[j - 1] < 48) j--;
     else break;
   }
 
   int i;
   for (i = j - 1; i > -1; i--){
     if (i == 0) { 
-      if (row->chars[0] > 47) { 
+      if (row[0] > 47) {
         E.fc = 0;
         break;
       } else return;
     }
-    if (row->chars[i] < 48) {
+    if (row[i] < 48) {
       E.fc = i + 1;
       break;
     }
@@ -7051,33 +7053,34 @@ void editorMoveBeginningWord(void) {
 // normal mode 'e' - seems to handle all corner cases
 void editorMoveEndWord(void) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
 
-  int j = (row->chars[E.fc + 1] < 48) ? E.fc + 1 : E.fc;
+  int j = (row[E.fc + 1] < 48) ? E.fc + 1 : E.fc;
 
   for(;;) {
 
     j++;
 
-    if (j > row->size - 1) { //>=
+    if (j > row.size() - 1) { //>=
 
       for (;;) {
-        if (E.fr == E.numrows - 1) return; // no more rows
+        if (E.fr == E.rows.size() - 1) return; // no more rows
         E.fr++;
-        row = &E.row[E.fr];
-        if (row->size == 0 && E.fr == E.numrows - 1) return;
-        if (row->size) {
+        std::vector<char>& row = E.rows.at(E.fr);
+        //row = E.rows[E.fr];
+        if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
+        if (row.size()) {
           j = 0;
           break;
         }
       }
     }
-    if (j == row->size - 1) {
+    if (j == row.size() - 1) {
       E.fc = j;
       break;
     }
-    if (row->chars[j] < 48 && (j < row->size - 1) && row->chars[j - 1] > 48) {
+    if (row[j] < 48 && (j < row.size() - 1) && row[j - 1] > 48) {
       E.fc = j-1;
       break;
     }
@@ -7087,24 +7090,24 @@ void editorMoveEndWord(void) {
 
 void editorDecorateWord(int c) {
 
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
+  if (E.rows.empty()) return;
+  std::vector<char>& row = E.rows.at(E.fr);
   char cc;
-  if (row->chars[E.fc] < 48) return;
+  if (row[E.fc] < 48) return;
 
   int i, j;
 
   /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
 
   for (i = E.fc - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (row[i] < 48) break;
   }
 
-  for (j = E.fc + 1; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = E.fc + 1; j < row.size() ; j++) {
+    if (row[j] < 48) break;
   }
   
-  if (row->chars[i] != '*' && row->chars[i] != '`'){
+  if (row[i] != '*' && row[i] != '`'){
     cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
     E.fc = i + 1;
     editorInsertChar(cc);
@@ -7133,7 +7136,7 @@ void editorDecorateWord(int c) {
 }
 
 void editorDecorateVisual(int c) {
-  if (!E.row) return;
+  if (E.rows.empty()) return;
   E.fc = E.highlight[0];
   if (c == CTRL_KEY('b')) {
     editorInsertChar('*');
@@ -7151,51 +7154,55 @@ void editorDecorateVisual(int c) {
 
 void getWordUnderCursor(void){
  
-  if (!E.row) return;
-  erow *row = &E.row[E.fr];
-  if (row->chars[E.fc] < 48) return;
+  if (E.rows.empty()) return;
+  //erow *row = &E.row[E.fr];
+  std::vector<char>& row = E.rows.at(E.fr);
+  if (row[E.fc] < 48) return;
 
   int i,j,n,x;
 
   for (i = E.fc - 1; i > -1; i--){
-    if (row->chars[i] < 48) break;
+    if (row[i] < 48) break;
   }
 
-  for (j = E.fc + 1; j < row->size ; j++) {
-    if (row->chars[j] < 48) break;
+  for (j = E.fc + 1; j < row.size() ; j++) {
+    if (row[j] < 48) break;
   }
 
   for (x = i + 1, n = 0; x < j; x++, n++) {
-      search_string[n] = row->chars[x];
+      search_string[n] = row[x];
   }
 
-  search_string[n] = '\0';
-  editorSetMessage("word under cursor: <%s>", search_string); 
+  //search_string[n] = '\0';
+  std::string temp(search_string.data(), search_string.size());
+  editorSetMessage("word under cursor: <%s>", temp.c_str());
 
 }
 
 // needs a little work and needs to wrap back on itself something odd about wrapping matches
 void editorFindNextWord(void) {
-  if (!E.row) return;
+  if (E.rows.empty()) return;
   int y, x;
   char *z;
 
   y = E.fr;
   x = E.fc + 10;
   //x = E.fc;
-  erow *row;
+  //erow *row;
+  std::vector<char> row;
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for (;;) {
-    row = &E.row[y];
-    z = strstr(&(row->chars[x]), search_string);
+    row = E.rows[y];
+    std::string temp(search_string.data(), search_string.size());
+    z = strstr(&(row[x]), temp.c_str());
     if (z != NULL) break;
     y++;
     x = 0;
-    if (y == E.numrows) y = 0;
+    if (y == E.rows.size()) y = 0;
   }
 
-  E.fc = z - row->chars;
+  E.fc = z - &row[0];
   E.fr = y;
 
   editorSetMessage("x = %d; y = %d", x, y); 
@@ -7206,26 +7213,27 @@ void editorMarkupLink(void) {
   char *z;
   char *http = "http";
   char *bracket_http = "[http";
-  numrows = E.numrows;
+  numrows = E.rows.size();
   n = 1;
 
 
-  for ( n=1; E.row[numrows-n].chars[0] == '[' ; n++ );
+  for ( n=1; E.rows[numrows-n][0] == '[' ; n++ );
 
 
   for (y=0; y<numrows; y++){
-    erow *row = &E.row[y];
-    if (row->chars[0] == '[') continue;
-    if (strstr(row->chars, bracket_http)) continue;
+    //erow *row = &E.row[y];
+    std::vector<char> row = E.rows.at(y);
+    if (row[0] == '[') continue;
+    if (strstr(&row[0], bracket_http)) continue;
 
-    z = strstr(row->chars, http);
+    z = strstr(&row[0], http);
     if (z==NULL) continue;
     E.fr = y;
-    p = z - row->chars;
+    p = z - &row[0];
 
     //url including http:// must be at least 10 chars you'd think
-    for (j = p + 10; j < row->size ; j++) { 
-      if (row->chars[j] == 32) break;
+    for (j = p + 10; j < row.size() ; j++) {
+      if (row[j] == 32) break;
     }
 
     int len = j-p;
