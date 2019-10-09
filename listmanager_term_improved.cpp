@@ -48,8 +48,8 @@ typedef void (*pfunc)(void);
 static std::map<int, pfunc> outline_normal_map;
 
 static std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-static std::string FTS_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-static std::string which_db = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+static std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
+static std::string which_db;
 static std::string DB_INI = "db.ini";
 static int EDITOR_LEFT_MARGIN;
 static int NN = 0; //which context is being displayed on message line (if none then NN==0)
@@ -164,7 +164,7 @@ enum Command {
 };
 
 /***new way to do lookuptable is with a map***/
-std::map<std::string, int> lookuptablemap {
+static std::map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
   {"daw", C_daw},
@@ -987,7 +987,7 @@ void view_html(int id) {
   PyObject *pArgs, *pValue;
 
   Py_Initialize();
-  if (which_db[0] == 'p') 
+  if (which_db == "postgres")
     pName = PyUnicode_DecodeFSDefault("view_html_pg"); //module
   else 
     pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
@@ -1078,7 +1078,8 @@ void solr_find(char *search_terms) {
               char query[2000];
               char *put;
 
-              if (which_db[0] == 'p') {
+              //if (which_db[0] == 'p') {
+              if (which_db == "postgres") {
                 strncpy(query, "SELECT * FROM task WHERE "
                                "task.deleted = False and task.id IN (",
                                sizeof(query));
@@ -1261,6 +1262,9 @@ int commandfromstring(char *key, int *p) { //for commands like find nemo - that 
 
 int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
   //std::size_t found = key.find(' ');
+
+  if (key.size() == 1) return key[0];  //need this
+
   found = key.find(' ');
   if (found != std::string::npos) {
     std::string command = key.substr(0, found);
@@ -1602,7 +1606,7 @@ void editorRowDelChar(erow *row, int fr) {
 void editorInsertChar(int chr) {
 
   if ( E.rows.size() == 0 ) {
-    editorInsertRow(0, "", 0); //editorInsertRow will insert '\0' and row->size=0
+    editorInsertRow(0, nullptr, 0); //editorInsertRow will insert '\0' and row->size=0
   }
 
   //erow_chars& row = E.rows.at(E.fr);
