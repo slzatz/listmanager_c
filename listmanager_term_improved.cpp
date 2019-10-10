@@ -116,8 +116,8 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
-//static const std::array<char,17> BASE_DATE = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'};
-static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"};
+static const char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'};
+//static constexpr std::array<char,16> BASE_DATE {"1970-01-01 00:00"}; //changed to 16 from 17
 
 enum Command {
   C_caw = 2000,
@@ -261,7 +261,8 @@ struct abuf {
 
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
-  int fc, fr; // file x and y position
+  //int fc, fr; // file x and y position
+  unsigned long fc, fr; // file x and y position
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
   int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
   int screenlines; //number of lines in the display available to text
@@ -316,25 +317,25 @@ struct editorConfig {
   int continuation;
 };
 
-struct editorConfig E;
+static struct editorConfig E;
 
 void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
-void (*get_items_by_context)(std::string, int);
-void (*get_recent)(int);
-void (*get_items_by_id)(char *);
-void (*get_note)(int);
-void (*update_note)(void); 
-void (*toggle_star)(void);
-void (*toggle_completed)(void);
-void (*toggle_deleted)(void);
-void (*update_context)(int);
-void (*update_rows)(void);
-void (*update_row)(void);
-int (*insert_row)(int); 
-void (*display_item_info)(int);
-void (*touch)(void);
-void (*search_db)(char *);
+static void (*get_items_by_context)(std::string, int);
+static void (*get_recent)(int);
+static void (*get_items_by_id)(char *);
+static void (*get_note)(int);
+static void (*update_note)(void);
+static void (*toggle_star)(void);
+static void (*toggle_completed)(void);
+static void (*toggle_deleted)(void);
+static void (*update_context)(int);
+static void (*update_rows)(void);
+static void (*update_row)(void);
+static int (*insert_row)(int);
+static void (*display_item_info)(int);
+static void (*touch)(void);
+static void (*search_db)(char *);
 void solr_find(char *);
 void fts5_sqlite(char *);
 int fts5_callback(void *, int, char **, char **);
@@ -371,7 +372,7 @@ void get_recent_sqlite(int);
 int insert_row_pg(int); 
 int insert_row_pg_new(orow);
 int insert_row_sqlite(int);
-int insert_row_sqlite_new(orow);
+int insert_row_sqlite_new(orow&);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void synchronize(int);
@@ -932,6 +933,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
     }
     free(note); //moved below on 02262019
   }
+
   E.dirty = 0;
   // put this here because it has to happen and this forces it but not sure
   // that it's the best idea - at least should be in get_note_sqlite
@@ -1416,7 +1418,6 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
 
   orow row;
 
-  //row.size = len;
   if (s==nullptr) {
     std::vector<char> temp {};
     row.chars = temp;
@@ -1424,8 +1425,6 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
     std::vector<char> temp(s, s + len);
     row.chars = temp;
   }
-  //row.chars = s;
-  row.chars.push_back('\0'); //each line is made into a c-string (maybe for searching)
   row.id = id;
   row.star = star;
   row.deleted = deleted;
@@ -1433,11 +1432,10 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
   row.dirty = (id != -1) ? false : true;
   strncpy(row.modified, modified, 16);
   row.modified[16] = '\0';
-  //O.numrows++; // not necessary since this is O.rows.size() when it is needed.
-
 
   auto pos = O.rows.begin() + at;
   O.rows.insert(pos, row);
+  //O.rows.push_back(row); // can at least see the row - was used during debuggin
 
 
 
@@ -1450,8 +1448,8 @@ void outlineInsertChar(int c) {
   if (O.rows.size() == 0) return;
 
   orow& row = O.rows.at(O.fr);
-  row.chars.at(O.fc) = c;
-  //row.size++;
+  if (row.chars.empty()) row.chars.push_back(c);
+  else row.chars.insert(row.chars.begin() + O.fc, c);
   row.dirty = true;
   O.fc++;
 }
@@ -2104,7 +2102,7 @@ void outlineDrawStatusBar(struct abuf *ab) {
   char zz = '\0';
   char * zzz = &zz;
   if (O.rows.empty()) { //********************************** or (!O.numrows)
-    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%d %s",
+    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
                               //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
                               //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
@@ -2113,22 +2111,25 @@ void outlineDrawStatusBar(struct abuf *ab) {
   } else {
 
     orow& row = O.rows.at(O.fr);
-    int title_len = (row.chars.size() < 20) ? row.chars.size() : 19;
-    char *truncated_title = (char*)malloc(title_len + 1);
-    memcpy(truncated_title, &row.chars, title_len); //had issues with strncpy so changed to memcpy
-    truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
+    std::string title(row.chars.data(), row.chars.size());
+    std::string truncated_title = title.substr(0, 19);
+
+    //int title_len = (row.chars.size() < 20) ? row.chars.size() : 19;
+    //char *truncated_title = (char*)malloc(title_len + 1);
+    //memcpy(truncated_title, &row.chars, title_len); //had issues with strncpy so changed to memcpy
+    //truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
 
     len = snprintf(status, sizeof(status), 
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%d \x1b[1;42m%s\x1b[49m",
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
                               (O.context == "search") ? search_terms : zzz,
-                              truncated_title, row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
-    free(truncated_title);
+    //free(truncated_title);
   }
   //because of escapes
   len-=22;
@@ -2537,6 +2538,7 @@ void outlineProcessKeypress() {
       
         case 'O': //C_new: 
           outlineInsertRow(0, "", 0, -1, true, false, false, "1970-01-01 00:00");
+          //outlineInsertRow(0, nullptr, 0, -1, true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
           outlineRefreshScreen();  //? necessary
@@ -2544,7 +2546,7 @@ void outlineProcessKeypress() {
           O.repeat = 0;
           outlineSetMessage("");
           editorEraseScreen();
-          editorRefreshScreen();
+          //editorRefreshScreen();
           O.mode = INSERT;
           return;
 
@@ -2781,7 +2783,7 @@ void outlineProcessKeypress() {
               O.repeat = 0;
               outlineSetMessage("");
               editorEraseScreen();
-              editorRefreshScreen();
+              editorRefreshScreen(); // this causes a vector out of range fault
               O.mode = INSERT;
               return;
 
@@ -4531,7 +4533,7 @@ int insert_row_sqlite(int ofr) {
 
  int context_tid = 1; //just in case there isn't a match but there has to be
  for (int k = 1; k < 12; k++) { 
-   if (O.context.compare(0, 3, context[k]) == 0) { //2 chars all you need
+   if (O.context.compare(context[k]) == 0) { //2 chars all you need
      context_tid = k;
      break;
    }
@@ -4656,9 +4658,7 @@ int insert_row_sqlite(int ofr) {
   return row.id;
 }
 
-int insert_row_sqlite_new(orow row) {
-
-  //orow& row = O.rows.at(ofr);
+int insert_row_sqlite_new(orow& row) {
 
   std::string title(row.chars.data(), row.chars.size());
   size_t pos = title.find("'");
@@ -4670,7 +4670,7 @@ int insert_row_sqlite_new(orow row) {
 
  int context_tid = 1; //just in case there isn't a match but there has to be
  for (int k = 1; k < 12; k++) {
-   if (O.context.compare(0, 3, context[k]) == 0) { //2 chars all you need
+   if (O.context.compare(context[k]) == 0) {
      context_tid = k;
      break;
    }
