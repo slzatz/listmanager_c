@@ -261,18 +261,12 @@ struct abuf {
 
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
-  //int fc, fr; // file x and y position
   unsigned long fc, fr; // file x and y position
   int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
   int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
   int screenlines; //number of lines in the display available to text
   int screencols;  //number of columns in the display available to text
-  //int numrows; // the number of rows of items/tasks
-  //orow *row; //(e)ditorrow stores a pointer to a contiguous collection of orow structures
   std::vector<orow> rows;
-  //orow *prev_row; //for undo purposes
-  //int dirty; //each row has a row->dirty
-  //char *context;
   std::string context;
   char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
@@ -283,7 +277,6 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
-  //bool show_highlight;
 };
 
 static struct outlineConfig O;
@@ -319,7 +312,6 @@ struct editorConfig {
 
 static struct editorConfig E;
 
-void abFree(struct abuf *ab); 
 /*** outline prototypes ***/
 static void (*get_items_by_context)(std::string, int);
 static void (*get_recent)(int);
@@ -344,10 +336,13 @@ int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 //int tid_callback(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
-void outlineRefreshScreen(void);
+//void outlineRefreshScreen(void);
 void outlineRefreshScreenNew(void);
 //void getcharundercursor();
-void outlineDrawStatusBar(struct abuf *);
+//void outlineDrawStatusBar(struct abuf *);
+void outlineDrawStatusBarNew(std::string&);
+//void outlineDrawMessageBar(struct abuf *);
+void outlineDrawMessageBarNew(std::string&);
 void outlineDelWord();
 void outlineMoveCursor(int key);
 void outlineBackspace(void);
@@ -365,7 +360,7 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified); 
-void outlineDrawRows(struct abuf *ab);
+//void outlineDrawRows(struct abuf *ab);
 void outlineDrawRowsNew(std::string&);
 void outlineScroll(void);
 int get_id(int fr);
@@ -394,12 +389,12 @@ int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
-void editorDrawMessageBar(struct abuf *ab);
+//void editorDrawMessageBar(struct abuf *ab);
 void editorDrawMessageBarNew(std::string&);
 void editorDrawStatusBarNew(std::string&);
-void editorDrawStatusBar(struct abuf *ab);
+//void editorDrawStatusBar(struct abuf *ab);
 void editorSetMessage(const char *fmt, ...);
-void editorRefreshScreen(void);
+//void editorRefreshScreen(void);
 void editorRefreshScreenNew(void);
 //void getcharundercursor(void);
 void editorInsertReturn(void);
@@ -430,7 +425,6 @@ void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
 void editorInsertRow(int fr, char *s, size_t len); 
-void abAppend(struct abuf *ab, const char *s, int len);
 void EraseRedrawLines(void);
 void editorDisplayFile(void);
 // config struct for reading db.ini file
@@ -1813,57 +1807,53 @@ void editorEraseScreen(void) {
   E.rows.clear();
 
   char lf_ret[10];
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+  std::string ab;
 
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars);
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
-  write(STDOUT_FILENO, ab.b, ab.len);
-  abFree(&ab); 
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
 void editorDisplayFile(void) {
 
-  //FILE *fp = fopen(filename, "r");
   FILE *fp = fopen(display_file, "r");
   if (!fp) die("fopen");
 
   char lf_ret[10];
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+  std::string ab;
 
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars);
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //abAppend(&ab, "\x1b[44m", 5); //tried background blue - didn't love it
-  abAppend(&ab, "\x1b[36m", 5); //this is foreground cyan - we'll see
+  ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
   int file_line = 0;
   int file_row = 0;
   //initial_file_row is a global - should be set to zero when you open a file
@@ -1881,25 +1871,24 @@ void editorDisplayFile(void) {
     if (file_row < initial_file_row + 1) continue;
     for(;;) {
       if (linelen < (n+1)*E.screencols) break;
-      abAppend(&ab, &line[n*E.screencols], E.screencols);
-      abAppend(&ab, lf_ret, nchars);
+      ab.append(&line[n*E.screencols], E.screencols);
+      ab.append(lf_ret, nchars);
       file_line++; //**********************
       //should be num_liness++ here
       n++;
     }
-    abAppend(&ab, &line[n*E.screencols], linelen-n*E.screencols);
+    ab.append(&line[n*E.screencols], linelen-n*E.screencols);
     file_line++;
     if (file_line > E.screenlines - 2) break; //was - 1
-    abAppend(&ab, lf_ret, nchars);
+    ab.append(lf_ret, nchars);
   }
-  abAppend(&ab, "\x1b[0m", 4);
+  ab.append("\x1b[0m", 4);
 
   // not a huge deal but updating status bar here would mean mode would be correct
-  outlineDrawStatusBar(&ab); // 03162019
+  outlineDrawStatusBarNew(ab); // 03162019
 
-  write(STDOUT_FILENO, ab.b, ab.len);
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 
-  abFree(&ab); 
   free(line);
   
   fclose(fp);
@@ -1948,43 +1937,6 @@ void editorSave(void) {
   editorSetMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
-/*** append buffer ***/
-/*
-struct abuf {
-  char *b;
-  int len;
-};
-*/
-//#define ABUF_INIT {NULL, 0}
-
-void abAppend(struct abuf *ab, const char *s, int len) {
-
-  /*
-     initally abuf consists of *b = NULL pointer and int len = 0
-     abuf.b holds the pointer to the memory that holds the string
-     the below creates a new memory pointer that reallocates
-     memory to something 
-  */
-
-  /*realloc's first argument is the current pointer to memory and the second argumment is the size_t needed*/
-  char *new_x = (char*)realloc(ab->b, ab->len + len);
-
-  if (new_x == NULL) return;
-  /*new is the new pointer to the string
-    new[len] is a value and memcpy needs a pointer
-    to the location in the string where s is being copied*/
-
-  //copy s on to the end of whatever string was there
-  memcpy(&new_x[ab->len], s, len);
-
-  ab->b = new_x;
-  ab->len += len;
-}
-
-void abFree(struct abuf *ab) {
-  free(ab->b);
-}
-
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
@@ -2011,9 +1963,7 @@ void outlineScroll(void) {
   O.cy = O.fr - O.rowoff;
 }
 
-// "drawing" rows means writing to the ab buffer and then to the screen
-// fr is the file row and takes into account any scroll
-void outlineDrawRows(struct abuf *ab) {
+void outlineDrawRowsNew(std::string& ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
   char buf[32];
 
@@ -2021,7 +1971,7 @@ void outlineDrawRows(struct abuf *ab) {
 
   int y;
   char lf_ret[16];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN);
 
   int spaces;
 
@@ -2033,58 +1983,58 @@ void outlineDrawRows(struct abuf *ab) {
     // if a line is long you only draw what fits on the screen
     //below solves  problem when deleting chars from a scrolled long line
     int len = (fr == O.fr) ? row.chars.size() - O.coloff : row.chars.size(); //can run into this problem when deleting chars from a scrolled log line
-    if (len > O.screencols) len = O.screencols; 
+    if (len > O.screencols) len = O.screencols;
 
     // was the below for a long time but changed on 03022019 to deal with scrolled line
     // that has chars deleted from it so it doesn't take up the full row anymone
     //int len = (row->size > O.screencols) ? O.screencols : row->size;
-    
-    if (row.star) abAppend(ab, "\x1b[1m", 4); //bold
 
-    if (row.completed && row.deleted) abAppend(ab, "\x1b[32m", 5); //green foreground
-    else if (row.completed) abAppend(ab, "\x1b[33m", 5); //yellow foreground
-    else if (row.deleted) abAppend(ab, "\x1b[31m", 5); //red foreground
+    if (row.star) ab.append("\x1b[1m", 4); //bold
 
-    if (fr == O.fr) abAppend(ab, "\x1b[48;5;236m", 11); // 236 is a grey
+    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
+    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
+    else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
 
-    if (row.dirty) abAppend(ab, "\x1b[41m", 5); //red background
+    if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
+
+    if (row.dirty) ab.append("\x1b[41m", 5); //red background
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
-    // if (O.mode == VISUAL && fr == O.cy + O.rowoff) { 
-    if (O.mode == VISUAL && fr == O.fr) { 
-            
+    // if (O.mode == VISUAL && fr == O.cy + O.rowoff) {
+    if (O.mode == VISUAL && fr == O.fr) {
+
        // below in case E.highlight[1] < E.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
       j =!k;
-      abAppend(ab, &(row.chars[O.coloff]), O.highlight[j] - O.coloff);
-      abAppend(ab, "\x1b[48;5;242m", 11);
-      abAppend(ab, &(row.chars[O.highlight[j]]), O.highlight[k]
+      ab.append(&(row.chars[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append("\x1b[48;5;242m", 11);
+      ab.append(&(row.chars[O.highlight[j]]), O.highlight[k]
                                              - O.highlight[j]);
-      abAppend(ab, "\x1b[49m", 5); // return background to normal
-      abAppend(ab, &(row.chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
-      
+      ab.append("\x1b[49m", 5); // return background to normal
+      ab.append(&(row.chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+
     } else {
         // current row is only row that is scrolled if O.coloff != 0
-        abAppend(ab, &row.chars[((fr == O.fr) ? O.coloff : 0)], len);
+        ab.append(&row.chars[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
     // like the whole row is highlighted
-    spaces = O.screencols - len; 
-    for (int i=0; i < spaces; i++) abAppend(ab, " ", 1); 
+    spaces = O.screencols - len;
+    for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
-    abAppend(ab, "\x1b[0m", 4); // return background to normal
-    abAppend(ab, buf, strlen(buf));
-    abAppend(ab, row.modified, 16);
-    abAppend(ab, lf_ret, nchars);
+    ab.append("\x1b[0m", 4); // return background to normal
+    ab.append(buf, strlen(buf));
+    ab.append(row.modified, 16);
+    ab.append(lf_ret, nchars);
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
 
 //status bar has inverted colors
-void outlineDrawStatusBar(struct abuf *ab) {
+void outlineDrawStatusBarNew(std::string& ab) {
 
   int len;
   /*
@@ -2095,26 +2045,22 @@ void outlineDrawStatusBar(struct abuf *ab) {
   */
 
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + TOP_MARGIN + 1,
-                             //screencols/2,
                              O.screencols + OUTLINE_LEFT_MARGIN,
-
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
-  abAppend(ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
-  abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
+  ab.append("\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
   char zz = '\0';
   char * zzz = &zz;
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
-                              //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
-                              //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
                               (O.context == "search") ? search_terms : zzz,
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
@@ -2123,22 +2069,14 @@ void outlineDrawStatusBar(struct abuf *ab) {
     std::string title(row.chars.data(), row.chars.size());
     std::string truncated_title = title.substr(0, 19);
 
-    //int title_len = (row.chars.size() < 20) ? row.chars.size() : 19;
-    //char *truncated_title = (char*)malloc(title_len + 1);
-    //memcpy(truncated_title, &row.chars, title_len); //had issues with strncpy so changed to memcpy
-    //truncated_title[title_len] = '\0'; // if title is shorter than 19, should be fine
-
-    len = snprintf(status, sizeof(status), 
+    len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              //O.context, (strcmp(O.context, "search") == 0) ? " - " : "",
-                              //(strcmp(O.context, "search") == 0) ? search_terms : zzz,
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
                               (O.context == "search") ? search_terms : zzz,
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
-    //free(truncated_title);
   }
   //because of escapes
   len-=22;
@@ -2148,37 +2086,35 @@ void outlineDrawStatusBar(struct abuf *ab) {
   //if (len > screencols/2) len = screencols/2;
   if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
 
-  abAppend(ab, status, len + 22);
+  ab.append(status, len + 22);
 
   while (len < O.screencols + OUTLINE_LEFT_MARGIN) {
     if ((O.screencols + OUTLINE_LEFT_MARGIN - len) == rlen - 10) { //10 of chars not printable
-      abAppend(ab, rstatus, rlen);
+      ab.append(rstatus, rlen);
       break;
     } else {
-      abAppend(ab, " ", 1);
+      ab.append(" ", 1);
       len++;
     }
   }
 
-  abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-  //free(truncated_title);
+  ab.append("\x1b[m", 3); //switches back to normal formatting
 }
 
-void outlineDrawMessageBar(struct abuf *ab) {
+void outlineDrawMessageBarNew(std::string& ab) {
 
-  // Erase from mid-screen to the left and then place cursor all the way left 
+  // Erase from mid-screen to the left and then place cursor all the way left
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH", 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + 2 + TOP_MARGIN,
                              screencols/2,
-
                              O.screenlines + 2 + TOP_MARGIN,
                              1);
 
-  abAppend(ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
   int msglen = strlen(O.message);
   if (msglen > screencols/2) msglen = screencols/2;
-  abAppend(ab, O.message, msglen);
+  ab.append(O.message, msglen);
 }
 
 void outlineRefreshScreenNew(void) {
@@ -2186,8 +2122,7 @@ void outlineRefreshScreenNew(void) {
   if (0)
     outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).chars.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
 
-  //struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-  std::string ab; //abuf *b = NULL and int len = 0
+  std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
 
@@ -2207,7 +2142,6 @@ void outlineRefreshScreenNew(void) {
   outlineDrawStatusBarNew(ab);
   outlineDrawMessageBarNew(ab);
 
-
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
   if (O.mode == DATABASE) {
@@ -2226,65 +2160,6 @@ void outlineRefreshScreenNew(void) {
   ab.append("\x1b[0m", 4); //return background to normal
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-}
-
-void outlineRefreshScreen(void) {
-  //outlineScroll();
-
-  /*  struct abuf {
-      char *b;
-      int len;
-    };*/
-
-  //if (O.row)
-
-  //if (!O.numrows) O.mode = NO_ROWS; //*********************************** this doesn't work needs to be NO_ROW with only command line
-
-  if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).chars.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
-
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-
-  //Below erase screen from middle to left - `1K` below is cursor to left erasing
-  char buf[20];
-  for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN, 
-    O.screencols + OUTLINE_LEFT_MARGIN);  
-    abAppend(&ab, buf, strlen(buf));
-  }
-
-  // put cursor at upper left after erasing
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // ***************** 
-
-  abAppend(&ab, buf, strlen(buf));
-  if (!O.rows.empty()) outlineDrawRows(&ab);
-  outlineDrawStatusBar(&ab);
-  outlineDrawMessageBar(&ab);
-  
-
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are
-  //chained (note syntax requires only trailing 'm')
-  if (O.mode == DATABASE) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
-    abAppend(&ab, buf, strlen(buf));
-  } else if (O.mode != NO_ROWS) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); 
-    abAppend(&ab, buf, strlen(buf));
-    abAppend(&ab, "\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
-  }
-
-  // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
-  abAppend(&ab, buf, strlen(buf));
-
-  abAppend(&ab, "\x1b[0m", 4); //return background to normal
-
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab);
 }
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
@@ -2598,7 +2473,7 @@ void outlineProcessKeypress() {
           outlineInsertRow(0, nullptr, 0, -1, true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
-          outlineRefreshScreen();  //? necessary
+          outlineRefreshScreenNew();  //? necessary
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("");
@@ -2835,7 +2710,7 @@ void outlineProcessKeypress() {
               outlineInsertRow(0, nullptr, 0, -1, true, false, false, BASE_DATE);
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
-              outlineRefreshScreen();  //? necessary
+              outlineRefreshScreenNew();  //? necessary
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("");
@@ -2851,7 +2726,7 @@ void outlineProcessKeypress() {
                int id = get_id(-1);
                if (id != -1) {
                  outlineSetMessage("Edit note %d", id);
-                 outlineRefreshScreen();
+                 outlineRefreshScreenNew();
                  //editor_mode needs go before get_note in case we retrieved item via a search
                  editor_mode = true;
                  (*get_note)(id); //if id == -1 does not try to retrieve note
@@ -3401,52 +3276,52 @@ void display_item_info_pg(int id) {
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+  std::string ab;
 
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars);
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //set background color to blue
-  abAppend(&ab, "\x1b[44m", 5);
+  ab.append("\x1b[44m", 5);
 
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))].c_str());
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
-  abAppend(&ab, lf_ret, nchars);
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  ab.append(lf_ret, nchars);
+  ab.append(lf_ret, nchars);
 
   //note strsep handles multiple \n\n and strtok did not
   char *note;
@@ -3458,15 +3333,14 @@ void display_item_info_pg(int id) {
     if ((found = strsep(&note, "\n")) == NULL) break; 
 
     size_t len = E.screencols;
-    abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, lf_ret, nchars);
+    ab.append(found, (strlen(found) < len) ? strlen(found) : len);
+    ab.append(lf_ret, nchars);
   }
 
-  abAppend(&ab, "\x1b[0m", 4);
+  ab.append("\x1b[0m", 4);
 
-  write(STDOUT_FILENO, ab.b, ab.len);
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 
-  abFree(&ab); 
   free(note);
   note = NULL; //? not necessary
 
@@ -3632,55 +3506,55 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+  std::string ab;
 
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //need to erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    abAppend(&ab, "\x1b[K", 3); 
-    abAppend(&ab, lf_ret, nchars);
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  abAppend(&ab, buf, strlen(buf));
+  ab.append(buf, strlen(buf));
 
   //set background color to blue
-  abAppend(&ab, "\x1b[44m", 5);
+  ab.append("\x1b[44m", 5);
 
   char str[300];
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", argv[0]);
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mtid:\x1b[0;44m %s", argv[1]);
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])].c_str());
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (atoi(argv[14]) == 1) ? "true": "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (argv[10]) ? "true": "false");
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", argv[16]);
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
-  abAppend(&ab, str, strlen(str));
-  abAppend(&ab, lf_ret, nchars);
-  abAppend(&ab, lf_ret, nchars);
-  abAppend(&ab, lf_ret, nchars);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  ab.append(lf_ret, nchars);
+  ab.append(lf_ret, nchars);
 
   char *found;
 
@@ -3690,15 +3564,13 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
     if ((found = strsep(&argv[12], "\n")) == NULL) break; 
 
     size_t len = E.screencols;
-    abAppend(&ab, found, (strlen(found) < len) ? strlen(found) : len);
-    abAppend(&ab, lf_ret, nchars);
+    ab.append(found, (strlen(found) < len) ? strlen(found) : len);
+    ab.append(lf_ret, nchars);
   }
 
-  abAppend(&ab, "\x1b[0m", 4);
+  ab.append("\x1b[0m", 4);
 
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab); 
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   return 0;
 }
@@ -3773,7 +3645,7 @@ void update_note_pg(void) {
     editorSetMessage(PQerrorMessage(conn));
   } else {
     outlineSetMessage("Updated note for item %d", id);
-    outlineRefreshScreen();
+    outlineRefreshScreenNew();
     //editorSetMessage("Note update succeeeded"); 
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
@@ -3832,7 +3704,7 @@ void update_note_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note for item %d", id);
-    outlineRefreshScreen();
+    outlineRefreshScreenNew();
     //editorSetMessage("Note update succeeeded"); 
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
@@ -3859,7 +3731,7 @@ void update_note_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note and fts entry for item %d", id);
-    outlineRefreshScreen();
+    outlineRefreshScreenNew();
     editorSetMessage("Note update succeeeded"); 
   }
    
@@ -5265,9 +5137,12 @@ void editorScroll(void) {
   // it's either helpful or worthit but this is a placeholder for the idea
 }
 
-/*************************************************************/
 void editorDrawRowsNew(std::string& ab) {
-  if (E.rows.empty()) return; /////////////////////
+  //if (E.rows.empty()) return; /////////////////////
+  if (E.rows.empty()) { //October 13, 2019
+      editorEraseScreen();
+      return;
+  }
   int y = 0;
   int len; //, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
@@ -5409,150 +5284,6 @@ void editorDrawRowsNew(std::string& ab) {
    ab.append("\x1b[0m", 4); //slz return background to normal
   } // end of top for loop
 }
-/*************************************************************/
-void editorDrawRows(struct abuf *ab) {
-  if (E.rows.empty()) return; /////////////////////
-  int y = 0;
-  int len; //, n;
-  int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
-  char lf_ret[16];
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  // this is the first visible row on the screen given E.line_offset
-  // seems like it will always then display all top row's lines
-  int filerow = editorGetFileRowByLineWW(0); 
-
-  for (;;){
-    if (y >= E.screenlines) break; //somehow making this >= made all the difference
-
-    // if there is still screen real estate but we've run out of text rows (E.numrows)
-    //drawing '~' below: first escape is red color (31m) and K erases rest of line
-    if (filerow > E.rows.size() - 1) {
-
-      //may not be worth this if else to not draw ~ in first row
-      //and probably there is a better way to do it
-      if (y) abAppend(ab, "\x1b[31m~\x1b[K", 9); 
-      else abAppend(ab, "\x1b[K", 3); 
-      abAppend(ab, lf_ret, nchars);
-      y++;
-
-    // this else is the main drawing code
-    } else {
-
-      int lines = editorGetLinesInRowWW(filerow); // changed from E.fr to filerow 04012019
-
-      // below is trying to emulate what vim does when it can't show an entire row (because it generates
-      // multiple screen lines that can't all be displayed at the bottom of the screen because of where
-      // the screen scroll is.)  It shows nothing of the row rather than show a partial row.  May not be worth it.
-      // And *may* actually be causing problems
-
-      if ((y + lines) > E.screenlines) {
-          for (int n = 0; n < (E.screenlines - y); n++) {
-            abAppend(ab, "@", 2);
-            abAppend(ab, "\x1b[K", 3); 
-            abAppend(ab, lf_ret, nchars);
-          }
-        break;
-      }      
-
-    //erow *row = &E.row[filerow];
-    std::vector<char>& row = E.rows.at(filerow);
-    char *start,*right_margin;
-    int left, width;
-    bool more_lines = true;
-
-    left = row.size(); //although maybe time to use strlen(preamble);
-    start = &row[0]; //char * to string that is going to be wrapped
-    width = E.screencols; //wrapping width
-    
-    while(more_lines) {
-
-        if (left <= width) {//after creating whatever number of lines if remainer <= width: get out
-          len = left;
-          more_lines = false;
-        } else {
-          // each time start pointer moves you are adding the width to it and checking for spaces
-          right_margin = start+width - 1; 
-
-          if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02272019
-          while(!isspace(*right_margin)) { //#2
-            right_margin--;
-            if( right_margin == start) {// situation in which there were no spaces to break the link
-              right_margin += width - 1;
-              break; 
-            }
-
-          } //end #2
-
-          len = right_margin - start + 1;
-          left -= right_margin-start+1;      /* +1 for the space */
-          //start = [see below]
-        }
-        y++;
-
-        if (E.mode == VISUAL_LINE) { 
-
-          // below in case E.highlight[1] < E.highlight[0]
-          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
-          j =!k;
-         
-          if (filerow >= E.highlight[j] && filerow <= E.highlight[k]) {
-            abAppend(ab, "\x1b[48;5;242m", 11);
-            abAppend(ab, start, len);
-            abAppend(ab, "\x1b[49m", 5); //return background to normal
-          } else abAppend(ab, start, len);
-
-        } else if (E.mode == VISUAL && filerow == E.fr) {
-
-          // below in case E.highlight[1] < E.highlight[0]
-          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
-          j =!k;
-
-          char *Ehj = &(row[E.highlight[j]]);
-          char *Ehk = &(row[E.highlight[k]]);
-
-          if ((Ehj >= start) && (Ehj < start + len)) {
-            abAppend(ab, start, Ehj - start);
-            abAppend(ab, "\x1b[48;5;242m", 11);
-            if ((Ehk - start) > len) {
-              abAppend(ab, Ehj, len - (Ehj - start));
-              abAppend(ab, "\x1b[49m", 5); //return background to normal
-            } else {
-              abAppend(ab, Ehj, E.highlight[k] - E.highlight[j]);
-              abAppend(ab, "\x1b[49m", 5); //return background to normal
-              abAppend(ab, Ehk, start + len - Ehk);
-            }
-          } else if ((Ehj < start) && (Ehk > start)) {
-              abAppend(ab, "\x1b[48;5;242m", 11);
-
-            if ((Ehk - start) > len) {
-              abAppend(ab, start, len);
-              abAppend(ab, "\x1b[49m", 5); //return background to normal
-            } else {  
-              abAppend(ab, start, Ehk - start);
-              abAppend(ab, "\x1b[49m", 5); //return background to normal
-              abAppend(ab, Ehk, start + len - Ehk);
-            }  
-
-          } else abAppend(ab, start, len);
-        } else abAppend(ab, start, len);
-    
-      // "\x1b[K" erases the part of the line to the right of the cursor in case the
-      // new line i shorter than the old
-      abAppend(ab, "\x1b[K", 3); 
-
-      abAppend(ab, lf_ret, nchars);
-      abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-
-      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-      }
-
-      filerow++;
-    } // end of main drawing else block
-   abAppend(ab, "\x1b[0m", 4); //slz return background to normal
-  } // end of top for loop
-}
 
 //status bar has inverted colors
 
@@ -5595,102 +5326,6 @@ void editorDrawStatusBarNew(std::string& ab) {
 
 }
 
-/*****************************************/
-
-
-void editorDrawStatusBar(struct abuf *ab) {
-/*
-  int efr = (E.row) ? E.fr : -1;
-
-  orow *row = &O.row[O.fr];
-
-  // position the cursor at the beginning of the editor status bar at correct indent
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
-                                            EDITOR_LEFT_MARGIN + 1);//+1 
-  abAppend(ab, buf, strlen(buf));
-
-  abAppend(ab, "\x1b[K", 3); //cursor should be in middle of screen?? now explicit above
-
-  abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
-  char status[80], rstatus[80];
-  //char truncated_title[20];
-  //strncpy(truncated_title, orow->chars, 19);
-  //truncated_title[20] = '\0'; // <- that should have been 19
-
-  int len = (row->size < 20) ? row->size : 19;
-  char *truncated_title = malloc(len + 1);
-  memcpy(truncated_title, row->chars, len);
-  truncated_title[len] = '\0'; // if title is shorter than 19, should be fine
-
-  len = snprintf(status, sizeof(status), "%.20s - %d line %s %s",
-    O.context ? O.context : "[No Name]", E.numrows,
-    truncated_title,
-    E.dirty ? "(modified)" : "");
-    //"*");
-  int rlen = snprintf(rstatus, sizeof(rstatus), "Status bar %d/%d",
-    efr + 1, E.numrows);
-  if (len > E.screencols) len = E.screencols;
-  abAppend(ab, status, len);
- */
-  int len;
-  char status[100];
-  // position the cursor at the beginning of the editor status bar at correct indent
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
-                                            //EDITOR_LEFT_MARGIN);//+1 
-                                            EDITOR_LEFT_MARGIN - OUTLINE_RIGHT_MARGIN);
-  abAppend(ab, buf, strlen(buf));
-
-  abAppend(ab, "\x1b[K", 3); //cursor in middle of screen and doesn't move on erase
-
-  abAppend(ab, "\x1b[7m", 4); //switches to inverted colors
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
-  //                                          EDITOR_LEFT_MARGIN + 1);// move 1 to right
-  
-  abAppend(ab, " ", 1);
-  //abAppend(ab, buf, strlen(buf));
-
-  if (!E.rows.empty()){
-    int line = editorGetLineInRowWW(E.fr, E.fc);
-    int line_char_count = editorGetLineCharCountWW(E.fr, line); 
-
-    len = snprintf(status, 
-                   sizeof(status), "E.fr(0)=%d line(1)=%d E.fc(0)=%d line chrs(1)="
-                                   "%d E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d", 
-                                   E.fr, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
-  } else {
-    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
-                                      E.cx, E.cy, E.rows.size(), E.line_offset);
-  }
-
-  if (len > E.screencols + OUTLINE_RIGHT_MARGIN) len = E.screencols + OUTLINE_RIGHT_MARGIN;
-  abAppend(ab, status, len);
-
-  while (len < E.screencols + OUTLINE_RIGHT_MARGIN) {
-      abAppend(ab, " ", 1);
-      len++;
-    }
-
-  abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-
-  /* add spaces until you just have enough room
-     left to print the status message  */
- /*
-  while (len < E.screencols) {
-    if (E.screencols - len == rlen) {
-      abAppend(ab, rstatus, rlen);
-      break;
-    } else {
-      abAppend(ab, " ", 1);
-      len++;
-    }
-  }
-  abAppend(ab, "\x1b[m", 3); //switches back to normal formatting
-  free(truncated_title);
-  */
-}
-
 void editorDrawMessageBarNew(std::string& ab) {
   // Position cursor on last row and mid-screen
   char buf[32];
@@ -5702,19 +5337,6 @@ void editorDrawMessageBarNew(std::string& ab) {
   int msglen = strlen(E.message);
   if (msglen > E.screencols) msglen = E.screencols;
   ab.append(E.message, msglen);
-}
-
-void editorDrawMessageBar(struct abuf *ab) {
-  // Position cursor on last row and mid-screen
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 2,
-                                            EDITOR_LEFT_MARGIN);  //+1
-  abAppend(ab, buf, strlen(buf));
-
-  abAppend(ab, "\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
-  int msglen = strlen(E.message);
-  if (msglen > E.screencols) msglen = E.screencols;
-  abAppend(ab, E.message, msglen);
 }
 
 void editorRefreshScreenNew(void) {
@@ -5731,14 +5353,12 @@ void editorRefreshScreenNew(void) {
     } else
       editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.rows.size(), E.line_offset);
   }
-  //struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
+
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
-  //char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
-  //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
 
 
   editorDrawRowsNew(ab);
@@ -5770,76 +5390,8 @@ void editorRefreshScreenNew(void) {
 
   ab.append("\x1b[?25h", 6); //shows the cursor
 
-  //write(STDOUT_FILENO, ab.b, ab.len);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  //abFree(&ab);
 }
-
-void editorRefreshScreen(void) {
-  char buf[32];
-  //int len;
-  editorScroll(); 
-
-    /* struct abuf {
-      char *b;
-      int len;
-    };
-    */
-
-  if (DEBUG) {
-    if (!E.rows.empty()){
-      int screenx = editorGetScreenXFromRowCol(E.fr, E.fc); 
-      int line = editorGetLineInRowWW(E.fr, E.fc);
-      int line_char_count = editorGetLineCharCountWW(E.fr, line); 
-
-      editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screenx, E.screencols);
-    } else
-      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.rows.size(), E.line_offset);
-  }
-  struct abuf ab = ABUF_INIT; //abuf *b = NULL and int len = 0
-
-  abAppend(&ab, "\x1b[?25l", 6); //hides the cursor
-  //char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
-  abAppend(&ab, buf, strlen(buf));
-  //abAppend(&ab, "\x1b[H", 3);  //sends the cursor home
-
-
-  editorDrawRows(&ab);
-  editorDrawStatusBar(&ab);
-  editorDrawMessageBar(&ab);
-
-  // the lines below position the cursor where it should go
-  if (E.mode != COMMAND_LINE){
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
-    abAppend(&ab, buf, strlen(buf));
-  }
-
-  if (E.dirty == 1) {
-    //The below needs to be in a function that takes the color as a parameter
-    write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-
-    for (int k = OUTLINE_LEFT_MARGIN + O.screencols + 1; k < screencols ;k++) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-      write(STDOUT_FILENO, buf, strlen(buf));
-      write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
-    }
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2); // added len 03022019
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
-    write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-    write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-  }  
-
-
-  abAppend(&ab, "\x1b[?25h", 6); //shows the cursor
-
-  write(STDOUT_FILENO, ab.b, ab.len);
-
-  abFree(&ab); 
-}
-
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
@@ -6199,7 +5751,7 @@ void editorProcessKeypress(void) {
           editorRefreshScreen();
           */
 
-          outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
+          outlineRefreshScreenNew(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';//}
           return;
 
@@ -6397,7 +5949,7 @@ void editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               editorSetMessage("");
-              editorRefreshScreen();
+              editorRefreshScreenNew();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -6423,7 +5975,7 @@ void editorProcessKeypress(void) {
               E.command[0] = '\0';
               editor_mode = false;
               editorSetMessage("");
-              editorRefreshScreen();
+              editorRefreshScreenNew();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -6458,7 +6010,7 @@ void editorProcessKeypress(void) {
                 editorSetMessage("");
                 editor_mode = false;
               }
-              editorRefreshScreen();
+              editorRefreshScreenNew();
               return;
 
           } // end of case '\r' switch
@@ -7799,11 +7351,11 @@ int main(int argc, char** argv) {
   while (1) {
     if (editor_mode){
       editorScroll();
-      editorRefreshScreen();
+      editorRefreshScreenNew();
       editorProcessKeypress();
     } else if (O.mode != FILE_DISPLAY) { 
       outlineScroll();
-      outlineRefreshScreen();
+      outlineRefreshScreenNew();
       outlineProcessKeypress();
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
