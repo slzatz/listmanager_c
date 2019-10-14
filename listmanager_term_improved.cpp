@@ -41,6 +41,7 @@
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
+#include <sstream>
 /*** defines ***/
 
 /***the following is not yet in use and would get rid of switch statements***/
@@ -60,7 +61,7 @@ static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static char search_terms[50];
 static int fts_ids[50];
-static char *fts_titles[50];
+//static char *fts_titles[50]; right now not bringing back titles so no title highlighting
 static int fts_counter;
 
 static std::string context[] = {
@@ -424,7 +425,8 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-void editorInsertRow(int fr, char *s, size_t len); 
+void editorInsertRow(int fr, char *, size_t);
+void editorInsertRow(int fr, std::string);
 void EraseRedrawLines(void);
 void editorDisplayFile(void);
 // config struct for reading db.ini file
@@ -907,40 +909,17 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  //note strsep handles multiple \n\n and strtok did not
-  //note tabs in notes cause problems so that probably need
-  //to do same thing we did with ' - find them and just replace with ' '
-  //VLA
-  /*
-  char *note;
-  note = strdup(argv[0]); // ******************
-  char clean_note[strlen(note) + 1];
-  char *out = clean_note;
-  const char *in = note;
-  while (*in) {
-      *out = *in;
-      if (*in == 9) *out = 32;
-      in++;
-      out++;
-  }
-  *out = '\0';
-  */
-
-  if (argv[0] != NULL) { //added 02262019 - not sure necessary but seems to be
-    char *note;
-    note = strdup(argv[0]); // ******************
-    char *found;
-    while ((found = strsep(&note, "\r\n")) != NULL) { //if we cleaned the tabs then strsep(&clean_note, ...)
-      editorInsertRow(E.rows.size(), found, strlen(found));
-    }
-    free(note); //moved below on 02262019
+  std::string note(argv[0]);
+  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  while (getline(snote, s, '\n')) {
+    //snote will not contain the '\n'
+    editorInsertRow(E.rows.size(), s);
   }
 
   E.dirty = 0;
-  // put this here because it has to happen and this forces it but not sure
-  // that it's the best idea - at least should be in get_note_sqlite
-  // and not the callback
-  //editorRefreshScreen();
   return 0;
 }
 
@@ -1472,17 +1451,11 @@ void outlineDelChar(void) {
 }
 
 void outlineBackspace(void) {
-
   orow& row = O.rows.at(O.fr);
-
-  if (O.rows.size() == 0 || row.chars.size() == 0 ) return;
-
-  row.chars.erase(row.chars.begin() + O.fc);
-  //row.size--;
+  if (O.rows.empty() || row.chars.empty() || O.fc == 0) return;
+  row.chars.erase(row.chars.begin() + O.fc - 1);
   row.dirty = true;
-
-  O.fc--; //if O.cx goes negative outlineScroll should handle it
- 
+  O.fc--;
 }
 
 /*** file i/o ***/
@@ -1551,7 +1524,18 @@ void editorInsertRow(int fr, char *s, size_t len) {
   E.dirty++;
 }
 
+// version that takes row and string to insert
+void editorInsertRow(int fr, std::string s) {
 
+  std::vector<char> row;
+
+  //if (!s.empty()) //appears to behave correctly without the if
+    std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
+
+  auto pos = E.rows.begin() + fr;
+  E.rows.insert(pos, row);
+  E.dirty++;
+}
 // untested
 void editorDelRow(int r) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
@@ -1633,10 +1617,9 @@ void editorInsertChar(int chr) {
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
-  if (E.rows.size() == 0) {
+  if (E.rows.empty()) {
     editorInsertRow(0, "", 0);
     editorInsertRow(0, "", 0);
-    //E.fc = -1;
     E.fc = 0;
     E.fr = 1;
     return;
@@ -1646,35 +1629,11 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
   std::vector<char> new_row1(current_row.begin(), current_row.begin() + E.fc);
   std::vector<char> new_row2(current_row.begin() + E.fc, current_row.end());
 
-
-  //could use VLA
-  //int len = row->size - E.fc;
-  //note that you need row-size - fc + 1 but InsertRow will take care of that
-  //here you just need to copy the actual characters without the terminating '\0'
-  //note below we indent but could be combined so that inserted into
-  //the new line both the chars and the number of indent spaces
-  //char *moved_chars = malloc(len);
-  //if (E.fc == -1) E.fc = 0;
-  //memcpy(moved_chars, &row->chars[E.fc], len); //? I had issues with strncpy so changed to memcpy
-  
-  //This is the row from which the return took place which is now smaller 
-  //because some characters where moved into the next row(although could
-  //be zero chars moved at the end of a line
-  // fc can equal row->size because we are in insert mode and could be beyond the last char column
-  // in that case the realloc should do nothing - assume that it behaves correctly
-  // when there is no actual change in the memory allocation
-  // also malloc and memcpy should behave ok with zero arguments
-  //row->size = E.fc;
-  //row->chars[row->size] = '\0';//someday may actually figure out if row-chars has to be a c-string
-  //row->chars = realloc(row->chars, row->size + 1);
-
   int indent = (E.smartindent) ? editorIndentAmount(E.fr) : 0;
 
   E.fr++;
   current_row = new_row1;
   E.rows.insert(E.rows.begin() + E.fr, new_row2);
-  //editorInsertRow(E.fr, moved_chars, len);
-  //free(moved_chars);
 
   E.fc = 0;
   for (int j=0; j < indent; j++) editorInsertChar(' ');
@@ -1685,12 +1644,14 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 void editorInsertNewline(int direction) {
   /* note this func does position E.fc and E.fr*/
   if (E.rows.size() == 0) {
-    editorInsertRow(0, "", 0);
+    //editorInsertRow(0, "", 0);
+    editorInsertRow(0, std::string(""));
     return;
   }
 
   if (E.fr == 0 && direction == 0) { // this is for 'O'
-    editorInsertRow(0, "", 0);
+    //editorInsertRow(0, "", 0);
+    editorInsertRow(0, std::string(""));
     E.fc = 0;
     return;
   }
@@ -1736,26 +1697,14 @@ void editorBackspace(void) {
 
   if (E.fc > 0) {
     if (E.cx > 0) { // We want this E.cx - don't change to E.fc!!!
-      //memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
-      //row->size--;
-
-      row.erase(row.begin() + E.fc -1);
+      row.erase(row.begin() + E.fc - 1);
 
      // below seems like a complete kluge but definitely want that E.cx!!!!!
       if (E.cx == 1 && E.fc > 1) E.continuation = 1; //right now only backspace in multi-line
-
       E.fc--;
 
-    } else { 
-
-      row.erase(row.begin() + E.fc -1);
-
-      /*
-      memmove(&row->chars[E.fc - 1], &row->chars[E.fc], row->size - E.fc + 1);
-      row->chars = realloc(row->chars, row->size); 
-      row->size--;
-      row->chars[row->size] = '\0'; //shouldn't have to do this but does it hurt anything??
-      */
+    } else {  //E.fc > 0 and E.cx = 0 meaning you're in line > 1 of a multiline row
+      row.erase(row.begin() + E.fc - 1);
       E.fc--;
       E.continuation = 0;
     } 
@@ -2056,12 +2005,10 @@ void outlineDrawStatusBarNew(std::string& ab) {
   ab.append("\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-  char zz = '\0';
-  char * zzz = &zz;
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms : zzz,
+                              (O.context == "search") ? search_terms : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
@@ -2074,16 +2021,15 @@ void outlineDrawStatusBarNew(std::string& ab) {
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms : zzz,
+                              (O.context == "search") ? search_terms : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   }
   //because of escapes
   len-=22;
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s\x1b[0;7m ", which_db.c_str());
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", which_db.c_str(), "c++");
 
-  //if (len > screencols/2) len = screencols/2;
   if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
 
   ab.append(status, len + 22);
@@ -2997,18 +2943,21 @@ void outlineProcessKeypress() {
           outlineSetMessage("");
           return;
 
+        case '0':
         case HOME_KEY:
           O.fc = 0;
           return;
 
         case END_KEY:
+        case '$':
           {
-          orow& row = O.rows.at(O.fr);
-          if (row.chars.size() < O.screencols) return;
+          //orow& row = O.rows.at(O.fr);
+          //if (row.chars.size() < O.screencols) return; // probably don't need this
           // don't love the below because that O.fc is beyond the
           // length of the true (non-escaped) string but it works
           // Better make sure O.fc = 0 when leaving DATABASE mode for NORMAL mode
-          O.fc = (O.context == "search") ? (int)strlen(fts_titles[O.fr]) : row.chars.size();
+          //O.fc = (O.context == "search") ? (int)strlen(fts_titles[O.fr]) : row.chars.size();
+          O.fc = O.rows.at(O.fr).chars.size();
           return;
           }
 
@@ -3351,7 +3300,6 @@ void fts5_sqlite(char *search_terms) {
 
   char fts_query[200];
 
-  //sprintf(fts_query, "SELECT lm_id FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
   sprintf(fts_query, "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
 
   sqlite3 *db;
@@ -3422,20 +3370,17 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   //memcopy each one and then in data_callback have some switch that
   //says use FTS_titles[O.numrows], strlen(FTS_titles[O.numrows]
   //seems pretty fragile
-  char * FTS_titles[50];
-
-  len = strlen(argv[1]);
-  FTS_titles[fts_counter] = malloc(len + 1);
-  memcpy(FTS_titles[fts_counter], argv[1], len);
-  FTS_titles[fts_counter][len] = '\0';
   */
 
+  /* right now not pulling in highlighted titles just using id to get regular title
+   * and note
   int len = strlen(argv[1]);
   // could just realloc
   free(fts_titles[fts_counter]);
   fts_titles[fts_counter] = (char*)malloc(len + 1);
   memcpy(fts_titles[fts_counter], argv[1], len);
   fts_titles[fts_counter][len] = '\0';
+  */
 
   fts_counter++;
 
