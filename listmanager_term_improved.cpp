@@ -940,7 +940,17 @@ void get_note_pg(int id) {
     PQclear(res);
     //do_exit(conn);
   }    
-
+  // new way with string
+  std::string note(PQgetvalue(res, 0, 0));
+  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  while (getline(snote, s, '\n')) {
+    //snote will not contain the '\n'
+    editorInsertRow(E.rows.size(), s);
+  }
+  /*
   //note strsep handles multiple \n\n and strtok did not
   if (PQgetvalue(res, 0, 0) != NULL) { //added this guard 02052019 - not sure
     char *note;
@@ -949,10 +959,12 @@ void get_note_pg(int id) {
     while ((found = strsep(&note, "\r\n")) !=NULL) {
       editorInsertRow(E.rows.size(), found, strlen(found));
     }
+   */
+
   E.dirty = 0;
   editorRefreshScreenNew();
-  free(note);
-  }
+  //free(note);
+  //}
   PQclear(res);
   return;
 }
@@ -1589,8 +1601,8 @@ void editorRowDelChar(erow *row, int fr) {
 /*** editor operations ***/
 void editorInsertChar(int chr) {
 
-  if ( E.rows.size() == 0 ) {
-    editorInsertRow(0, nullptr, 0); //editorInsertRow will insert '\0' and row->size=0
+  if (E.rows.empty()) {
+    editorInsertRow(0, std::string());
   }
 
   //erow_chars& row = E.rows.at(E.fr);
@@ -1618,8 +1630,8 @@ void editorInsertChar(int chr) {
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
   if (E.rows.empty()) {
-    editorInsertRow(0, "", 0);
-    editorInsertRow(0, "", 0);
+    editorInsertRow(0, std::string());
+    editorInsertRow(0, std::string());
     E.fc = 0;
     E.fr = 1;
     return;
@@ -1643,15 +1655,13 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 //'o' -> direction == 1 and 'O' direction == 0
 void editorInsertNewline(int direction) {
   /* note this func does position E.fc and E.fr*/
-  if (E.rows.size() == 0) {
-    //editorInsertRow(0, "", 0);
-    editorInsertRow(0, std::string(""));
+  if (E.rows.empty()) {
+    editorInsertRow(0, std::string());
     return;
   }
 
   if (E.fr == 0 && direction == 0) { // this is for 'O'
-    //editorInsertRow(0, "", 0);
-    editorInsertRow(0, std::string(""));
+    editorInsertRow(0, std::string());
     E.fc = 0;
     return;
   }
@@ -3272,6 +3282,18 @@ void display_item_info_pg(int id) {
   ab.append(lf_ret, nchars);
   ab.append(lf_ret, nchars);
 
+  // new way with string
+  std::string note(PQgetvalue(res, 0, 12));
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  for (int k=0; k < 4; k++) {
+      getline(snote, s, '\n');
+      ab.append(s);
+      ab.append(lf_ret);
+  }
+
+  /*
   //note strsep handles multiple \n\n and strtok did not
   char *note;
   note = strdup(PQgetvalue(res, 0, 12)); // ******************
@@ -3285,13 +3307,14 @@ void display_item_info_pg(int id) {
     ab.append(found, (strlen(found) < len) ? strlen(found) : len);
     ab.append(lf_ret, nchars);
   }
+  */
 
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
-  free(note);
-  note = NULL; //? not necessary
+  //free(note);
+  //note = NULL; //? not necessary
 
   PQclear(res);
 }
@@ -3501,6 +3524,20 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   ab.append(lf_ret, nchars);
   ab.append(lf_ret, nchars);
 
+  std::string note(argv[12]);
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  int line_count = std::count(note.begin(), note.end(), '\n');
+  int lines = (line_count > 3) ? 4 : ((line_count > 0) ? line_count : 1);
+  outlineSetMessage("lines = %d", lines);
+  for (int k=0; k < lines; k++) {
+      getline(snote, s, '\n');
+      ab.append(s);
+      ab.append(lf_ret);
+  }
+
+  /*
   char *found;
 
   for (int k=0; k < 4; k++) {
@@ -3512,6 +3549,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
     ab.append(found, (strlen(found) < len) ? strlen(found) : len);
     ab.append(lf_ret, nchars);
   }
+  */
 
   ab.append("\x1b[0m", 4);
 
