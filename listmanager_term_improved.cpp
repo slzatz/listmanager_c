@@ -814,15 +814,12 @@ void get_items_by_id_pg(char *query) {
     do_exit(conn);
   }    
   
-  //O.numrows = 0; // shouldn't be necessary unless things blow up but then we have bigger problems
   O.rows.clear();
   int len, i;
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
     orow row;
     len = strlen(PQgetvalue(res, i, 3));
-    //row.size = len;
-    //for (i=0; i<len+1; i++) {row.chars.emplace_back(PQgetvalue(res, i, i));}
     std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.chars = temp;
     row.id = atoi(PQgetvalue(res, i, 0));
@@ -835,9 +832,7 @@ void get_items_by_id_pg(char *query) {
     strncpy(row.modified, PQgetvalue(res, i, 16), len);
     row.modified[len] = '\0';
   }
-  //O.numrows = i;
   PQclear(res);
- // PQfinish(conn);
 
   O.fc = O.fr = O.rowoff = 0;
 }
@@ -851,16 +846,13 @@ void get_note_sqlite(int id) {
   sqlite3 *db;
   char *err_msg = 0;
     
-  //char query[200];
   std::stringstream query;
   int rc;
 
   if (editor_mode || O.context != "search") {
-    //sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
-    query << "SELECT note FROM task WHERE id = %d" << id;
+    query << "SELECT note FROM task WHERE id = " << id;
     rc = sqlite3_open(SQLITE_DB.c_str(), &db);
   } else {
-    //sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
     query << "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
     rc = sqlite3_open(FTS_DB.c_str(), &db);
   }
@@ -1163,21 +1155,6 @@ void update_solr(void) {
   outlineSetMessage("%d items were added/updated to solr db", num);
 }
 
-/*
-int keyfromstring(char *key) {
-
-  //if (strlen(key) == 1) return key[0]; //catching this before calling keyfromstring
-
-  int i;
-  for (i=0; i <  NKEYS; i++) {
-    if (std::strcmp(lookuptable[i].key, key) == 0) return lookuptable[i].val;
-    }
-
-    //nothing should match -1
-    return -1;
-}
-*/
-
 int keyfromstringcpp(std::string key) {
   std::map<std::string,int>::iterator it;
     it = lookuptablemap.find(key);
@@ -1186,43 +1163,6 @@ int keyfromstringcpp(std::string key) {
     else
       return -1;
 }
-
-//through pointer passes back position of space (if there is one)
-// for starters am going to use this in c++ - less rewriting
-/*
-int commandfromstring(char *key, int *p) { //for commands like find nemo - that consist of a command a space and further info
-
-  if (strlen(key) == 1) return key[0];  //need this
-
-  //probably should strip trailing spaces with isspace
-
-  int i, pos;
-  char *command;
-  char *ptr_2_space = strchr(key, ' ');
-  if (ptr_2_space) {
-    pos = ptr_2_space - key;
-    // reference to position of space in commands like "open todo"
-    *p = pos; 
-    command =  trndup(key, pos);
-    command[pos] = '\0'; 
-  } else {
-    command = key;
-    pos = 0;
-    *p = pos; //not sure this is necessary - not using it when command has no space
-  }
-
-  for (i=0; i <  NKEYS; i++) {
-    if (strcmp(lookuptable[i].key, command) == 0) {
-      if (pos) free(command);
-      return lookuptable[i].val;
-    }
-  }
-
-  //if don't match anything and not a single char then just return -1
-  if (pos) free(command);
-  return -1;
-}
-*/
 
 int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
   //std::size_t found = key.find(' ');
@@ -1285,6 +1225,7 @@ outline_normal_map[ARROW_UP] = move_up();
 outline_normal_map['j'] = move_down();
 outline_normal_map[ARROW_DOWN] = move_down()
 */
+
 int readKey() {
   int nread;
   char c;
@@ -1373,7 +1314,7 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
-/*** outline row operations ***/
+/*** outline operations ***/
 
 void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool deleted, bool completed, char* modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
@@ -1397,14 +1338,8 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
 
   auto pos = O.rows.begin() + at;
   O.rows.insert(pos, row);
-  //O.rows.push_back(row); // can at least see the row - was used during debuggin
-
-
-
-
 }
 
-/*** outline operations ***/
 void outlineInsertChar(int c) {
 
   if (O.rows.size() == 0) return;
@@ -1418,17 +1353,12 @@ void outlineInsertChar(int c) {
 
 void outlineDelChar(void) {
 
-  //orow *row = &O.row[O.fr];
   orow& row = O.rows.at(O.fr);
 
-  // note below order important because row->size undefined if 
-  // O.numrows = 0 because O.row is NULL
-  if (O.rows.size() == 0 || row.chars.size() == 0 ) return;
+  if (O.rows.empty() || row.chars.empty()) return;
 
   row.chars.erase(row.chars.begin() + O.fc);
-  //row.size--;
   row.dirty = true;
-
 }
 
 void outlineBackspace(void) {
@@ -1537,22 +1467,8 @@ void editorDelRow(int r) {
 
 // only used by editorBackspace
 void editorRowAppendString(std::vector<char>& row, std::vector<char>& s) {
-  //row->chars = realloc(row->chars, row->size + len + 1);
-  //memcpy(&row->chars[row->size], s, len);
-  //ow->size += len;
-  //row->chars[row->size] = '\0';
-  //E.dirty++;
-
-  //std::vector<char> temp(s, s+ len);
   row.insert(row.end() - 1, s.begin(), s.end());
-  //row.size += len;
-  //row.chars.at(len) = '\0';
   E.dirty++;
-
-
-
-
-
 }
 
 /* not in use right now
@@ -1574,26 +1490,9 @@ void editorInsertChar(int chr) {
     editorInsertRow(0, std::string());
   }
 
-  //erow_chars& row = E.rows.at(E.fr);
   std::vector<char>& row = E.rows.at(E.fr);
-
-  // yes *2* is correct row->size + 1 = existing bytes + 1 new byte
-  //row->chars = realloc(row->chars, row->size + 2);
-
-  /* moving all the chars r the current x cursor position on char
-     farther down the char string to make room for the new character
-     Maybe a clue from editorInsertRow - it's memmove is below
-     memmove(&E.row[r + 1], &E.row[r], sizeof(erow) * (E.numrows - r));
-  */
-
-   //if (E.fc == -1) E.fc = 0;// may not set E.fc = -1 so wouldn't need this check
-  //memmove(&row->chars[E.fc + 1], &row->chars[E.fc], row->size - E.fc + 1);
   row.insert(row.begin() + E.fc, chr);
-
-  //row->size++;
-  //row->chars[E.fc] = chr;
   E.dirty++;
-
   E.fc++;
 }
 
@@ -1699,34 +1598,14 @@ void editorBackspace(void) {
 
 // have not looked at this 02212019
 std::string editorRowsToString(void) {
-  /*
-    int totlen = 0;
-  int j;
-  for (j = 0; j < E.numrows; j++)
-    totlen += E.row[j].size + 1;
-  *buflen = totlen;
 
-  char *buf = malloc(totlen + 1);
-  //char *buf = calloc(totlen, sizeof(char)); // worked because it made sure c string terminated with '\0' but not necessary.
-  char *p = buf;
-  for (j = 0; j < E.numrows; j++) {
-    memcpy(p, E.row[j].chars, E.row[j].size);
-    p += E.row[j].size;
-    *p = '\n';
-    p++;
-  }
-  *p = '\0'; //does not work if this is missing
-  return buf;
-  */
-
- // probably creating terminating '\0' we don't want
   std::string z = "";
   for (auto i: E.rows) {
       std::string s(i.data(), i.size());
       z += s;
-      z += '\n'; //probably adds a return we don't want to last line
+      z += '\n';
   }
-  z.pop_back();
+  z.pop_back(); //pop last return that we added
   return z;
 }
 
@@ -3663,13 +3542,14 @@ void update_note_sqlite(void) {
     return;
   }
 
-  query.clear();
-  query << "Update fts SET note='" << text <<"' WHERE lm_id=" <<id;
+  std::stringstream query2;
+  //query.clear(); //Baffling why this doesn't work
+  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << id;
 
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL fts error: %s\n", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note and fts entry for item %d", id);
@@ -4145,9 +4025,10 @@ void update_row_sqlite(void) {
       return;
     }
   
-    query.clear();
-    query << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    std::stringstream query2;
+    //query.clear(); this did not work elsewhere so being cautious
+    query2 << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
+    rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
       
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
