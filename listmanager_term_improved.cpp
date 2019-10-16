@@ -61,8 +61,13 @@ static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static char search_terms[50];
 static int fts_ids[50];
-//static char *fts_titles[50]; right now not bringing back titles so no title highlighting
 static int fts_counter;
+/*
+right now not bringing back titles so no title highlighting
+some technical issues highlighting titles and getting chars right in the row
+Not sure it's that much of a problem not to highlight keywords in title
+*/
+//static char *fts_titles[50];
 
 static std::string context[] = {
                         "", //maybe should be "search" - we'll see
@@ -608,12 +613,9 @@ void get_items_by_context_pg(std::string context, int max) {
 
 void get_recent_sqlite(int max) {
 // identical to get_items_by_context_sqlite
-  char query[400];
-  std::stringstream ss;
+  std::stringstream query;
 
   O.rows.clear();
-  //O.numrows = 0;
-
   O.fc = O.fr = O.rowoff = 0;
 
   sqlite3 *db;
@@ -628,33 +630,19 @@ void get_recent_sqlite(int max) {
     }
 
   if (!O.show_deleted) {
-    sprintf(query, "SELECT * FROM task WHERE "
-                    "task.deleted = False "
-                    "AND task.completed IS NULL " 
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    max);
-
-   ss << "SELECT * FROM task WHERE "
-      << "task.deleted = False "
-      << "AND task.completed IS NULL "
-      << "ORDER BY task.modified DESC LIMIT "
-      << max;
+   query << "SELECT * FROM task WHERE "
+         << "task.deleted = False "
+         << "AND task.completed IS NULL "
+         << "ORDER BY task.modified DESC LIMIT " << max;
 
   } else {
-
-    sprintf(query, "SELECT * FROM task "
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    max);
-
-    ss << "SELECT * FROM task "
-       << "ORDER BY task.modified DESC LIMIT "
-       << max;
+    query << "SELECT * FROM task "
+          << "ORDER BY task.modified DESC LIMIT " << max;
   }
         
     bool no_rows = true;
-    //it may be best to do auto query = ss.str(); query.c_str();
-    //rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
-    rc = sqlite3_exec(db, ss.str().c_str(), data_callback, &no_rows, &err_msg);
+    //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -670,12 +658,9 @@ void get_recent_sqlite(int max) {
 
 
 void get_items_by_context_sqlite(std::string context, int max) {
-  char query[400];
-  std::stringstream ss;
+  std::stringstream query;
 
   O.rows.clear();
-  //O.numrows = 0;
-
   O.fc = O.fr = O.rowoff = 0;
 
   sqlite3 *db;
@@ -690,40 +675,19 @@ void get_items_by_context_sqlite(std::string context, int max) {
     }
 
   if (!O.show_deleted) {
-    sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' "
-                    "AND task.deleted = False "
-                    "AND task.completed IS NULL " 
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    context.c_str(),
-                    max);
-
-
-    ss << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-       << "WHERE context.title = '" << context << "' "
-       << "AND task.deleted = False "
-       << "AND task.completed IS NULL "
-       << "ORDER BY task.modified DESC LIMIT " << max;
-
-  }
-  else {
-
-    sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' "
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    context.c_str(),
-                    max);
-
-
-    ss << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-       << "WHERE context.title = '" << context << "' "
-       << "ORDER BY task.modified DESC LIMIT " << max;
-
+    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+          << "WHERE context.title = '" << context << "' "
+          << "AND task.deleted = False "
+          << "AND task.completed IS NULL "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  } else {
+    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+          << "WHERE context.title = '" << context << "' "
+          << "ORDER BY task.modified DESC LIMIT " << max;
   }
         
     bool no_rows = true;
-    //rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
-    rc = sqlite3_exec(db, ss.str().c_str(), data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -788,11 +752,8 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   orow row;
 
   int len = strlen(argv[3]);
-  //row.size = len;
-  //for (int j=0; j<len+1; j++) {row.chars.emplace_back(argv[3][j]);}
   std::vector<char> temp(argv[3], argv[3] + len);
   row.chars = temp;
-  //row.chars.push_back('\0');
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -802,7 +763,6 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   len = (len > 16) ? 16 : len;
   strncpy(row.modified, argv[16], len);
   row.modified[len] = '\0';
-  //O.numrows++;
   O.rows.push_back(row);
 
   return 0;
@@ -811,8 +771,6 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
 void get_items_by_id_sqlite(char *query) {
 
   O.rows.clear();
-  //O.numrows = 0;
-
   O.fc = O.fr = O.rowoff = 0;
 
   sqlite3 *db;
@@ -825,7 +783,6 @@ void get_items_by_id_sqlite(char *query) {
     sqlite3_close(db);
     }
 
-    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
     bool no_rows = true;
     rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
     
@@ -889,33 +846,32 @@ void get_note_sqlite(int id) {
   if (id ==-1) return;
 
   E.rows.clear();
-  //E.numrows = 0;
-  //seems like you'd also want to do:
-  E.fr = E.fc = E.cy = E.cx = 0; /*******03102019***********/
+  E.fr = E.fc = E.cy = E.cx = 0;
 
   sqlite3 *db;
   char *err_msg = 0;
     
-  char query[200];
+  //char query[200];
+  std::stringstream query;
   int rc;
 
-  //if (editor_mode || strcmp(O.context, "search") != 0) {
   if (editor_mode || O.context != "search") {
-    sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
+    //sprintf(query, "SELECT note FROM task WHERE id = %d", id); //tid
+    query << "SELECT note FROM task WHERE id = %d" << id;
     rc = sqlite3_open(SQLITE_DB.c_str(), &db);
   } else {
-    sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    //sprintf(query, "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' AND lm_id = %d", search_terms, id);
+    query << "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
     rc = sqlite3_open(FTS_DB.c_str(), &db);
   }
 
   if (rc != SQLITE_OK) {
-        
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
 
-  // callback is *not* appear to be called if result (argv) is null
-  rc = sqlite3_exec(db, query, note_callback, 0, &err_msg);
+  // callback does *not* appear to be called if result (argv) is null
+  rc = sqlite3_exec(db, query.str().c_str(), note_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("In get_note_sqlite: %s SAL error: %s\n", FTS_DB.c_str(), err_msg);
@@ -966,7 +922,6 @@ void get_note_pg(int id) {
     PQclear(res);
     //do_exit(conn);
   }    
-  // new way with string
   std::string note(PQgetvalue(res, 0, 0));
   note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
   std::stringstream snote;
@@ -976,21 +931,9 @@ void get_note_pg(int id) {
     //snote will not contain the '\n'
     editorInsertRow(E.rows.size(), s);
   }
-  /*
-  //note strsep handles multiple \n\n and strtok did not
-  if (PQgetvalue(res, 0, 0) != NULL) { //added this guard 02052019 - not sure
-    char *note;
-    note = strdup(PQgetvalue(res, 0, 0)); // ******************
-    char *found;
-    while ((found = strsep(&note, "\r\n")) !=NULL) {
-      editorInsertRow(E.rows.size(), found, strlen(found));
-    }
-   */
 
   E.dirty = 0;
   editorRefreshScreenNew();
-  //free(note);
-  //}
   PQclear(res);
   return;
 }
@@ -3675,28 +3618,17 @@ void update_note_pg(void) {
 void update_note_sqlite(void) {
 
   std::string text = editorRowsToString();
+  std::stringstream query;
+
   // need to escape single quotes with two single quotes
   size_t pos = text.find("'");
-  while(pos != std::string::npos)
-    {
-      text.replace(pos, 1, "''");
-      pos = text.find("'", pos + 2);
+  while(pos != std::string::npos) {
+    text.replace(pos, 1, "''");
+    pos = text.find("'", pos + 2);
   }
 
   int id = get_id(O.fr);
-
-  char *query = (char*)malloc(text.size() + 100);
-
-  // may not want terminating '\0' but not sure it is copied so may be ok
-  sprintf(query, "UPDATE task SET note=\'%s\', "
-                   //"modified=datetime('now', '-5 hours') "
-                   "modified=datetime('now', '-4 hours') "
-                   "WHERE id=%d", //tid
-                   text.c_str(), id);
-
-  std::stringstream ss;
-
-  ss << "UPDATE task SET note='" << text << "', modified=datetime('now', '-4 hours') WHERE id=" << id;
+  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-4 hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3704,14 +3636,12 @@ void update_note_sqlite(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-        
     outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
-    }
+  }
 
-  //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-  rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3719,16 +3649,11 @@ void update_note_sqlite(void) {
   } else {
     outlineSetMessage("Updated note for item %d", id);
     outlineRefreshScreenNew();
-    //editorSetMessage("Note update succeeeded"); 
-    /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
-
 
   sqlite3_close(db);
 
   /***************fts virtual table update*********************/
-
-  sprintf(query, "Update fts SET note=\'%s\' WHERE lm_id=%d", text.c_str(), id);
 
   rc = sqlite3_open(FTS_DB.c_str(), &db);
     
@@ -3738,7 +3663,10 @@ void update_note_sqlite(void) {
     return;
   }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  query.clear();
+  query << "Update fts SET note='" << text <<"' WHERE lm_id=" <<id;
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3751,7 +3679,6 @@ void update_note_sqlite(void) {
    
   sqlite3_close(db);
 
-  free(query);
   E.dirty = 0;
 }
 
@@ -4183,19 +4110,9 @@ void update_row_sqlite(void) {
         pos = title.find("'", pos + 2);
       }
 
-    char *query = (char*)malloc(title.size() + 100);
+    std::stringstream query;
+    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
 
-
-
-    std::stringstream ss;
-    ss << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
-
-    sprintf(query, "UPDATE task SET title=\'%s\', "
-                     //"modified=datetime('now', '-5 hours') "
-                     "modified=datetime('now', '-4 hours') "
-                     "WHERE id=%d",
-                     title.c_str(), row.id);
-  
     sqlite3 *db;
     char *err_msg = 0;
       
@@ -4207,8 +4124,7 @@ void update_row_sqlite(void) {
       return;
     }
   
-    //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-    rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -4218,19 +4134,10 @@ void update_row_sqlite(void) {
       outlineSetMessage("Successfully updated row %d", row.id);
     }
 
-    /********************** note that we are not updating modified and either need to read out of database or just use c time function********/
-
     sqlite3_close(db);
     
     /**************fts virtual table update**********************/
-  
-    // note if this was a title brought back by search we're
-    // not updating fts_titles[O.fr] which is lm_id row->id
-    // probably should address this but not a high priority
-    sprintf(query, "UPDATE fts SET title=\'%s\' WHERE lm_id=%d", title.c_str(), row.id);
-  
     rc = sqlite3_open(FTS_DB.c_str(), &db);
-      
     if (rc != SQLITE_OK) {
           
       outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
@@ -4238,7 +4145,9 @@ void update_row_sqlite(void) {
       return;
     }
   
-    rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    query.clear();
+    query << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
       
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -4248,8 +4157,6 @@ void update_row_sqlite(void) {
       }
   
       sqlite3_close(db);
-  
-      free(query);
 
   } else { 
 
