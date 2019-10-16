@@ -606,10 +606,10 @@ void get_items_by_context_pg(std::string context, int max) {
   O.fc = O.fr = O.rowoff = 0;
 }
 
-
 void get_recent_sqlite(int max) {
 // identical to get_items_by_context_sqlite
   char query[400];
+  std::stringstream ss;
 
   O.rows.clear();
   //O.numrows = 0;
@@ -633,18 +633,29 @@ void get_recent_sqlite(int max) {
                     "AND task.completed IS NULL " 
                     "ORDER BY task.modified DESC LIMIT %d",
                     max);
-  }
-  else {
+
+   ss << "SELECT * FROM task WHERE "
+      << "task.deleted = False "
+      << "AND task.completed IS NULL "
+      << "ORDER BY task.modified DESC LIMIT "
+      << max;
+
+  } else {
 
     sprintf(query, "SELECT * FROM task "
                     "ORDER BY task.modified DESC LIMIT %d",
                     max);
+
+    ss << "SELECT * FROM task "
+       << "ORDER BY task.modified DESC LIMIT "
+       << max;
   }
         
-    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
     bool no_rows = true;
-    rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
-    
+    //it may be best to do auto query = ss.str(); query.c_str();
+    //rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, ss.str().c_str(), data_callback, &no_rows, &err_msg);
+
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
@@ -660,6 +671,7 @@ void get_recent_sqlite(int max) {
 
 void get_items_by_context_sqlite(std::string context, int max) {
   char query[400];
+  std::stringstream ss;
 
   O.rows.clear();
   //O.numrows = 0;
@@ -685,6 +697,14 @@ void get_items_by_context_sqlite(std::string context, int max) {
                     "ORDER BY task.modified DESC LIMIT %d",
                     context.c_str(),
                     max);
+
+
+    ss << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+       << "WHERE context.title = '" << context << "' "
+       << "AND task.deleted = False "
+       << "AND task.completed IS NULL "
+       << "ORDER BY task.modified DESC LIMIT " << max;
+
   }
   else {
 
@@ -693,12 +713,18 @@ void get_items_by_context_sqlite(std::string context, int max) {
                     "ORDER BY task.modified DESC LIMIT %d",
                     context.c_str(),
                     max);
+
+
+    ss << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+       << "WHERE context.title = '" << context << "' "
+       << "ORDER BY task.modified DESC LIMIT " << max;
+
   }
         
-    //rc = sqlite3_exec(db, query, data_callback, 0, &err_msg);
     bool no_rows = true;
-    rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
-    
+    //rc = sqlite3_exec(db, query, data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, ss.str().c_str(), data_callback, &no_rows, &err_msg);
+
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
@@ -3287,7 +3313,9 @@ void display_item_info_pg(int id) {
   std::stringstream snote;
   snote << note;
   std::string s;
-  for (int k=0; k < 4; k++) {
+  int line_count = std::count(note.begin(), note.end(), '\n');
+  int lines = (line_count > 3) ? 4 : ((line_count > 0) ? line_count : 1);
+  for (int k=0; k < lines; k++) {
       getline(snote, s, '\n');
       ab.append(s);
       ab.append(lf_ret);
@@ -3530,7 +3558,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   std::string s;
   int line_count = std::count(note.begin(), note.end(), '\n');
   int lines = (line_count > 3) ? 4 : ((line_count > 0) ? line_count : 1);
-  outlineSetMessage("lines = %d", lines);
   for (int k=0; k < lines; k++) {
       getline(snote, s, '\n');
       ab.append(s);
@@ -3667,6 +3694,9 @@ void update_note_sqlite(void) {
                    "WHERE id=%d", //tid
                    text.c_str(), id);
 
+  std::stringstream ss;
+
+  ss << "UPDATE task SET note='" << text << "', modified=datetime('now', '-4 hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3680,8 +3710,9 @@ void update_note_sqlite(void) {
     return;
     }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-    
+  //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
@@ -4154,6 +4185,11 @@ void update_row_sqlite(void) {
 
     char *query = (char*)malloc(title.size() + 100);
 
+
+
+    std::stringstream ss;
+    ss << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
+
     sprintf(query, "UPDATE task SET title=\'%s\', "
                      //"modified=datetime('now', '-5 hours') "
                      "modified=datetime('now', '-4 hours') "
@@ -4171,8 +4207,9 @@ void update_row_sqlite(void) {
       return;
     }
   
-    rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-      
+    //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+    rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
@@ -4813,7 +4850,9 @@ void update_rows_sqlite(void) {
                    "WHERE id=%d", //tid
                    title.c_str(), row.id);
 
-  
+      std::stringstream ss;
+      ss << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
+
       sqlite3 *db;
       char *err_msg = 0;
         
@@ -4826,8 +4865,9 @@ void update_rows_sqlite(void) {
         return;
         }
     
-      rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-        
+      //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+      rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+
       if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
