@@ -2513,10 +2513,7 @@ void outlineProcessKeypress() {
              case C_refresh:
                EraseRedrawLines(); //****03102019*************************
                outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-               //solr_find(search_terms) for pg or fts5_sqlite
-               //if (strcmp(O.context, "search") == 0)  (*search_db)(search_terms);
                if (O.context == "search")  (*search_db)(search_terms);
-               //else if (strcmp(O.context, "recent") == 0) (*get_recent)(MAX);
                else if (O.context == "recent") (*get_recent)(MAX);
                else (*get_items_by_context)(O.context.c_str(), MAX);
                O.mode = NORMAL;
@@ -2568,7 +2565,6 @@ void outlineProcessKeypress() {
               }  
 
               EraseRedrawLines(); //*****************************
-              //solr_find(&O.command_line[pos + 1]);   // should have an if (which_db[0] == 'p') 
               O.context = "search";
               (*search_db)(&O.command_line[pos + 1]);
               outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
@@ -2599,7 +2595,6 @@ void outlineProcessKeypress() {
 
             case C_context:
               //NN is set to zero when entering COMMAND_LINE mode
-               //;
                {
                int context_tid;
                //char *new_context;
@@ -2639,6 +2634,7 @@ void outlineProcessKeypress() {
                O.command_line[0] = '\0'; //probably not necessary 
                return;
                }
+
             case C_open:
               //NN is set to zero when entering COMMAND_LINE mode
                {
@@ -2805,10 +2801,7 @@ void outlineProcessKeypress() {
           return;
 
         case ARROW_RIGHT:
-        //case ARROW_LEFT:
         case '\x1b':
-        //case SHIFT_TAB:
-        //case '\t':
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
           outlineSetMessage("");
@@ -2822,12 +2815,6 @@ void outlineProcessKeypress() {
         case END_KEY:
         case '$':
           {
-          //orow& row = O.rows.at(O.fr);
-          //if (row.chars.size() < O.screencols) return; // probably don't need this
-          // don't love the below because that O.fc is beyond the
-          // length of the true (non-escaped) string but it works
-          // Better make sure O.fc = 0 when leaving DATABASE mode for NORMAL mode
-          //O.fc = (O.context == "search") ? (int)strlen(fts_titles[O.fr]) : row.chars.size();
           O.fc = O.rows.at(O.fr).chars.size();
           return;
           }
@@ -2841,14 +2828,10 @@ void outlineProcessKeypress() {
           return;
 
         case 'x':
-         // O.fc = 0;
-         // O.repeat = 0;
           (*toggle_completed)();
           return;
 
         case 'd':
-         // O.fc = 0;
-         // O.repeat = 0;
           (*toggle_deleted)();
           return;
 
@@ -2857,8 +2840,6 @@ void outlineProcessKeypress() {
           return;
 
         case '*':
-         // O.fc = 0;
-         // O.repeat = 0;
           (*toggle_star)();
           return;
 
@@ -2877,8 +2858,6 @@ void outlineProcessKeypress() {
           return;
   
         case 'i': //display item info
-          //;
-          //orow *row = &O.row[O.fr];
           display_item_info(O.rows.at(O.fr).id);
           return;
   
@@ -2921,17 +2900,12 @@ void outlineProcessKeypress() {
           return;
   
         case 'x':
-          //O.repeat = O.highlight[1] - O.highlight[0] + 1;
-
           O.repeat = abs(O.highlight[1] - O.highlight[0]) + 1;
           outlineYankString(); //reportedly segfaults on the editor side
 
           // the delete below requires positioning the cursor
           O.fc = (O.highlight[1] > O.highlight[0]) ? O.highlight[0] : O.highlight[1];
 
-          //O.cx = O.highlight[0] - O.coloff;
-          //outlineYankString(); 
-  
           for (int i = 0; i < O.repeat; i++) {
             outlineDelChar(); //uses editorDeleteChar2! on editor side
           }
