@@ -330,7 +330,7 @@ static void (*toggle_deleted)(void);
 static void (*update_context)(int);
 static void (*update_rows)(void);
 static void (*update_row)(void);
-static int (*insert_row)(int);
+//static int (*insert_row)(int); //not called directly
 static void (*display_item_info)(int);
 static void (*touch)(void);
 static void (*search_db)(char *);
@@ -373,8 +373,8 @@ int get_id(int fr);
 void get_recent_pg(int);
 void get_recent_sqlite(int);
 int insert_row_pg(int); 
-int insert_row_pg_new(orow);
-int insert_row_sqlite(int);
+int insert_row_pg_new(orow&);
+//int insert_row_sqlite(int);
 int insert_row_sqlite_new(orow&);
 void update_note_pg(void);
 void update_note_sqlite(void); 
@@ -4039,10 +4039,11 @@ void update_row_sqlite(void) {
   
       sqlite3_close(db);
 
-  } else { 
+  } else { //row.id == -1
 
-    insert_row_sqlite(O.fr);
-  }  
+    //insert_row_sqlite(O.fr);
+    insert_row_sqlite_new(row);
+  }
 }
 
 int insert_row_pg(int ofr) {
@@ -4151,9 +4152,7 @@ int insert_row_pg(int ofr) {
   return row.id;
 }
 
-int insert_row_pg_new(orow row) {
-
-  //orow& row = O.rows.at(ofr);
+int insert_row_pg_new(orow& row) {
 
   std::string title(row.chars.data(), row.chars.size());
   size_t pos = title.find("'");
@@ -4256,12 +4255,14 @@ int insert_row_pg_new(orow row) {
 
   return row.id;
 }
-
+// should be able to delete this
 int insert_row_sqlite(int ofr) {
 
   orow& row = O.rows.at(ofr);
+  std::stringstream query;
 
   std::string title(row.chars.data(), row.chars.size());
+  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
   size_t pos = title.find("'");
   while(pos != std::string::npos)
     {
@@ -4269,79 +4270,51 @@ int insert_row_sqlite(int ofr) {
       pos = title.find("'", pos + 2);
     }
 
- int context_tid = 1; //just in case there isn't a match but there has to be
- for (int k = 1; k < 12; k++) { 
-   if (O.context.compare(context[k]) == 0) { //2 chars all you need
-     context_tid = k;
-     break;
-   }
- }
+  int context_tid = 1; //just in case there isn't a match but there has to be
+  for (int k = 1; k < 12; k++) {
+    if (O.context.compare(context[k]) == 0) { //2 chars all you need
+      context_tid = k;
+      break;
+     }
+  }
 
- char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+  query << "INSERT INTO task ("
+        << "priority, "
+        << "title, "
+        << "folder_tid, "
+        << "context_tid, "
+        << "star, "
+        << "added, "
+        << "note, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "startdate "
+        << ") VALUES ("
+        << " 3," //priority
+        << "'" << title.c_str() << "'," //title
+        << " 1," //folder_tid
+        << context_tid << ", " //context_tid
+        << " True," //star
+        << "date()," //added
+        << "'<This is a new note from sqlite>'," //note
+        << " False," //deleted
+        << " datetime('now', '-4 hours')," //created
+        << " datetime('now', '-4 hours')," // modified
+        << " date()" //startdate
+        <<");"; // RETURNING id;",
+                                     
+  /*
+   * not used:
+      tid,
+      tag,
+      duetime,
+      completed,
+      duedate,
+      repeat,
+      remind
+    */
 
- //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
- sprintf(query, "INSERT INTO task ("
-                                   //"tid, "
-                                   "priority, "
-                                   "title, "
-                                   //"tag, "
-                                   "folder_tid, "
-                                   "context_tid, "
-                                   //"duetime, "
-                                   "star, "
-                                   "added, "
-                                   //"completed, "
-                                   //"duedate, "
-                                   "note, "
-                                   //"repeat, "
-                                   "deleted, "
-                                   "created, "
-                                   "modified, "
-                                   "startdate " 
-                                   //"remind) "
-                                   ") VALUES ("
-                                   //"%s," //tid 
-                                   " %d," //priority
-                                   " \'%s\',"//title
-                                   //%s //tag 
-                                   " %d," //folder_tid
-                                   " %d," //context_tid 
-                                   //%s, //duetime
-                                   " %s," //star 
-                                   "%s," //added 
-                                   //"%s," //completed 
-                                   //"%s," //duedate 
-                                   " \'%s\'," //note
-                                   //s% //repeat
-                                   " %s," //deleted
-                                   " %s," //created 
-                                   " %s," //modified
-                                   " %s" //startdate
-                                   //%s //remind
-                                   ");", // RETURNING id;", // ************************************
-                                     
-                                   //tid, 
-                                   3, //priority, 
-                                   title.c_str(),
-                                   //tag, 
-                                   1, //folder_tid,
-                                   context_tid, 
-                                   //duetime, 
-                                   "True", //star, 
-                                   "date()", //starttime
-                                   //completed, 
-                                   //duedate, 
-                                   "<This is a new note from sqlite>", //note, 
-                                   //repeat, 
-                                   "False", //deleted 
-                                   //"datetime()", //created 
-                                   //"datetime()", //modified 
-                                   "datetime('now', '-4 hours')", //created 
-                                   "datetime('now', '-4 hours')", //modified
-                                   "date()" //startdate  
-                                   //remind
-                                   );
-                                     
   sqlite3 *db;
   char *err_msg = 0;
     
@@ -4354,7 +4327,7 @@ int insert_row_sqlite(int ofr) {
     return -1;
     }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
@@ -4368,7 +4341,8 @@ int insert_row_sqlite(int ofr) {
   sqlite3_close(db);
     
   /*virtual table insert*/
-  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", title.c_str(), row.id);
+  std::stringstream query2;
+  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
 
   //sqlite3 *db;
   //err_msg = 0;
@@ -4381,10 +4355,8 @@ int insert_row_sqlite(int ofr) {
     return row.id;
   }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
-  free(query);
-    
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
     sqlite3_free(err_msg);
@@ -4414,70 +4386,43 @@ int insert_row_sqlite_new(orow& row) {
    }
  }
 
- char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+  std::stringstream query;
+  query << "INSERT INTO task ("
+        << "priority, "
+        << "title, "
+        << "folder_tid, "
+        << "context_tid, "
+        << "star, "
+        << "added, "
+        << "note, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "startdate "
+        << ") VALUES ("
+        << " 3," //priority
+        << "'" << title.c_str() << "'," //title
+        << " 1," //folder_tid
+        << context_tid << ", " //context_tid
+        << " True," //star
+        << "date()," //added
+        << "'<This is a new note from sqlite>'," //note
+        << " False," //deleted
+        << " datetime('now', '-4 hours')," //created
+        << " datetime('now', '-4 hours')," // modified
+        << " date()" //startdate
+        <<");"; // RETURNING id;",
 
- //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
- sprintf(query, "INSERT INTO task ("
-                                   //"tid, "
-                                   "priority, "
-                                   "title, "
-                                   //"tag, "
-                                   "folder_tid, "
-                                   "context_tid, "
-                                   //"duetime, "
-                                   "star, "
-                                   "added, "
-                                   //"completed, "
-                                   //"duedate, "
-                                   "note, "
-                                   //"repeat, "
-                                   "deleted, "
-                                   "created, "
-                                   "modified, "
-                                   "startdate "
-                                   //"remind) "
-                                   ") VALUES ("
-                                   //"%s," //tid
-                                   " %d," //priority
-                                   " \'%s\',"//title
-                                   //%s //tag
-                                   " %d," //folder_tid
-                                   " %d," //context_tid
-                                   //%s, //duetime
-                                   " %s," //star
-                                   "%s," //added
-                                   //"%s," //completed
-                                   //"%s," //duedate
-                                   " \'%s\'," //note
-                                   //s% //repeat
-                                   " %s," //deleted
-                                   " %s," //created
-                                   " %s," //modified
-                                   " %s" //startdate
-                                   //%s //remind
-                                   ");", // RETURNING id;", // ************************************
-
-                                   //tid,
-                                   3, //priority,
-                                   title.c_str(),
-                                   //tag,
-                                   1, //folder_tid,
-                                   context_tid,
-                                   //duetime,
-                                   "True", //star,
-                                   "date()", //starttime
-                                   //completed,
-                                   //duedate,
-                                   "<This is a new note from sqlite>", //note,
-                                   //repeat,
-                                   "False", //deleted
-                                   //"datetime()", //created
-                                   //"datetime()", //modified
-                                   "datetime('now', '-4 hours')", //created
-                                   "datetime('now', '-4 hours')", //modified
-                                   "date()" //startdate
-                                   //remind
-                                   );
+  /*
+   * not used:
+      tid,
+      tag,
+      duetime,
+      completed,
+      duedate,
+      repeat,
+      remind
+    */
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -4491,7 +4436,7 @@ int insert_row_sqlite_new(orow& row) {
     return -1;
     }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
@@ -4505,10 +4450,8 @@ int insert_row_sqlite_new(orow& row) {
   sqlite3_close(db);
 
   /*virtual table insert*/
-  sprintf(query, "INSERT INTO fts (title, lm_id) VALUES (\'%s\', %d)", title.c_str(), row.id);
-
-  //sqlite3 *db;
-  //err_msg = 0;
+  std::stringstream query2;
+  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
 
   rc = sqlite3_open(FTS_DB.c_str(), &db);
 
@@ -4518,20 +4461,19 @@ int insert_row_sqlite_new(orow& row) {
     return row.id;
   }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-
-  free(query);
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
     sqlite3_free(err_msg);
-    return row.id;
+    return row.id; // would mean regular insert succeeded and fts failed - need to fix this
   }
   sqlite3_close(db);
   outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
 
   return row.id;
 }
+
 void update_rows_pg(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
@@ -4614,14 +4556,9 @@ void update_rows_sqlite(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
-  //for (int i=0; i < O.numrows;i++) {
   for (auto row: O.rows) {
-    //orow *row = &O.row[i];
-
     if (!(row.dirty)) continue;
-
     if (row.id != -1) {
-
       std::string title(row.chars.data(), row.chars.size());
       size_t pos = title.find("'");
       while(pos != std::string::npos)
@@ -4630,16 +4567,8 @@ void update_rows_sqlite(void) {
         pos = title.find("'", pos + 2);
       }
 
-      char *query = (char*)malloc(title.size() + 200);
-
-      sprintf(query, "UPDATE task SET title=\'%s\', "
-                   //"modified=datetime('now', '-5 hours') "
-                   "modified=datetime('now', '-4 hours') "
-                   "WHERE id=%d", //tid
-                   title.c_str(), row.id);
-
-      std::stringstream ss;
-      ss << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
+      std::stringstream query;
+      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
 
       sqlite3 *db;
       char *err_msg = 0;
@@ -4653,20 +4582,17 @@ void update_rows_sqlite(void) {
         return;
         }
     
-      //rc = sqlite3_exec(db, query, 0, 0, &err_msg);
-      rc = sqlite3_exec(db, ss.str().c_str(), 0, 0, &err_msg);
+      rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
       if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
         sqlite3_free(err_msg);
-        free(query);
         sqlite3_close(db);
         return; // ? should we abort all other rows
       } else {
         row.dirty = false;
         updated_rows[n] = row.id;
         n++;
-        free(query);
         sqlite3_close(db);
       }
     
@@ -7074,7 +7000,7 @@ int main(int argc, char** argv) {
     toggle_star = &toggle_star_sqlite;
     toggle_completed = &toggle_completed_sqlite;
     toggle_deleted = &toggle_deleted_sqlite;
-    insert_row = &insert_row_sqlite;
+    //insert_row = &insert_row_sqlite;
     update_rows = &update_rows_sqlite;
     update_row = &update_row_sqlite;
     update_context = &update_context_sqlite;
@@ -7092,7 +7018,7 @@ int main(int argc, char** argv) {
     toggle_star = &toggle_star_pg;
     toggle_completed = &toggle_completed_pg;
     toggle_deleted = &toggle_deleted_pg;
-    insert_row = &insert_row_pg;
+    //insert_row = &insert_row_pg;
     update_rows = &update_rows_pg;
     update_row = &update_row_pg;
     update_context = &update_context_pg;
