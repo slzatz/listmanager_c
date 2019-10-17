@@ -38,6 +38,7 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -83,6 +84,21 @@ static std::string context[] = {
                         "test",// 10
                         "work"//11
                        }; 
+
+static std::unordered_map<std::string, int> context_map {
+  {"search", 1}, //should mean if search is context that new item gets assigned 1 = No Context
+  {"No Context", 1},
+  {"financial", 2},
+  {"health", 3},
+  {"wisdom", 4},
+  {"journal", 5},
+  {"facts", 6},
+  {"not work", 7},
+  {"programming", 8},
+  {"todo", 9},
+  {"test", 10},
+  {"work", 11}
+  };
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -372,10 +388,8 @@ void outlineScroll(void);
 int get_id(int fr);
 void get_recent_pg(int);
 void get_recent_sqlite(int);
-int insert_row_pg(int); 
-int insert_row_pg_new(orow&);
-//int insert_row_sqlite(int);
-int insert_row_sqlite_new(orow&);
+int insert_row_pg(orow&);
+int insert_row_sqlite(orow&);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void synchronize(int);
@@ -2596,7 +2610,6 @@ void outlineProcessKeypress() {
                } else if (strlen(O.command_line) > 7) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
-                   //if (strncmp(&O.command_line[pos + 1], context[k], 3) == 0) {
                    if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      context_tid = k;
@@ -3591,15 +3604,10 @@ void update_context_pg(int context_tid) {
 
 void update_context_sqlite(int context_tid) {
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET context_tid=%d, " 
-                 //"modified=datetime('now', '-5 hours') "
-                 "modified=datetime('now', '-4 hours') "
-                   "WHERE id=%d",
-                    context_tid,
-                    id);
+  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-4 hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3613,7 +3621,7 @@ void update_context_sqlite(int context_tid) {
     return;
   }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3968,7 +3976,7 @@ void update_row_pg(void) {
     PQclear(res);
 
   } else { 
-    insert_row_pg(O.fr);
+    insert_row_pg(row);
   }  
 }
 
@@ -4042,117 +4050,11 @@ void update_row_sqlite(void) {
   } else { //row.id == -1
 
     //insert_row_sqlite(O.fr);
-    insert_row_sqlite_new(row);
+    insert_row_sqlite(row);
   }
 }
 
-int insert_row_pg(int ofr) {
-
-  orow& row = O.rows.at(ofr);
-
-  std::string title(row.chars.data(), row.chars.size());
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
- int context_tid = 1; //just in case there isn't a match but there has to be
- for (int k = 1; k < 12; k++) { 
-   if (O.context.compare(0,3, context[k]) == 0) {
-   //if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
-     context_tid = k;
-     break;
-   }
- }
-
- char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
-
- //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
- sprintf(query, "INSERT INTO task ("
-                                   //"tid, "
-                                   "priority, "
-                                   "title, "
-                                   //"tag, "
-                                   "folder_tid, "
-                                   "context_tid, "
-                                   //"duetime, "
-                                   "star, "
-                                   "added, "
-                                   //"completed, "
-                                   //"duedate, "
-                                   "note, "
-                                   //"repeat, "
-                                   "deleted, "
-                                   "created, "
-                                   "modified, "
-                                   "startdate " 
-                                   //"remind) "
-                                   ") VALUES ("
-                                   //"%s," //tid 
-                                   " %d," //priority
-                                   " \'%s\',"//title
-                                   //%s //tag 
-                                   " %d," //folder_tid
-                                   " %d," //context_tid 
-                                   //%s, //duetime
-                                   " %s," //star 
-                                   "%s," //added 
-                                   //"%s," //completed 
-                                   //"%s," //duedate 
-                                   " \'%s\'," //note
-                                   //s% //repeat
-                                   " %s," //deleted
-                                   " %s," //created 
-                                   " %s," //modified
-                                   " %s" //startdate
-                                   //%s //remind
-                                   ") RETURNING id;",
-                                     
-                                   //tid, 
-                                   3, //priority, 
-                                   title.c_str(),
-                                   //tag, 
-                                   1, //folder_tid,
-                                   context_tid, 
-                                   //duetime, 
-                                   "True", //star, 
-                                   "CURRENT_DATE", //starttime
-                                   //completed, 
-                                   //duedate, 
-                                   "<This is a new note>", //note, 
-                                   //repeat, 
-                                   "False", //deleted 
-                                   "LOCALTIMESTAMP - interval '5 hours'", //created, 
-                                   "LOCALTIMESTAMP - interval '5 hours'", //modified 
-                                   "CURRENT_DATE" //startdate  
-                                   //remind
-                                   );
-                                     
-                            
-    
-    
-  PGresult *res = PQexec(conn, query); 
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return -1;
-  }
-
-  row.id = atoi(PQgetvalue(res, 0, 0));
-  row.dirty = false;
-        
-  free(query);
-  PQclear(res);
-  outlineSetMessage("Successfully inserted new row with id %d", row.id);
-    
-  return row.id;
-}
-
-int insert_row_pg_new(orow& row) {
+int insert_row_pg(orow& row) {
 
   std::string title(row.chars.data(), row.chars.size());
   size_t pos = title.find("'");
@@ -4165,7 +4067,6 @@ int insert_row_pg_new(orow& row) {
  int context_tid = 1; //just in case there isn't a match but there has to be
  for (int k = 1; k < 12; k++) {
    if (O.context.compare(0,3, context[k]) == 0) {
-   //if (strncmp(O.context, context[k], 3) == 0) { //2 chars all you need
      context_tid = k;
      break;
    }
@@ -4255,120 +4156,8 @@ int insert_row_pg_new(orow& row) {
 
   return row.id;
 }
-// should be able to delete this
-int insert_row_sqlite(int ofr) {
 
-  orow& row = O.rows.at(ofr);
-  std::stringstream query;
-
-  std::string title(row.chars.data(), row.chars.size());
-  //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  int context_tid = 1; //just in case there isn't a match but there has to be
-  for (int k = 1; k < 12; k++) {
-    if (O.context.compare(context[k]) == 0) { //2 chars all you need
-      context_tid = k;
-      break;
-     }
-  }
-
-  query << "INSERT INTO task ("
-        << "priority, "
-        << "title, "
-        << "folder_tid, "
-        << "context_tid, "
-        << "star, "
-        << "added, "
-        << "note, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "startdate "
-        << ") VALUES ("
-        << " 3," //priority
-        << "'" << title.c_str() << "'," //title
-        << " 1," //folder_tid
-        << context_tid << ", " //context_tid
-        << " True," //star
-        << "date()," //added
-        << "'<This is a new note from sqlite>'," //note
-        << " False," //deleted
-        << " datetime('now', '-4 hours')," //created
-        << " datetime('now', '-4 hours')," // modified
-        << " date()" //startdate
-        <<");"; // RETURNING id;",
-                                     
-  /*
-   * not used:
-      tid,
-      tag,
-      duetime,
-      completed,
-      duedate,
-      repeat,
-      remind
-    */
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-        
-  sqlite3_close(db);
-    
-  /*virtual table insert*/
-  std::stringstream query2;
-  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
-
-  //sqlite3 *db;
-  //err_msg = 0;
-    
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open FTS database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return row.id;
-  }
-
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
-    sqlite3_free(err_msg);
-    return row.id;
-  } 
-  sqlite3_close(db);
-  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
-
-  return row.id;
-}
-
-int insert_row_sqlite_new(orow& row) {
+int insert_row_sqlite(orow& row) {
 
   std::string title(row.chars.data(), row.chars.size());
   size_t pos = title.find("'");
@@ -4378,6 +4167,9 @@ int insert_row_sqlite_new(orow& row) {
       pos = title.find("'", pos + 2);
     }
 
+ /*
+ // this was replaced by created context_map so could get value directly
+ // not sure it's worth it
  int context_tid = 1; //just in case there isn't a match but there has to be
  for (int k = 1; k < 12; k++) {
    if (O.context.compare(context[k]) == 0) {
@@ -4385,6 +4177,7 @@ int insert_row_sqlite_new(orow& row) {
      break;
    }
  }
+*/
 
   std::stringstream query;
   query << "INSERT INTO task ("
@@ -4403,7 +4196,8 @@ int insert_row_sqlite_new(orow& row) {
         << " 3," //priority
         << "'" << title.c_str() << "'," //title
         << " 1," //folder_tid
-        << context_tid << ", " //context_tid
+        //<< context_tid << ", " //context_tid
+        << context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -4523,8 +4317,7 @@ void update_rows_pg(void) {
         PQclear(res);
       }  
     } else { 
-      //int id  = insert_row_pg(i);
-      int id  = insert_row_pg_new(row);
+      int id  = insert_row_pg(row);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -4597,7 +4390,7 @@ void update_rows_sqlite(void) {
       }
     
     } else { 
-      int id  = insert_row_sqlite_new(row);
+      int id  = insert_row_sqlite(row);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
