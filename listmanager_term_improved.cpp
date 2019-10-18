@@ -58,7 +58,6 @@ static int EDITOR_LEFT_MARGIN;
 static int NN = 0; //which context is being displayed on message line (if none then NN==0)
 static struct termios orig_termios;
 static int screenlines, screencols;
-static char display_file[30];
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
@@ -449,6 +448,7 @@ void editorCreateSnapshot(void);
 void editorInsertRow(int fr, char *, size_t);
 void editorInsertRow(int fr, std::string);
 void EraseRedrawLines(void);
+void editorReadFile(std::string);
 void editorDisplayFile(void);
 // config struct for reading db.ini file
 
@@ -1651,86 +1651,19 @@ void editorEraseScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-void editorReadFile(void) {
+void editorReadFile(std::string file_name) {
 
-  std::ifstream f(display_file);
+  std::ifstream f(file_name);
   std::string line;
-  std::stringstream text;
 
   while (getline(f, line)) {
-    display_text << line << "\r\n";
+    display_text << line << '\n';
   }
 
   f.close();
 }
 
 void editorDisplayFile(void) {
-
-  FILE *fp = fopen(display_file, "r");
-  if (!fp) die("fopen");
-
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //abAppend(&ab, "\x1b[44m", 5); //tried background blue - didn't love it
-  ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
-  int file_line = 0;
-  int file_row = 0;
-  //initial_file_row is a global - should be set to zero when you open a file
-  char *line = NULL;
-  size_t linecap = 0;
-  ssize_t linelen;
-  while ((linelen = getline(&line, &linecap, fp)) != -1) {
-    while (linelen > 0 && (line[linelen - 1] == '\n' ||
-                           line[linelen - 1] == '\r'))
-      linelen--;
-    //editorInsertRow(E.numrows, line, linelen);
-    //probably should have if (lineline > E.screencols) break into multiple lines
-    int n = 0;
-    file_row++;
-    if (file_row < initial_file_row + 1) continue;
-    for(;;) {
-      if (linelen < (n+1)*E.screencols) break;
-      ab.append(&line[n*E.screencols], E.screencols);
-      ab.append(lf_ret, nchars);
-      file_line++; //**********************
-      //should be num_liness++ here
-      n++;
-    }
-    ab.append(&line[n*E.screencols], linelen-n*E.screencols);
-    file_line++;
-    if (file_line > E.screenlines - 2) break; //was - 1
-    ab.append(lf_ret, nchars);
-  }
-  ab.append("\x1b[0m", 4);
-
-  // not a huge deal but updating status bar here would mean mode would be correct
-  outlineDrawStatusBarNew(ab); // 03162019
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  free(line);
-  
-  fclose(fp);
-}
-
-void editorDisplayFileNew(void) {
 
   char lf_ret[10];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
@@ -1758,6 +1691,8 @@ void editorDisplayFileNew(void) {
   std::string line;
   int row_num = -1;
   int line_num = 0;
+  display_text.clear();
+  display_text.seekg(0, std::ios::beg);
   //display_text.getline(line, 128);
   while(std::getline(display_text, row, '\n')) {
       if (line_num > E.screenlines - 2) break;
@@ -1788,27 +1723,8 @@ void editorDisplayFileNew(void) {
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
-void editorOpen(char *filename) {
-  free(E.filename);
-  E.filename = strdup(filename);
 
-  FILE *fp = fopen(filename, "r");
-  if (!fp) die("fopen");
-
-  char *line = NULL;
-  size_t linecap = 0;
-  ssize_t linelen;
-  while ((linelen = getline(&line, &linecap, fp)) != -1) {
-    while (linelen > 0 && (line[linelen - 1] == '\n' ||
-                           line[linelen - 1] == '\r'))
-      linelen--;
-    editorInsertRow(E.rows.size(), line, linelen);
-  }
-  free(line);
-  fclose(fp);
-  //E.dirty = 0;
-}
-
+//not used
 void editorSave(void) {
   if (E.filename == NULL) return;
   std::string s = editorRowsToString();
@@ -2753,18 +2669,18 @@ void outlineProcessKeypress() {
             case C_synch:
               synchronize(0); // do actual sync
 
-              strncpy(display_file, "log", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+              editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
 
             case C_synch_test:
               synchronize(1); //1 -> report_only
 
-              strncpy(display_file, "log", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+              editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
 
@@ -2778,8 +2694,8 @@ void outlineProcessKeypress() {
               */
 
             case C_valgrind:
-              strncpy(display_file, "valgrind_log_file", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
+              editorReadFile("valgrind_log_file");
               editorDisplayFile();//put them in the command mode case synch
               O.mode = FILE_DISPLAY;
               return;
@@ -2821,9 +2737,9 @@ void outlineProcessKeypress() {
             case C_help:
               initial_file_row = 0;
               O.mode = FILE_DISPLAY;
-              strncpy(display_file, "listmanager_commands", sizeof(display_file));
               initial_file_row = 0; //for arrowing or displaying files
-              editorDisplayFile();//put them in the command mode case synch
+              editorReadFile("listmanager_commands");
+              editorDisplayFile();
               return;
 
             default: // default for commandfromstring
@@ -3062,7 +2978,6 @@ void outlineProcessKeypress() {
   } //End of outer switch(O.mode)
 }
 
-// calls editorOpen to read the log file
 void synchronize(int report_only) { //using 1 or 0
 
   PyObject *pName, *pModule, *pFunc;
@@ -3118,8 +3033,6 @@ void synchronize(int report_only) { //using 1 or 0
 
   //if (Py_FinalizeEx() < 0) {
   //}
-  //editorOpen("log");//put them in the command mode case synch
-  //editorRefreshScreen();
   if (report_only) outlineSetMessage("Number of tasks/items that would be affected is %d", num);
   else outlineSetMessage("Number of tasks/items that were affected is %d", num);
 }
@@ -3140,7 +3053,6 @@ void display_item_info_pg(int id) {
   }    
 
   char lf_ret[10];
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   std::string ab;
@@ -3203,28 +3115,9 @@ void display_item_info_pg(int id) {
       ab.append(lf_ret);
   }
 
-  /*
-  //note strsep handles multiple \n\n and strtok did not
-  char *note;
-  note = strdup(PQgetvalue(res, 0, 12)); // ******************
-  char *found;
-
-  for (int k=0; k < 4; k++) {
-
-    if ((found = strsep(&note, "\n")) == NULL) break; 
-
-    size_t len = E.screencols;
-    ab.append(found, (strlen(found) < len) ? strlen(found) : len);
-    ab.append(lf_ret, nchars);
-  }
-  */
-
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  //free(note);
-  //note = NULL; //? not necessary
 
   PQclear(res);
 }
@@ -3348,8 +3241,6 @@ void display_item_info_sqlite(int id) {
   sqlite3_close(db);
 }
 
-// this version doesn't save the text in E.row
-//which didn't make sense since you're not going to edit it
 int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
     
   UNUSED(NotUsed);
@@ -3381,7 +3272,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   char lf_ret[10];
   // note really have to take into account length of
   // EDITOR_LEFT_MARGIN and don't need to move things in the y direction
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN); 
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   std::string ab;
@@ -3603,7 +3493,7 @@ void update_note_sqlite(void) {
   }
 
   std::stringstream query2;
-  //query.clear(); //Baffling why this doesn't work
+  //query.clear(); //this clear clears eof and fail flags so query.str(std::string());query.clear()
   query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << id;
 
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
@@ -5972,12 +5862,9 @@ int editorGetLineInRowWW(int r, int c) {
     // each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
 
-    // Alternative that if it works doesn't depend on knowing the line cout!!
+    // Alternative that if it works doesn't depend on knowing the line count!!
     //seems to work
     if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
-      //printf("I got here2\n");
-      //length += left;
-      //len = left;
       break; 
     }
 
@@ -5997,7 +5884,6 @@ int editorGetLineInRowWW(int r, int c) {
     num++;
   }
 
-  //return c - length + len;
   return num;
 }
 // called in editScroll to get E.cx
@@ -6007,8 +5893,6 @@ int editorGetLineInRowWW(int r, int c) {
 // of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetScreenXFromRowCol(int r, int c) {
 
-  //erow *row = &E.row[r];
-  //if ((row->size == 0) || (c == 0)) return 0;
   std::vector<char>& row = E.rows.at(r);
   if (row.empty() || (c == 0)) return 0;
 
@@ -6256,7 +6140,6 @@ void editorRestoreSnapshot(void) {
 
 void editorChangeCase(void) {
   if (E.rows.empty()) return;
-  //erow *row = &E.row[E.fr];
   std::vector<char>& row = E.rows.at(E.fr);
   char d = row.at(E.fc);
   if (d < 91 && d > 64) d = d + 32;
@@ -6278,12 +6161,10 @@ void editorYankLine(int n){
   }
 
   string_buffer.clear();
-
 }
 
 void editorYankString(void) {
   // doesn't cross rows right now
-  //if (E.rows.empty()) editorInsertRow(0, "", 0);
   if (E.rows.empty()) return;
 
   std::vector<char>& row = E.rows.at(E.fr);
@@ -6297,8 +6178,6 @@ void editorYankString(void) {
 
 void editorPasteString(void) {
 
-
-  //if (E.numrows == 0) editorInsertRow(0, "", 0);
   if (E.rows.empty() || string_buffer.empty()) return;
   std::vector<char>& row = E.rows.at(E.fr);
 
@@ -6324,7 +6203,6 @@ void editorIndentRow(void) {
 
   if (E.rows.empty()) return;
   std::vector<char>& row = E.rows.at(E.fr);
-  //erow *row = &E.row[E.fr];
   if (row.empty()) return;
   E.fc = editorIndentAmount(E.fr);
   for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
@@ -6609,7 +6487,6 @@ void editorDecorateVisual(int c) {
 void getWordUnderCursor(void){
  
   if (E.rows.empty()) return;
-  //erow *row = &E.row[E.fr];
   std::vector<char>& row = E.rows.at(E.fr);
   if (row[E.fc] < 48) return;
 
@@ -6627,10 +6504,8 @@ void getWordUnderCursor(void){
       search_string[n] = row[x];
   }
 
-  //search_string[n] = '\0';
   std::string temp(search_string.data(), search_string.size());
   editorSetMessage("word under cursor: <%s>", temp.c_str());
-
 }
 
 // needs a little work and needs to wrap back on itself something odd about wrapping matches
@@ -6641,8 +6516,6 @@ void editorFindNextWord(void) {
 
   y = E.fr;
   x = E.fc + 10;
-  //x = E.fc;
-  //erow *row;
   std::vector<char> row;
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
@@ -6782,12 +6655,9 @@ void initOutline() {
   O.fr = 0; //file y position
   O.rowoff = 0;  //number of rows scrolled off the screen
   O.coloff = 0;  //col the user is currently scrolled to  
-  //O.numrows = 0; //number of rows of text
-  //O.row = NULL; //pointer to the orow structure 'array'
   O.context = "todo"; 
   O.show_deleted = false;
   O.show_completed = true;
-  //O.show_highlight = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -6806,12 +6676,8 @@ void initEditor(void) {
   E.fr = 0; //file y position
   E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
-  //E.numrows = 0; //number of rows (lines) of text delineated by a return
-  //E.row = NULL; //pointer to the erow structure 'array'
-  //E.prev_numrows = 0; //number of rows of text in snapshot
-  //E.prev_row = NULL; //prev_row is pointer to snapshot for undoing
   E.dirty = 0; //has filed changed since last save
-  E.filename = NULL;
+  E.filename = NULL; //not used currently
   E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -6917,7 +6783,6 @@ int main(int argc, char** argv) {
  // PQfinish(conn); // this should happen when exiting
 
   O.fc = O.fr = O.rowoff = 0; 
-  //outlineSetMessage("HELP: Ctrl-S = save | Ctrl-Q = quit"); //slz commented this out
   outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenlines, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
 
   // putting this here seems to speed up first search but still slow
@@ -6936,13 +6801,6 @@ int main(int argc, char** argv) {
       outlineProcessKeypress();
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
-    /*
-    } else {
-      outlineScroll();
-      outlineRefreshScreen();
-      outlineProcessKeypress();
-    }
-    */
   }
   return 0;
 }
