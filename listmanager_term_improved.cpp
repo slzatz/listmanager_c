@@ -12,7 +12,7 @@
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
 //#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
-#define ABUF_INIT {NULL, 0}
+//#define ABUF_INIT {NULL, 0}
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
@@ -43,6 +43,7 @@
 #include <cstring>
 #include <algorithm>
 #include <sstream>
+#include <fstream>
 /*** defines ***/
 
 /***the following is not yet in use and would get rid of switch statements***/
@@ -58,6 +59,7 @@ static int NN = 0; //which context is being displayed on message line (if none t
 static struct termios orig_termios;
 static int screenlines, screencols;
 static char display_file[30];
+static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static char search_terms[50];
@@ -1649,6 +1651,19 @@ void editorEraseScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+void editorReadFile(void) {
+
+  std::ifstream f(display_file);
+  std::string line;
+  std::stringstream text;
+
+  while (getline(f, line)) {
+    display_text << line << "\r\n";
+  }
+
+  f.close();
+}
+
 void editorDisplayFile(void) {
 
   FILE *fp = fopen(display_file, "r");
@@ -1715,6 +1730,64 @@ void editorDisplayFile(void) {
   fclose(fp);
 }
 
+void editorDisplayFileNew(void) {
+
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  //abAppend(&ab, "\x1b[44m", 5); //tried background blue - didn't love it
+  ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
+
+  std::string row;
+  std::string line;
+  int row_num = -1;
+  int line_num = 0;
+  //display_text.getline(line, 128);
+  while(std::getline(display_text, row, '\n')) {
+      if (line_num > E.screenlines - 2) break;
+      row_num++;
+      if (row_num < initial_file_row) continue;
+      if (row.size() < E.screencols) {
+          ab.append(row);
+          ab.append(lf_ret);
+          line_num++;
+          continue;
+      }
+      int n = 0;
+      for(;;) {
+          line_num++;
+          if (line_num > E.screenlines - 2) break;
+          line = row.substr(n*E.screencols, (n+1)*E.screencols);
+          ab.append(line);
+          ab.append(lf_ret);
+          if (line.size() < E.screencols) break;
+          n++;
+      }
+  }
+
+  ab.append("\x1b[0m", 4);
+
+  // not a huge deal but updating status bar here would mean mode would be correct
+  outlineDrawStatusBarNew(ab); // 03162019
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
 void editorOpen(char *filename) {
   free(E.filename);
   E.filename = strdup(filename);
