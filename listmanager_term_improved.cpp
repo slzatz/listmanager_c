@@ -233,30 +233,15 @@ static std::map<std::string, int> lookuptablemap {
   //{"e", C_edit}
 };
 
-//static std::vector<char> search_string;
 static std::string search_string;
-// buffers below for yanking
-//char *line_buffer[20] = {NULL}; //yanking lines
-//static std::vector<std::vector<char>> line_buffer;
-static std::vector<std::string> line_buffer;
-//char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
-//static std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
-static std::string string_buffer; //yanking chars ******* this needs to be malloc'd
+static std::vector<std::string> line_buffer; //yanking lines
+static std::string string_buffer; //yanking chars
 
 /*** data ***/
 
- /*
- row size = n means there are n chars starting with chars[0] and ending with 
- chars[n-1] and there is also an additional char = '\0' at chars[n] so memmove
- generally has to move n+1 bytes to include the terminal '\0'
- For the avoidance of doubt:  row->size does not include the terminating '\0' char
- Lastly size 0 means 0 visible chars but there should be '\0' 
-*/
-
 typedef struct orow {
-  //std::vector<char> chars;
   // this should be std::string title
-  std::string chars;
+  std::string title;
   int id; //listmanager db id of the row
   bool star;
   bool deleted;
@@ -297,20 +282,11 @@ struct editorConfig {
   int coloff; //column user is currently scrolled to
   int screenlines; //number of lines in the display
   int screencols;  //number of columns in the display
-  //int numrows; // the number of rows(lines) of text delineated by /n if written out to a file
-  //erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
-  //std::vector<erow> rows;
-  //std::vector<erow_chars> rows;
-  //std::vector<std::vector<char>> rows;
   std::vector<std::string> rows;
-  //int prev_numrows; // the number of rows of text so last text row is always row numrows
-  //erow *prev_row; //for undo purposes
-  //std::vector<std::vector<char>> prev_rows;
   std::vector<std::string> prev_rows;
   int dirty; //file changes since last save
   char *filename;
   char message[120]; //status msg is a character array max 80 char
-  //time_t message_time;
   int highlight[2];
   int mode;
   char command[20]; //needs to accomodate file name ?malloc heap array
@@ -370,7 +346,6 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int at, char *s, size_t len, int id, bool star, bool deleted, bool completed, char *modified); 
-//void outlineDrawRows(struct abuf *ab);
 void outlineDrawRowsNew(std::string&);
 void outlineScroll(void);
 int get_id(int fr);
@@ -397,14 +372,10 @@ int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
-//void editorDrawMessageBar(struct abuf *ab);
 void editorDrawMessageBarNew(std::string&);
 void editorDrawStatusBarNew(std::string&);
-//void editorDrawStatusBar(struct abuf *ab);
 void editorSetMessage(const char *fmt, ...);
-//void editorRefreshScreen(void);
 void editorRefreshScreenNew(void);
-//void getcharundercursor(void);
 void editorInsertReturn(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
@@ -437,8 +408,8 @@ void editorInsertRow(int fr, std::string);
 void EraseRedrawLines(void);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
-// config struct for reading db.ini file
 
+// config struct for reading db.ini file
 struct config {
   const char *user;
   const char *password;
@@ -527,13 +498,7 @@ void get_recent_pg(int max) {
   for(i=0; i<rows; i++) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
-    //row.size = len;
-    //std::vector<char> temp(argv[3], argv[3] + len);
-    //row.chars = temp;
-    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    //row.chars = temp;
-    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    //for (int j=0; j < len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
+    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -546,7 +511,6 @@ void get_recent_pg(int max) {
 
     O.rows.push_back(row);
   }
-  //O.numrows = i;
   PQclear(res);
   // PQfinish(conn);
 
@@ -592,11 +556,7 @@ void get_items_by_context_pg(std::string context, int max) {
   for(i=0; i<rows; i++) {
     orow row;
     int len = strlen(PQgetvalue(res, i, 3));
-    //row.size = len;
-    //for (int j=0; j<len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
-    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    //row.chars = temp;
-    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -608,7 +568,6 @@ void get_items_by_context_pg(std::string context, int max) {
     row.modified[len] = '\0';
     O.rows.push_back(row);
   }
-  //O.numrows = i;
 
   PQclear(res);
   // PQfinish(conn);
@@ -757,9 +716,7 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   orow row;
 
   int len = strlen(argv[3]);
-  //std::vector<char> temp(argv[3], argv[3] + len);
-  //row.chars = temp;
-  row.chars = std::string(argv[3], argv[3] + len);
+  row.title = std::string(argv[3], argv[3] + len);
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -826,9 +783,7 @@ void get_items_by_id_pg(char *query) {
   for(i=0; i<rows; i++) {
     orow row;
     len = strlen(PQgetvalue(res, i, 3));
-    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    //row.chars = temp;
-    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -908,7 +863,6 @@ void get_note_pg(int id) {
   if (id ==-1) return;
 
   E.rows.clear();
-  //E.numrows = 0;
 
   char query[100];
   sprintf(query, "SELECT note FROM task WHERE id = %d", id);
@@ -1172,7 +1126,6 @@ int keyfromstringcpp(std::string key) {
 }
 
 int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
-  //std::size_t found = key.find(' ');
 
   if (key.size() == 1) return key[0];  //need this
 
@@ -1329,13 +1282,9 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
   orow row;
 
   if (s==nullptr) {
-    //std::vector<char> temp {};
-    //row.chars = temp;
-    row.chars = std::string();
+    row.title = std::string();
   } else {
-    //std::vector<char> temp(s, s + len);
-    //row.chars = temp;
-    row.chars = std::string(s, s+len);
+    row.title = std::string(s, s+len);
   }
   row.id = id;
   row.star = star;
@@ -1354,8 +1303,8 @@ void outlineInsertChar(int c) {
   if (O.rows.size() == 0) return;
 
   orow& row = O.rows.at(O.fr);
-  if (row.chars.empty()) row.chars.push_back(c);
-  else row.chars.insert(row.chars.begin() + O.fc, c);
+  if (row.title.empty()) row.title.push_back(c);
+  else row.title.insert(row.title.begin() + O.fc, c);
   row.dirty = true;
   O.fc++;
 }
@@ -1364,16 +1313,16 @@ void outlineDelChar(void) {
 
   orow& row = O.rows.at(O.fr);
 
-  if (O.rows.empty() || row.chars.empty()) return;
+  if (O.rows.empty() || row.title.empty()) return;
 
-  row.chars.erase(row.chars.begin() + O.fc);
+  row.title.erase(row.title.begin() + O.fc);
   row.dirty = true;
 }
 
 void outlineBackspace(void) {
   orow& row = O.rows.at(O.fr);
-  if (O.rows.empty() || row.chars.empty() || O.fc == 0) return;
-  row.chars.erase(row.chars.begin() + O.fc - 1);
+  if (O.rows.empty() || row.title.empty() || O.fc == 0) return;
+  row.title.erase(row.title.begin() + O.fc - 1);
   row.dirty = true;
   O.fc--;
 }
@@ -1384,15 +1333,15 @@ char *outlineRowsToString(int *buflen) {
   int totlen = 0;
   int j;
   for (j = 0; j < O.rows.size(); j++)
-    totlen += O.rows.at(j).chars.size() + 1;
+    totlen += O.rows.at(j).title.size() + 1;
   *buflen = totlen;
 
   //char *buf = malloc(totlen);
   char *buf = (char *) malloc(totlen);
   char *p = buf;
   for (j = 0; j < O.rows.size(); j++) {
-    memcpy(p, &O.rows[j].chars, O.rows.at(j).chars.size());
-    p += O.rows.at(j).chars.size();
+    memcpy(p, &O.rows[j].title, O.rows.at(j).title.size());
+    p += O.rows.at(j).title.size();
     *p = '\n';
     p++;
   }
@@ -1429,16 +1378,11 @@ void outlineSave() {
 // fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, char *s, size_t len) {
 
-  //std::vector<char> row;
   std::string row;
 
   if (s==nullptr) {
-    //std::vector<char> temp {};
-    //row = temp;
     row = std::string();
   } else {
-    //std::vector<char> temp(s, s + len);
-    //row = temp;
     row = std::string(s, s + len);
   }
 
@@ -1482,18 +1426,6 @@ void editorRowAppendString(std::string& row, std::string& s) {
   row.insert(row.end() - 1, s.begin(), s.end());
   E.dirty++;
 }
-
-/* not in use right now
-void editorRowDelChar(erow *row, int fr) {
-  if (fr < 0 || fr >= row->size) return;
-  // is there any reason to realloc for one character?
-  // row->chars = realloc(row->chars, row->size -1); 
-  //have to realloc when adding but I guess no need to realloc for one character
-  memmove(&row->chars[fr], &row->chars[fr + 1], row->size - fr);
-  row->size--;
-  E.dirty++;
-}
-*/
 
 /*** editor operations ***/
 void editorInsertChar(int chr) {
@@ -1613,8 +1545,6 @@ std::string editorRowsToString(void) {
 
   std::string z = "";
   for (auto i: E.rows) {
-      //std::string s(i.data(), i.size());
-      //z += s;
       z += i;
       z += '\n';
   }
@@ -1690,7 +1620,6 @@ void editorDisplayFile(void) {
   int line_num = 0;
   display_text.clear();
   display_text.seekg(0, std::ios::beg);
-  //display_text.getline(line, 128);
   while(std::getline(display_text, row, '\n')) {
       if (line_num > E.screenlines - 2) break;
       row_num++;
@@ -1789,7 +1718,7 @@ void outlineDrawRowsNew(std::string& ab) {
 
     // if a line is long you only draw what fits on the screen
     //below solves  problem when deleting chars from a scrolled long line
-    int len = (fr == O.fr) ? row.chars.size() - O.coloff : row.chars.size(); //can run into this problem when deleting chars from a scrolled log line
+    int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > O.screencols) len = O.screencols;
 
     // was the below for a long time but changed on 03022019 to deal with scrolled line
@@ -1814,16 +1743,16 @@ void outlineDrawRowsNew(std::string& ab) {
        // below in case E.highlight[1] < E.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
       j =!k;
-      ab.append(&(row.chars[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
       ab.append("\x1b[48;5;242m", 11);
-      ab.append(&(row.chars[O.highlight[j]]), O.highlight[k]
+      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
                                              - O.highlight[j]);
       ab.append("\x1b[49m", 5); // return background to normal
-      ab.append(&(row.chars[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
 
     } else {
         // current row is only row that is scrolled if O.coloff != 0
-        ab.append(&row.chars[((fr == O.fr) ? O.coloff : 0)], len);
+        ab.append(&row.title[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
@@ -1873,7 +1802,7 @@ void outlineDrawStatusBarNew(std::string& ab) {
     orow& row = O.rows.at(O.fr);
     //std::string title(row.chars.data(), row.chars.size());
     //std::string truncated_title = title.substr(0, 19);
-    std::string truncated_title = row.chars.substr(0, 19);
+    std::string truncated_title = row.title.substr(0, 19);
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -1925,7 +1854,7 @@ void outlineDrawMessageBarNew(std::string& ab) {
 void outlineRefreshScreenNew(void) {
 
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).chars.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).title.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
 
   std::string ab;
 
@@ -2036,7 +1965,7 @@ void outlineMoveCursor(int key) {
   }
 
   orow& row = O.rows.at(O.fr);
-  if (O.fc >= row.chars.size()) O.fc = row.chars.size() - (O.mode != INSERT);
+  if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
 }
 
 // higher level outline function depends on readKey()
@@ -2047,8 +1976,6 @@ void outlineProcessKeypress() {
      escape sequences for things like navigation keys */
 
   int c = readKey();
-
-  //orow *row;
 
   switch (O.mode) { 
 
@@ -2082,7 +2009,7 @@ void outlineProcessKeypress() {
         case END_KEY:
           {
             orow& row = O.rows.at(O.fr);
-          if (row.chars.size()) O.fc = row.chars.size(); // mimics vim to remove - 1;
+          if (row.title.size()) O.fc = row.title.size(); // mimics vim to remove - 1;
           return;
           }
 
@@ -2147,13 +2074,11 @@ void outlineProcessKeypress() {
       if ( O.repeat == 0 ) O.repeat = 1;
 
       //{ /***********************************************************************************
-      //int n = strlen(O.command);
       n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
-      //command = (n && c < 128) ? keyfromstring(O.command) : c;
       command = (n && c < 128) ? keyfromstringcpp(std::string(O.command)) : c;
 
       switch(command) {  
@@ -2274,7 +2199,6 @@ void outlineProcessKeypress() {
           return;
       
         case 'O': //C_new: 
-          //outlineInsertRow(0, "", 0, -1, true, false, false, "1970-01-01 00:00");
           outlineInsertRow(0, nullptr, 0, -1, true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
@@ -2397,7 +2321,7 @@ void outlineProcessKeypress() {
           end = O.fc;
           O.fc = start; 
           for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          O.fc = (start < O.rows.at(O.cy).chars.size()) ? start : O.rows.at(O.cy).chars.size() -1;
+          O.fc = (start < O.rows.at(O.cy).title.size()) ? start : O.rows.at(O.cy).title.size() -1;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -2532,7 +2456,6 @@ void outlineProcessKeypress() {
                  //editor_mode needs go before get_note in case we retrieved item via a search
                  editor_mode = true;
                  (*get_note)(id); //if id == -1 does not try to retrieve note
-                 //editor_mode = true;
                  E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
                  E.mode = NORMAL;
                  E.command[0] = '\0';
@@ -2584,7 +2507,6 @@ void outlineProcessKeypress() {
               //NN is set to zero when entering COMMAND_LINE mode
                {
                int context_tid;
-               //char *new_context;
                std::string new_context;
                if (NN) {
                  new_context = context[NN];
@@ -2802,7 +2724,7 @@ void outlineProcessKeypress() {
         case END_KEY:
         case '$':
           {
-          O.fc = O.rows.at(O.fr).chars.size();
+          O.fc = O.rows.at(O.fr).title.size();
           return;
           }
 
@@ -2850,7 +2772,6 @@ void outlineProcessKeypress() {
   
         case 'v': //render in browser
           
-          //row = &O.row[O.fr];
           view_html(O.rows.at(O.fr).id);
 
           /* when I switched from chrome to qutebrowser I thought I was not
@@ -3189,13 +3110,6 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
 
   fts_ids[fts_counter] = atoi(argv[0]);
 
-  /*
-  //would need to malloc a new structure along the lines of O.row like FTS_titles
-  //memcopy each one and then in data_callback have some switch that
-  //says use FTS_titles[O.numrows], strlen(FTS_titles[O.numrows]
-  //seems pretty fragile
-  */
-
   /* right now not pulling in highlighted titles just using id to get regular title
    * and note
   int len = strlen(argv[1]);
@@ -3334,20 +3248,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
       ab.append(lf_ret);
   }
 
-  /*
-  char *found;
-
-  for (int k=0; k < 4; k++) {
-
-    //if ((found = strsep(&note, "\n")) == NULL) break; 
-    if ((found = strsep(&argv[12], "\n")) == NULL) break; 
-
-    size_t len = E.screencols;
-    ab.append(found, (strlen(found) < len) ? strlen(found) : len);
-    ab.append(lf_ret, nchars);
-  }
-  */
-
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -3374,41 +3274,7 @@ void update_note_pg(void) {
       text.replace(pos, 1, "''");
       pos = text.find("'", pos + 2);
     }
- /*
- Note previously had used strncpy but  Valgrind just does not seem to like strncpy
- and no one else seems to like it as well
- */
 
-  /*
-  char *note = (char*)malloc(len + 1);
-  memcpy(note, text, len);
-  note[len] = '\0'; 
-  */
-  /*
-  Below replaces single quotes with two single quotes which escapes the 
-  single quote see:
-  https://stackoverflow.com/questions/25735805/replacing-a-character-in-a-string-char-array-with-multiple-characters-in-c
-  */
-
-  /*
-  const char *str = note;
-  int cnt = strlen(str)+1;
-   for (const char *p = str ; *p ; cnt += (*p++ == 39)) //39 -> ' *p terminates for at the end of the string where *p == 0
-          ;
-  //VLA
-  char escaped_note[cnt];
-  char *out = escaped_note;
-  const char *in = str;
-  while (*in) {
-      *out++ = *in;
-      if (*in == 39) *out++ = 39;
-      //if (*in == 133) *out++ = 32;
-
-      in++;
-  }
-
-  *out = '\0';
-*/
   int id = get_id(O.fr);
 
   char *query = (char*)malloc(text.size() + 100);
@@ -3430,11 +3296,9 @@ void update_note_pg(void) {
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
   
-  //free(note);
   free(query);
   PQclear(res);
   //do_exit(conn);
-  //free(text);
   E.dirty = 0;
 
   outlineSetMessage("Updated %d", id);
@@ -3882,9 +3746,7 @@ void update_row_pg(void) {
       }
     }
 
-    //With C++11, you can do std::string(v.data()) or, if your vector does not contain a '\0' at the end, std::string(v.data(), v.size())
-
-  std::string title(row.chars.data(), row.chars.size());
+  std::string title = row.title;
   size_t pos = title.find("'");
   while(pos != std::string::npos)
     {
@@ -3925,7 +3787,7 @@ void update_row_sqlite(void) {
   }
 
   if (row.id != -1) {
-    std::string title(row.chars.data(), row.chars.size());
+    std::string title = row.title;
     size_t pos = title.find("'");
     while(pos != std::string::npos)
       {
@@ -3969,7 +3831,6 @@ void update_row_sqlite(void) {
     }
   
     std::stringstream query2;
-    //query.clear(); this did not work elsewhere so being cautious
     query2 << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
     rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
       
@@ -3991,7 +3852,7 @@ void update_row_sqlite(void) {
 
 int insert_row_pg(orow& row) {
 
-  std::string title(row.chars.data(), row.chars.size());
+  std::string title = row.title;
   size_t pos = title.find("'");
   while(pos != std::string::npos)
     {
@@ -4094,25 +3955,13 @@ int insert_row_pg(orow& row) {
 
 int insert_row_sqlite(orow& row) {
 
-  std::string title(row.chars.data(), row.chars.size());
+  std::string title = row.title;
   size_t pos = title.find("'");
   while(pos != std::string::npos)
     {
       title.replace(pos, 1, "''");
       pos = title.find("'", pos + 2);
     }
-
- /*
- // this was replaced by created context_map so could get value directly
- // not sure it's worth it
- int context_tid = 1; //just in case there isn't a match but there has to be
- for (int k = 1; k < 12; k++) {
-   if (O.context.compare(context[k]) == 0) {
-     context_tid = k;
-     break;
-   }
- }
-*/
 
   std::stringstream query;
   query << "INSERT INTO task ("
@@ -4215,15 +4064,12 @@ void update_rows_pg(void) {
     }
   }
 
-  //for (int i=0; i < O.rows.size();i++) {
   for (auto row: O.rows) {
-    //orow& row = O.rows.at(i]);
 
     if (!(row.dirty)) continue;
 
     if (row.id != -1) {
-
-      std::string title(row.chars.data(), row.chars.size());
+      std::string title = row.title;
       size_t pos = title.find("'");
       while(pos != std::string::npos)
       {
@@ -4287,7 +4133,8 @@ void update_rows_sqlite(void) {
   for (auto row: O.rows) {
     if (!(row.dirty)) continue;
     if (row.id != -1) {
-      std::string title(row.chars.data(), row.chars.size());
+      //std::string title(row.chars.data(), row.chars.size());
+      std::string title = row.title;
       size_t pos = title.find("'");
       while(pos != std::string::npos)
       {
@@ -4361,7 +4208,7 @@ int get_id(int fr) {
 
 void outlineChangeCase() {
   orow& row = O.rows.at(O.fr);
-  char d = row.chars.at(O.fc);
+  char d = row.title.at(O.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -4377,14 +4224,9 @@ void outlineYankLine(int n){
   line_buffer.clear();
 
   for (int i=0; i < n; i++) {
-    line_buffer.push_back(O.rows.at(O.cy+i).chars);
-    //int len = O.row[O.cy+i].size;
-    //line_buffer[i] = malloc(len + 1);
-    //memcpy(line_buffer[i], O.row[O.cy+i].chars, len);
-    //line_buffer[i][len] = '\0';
+    line_buffer.push_back(O.rows.at(O.cy+i).title);
   }
   // set string_buffer to "" to signal should paste line and not chars
- // string_buffer[0] = '\0';
   string_buffer.clear();
 }
 
@@ -4392,24 +4234,18 @@ void outlineYankString() {
   orow& row = O.rows.at(O.cy);
   string_buffer.clear();
 
-  std::string::const_iterator first = row.chars.begin() + O.highlight[0];
-  std::string::const_iterator last = row.chars.begin() + O.highlight[1];
-  //std::vector<char> temp(first, last);
-  //string_buffer = temp;
+  std::string::const_iterator first = row.title.begin() + O.highlight[0];
+  std::string::const_iterator last = row.title.begin() + O.highlight[1];
   string_buffer = std::string(first, last);
 
 }
-
-/*************started here*****************/
-
-
 
 void outlinePasteString(void) {
   orow& row = O.rows.at(O.fr);
 
   if (O.rows.empty() || string_buffer.empty()) return;
 
-  row.chars.insert(row.chars.begin() + O.fc, string_buffer.begin(), string_buffer.end());
+  row.title.insert(row.title.begin() + O.fc, string_buffer.begin(), string_buffer.end());
   O.fc += string_buffer.size();
   row.dirty = true;
 }
@@ -4417,14 +4253,14 @@ void outlinePasteString(void) {
 void outlineDelWord() {
 
   orow& row = O.rows.at(O.fr);
-  if (row.chars[O.fc] < 48) return;
+  if (row.title[O.fc] < 48) return;
 
   int i,j,x;
   for (i = O.fc; i > -1; i--){
-    if (row.chars[i] < 48) break;
+    if (row.title[i] < 48) break;
     }
-  for (j = O.fc; j < row.chars.size() ; j++) {
-    if (row.chars[j] < 48) break;
+  for (j = O.fc; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
   }
   O.fc = i+1;
 
@@ -4437,13 +4273,13 @@ void outlineDelWord() {
 
 void outlineDeleteToEndOfLine(void) {
   orow& row = O.rows.at(O.fr);
-  row.chars.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  row.title.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
   row.dirty = true;
   }
 
 void outlineMoveCursorEOL() {
 
-  O.fc = O.rows.at(O.fr).chars.size() - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
+  O.fc = O.rows.at(O.fr).title.size() - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
@@ -4451,8 +4287,8 @@ void outlineMoveEndWord2() {
   int j;
   orow& row = O.rows.at(O.fr);
 
-  for (j = O.fc + 1; j < row.chars.size() ; j++) {
-    if (row.chars[j] < 48) break;
+  for (j = O.fc + 1; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
   }
 
   O.fc = j - 1;
@@ -4463,15 +4299,15 @@ void outlineMoveNextWord() {
   int j;
   orow& row = O.rows.at(O.fr);
 
-  for (j = O.fc + 1; j < row.chars.size(); j++) {
-    if (row.chars[j] < 48) break;
+  for (j = O.fc + 1; j < row.title.size(); j++) {
+    if (row.title[j] < 48) break;
   }
 
   O.fc = j - 1;
   // end outlineMoveEndWord2
 
-  for (j = O.fc + 1; j < row.chars.size() ; j++) { //+1
-    if (row.chars[j] > 48) break;
+  for (j = O.fc + 1; j < row.title.size() ; j++) { //+1
+    if (row.title[j] > 48) break;
   }
   O.fc = j;
 }
@@ -4480,14 +4316,14 @@ void outlineMoveBeginningWord() {
   orow& row = O.rows.at(O.fr);
   if (O.fc == 0) return;
   for (;;) {
-    if (row.chars[O.fc - 1] < 48) O.fc--;
+    if (row.title[O.fc - 1] < 48) O.fc--;
     else break;
     if (O.fc == 0) return;
   }
 
   int i;
   for (i = O.fc - 1; i > -1; i--){
-    if (row.chars[i] < 48) break;
+    if (row.title[i] < 48) break;
   }
 
   O.fc = i + 1;
@@ -4501,39 +4337,37 @@ void outlineMoveBeginningWord() {
 
 void outlineMoveEndWord() {
   orow& row = O.rows.at(O.fr);
-  if (O.fc == row.chars.size() - 1) return;
+  if (O.fc == row.title.size() - 1) return;
   for (;;) {
-    if (row.chars[O.fc + 1] < 48) O.fc++;
+    if (row.title[O.fc + 1] < 48) O.fc++;
     else break;
-    if (O.fc == row.chars.size() - 1) return;
+    if (O.fc == row.title.size() - 1) return;
   }
 
   int j;
-  for (j = O.fc + 1; j < row.chars.size() ; j++) {
-    if (row.chars[j] < 48) break;
+  for (j = O.fc + 1; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
   }
 
   O.fc = j - 1;
 }
 
 void outlineGetWordUnderCursor(){
-  //orow *row = &O.row[O.fr];
-  //std::vector<char>& chars = O.rows.at(O.fr).chars;
-  std::string& chars = O.rows.at(O.fr).chars;
-  if (chars[O.fc] < 48) return;
+  std::string& title = O.rows.at(O.fr).title;
+  if (title[O.fc] < 48) return;
 
   int i,j,x;
 
   for (i = O.fc - 1; i > -1; i--){
-    if (chars[i] < 48) break;
+    if (title[i] < 48) break;
   }
 
-  for (j = O.fc + 1; j < chars.size() ; j++) {
-    if (chars[j] < 48) break;
+  for (j = O.fc + 1; j < title.size() ; j++) {
+    if (title[j] < 48) break;
   }
 
   for (x=i+1; x<j; x++) {
-      search_string.push_back(chars.at(x));
+      search_string.push_back(title.at(x));
   }
 
   outlineSetMessage("word under cursor: <%s>", search_string.c_str());
@@ -4547,12 +4381,11 @@ void outlineFindNextWord() {
   y = O.fr;
   x = O.fc + 1; //in case sitting on beginning of the word
    for (unsigned int n=0; n < O.rows.size(); n++) {
-     //std::vector<char>& chars = O.rows.at(y).chars;
-     std::string& chars = O.rows.at(y).chars;
-     auto res = std::search(std::begin(chars) + x, std::end(chars), std::begin(search_string), std::end(search_string));
-     if (res != std::end(chars)) {
+     std::string& title = O.rows.at(y).title;
+     auto res = std::search(std::begin(title) + x, std::end(title), std::begin(search_string), std::end(search_string));
+     if (res != std::end(title)) {
          O.fr = y;
-         O.fc = res - chars.begin();
+         O.fc = res - title.begin();
          break;
      }
      y++;
@@ -4562,15 +4395,6 @@ void outlineFindNextWord() {
 
     outlineSetMessage("x = %d; y = %d", x, y); 
 }
-
-/*** slz testing stuff ***/
-
-/*void getcharundercursor() {
-  orow *row = &O.row[O.cy];
-  char d = row->chars[O.cx];
-  outlineSetMessage("character under cursor at position %d of %d: %c", O.cx, row->size, d); 
-}
-*/
 
 void editorScroll(void) {
 
@@ -4900,11 +4724,6 @@ void editorMoveCursor(int key) {
       if (E.fr < E.rows.size() - 1) E.fr++;
       break;
   }
-  /*
-  // now testing putting this in editorScroll
-  int row_size = E.row[E.fr].size;
-  if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT);
-  */
 }
 
 // calls readKey()
@@ -5203,10 +5022,6 @@ void editorProcessKeypress(void) {
           return;
     
         case '^':
-        //;
-      //{
-          //orow *outline_row = &O.row[O.fr];
-          //view_html(outline_row->id);
           view_html(O.rows.at(O.fr).id);
 
           /*
@@ -5295,8 +5110,6 @@ void editorProcessKeypress(void) {
           return;
     
         case C_dd:
-          //;
-          //int fr = E.fr;
           if (!E.rows.empty()) {
             int r = E.rows.size() - E.fr;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
@@ -5784,8 +5597,6 @@ int editorGetLineInRowWW__old(int r, int c) {
 int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
-  //erow *row = &E.row[r];
-  //if (row->size == 0) return 0;
   std::string& row = E.rows.at(r);
   if (row.empty()) return 0;
 
@@ -5833,8 +5644,6 @@ int editorGetLineCharCountWW(int r, int line) {
 // of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetLineInRowWW(int r, int c) {
 
-  //erow *row = &E.row[r];
-  //if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
   std::string& row = E.rows.at(r);
   if (row.empty()) return 1; //10-12-2019
 
@@ -5908,7 +5717,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
   for (;;) {
 
     /*
-    // this is neccessry here or the alternative solution below
+    // this is neccessary here or the alternative solution below
     if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
       length += left;
       len = left;
@@ -6171,8 +5980,6 @@ void editorYankString(void) {
 
   std::string::const_iterator first = row.begin() + E.highlight[0];
   std::string::const_iterator last = row.begin() + E.highlight[1];
-  //std::vector<char> temp(first, last);
-  //string_buffer = temp;
   string_buffer = std::string(first, last);
 }
 
@@ -6190,9 +5997,6 @@ void editorPasteLine(void){
   if (E.rows.empty())  editorInsertRow(0, nullptr, 0);
 
   for (int i=0; i < line_buffer.size(); i++) {
-    //if (line_buffer[i] == NULL) break;
-
-    //int len = strlen(line_buffer[i]);
     int len = (line_buffer[i].size());
     E.fr++;
     editorInsertRow(E.fr, &line_buffer[i][0], len);
@@ -6229,7 +6033,6 @@ int editorIndentAmount(int r) {
   if (E.rows.empty()) return 0;
 
   std::string& row = E.rows.at(r);
-  //if (row->size == 0) return 0; //below should catch this
 
   for ( i = 0; i < row.size(); i++) {
     if (row[i] != ' ') break;}
@@ -6261,7 +6064,6 @@ void editorDelWord(void) {
 
 void editorDeleteToEndOfLine(void) {
 
-  //erow *row = &E.row[E.fr];
   std::string& row = E.rows.at(E.fr);
   row.resize(E.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
 
@@ -6352,7 +6154,6 @@ void editorMoveBeginningWord(void) {
     for (;;) {
       E.fr--;
       std::string& row = E.rows.at(E.fr);
-      //row = &E.row[E.fr];
       if (E.fr == 0 && row.size() == 0) return;
       if (row.size() == 0) continue;
       if (row.size()) {
@@ -6400,7 +6201,6 @@ void editorMoveEndWord(void) {
         if (E.fr == E.rows.size() - 1) return; // no more rows
         E.fr++;
         std::string& row = E.rows.at(E.fr);
-        //row = E.rows[E.fr];
         if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
         if (row.size()) {
           j = 0;
@@ -6522,8 +6322,6 @@ void editorFindNextWord(void) {
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for (;;) {
     row = E.rows[y];
-    //std::string temp(search_string.data(), search_string.size());
-    //z = strstr(&(row[x]), temp.c_str());
     z = strstr(&(row[x]), search_string.c_str());
     if (z != NULL) break;
     y++;
@@ -6550,7 +6348,6 @@ void editorMarkupLink(void) {
 
 
   for (y=0; y<numrows; y++){
-    //erow *row = &E.row[y];
     std::string row = E.rows.at(y);
     if (row[0] == '[') continue;
     if (strstr(&row[0], bracket_http)) continue;
