@@ -12,7 +12,6 @@
 //#define OUTLINE_RIGHT_MARGIN 2
 //#define EDITOR_LEFT_MARGIN 55
 //#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
-//#define ABUF_INIT {NULL, 0}
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
@@ -139,7 +138,7 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
-static char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', '0', '0', ':', '0', '0', '\0'};
+static char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
 //static constexpr std::array<char,16> BASE_DATE {"1970-01-01 00:00"}; //changed to 16 from 17
 
 enum Command {
@@ -234,7 +233,6 @@ static std::map<std::string, int> lookuptablemap {
   //{"e", C_edit}
 };
 
-//static char search_string[30] = {'\0'}; //used for '*' and 'n' searches
 static std::vector<char> search_string;
 // buffers below for yanking
 //char *line_buffer[20] = {NULL}; //yanking lines
@@ -253,10 +251,8 @@ static std::vector<char> string_buffer; //yanking chars ******* this needs to be
 */
 
 typedef struct orow {
-  //int size; //the number of characters in the line -- doesn't seem necessary - why not just use strlen(chars) [renamed to title]
-  //char *chars; //points at the character array of a row - mem assigned by malloc
   std::vector<char> chars;
-
+  // this should be std::string title
   int id; //listmanager db id of the row
   bool star;
   bool deleted;
@@ -266,21 +262,6 @@ typedef struct orow {
   //std::array<char,16> modified; // display 16 chars plus need terminating '\0'
   
 } orow;
-
-//don't really need a struct just erow_chars
-/*typedef struct erow {
-  int size; //the number of characters in the line
-  //char *chars; //points at the character array of a row - mem assigned by malloc
-  std::vector<char> chars;
-} erow;
-*/
-//typedef std::vector<char> erow_chars;
-/*** append buffer used for writing to the screen***/
-
-struct abuf {
-  char *b;
-  int len;
-};
 
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
@@ -5190,7 +5171,7 @@ void editorProcessKeypress(void) {
     
         case '*':  
           getWordUnderCursor();
-          editorFindNextWord(); 
+          editorFindNextWord();
           E.command[0] = '\0';
           return;
     
@@ -6485,6 +6466,8 @@ void editorDecorateVisual(int c) {
 }
 
 void getWordUnderCursor(void){
+
+  search_string.clear();
  
   if (E.rows.empty()) return;
   std::vector<char>& row = E.rows.at(E.fr);
@@ -6500,8 +6483,8 @@ void getWordUnderCursor(void){
     if (row[j] < 48) break;
   }
 
-  for (x = i + 1, n = 0; x < j; x++, n++) {
-      search_string[n] = row[x];
+  for (x=i+1; x<j; x++) {
+      search_string.push_back(row.at(x));
   }
 
   std::string temp(search_string.data(), search_string.size());
