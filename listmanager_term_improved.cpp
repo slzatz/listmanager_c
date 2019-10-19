@@ -233,12 +233,15 @@ static std::map<std::string, int> lookuptablemap {
   //{"e", C_edit}
 };
 
-static std::vector<char> search_string;
+//static std::vector<char> search_string;
+static std::string search_string;
 // buffers below for yanking
 //char *line_buffer[20] = {NULL}; //yanking lines
-static std::vector<std::vector<char>> line_buffer;
+//static std::vector<std::vector<char>> line_buffer;
+static std::vector<std::string> line_buffer;
 //char string_buffer[200] = {'\0'}; //yanking chars ******* this needs to be malloc'd
-static std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
+//static std::vector<char> string_buffer; //yanking chars ******* this needs to be malloc'd
+static std::string string_buffer; //yanking chars ******* this needs to be malloc'd
 
 /*** data ***/
 
@@ -251,8 +254,9 @@ static std::vector<char> string_buffer; //yanking chars ******* this needs to be
 */
 
 typedef struct orow {
-  std::vector<char> chars;
+  //std::vector<char> chars;
   // this should be std::string title
+  std::string chars;
   int id; //listmanager db id of the row
   bool star;
   bool deleted;
@@ -297,10 +301,12 @@ struct editorConfig {
   //erow *row; //(e)ditorrow stores a pointer to a contiguous collection of erow structures 
   //std::vector<erow> rows;
   //std::vector<erow_chars> rows;
-  std::vector<std::vector<char>> rows;
+  //std::vector<std::vector<char>> rows;
+  std::vector<std::string> rows;
   //int prev_numrows; // the number of rows of text so last text row is always row numrows
   //erow *prev_row; //for undo purposes
-  std::vector<std::vector<char>> prev_rows;
+  //std::vector<std::vector<char>> prev_rows;
+  std::vector<std::string> prev_rows;
   int dirty; //file changes since last save
   char *filename;
   char message[120]; //status msg is a character array max 80 char
@@ -524,8 +530,9 @@ void get_recent_pg(int max) {
     //row.size = len;
     //std::vector<char> temp(argv[3], argv[3] + len);
     //row.chars = temp;
-    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    row.chars = temp;
+    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    //row.chars = temp;
+    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     //for (int j=0; j < len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
@@ -587,8 +594,9 @@ void get_items_by_context_pg(std::string context, int max) {
     int len = strlen(PQgetvalue(res, i, 3));
     //row.size = len;
     //for (int j=0; j<len+1; j++) {row.chars.emplace_back(PQgetvalue(res, j, 3));}
-    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    row.chars = temp;
+    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    //row.chars = temp;
+    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -749,8 +757,9 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   orow row;
 
   int len = strlen(argv[3]);
-  std::vector<char> temp(argv[3], argv[3] + len);
-  row.chars = temp;
+  //std::vector<char> temp(argv[3], argv[3] + len);
+  //row.chars = temp;
+  row.chars = std::string(argv[3], argv[3] + len);
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
@@ -817,8 +826,9 @@ void get_items_by_id_pg(char *query) {
   for(i=0; i<rows; i++) {
     orow row;
     len = strlen(PQgetvalue(res, i, 3));
-    std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
-    row.chars = temp;
+    //std::vector<char> temp(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    //row.chars = temp;
+    row.chars = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
@@ -1319,11 +1329,13 @@ void outlineInsertRow(int at, char* s, size_t len, int id, bool star, bool delet
   orow row;
 
   if (s==nullptr) {
-    std::vector<char> temp {};
-    row.chars = temp;
+    //std::vector<char> temp {};
+    //row.chars = temp;
+    row.chars = std::string();
   } else {
-    std::vector<char> temp(s, s + len);
-    row.chars = temp;
+    //std::vector<char> temp(s, s + len);
+    //row.chars = temp;
+    row.chars = std::string(s, s+len);
   }
   row.id = id;
   row.star = star;
@@ -1417,14 +1429,17 @@ void outlineSave() {
 // fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, char *s, size_t len) {
 
-  std::vector<char> row;
+  //std::vector<char> row;
+  std::string row;
 
   if (s==nullptr) {
-    std::vector<char> temp {};
-    row = temp;
+    //std::vector<char> temp {};
+    //row = temp;
+    row = std::string();
   } else {
-    std::vector<char> temp(s, s + len);
-    row = temp;
+    //std::vector<char> temp(s, s + len);
+    //row = temp;
+    row = std::string(s, s + len);
   }
 
   auto pos = E.rows.begin() + fr;
@@ -1435,10 +1450,10 @@ void editorInsertRow(int fr, char *s, size_t len) {
 // version that takes row and string to insert
 void editorInsertRow(int fr, std::string s) {
 
-  std::vector<char> row;
+  std::string row;
 
   //if (!s.empty()) //appears to behave correctly without the if
-    std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
+  std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
 
   auto pos = E.rows.begin() + fr;
   E.rows.insert(pos, row);
@@ -1463,7 +1478,7 @@ void editorDelRow(int r) {
 }
 
 // only used by editorBackspace
-void editorRowAppendString(std::vector<char>& row, std::vector<char>& s) {
+void editorRowAppendString(std::string& row, std::string& s) {
   row.insert(row.end() - 1, s.begin(), s.end());
   E.dirty++;
 }
@@ -1487,7 +1502,7 @@ void editorInsertChar(int chr) {
     editorInsertRow(0, std::string());
   }
 
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   row.insert(row.begin() + E.fc, chr);
   E.dirty++;
   E.fc++;
@@ -1502,9 +1517,9 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
     return;
   }
     
-  std::vector<char>& current_row = E.rows.at(E.fr);
-  std::vector<char> new_row1(current_row.begin(), current_row.begin() + E.fc);
-  std::vector<char> new_row2(current_row.begin() + E.fc, current_row.end());
+  std::string& current_row = E.rows.at(E.fr);
+  std::string new_row1(current_row.begin(), current_row.begin() + E.fc);
+  std::string new_row2(current_row.begin() + E.fc, current_row.end());
 
   int indent = (E.smartindent) ? editorIndentAmount(E.fr) : 0;
 
@@ -1549,7 +1564,7 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (E.rows.size() == 0 || row.size() == 0 ) return;
   row.erase(row.begin() + E.fc);
   E.dirty++;
@@ -1557,7 +1572,7 @@ void editorDelChar(void) {
 
 // used by 'x' in editor/visual mode
 void editorDelChar2(int fr, int fc) {
-  std::vector<char>& row = E.rows.at(fr);
+  std::string& row = E.rows.at(fr);
   if (E.rows.size() == 0 || row.size() == 0 ) return;
   row.erase(row.begin() + fc);
   E.dirty++;
@@ -1568,7 +1583,7 @@ void editorBackspace(void) {
 
   if (E.fc == 0 && E.fr == 0) return;
 
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
 
   if (E.fc > 0) {
     if (E.cx > 0) { // We want this E.cx - don't change to E.fc!!!
@@ -1598,8 +1613,9 @@ std::string editorRowsToString(void) {
 
   std::string z = "";
   for (auto i: E.rows) {
-      std::string s(i.data(), i.size());
-      z += s;
+      //std::string s(i.data(), i.size());
+      //z += s;
+      z += i;
       z += '\n';
   }
   z.pop_back(); //pop last return that we added
@@ -1855,8 +1871,9 @@ void outlineDrawStatusBarNew(std::string& ab) {
   } else {
 
     orow& row = O.rows.at(O.fr);
-    std::string title(row.chars.data(), row.chars.size());
-    std::string truncated_title = title.substr(0, 19);
+    //std::string title(row.chars.data(), row.chars.size());
+    //std::string truncated_title = title.substr(0, 19);
+    std::string truncated_title = row.chars.substr(0, 19);
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -4375,10 +4392,11 @@ void outlineYankString() {
   orow& row = O.rows.at(O.cy);
   string_buffer.clear();
 
-  std::vector<char>::const_iterator first = row.chars.begin() + O.highlight[0];
-  std::vector<char>::const_iterator last = row.chars.begin() + O.highlight[1];
-  std::vector<char> temp(first, last);
-  string_buffer = temp;
+  std::string::const_iterator first = row.chars.begin() + O.highlight[0];
+  std::string::const_iterator last = row.chars.begin() + O.highlight[1];
+  //std::vector<char> temp(first, last);
+  //string_buffer = temp;
+  string_buffer = std::string(first, last);
 
 }
 
@@ -4500,10 +4518,11 @@ void outlineMoveEndWord() {
 
 void outlineGetWordUnderCursor(){
   //orow *row = &O.row[O.fr];
-  std::vector<char>& chars = O.rows.at(O.fr).chars;
+  //std::vector<char>& chars = O.rows.at(O.fr).chars;
+  std::string& chars = O.rows.at(O.fr).chars;
   if (chars[O.fc] < 48) return;
 
-  int i,j,n,x;
+  int i,j,x;
 
   for (i = O.fc - 1; i > -1; i--){
     if (chars[i] < 48) break;
@@ -4513,13 +4532,11 @@ void outlineGetWordUnderCursor(){
     if (chars[j] < 48) break;
   }
 
-  for (x = i + 1, n = 0; x < j; x++, n++) {
-      search_string[n] = chars[x];
+  for (x=i+1; x<j; x++) {
+      search_string.push_back(chars.at(x));
   }
 
-  //search_string[n] = '\0';
-  std::string temp(search_string.data(), search_string.size());
-  outlineSetMessage("word under cursor: <%s>", temp.c_str());
+  outlineSetMessage("word under cursor: <%s>", search_string.c_str());
 
 }
 
@@ -4530,7 +4547,8 @@ void outlineFindNextWord() {
   y = O.fr;
   x = O.fc + 1; //in case sitting on beginning of the word
    for (unsigned int n=0; n < O.rows.size(); n++) {
-     std::vector<char>& chars = O.rows.at(y).chars;
+     //std::vector<char>& chars = O.rows.at(y).chars;
+     std::string& chars = O.rows.at(y).chars;
      auto res = std::search(std::begin(chars) + x, std::end(chars), std::begin(search_string), std::end(search_string));
      if (res != std::end(chars)) {
          O.fr = y;
@@ -4636,7 +4654,7 @@ void editorDrawRowsNew(std::string& ab) {
       }
 
     //erow *row = &E.row[filerow];
-    std::vector<char>& row = E.rows.at(filerow);
+    std::string& row = E.rows.at(filerow);
     char *start,*right_margin;
     int left, width;
     bool more_lines = true;
@@ -5675,7 +5693,7 @@ int editorGetLinesInRowWW(int r) {
   //erow *row = &E.row[r];
 
   //if (E.rows.empty()) return 0; ////////////////
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
@@ -5720,7 +5738,7 @@ int editorGetLinesInRowWW(int r) {
 int editorGetLineInRowWW__old(int r, int c) {
 
   //erow *row = &E.row[r];
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   if (row.empty()) return 1;
 
   char *start,*right_margin;
@@ -5768,7 +5786,7 @@ int editorGetLineCharCountWW(int r, int line) {
 
   //erow *row = &E.row[r];
   //if (row->size == 0) return 0;
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   if (row.empty()) return 0;
 
   char *start,*right_margin;
@@ -5817,7 +5835,7 @@ int editorGetLineInRowWW(int r, int c) {
 
   //erow *row = &E.row[r];
   //if (row->size == 0) return 1; // this is zero in ScreenX and 1 for row
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   if (row.empty()) return 1; //10-12-2019
 
   char *start,*right_margin;
@@ -5874,7 +5892,7 @@ int editorGetLineInRowWW(int r, int c) {
 // of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
 int editorGetScreenXFromRowCol(int r, int c) {
 
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   if (row.empty() || (c == 0)) return 0;
 
   char *start,*right_margin;
@@ -5981,7 +5999,7 @@ int *editorGetRowLineCharWW(void) {
 // now only useful (possibly) for debugging
 int editorGetCharInRowWW(int r, int line) {
   //erow *row = &E.row[r];
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   char *start,*right_margin;
   int left, width, num, len, length;
 
@@ -6016,7 +6034,7 @@ int *editorGetRowLineScreenXFromRowCharPosWW(int r, int c) {
 
   static int rowline_screenx[2]; //if not use static then it's a variable local to function
   //erow *row = &E.row[r];
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   char *start,*right_margin;
   int width, len, left, length, num; //, prev_length;  
 
@@ -6121,7 +6139,7 @@ void editorRestoreSnapshot(void) {
 
 void editorChangeCase(void) {
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   char d = row.at(E.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
@@ -6148,19 +6166,20 @@ void editorYankString(void) {
   // doesn't cross rows right now
   if (E.rows.empty()) return;
 
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   string_buffer.clear();
 
-  std::vector<char>::const_iterator first = row.begin() + E.highlight[0];
-  std::vector<char>::const_iterator last = row.begin() + E.highlight[1];
-  std::vector<char> temp(first, last);
-  string_buffer = temp;
+  std::string::const_iterator first = row.begin() + E.highlight[0];
+  std::string::const_iterator last = row.begin() + E.highlight[1];
+  //std::vector<char> temp(first, last);
+  //string_buffer = temp;
+  string_buffer = std::string(first, last);
 }
 
 void editorPasteString(void) {
 
   if (E.rows.empty() || string_buffer.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
 
   row.insert(row.begin() + E.fc, string_buffer.begin(), string_buffer.end());
   E.fc += string_buffer.size();
@@ -6183,7 +6202,7 @@ void editorPasteLine(void){
 void editorIndentRow(void) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
   E.fc = editorIndentAmount(E.fr);
   for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
@@ -6193,7 +6212,7 @@ void editorIndentRow(void) {
 void editorUnIndentRow(void) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
   E.fc = 0;
   for (int i = 0; i < E.indent; i++) {
@@ -6209,7 +6228,7 @@ int editorIndentAmount(int r) {
 
   if (E.rows.empty()) return 0;
 
-  std::vector<char>& row = E.rows.at(r);
+  std::string& row = E.rows.at(r);
   //if (row->size == 0) return 0; //below should catch this
 
   for ( i = 0; i < row.size(); i++) {
@@ -6222,7 +6241,7 @@ int editorIndentAmount(int r) {
 void editorDelWord(void) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (row[E.fc] < 48) return;
 
   int i,j,x;
@@ -6243,7 +6262,7 @@ void editorDelWord(void) {
 void editorDeleteToEndOfLine(void) {
 
   //erow *row = &E.row[E.fr];
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   row.resize(E.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
 
   E.dirty++;
@@ -6256,7 +6275,7 @@ void editorMoveCursorBOL(void) {
 
 void editorMoveCursorEOL(void) {
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (row.size()) E.fc = row.size() - 1;
 }
 
@@ -6266,7 +6285,7 @@ void editorMoveEndWord2() {
   int j;
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
 
   for (j = E.fc + 1; j < row.size() ; j++) {
     if (row[j] < 48) break;
@@ -6282,7 +6301,7 @@ void editorMoveNextWord(void) {
   int i,j;
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
 
   if (row[E.fc] < 48) j = E.fc;
   else {
@@ -6297,7 +6316,7 @@ void editorMoveNextWord(void) {
     
     for (;;) {
       E.fr++;
-      std::vector<char>& row = E.rows.at(E.fr);
+      std::string& row = E.rows.at(E.fr);
       //row = E.row[E.fr];
       if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
       if (row.size()) break;
@@ -6325,14 +6344,14 @@ void editorMoveNextWord(void) {
 void editorMoveBeginningWord(void) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   int j = E.fc;
 
   if (E.fc == 0 || (E.fc == 1 && row[0] < 48)) {
     if (E.fr == 0) return;
     for (;;) {
       E.fr--;
-      std::vector<char>& row = E.rows.at(E.fr);
+      std::string& row = E.rows.at(E.fr);
       //row = &E.row[E.fr];
       if (E.fr == 0 && row.size() == 0) return;
       if (row.size() == 0) continue;
@@ -6367,7 +6386,7 @@ void editorMoveBeginningWord(void) {
 void editorMoveEndWord(void) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
 
   int j = (row[E.fc + 1] < 48) ? E.fc + 1 : E.fc;
 
@@ -6380,7 +6399,7 @@ void editorMoveEndWord(void) {
       for (;;) {
         if (E.fr == E.rows.size() - 1) return; // no more rows
         E.fr++;
-        std::vector<char>& row = E.rows.at(E.fr);
+        std::string& row = E.rows.at(E.fr);
         //row = E.rows[E.fr];
         if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
         if (row.size()) {
@@ -6404,7 +6423,7 @@ void editorMoveEndWord(void) {
 void editorDecorateWord(int c) {
 
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   char cc;
   if (row[E.fc] < 48) return;
 
@@ -6470,10 +6489,10 @@ void getWordUnderCursor(void){
   search_string.clear();
  
   if (E.rows.empty()) return;
-  std::vector<char>& row = E.rows.at(E.fr);
+  std::string& row = E.rows.at(E.fr);
   if (row[E.fc] < 48) return;
 
-  int i,j,n,x;
+  int i,j,x;
 
   for (i = E.fc - 1; i > -1; i--){
     if (row[i] < 48) break;
@@ -6487,8 +6506,7 @@ void getWordUnderCursor(void){
       search_string.push_back(row.at(x));
   }
 
-  std::string temp(search_string.data(), search_string.size());
-  editorSetMessage("word under cursor: <%s>", temp.c_str());
+  editorSetMessage("word under cursor: <%s>", search_string.c_str());
 }
 
 // needs a little work and needs to wrap back on itself something odd about wrapping matches
@@ -6499,13 +6517,14 @@ void editorFindNextWord(void) {
 
   y = E.fr;
   x = E.fc + 10;
-  std::vector<char> row;
+  std::string row;
  
   /*n counter so we can exit for loop if there are  no matches for command 'n'*/
   for (;;) {
     row = E.rows[y];
-    std::string temp(search_string.data(), search_string.size());
-    z = strstr(&(row[x]), temp.c_str());
+    //std::string temp(search_string.data(), search_string.size());
+    //z = strstr(&(row[x]), temp.c_str());
+    z = strstr(&(row[x]), search_string.c_str());
     if (z != NULL) break;
     y++;
     x = 0;
@@ -6532,7 +6551,7 @@ void editorMarkupLink(void) {
 
   for (y=0; y<numrows; y++){
     //erow *row = &E.row[y];
-    std::vector<char> row = E.rows.at(y);
+    std::string row = E.rows.at(y);
     if (row[0] == '[') continue;
     if (strstr(&row[0], bracket_http)) continue;
 
