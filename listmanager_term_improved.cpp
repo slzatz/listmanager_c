@@ -1503,10 +1503,9 @@ void editorBackspace(void) {
   }
   E.dirty++;
 }
-///////////////////// stopped 02202019 1 pm
+
 /*** file i/o ***/
 
-// have not looked at this 02212019
 std::string editorRowsToString(void) {
 
   std::string z = "";
@@ -1548,6 +1547,10 @@ void editorReadFile(std::string file_name) {
 
   std::ifstream f(file_name);
   std::string line;
+
+  display_text.str(std::string());
+  display_text.clear(); ///////////
+  //display_text.seekg(0, std::ios::beg); /////////////
 
   while (getline(f, line)) {
     display_text << line << '\n';
@@ -3234,15 +3237,13 @@ void update_note_pg(void) {
 
   int id = get_id(O.fr);
 
-  char *query = (char*)malloc(text.size() + 100);
+  std::stringstream query;
 
-  sprintf(query, "UPDATE task SET note=\'%s\', "
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
+  query  << "UPDATE task SET note='" << text << "', "
+         << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
                    //"modified=LOCALTIMESTAMP - interval '4 hours' "
-                   "WHERE id=%d",
-                   text.c_str(), id);
 
-  PGresult *res = PQexec(conn, query); 
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     editorSetMessage(PQerrorMessage(conn));
@@ -3253,7 +3254,6 @@ void update_note_pg(void) {
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
   
-  free(query);
   PQclear(res);
   //do_exit(conn);
   E.dirty = 0;
@@ -3475,15 +3475,13 @@ void toggle_deleted_pg(void) {
     }
   }
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET deleted=%s, " 
-                 "modified=LOCALTIMESTAMP - interval '5 hours' "
-                 "WHERE id=%d", //tid
-                 (row.deleted) ? "False" : "True", id);
+  query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True")  << ", "
+        << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
 
-  PGresult *res = PQexec(conn, query); 
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
@@ -3507,13 +3505,12 @@ void touch_pg(void) {
     }
   }
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET modified=LOCALTIMESTAMP - interval '5 hours' "
-                 "WHERE id=%d", id); 
+  query << "UPDATE task SET modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
 
-  PGresult *res = PQexec(conn, query); 
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
@@ -3528,12 +3525,12 @@ void touch_pg(void) {
 
 void touch_sqlite(void) {
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
   //sprintf(query, "UPDATE task SET modified=datetime('now', '-5 hours') "
-  sprintf(query, "UPDATE task SET modified=datetime('now', '-4 hours') "
-                 "WHERE id=%d", id); 
+
+  query << "UPDATE task SET modified=datetime('now', '-4 hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3547,7 +3544,7 @@ void touch_sqlite(void) {
     return;
     }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3564,14 +3561,13 @@ void toggle_deleted_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET deleted=%s, " 
+  query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
                  //"modified=datetime('now', '-5 hours') "
-                 "modified=datetime('now', '-4 hours') "
-                 "WHERE id=%d", //tid
-                 (row.deleted) ? "False" : "True", id);
+        <<  "modified=datetime('now', '-4 hours') WHERE id=" << id; //tid
+
   sqlite3 *db;
   char *err_msg = 0;
     
@@ -3584,7 +3580,7 @@ void toggle_deleted_sqlite(void) {
     return;
     }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3611,20 +3607,14 @@ void toggle_star_pg(void) {
     }
   }
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
-  if (row.star)
-     sprintf(query, "UPDATE task SET star=False, " 
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                    id);
-  else 
-     sprintf(query, "UPDATE task SET star=True, " 
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                    id);
 
-  PGresult *res = PQexec(conn, query); 
+
+  query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
+        << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("Toggle star failed - %s", PQresultErrorMessage(res));
@@ -3642,14 +3632,13 @@ void toggle_star_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
 
-  char query[300];
+  std::stringstream query;
   int id = get_id(-1);
 
-  sprintf(query, "UPDATE task SET star=%s, " 
+  query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
                  //"modified=datetime('now', '-5 hours') "
-                 "modified=datetime('now', '-4 hours') "
-                 "WHERE id=%d", //tid
-                 (row.star) ? "False" : "True", id);
+        << "modified=datetime('now', '-4 hours') WHERE id=" << id; //tid
+
   sqlite3 *db;
   char *err_msg = 0;
     
@@ -3662,7 +3651,7 @@ void toggle_star_sqlite(void) {
     return;
   }
 
-  rc = sqlite3_exec(db, query, 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -3705,14 +3694,10 @@ void update_row_pg(void) {
       pos = title.find("'", pos + 2);
     }
 
-    char *query = (char*)malloc(title.size() + 100);
-  
-    sprintf(query, "UPDATE task SET title=\'%s\', "
-                     "modified=LOCALTIMESTAMP - interval '5 hours' "
-                     "WHERE id=%d",
-                     title.c_str(), row.id);
-  
-    PGresult *res = PQexec(conn, query); 
+    std::stringstream query;
+    query << "UPDATE task SET title='" << title << "', modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << row.id;
+
+    PGresult *res = PQexec(conn, query.str().c_str());
       
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
       outlineSetMessage(PQerrorMessage(conn));
@@ -3720,7 +3705,7 @@ void update_row_pg(void) {
       row.dirty = false;
       outlineSetMessage("Successfully update row %d", row.id);
     }  
-    free(query);
+
     PQclear(res);
 
   } else { 
@@ -3819,73 +3804,46 @@ int insert_row_pg(orow& row) {
    }
  }
 
- char *query = (char*)malloc(title.size() + 400); //longer than usual update query - non-title part takes about 300 bytes so being safe
+  std::stringstream query;
+  query << "INSERT INTO task ("
+        << "priority, "
+        << "title, "
+        << "folder_tid, "
+        << "context_tid, "
+        << "star, "
+        << "added, "
+        << "note, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "startdate "
+        << ") VALUES ("
+        << " 3," //priority
+        << "'" << title << "'," //title
+        << " 1," //folder_tid
+        //<< context_tid << ", " //context_tid
+        << context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
+        << " True," //star
+        << "date()," //added
+        << "'<This is a new note from sqlite>'," //note
+        << " False," //deleted
+        << " LOCALTIMESTAMP - interval '5 hours'" //created
+        << " LOCALTIMESTAMP - interval '5 hours'" //modified
+        << " CURRENT_DATE" //startdate
+        << ") RETURNING id;";
 
- //may be a problem if note or title have characters like ' so may need to \ ahead of those characters
- sprintf(query, "INSERT INTO task ("
-                                   //"tid, "
-                                   "priority, "
-                                   "title, "
-                                   //"tag, "
-                                   "folder_tid, "
-                                   "context_tid, "
-                                   //"duetime, "
-                                   "star, "
-                                   "added, "
-                                   //"completed, "
-                                   //"duedate, "
-                                   "note, "
-                                   //"repeat, "
-                                   "deleted, "
-                                   "created, "
-                                   "modified, "
-                                   "startdate "
-                                   //"remind) "
-                                   ") VALUES ("
-                                   //"%s," //tid
-                                   " %d," //priority
-                                   " \'%s\',"//title
-                                   //%s //tag
-                                   " %d," //folder_tid
-                                   " %d," //context_tid
-                                   //%s, //duetime
-                                   " %s," //star
-                                   "%s," //added
-                                   //"%s," //completed
-                                   //"%s," //duedate
-                                   " \'%s\'," //note
-                                   //s% //repeat
-                                   " %s," //deleted
-                                   " %s," //created
-                                   " %s," //modified
-                                   " %s" //startdate
-                                   //%s //remind
-                                   ") RETURNING id;",
+  /*
+   * not used:
+      tid,
+      tag,
+      duetime,
+      completed,
+      duedate,
+      repeat,
+      remind
+    */
 
-                                   //tid,
-                                   3, //priority,
-                                   title.c_str(),
-                                   //tag,
-                                   1, //folder_tid,
-                                   context_tid,
-                                   //duetime,
-                                   "True", //star,
-                                   "CURRENT_DATE", //starttime
-                                   //completed,
-                                   //duedate,
-                                   "<This is a new note>", //note,
-                                   //repeat,
-                                   "False", //deleted
-                                   "LOCALTIMESTAMP - interval '5 hours'", //created,
-                                   "LOCALTIMESTAMP - interval '5 hours'", //modified
-                                   "CURRENT_DATE" //startdate
-                                   //remind
-                                   );
-
-
-
-
-  PGresult *res = PQexec(conn, query);
+  PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
     outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
@@ -3897,7 +3855,6 @@ int insert_row_pg(orow& row) {
   row.id = atoi(PQgetvalue(res, 0, 0));
   row.dirty = false;
 
-  free(query);
   PQclear(res);
   outlineSetMessage("Successfully inserted new row with id %d", row.id);
 
@@ -3929,7 +3886,7 @@ int insert_row_sqlite(orow& row) {
         << "startdate "
         << ") VALUES ("
         << " 3," //priority
-        << "'" << title.c_str() << "'," //title
+        << "'" << title << "'," //title
         << " 1," //folder_tid
         //<< context_tid << ", " //context_tid
         << context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
@@ -3940,7 +3897,7 @@ int insert_row_sqlite(orow& row) {
         << " datetime('now', '-4 hours')," //created
         << " datetime('now', '-4 hours')," // modified
         << " date()" //startdate
-        <<");"; // RETURNING id;",
+        << ");"; // RETURNING id;",
 
   /*
    * not used:
@@ -4028,14 +3985,12 @@ void update_rows_pg(void) {
         pos = title.find("'", pos + 2);
       }
 
-      char *query = (char*)malloc(title.size() + 200);
+      std::stringstream query;
 
-      sprintf(query, "UPDATE task SET title=\'%s\', "
-                   "modified=LOCALTIMESTAMP - interval '5 hours' "
-                   "WHERE id=%d",
-                   title.c_str(), row.id);
+      query << "UPDATE task SET title='" << title << "', "
+            << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << row.id;
 
-      PGresult *res = PQexec(conn, query); 
+      PGresult *res = PQexec(conn, query.str().c_str());
   
       if (PQresultStatus(res) != PGRES_COMMAND_OK) {
         outlineSetMessage(PQerrorMessage(conn));
@@ -4045,7 +4000,6 @@ void update_rows_pg(void) {
         row.dirty = false;
         updated_rows[n] = row.id;
         n++;
-        free(query);
         PQclear(res);
       }  
     } else { 
@@ -4084,7 +4038,6 @@ void update_rows_sqlite(void) {
   for (auto row: O.rows) {
     if (!(row.dirty)) continue;
     if (row.id != -1) {
-      //std::string title(row.chars.data(), row.chars.size());
       std::string title = row.title;
       size_t pos = title.find("'");
       while(pos != std::string::npos)
