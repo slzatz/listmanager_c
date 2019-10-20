@@ -1,20 +1,13 @@
  /***  includes ***/
 
-//#define _DEFAULT_SOURCE
-//#define _BSD_SOURCE
-//#define _GNU_SOURCE
 #define CTRL_KEY(k) ((k) & 0x1f)
-//#define OUTLINE_ACTIVE 0 //tab should move back and forth between these
-//#define EDITOR_ACTIVE 1
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
 #define TOP_MARGIN 1
-//#define OUTLINE_RIGHT_MARGIN 2
-//#define EDITOR_LEFT_MARGIN 55
-//#define NKEYS ((int) (sizeof(lookuptable)/sizeof(lookuptable[0])))
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
+#define TZ_OFFSET 4 // time zone offset - either 4 or 5
 
 #include <Python.h>
 #include <ctype.h>
@@ -3240,8 +3233,7 @@ void update_note_pg(void) {
   std::stringstream query;
 
   query  << "UPDATE task SET note='" << text << "', "
-         << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
-                   //"modified=LOCALTIMESTAMP - interval '4 hours' "
+         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -3276,7 +3268,7 @@ void update_note_sqlite(void) {
   }
 
   int id = get_id(O.fr);
-  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-4 hours') WHERE id=" << id;
+  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3343,7 +3335,7 @@ void update_context_pg(int context_tid) {
   int id = get_id(-1);
 
   query << "UPDATE task SET context_tid=" << context_tid << ", "
-        << "modified=LOCALTIMESTAMP - interval '5 hours' "
+        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
         << "WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
@@ -3361,7 +3353,7 @@ void update_context_sqlite(int context_tid) {
   std::stringstream query;
   int id = get_id(-1);
 
-  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-4 hours') WHERE id=" << id;
+  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3402,14 +3394,9 @@ void toggle_completed_pg(void) {
 
   std::stringstream query;
   int id = get_id(-1);
-  if (row.completed)
-     query << "UPDATE task SET completed=NULL, "
-           << "modified=LOCALTIMESTAMP - interval '5 hours' "
-           <<  "WHERE id=" << id;
-  else 
-     query << "UPDATE task SET completed=CURRENT_DATE, "
-           << "modified=LOCALTIMESTAMP - interval '5 hours' "
-           <<  "WHERE id=" << id;
+  query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "CURRENT_DATE") << ", "
+        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
+        <<  "WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -3432,8 +3419,7 @@ void toggle_completed_sqlite(void) {
   int id = get_id(-1);
 
   query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
-                   //"modified=datetime('now', '-5 hours') "
-        << "modified=datetime('now', '-4 hours') "
+        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
         << "WHERE id=" << id; //tid
 
   sqlite3 *db;
@@ -3479,7 +3465,7 @@ void toggle_deleted_pg(void) {
   int id = get_id(-1);
 
   query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True")  << ", "
-        << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
+        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -3508,7 +3494,7 @@ void touch_pg(void) {
   std::stringstream query;
   int id = get_id(-1);
 
-  query << "UPDATE task SET modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
+  query << "UPDATE task SET modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -3528,9 +3514,7 @@ void touch_sqlite(void) {
   std::stringstream query;
   int id = get_id(-1);
 
-  //sprintf(query, "UPDATE task SET modified=datetime('now', '-5 hours') "
-
-  query << "UPDATE task SET modified=datetime('now', '-4 hours') WHERE id=" << id;
+  query << "UPDATE task SET modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3565,8 +3549,7 @@ void toggle_deleted_sqlite(void) {
   int id = get_id(-1);
 
   query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
-                 //"modified=datetime('now', '-5 hours') "
-        <<  "modified=datetime('now', '-4 hours') WHERE id=" << id; //tid
+        <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3612,7 +3595,7 @@ void toggle_star_pg(void) {
 
 
   query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
-        << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << id;
+        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -3636,8 +3619,7 @@ void toggle_star_sqlite(void) {
   int id = get_id(-1);
 
   query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
-                 //"modified=datetime('now', '-5 hours') "
-        << "modified=datetime('now', '-4 hours') WHERE id=" << id; //tid
+        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3695,7 +3677,7 @@ void update_row_pg(void) {
     }
 
     std::stringstream query;
-    query << "UPDATE task SET title='" << title << "', modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << row.id;
+    query << "UPDATE task SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
 
     PGresult *res = PQexec(conn, query.str().c_str());
       
@@ -3732,7 +3714,7 @@ void update_row_sqlite(void) {
       }
 
     std::stringstream query;
-    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
+    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
 
     sqlite3 *db;
     char *err_msg = 0;
@@ -3988,7 +3970,7 @@ void update_rows_pg(void) {
       std::stringstream query;
 
       query << "UPDATE task SET title='" << title << "', "
-            << "modified=LOCALTIMESTAMP - interval '5 hours' WHERE id=" << row.id;
+            << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
 
       PGresult *res = PQexec(conn, query.str().c_str());
   
@@ -4047,7 +4029,7 @@ void update_rows_sqlite(void) {
       }
 
       std::stringstream query;
-      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-4 hours') WHERE id=" << row.id;
+      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
 
       sqlite3 *db;
       char *err_msg = 0;
