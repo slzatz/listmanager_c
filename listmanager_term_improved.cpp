@@ -1002,7 +1002,7 @@ void solr_find(char *search_terms) {
               for (int i = 0; i < len-1; i++) {
                 query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << " DESC, ";
                }
-              query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size) << "DESC";
+              query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size) << " DESC";
 
               Py_DECREF(pValue);
 
@@ -2723,8 +2723,9 @@ void outlineProcessKeypress() {
 
         case 'r':
           outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-          if (O.context == "search") solr_find(search_terms);
-          else (*get_items_by_context)(O.context, MAX); 
+          //if (O.context == "search") solr_find(search_terms);
+          if (O.context == "search") (*search_db)(search_terms);
+          else (*get_items_by_context)(O.context, MAX);
           O.mode = NORMAL;
           return;
   
@@ -3048,9 +3049,11 @@ void fts5_sqlite(char *search_terms) {
   for (int i = 0; i < fts_counter-1; i++) {
     query << "task.id = " << fts_ids[i] << " DESC, ";
   }
-    query << "task.id = " << fts_ids[fts_counter-1] << "DESC";
+    query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
   (*get_items_by_id)(query);
+
+  //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 
 }
 
