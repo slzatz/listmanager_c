@@ -3809,8 +3809,8 @@ int insert_row_pg(orow& row) {
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
         << " False," //deleted
-        << " LOCALTIMESTAMP - interval '5 hours'" //created
-        << " LOCALTIMESTAMP - interval '5 hours'" //modified
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
         << " CURRENT_DATE" //startdate
         << ") RETURNING id;";
 
@@ -3876,8 +3876,8 @@ int insert_row_sqlite(orow& row) {
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
         << " False," //deleted
-        << " datetime('now', '-4 hours')," //created
-        << " datetime('now', '-4 hours')," // modified
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
         << " date()" //startdate
         << ");"; // RETURNING id;",
 
