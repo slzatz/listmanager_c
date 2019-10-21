@@ -258,8 +258,10 @@ struct outlineConfig {
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
+  //command and comman_line should be strings
   char command[10]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
   char command_line[20]; //for commands on the command line doesn't include ':' where that applies
+  //std::string command_line;
   int repeat;
   bool show_deleted;
   bool show_completed;
@@ -1948,6 +1950,7 @@ void outlineProcessKeypress() {
           NN = 0; //index to contexts
           //O.command[0] = '\0';
           O.command_line[0] = '\0';
+          //O.command_line.clear();
           outlineSetMessage(":"); 
           O.mode = COMMAND_LINE;
       }
@@ -2041,7 +2044,8 @@ void outlineProcessKeypress() {
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
-      command = (n && c < 128) ? keyfromstringcpp(std::string(O.command)) : c;
+      //command = (n && c < 128) ? keyfromstringcpp(std::string(O.command)) : c;
+      command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
       switch(command) {  
 
@@ -2177,7 +2181,8 @@ void outlineProcessKeypress() {
           NN = 0; //index to contexts
           O.command[0] = '\0';
           O.command_line[0] = '\0';
-          outlineSetMessage(":"); 
+          //O.command_line.clear();
+          outlineSetMessage(":");
           O.mode = COMMAND_LINE;
           return;
 
