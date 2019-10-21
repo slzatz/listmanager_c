@@ -53,9 +53,12 @@ static int screenlines, screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
-static char search_terms[50];
+static std::string search_terms;
 static int fts_ids[50];
 static int fts_counter;
+static std::string search_string; //word under cursor works with *, n, N etc.
+static std::vector<std::string> line_buffer; //yanking lines
+static std::string string_buffer; //yanking chars
 /*
 right now not bringing back titles so no title highlighting
 some technical issues highlighting titles and getting chars right in the row
@@ -226,9 +229,11 @@ static std::map<std::string, int> lookuptablemap {
   //{"e", C_edit}
 };
 
-static std::string search_string;
+/*
+static std::string search_string; //word under cursor works with *, n, N etc.
 static std::vector<std::string> line_buffer; //yanking lines
 static std::string string_buffer; //yanking chars
+*/
 
 /*** data ***/
 
@@ -307,9 +312,9 @@ static void (*update_row)(void);
 //static int (*insert_row)(int); //not called directly
 static void (*display_item_info)(int);
 static void (*touch)(void);
-static void (*search_db)(char *);
-void solr_find(char *);
-void fts5_sqlite(char *);
+static void (*search_db)(void);
+void solr_find(void);
+void fts5_sqlite(void);
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
@@ -946,7 +951,7 @@ void view_html(int id) {
   //}
 }
 
-void solr_find(char *search_terms) {
+void solr_find(void) {
 
   PyObject *pName, *pModule, *pFunc;
   PyObject *pArgs, *pValue;
@@ -964,7 +969,7 @@ void solr_find(char *search_terms) {
 
       if (pFunc && PyCallable_Check(pFunc)) {
           pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
-          pValue = Py_BuildValue("s", search_terms); // **************
+          pValue = Py_BuildValue("s", search_terms.c_str()); // **************
           PyTuple_SetItem(pArgs, 0, pValue); // ***********
           pValue = PyObject_CallObject(pFunc, pArgs);
               if (!pValue) {
@@ -1758,7 +1763,7 @@ void outlineDrawStatusBarNew(std::string& ab) {
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms : "\0",
+                              (O.context == "search") ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
@@ -1772,7 +1777,7 @@ void outlineDrawStatusBarNew(std::string& ab) {
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               O.context.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms : "\0",
+                              (O.context == "search") ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   }
@@ -2384,7 +2389,7 @@ void outlineProcessKeypress() {
              case C_refresh:
                EraseRedrawLines(); //****03102019*************************
                outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-               if (O.context == "search")  (*search_db)(search_terms);
+               if (O.context == "search")  (*search_db)();
                else if (O.context == "recent") (*get_recent)(MAX);
                else (*get_items_by_context)(O.context.c_str(), MAX);
                O.mode = NORMAL;
@@ -2436,10 +2441,11 @@ void outlineProcessKeypress() {
 
               EraseRedrawLines(); //*****************************
               O.context = "search";
-              (*search_db)(&O.command_line[pos + 1]);
-              outlineSetMessage("Will search items for \'%s\'", &O.command_line[pos + 1]);
+             // search_terms.clear(); //substr copy seems to reinitialize string
+              search_terms = O.command_line.substr(pos+1);
+              (*search_db)();
+              outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
               O.mode = NORMAL;
-              strcpy(search_terms, &O.command_line[pos + 1]);
               if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
@@ -2451,10 +2457,10 @@ void outlineProcessKeypress() {
 
               EraseRedrawLines(); //*****************************
               O.context = "search";
-              fts5_sqlite(&O.command_line[pos + 1]);
-              outlineSetMessage("Will use fts5 to search items for \'%s\'", &O.command_line[pos + 1]);
+              search_terms = O.command_line.substr(pos+1);
+              fts5_sqlite();
+              outlineSetMessage("Will use fts5 to search items for \'%s\'", search_terms.c_str());
               O.mode = NORMAL;
-              strcpy(search_terms, &O.command_line[pos + 1]);
               if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
@@ -2729,8 +2735,7 @@ void outlineProcessKeypress() {
 
         case 'r':
           outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-          //if (O.context == "search") solr_find(search_terms);
-          if (O.context == "search") (*search_db)(search_terms);
+          if (O.context == "search") (*search_db)();
           else (*get_items_by_context)(O.context, MAX);
           O.mode = NORMAL;
           return;
@@ -3010,11 +3015,10 @@ void display_item_info_pg(int id) {
   PQclear(res);
 }
 
-void fts5_sqlite(char *search_terms) {
+void fts5_sqlite(void) {
 
   std::stringstream fts_query;
 
-  //sprintf(fts_query, "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH \'%s\' ORDER BY rank", search_terms);
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
 
   sqlite3 *db;
