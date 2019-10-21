@@ -53,7 +53,7 @@ static int screenlines, screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
-static std::string search_terms;
+static std::string search_terms; //:find xxxxx
 static int fts_ids[50];
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
@@ -263,9 +263,9 @@ struct outlineConfig {
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
-  //command and comman_line should be strings
-  char command[10]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
-  std::string command_line; //for commands on the command line doesn't include ':'
+  // probably ok that command isn't a std::string although it could be
+  char command[10]; // doesn't include command_line commands
+  std::string command_line; //for commands on the command line; string doesn't include ':'
   int repeat;
   bool show_deleted;
   bool show_completed;
@@ -288,7 +288,8 @@ struct editorConfig {
   char message[120]; //status msg is a character array max 80 char
   int highlight[2];
   int mode;
-  char command[20]; //needs to accomodate file name ?malloc heap array
+  // probably OK that command is a char[] and not a std::string
+  char command[10]; // right now includes normal mode commands and command line commands
   int repeat;
   int indent;
   int smartindent;
@@ -1952,7 +1953,7 @@ void outlineProcessKeypress() {
 
       if (c==':'){
           NN = 0; //index to contexts
-          //O.command[0] = '\0';
+          O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
           O.command_line.clear();
           outlineSetMessage(":"); 
           O.mode = COMMAND_LINE;
@@ -2047,7 +2048,6 @@ void outlineProcessKeypress() {
       O.command[n+1] = '\0';
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
-      //command = (n && c < 128) ? keyfromstringcpp(std::string(O.command)) : c;
       command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
       switch(command) {  
