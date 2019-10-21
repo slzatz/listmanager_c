@@ -260,8 +260,7 @@ struct outlineConfig {
   int mode;
   //command and comman_line should be strings
   char command[10]; //was 20 but probably could be 10 or less if doesn't include command_line needs to accomodate file name ?malloc heap array
-  char command_line[20]; //for commands on the command line doesn't include ':' where that applies
-  //std::string command_line;
+  std::string command_line; //for commands on the command line doesn't include ':'
   int repeat;
   bool show_deleted;
   bool show_completed;
@@ -1949,8 +1948,7 @@ void outlineProcessKeypress() {
       if (c==':'){
           NN = 0; //index to contexts
           //O.command[0] = '\0';
-          O.command_line[0] = '\0';
-          //O.command_line.clear();
+          O.command_line.clear();
           outlineSetMessage(":"); 
           O.mode = COMMAND_LINE;
       }
@@ -2180,8 +2178,7 @@ void outlineProcessKeypress() {
         case ':':
           NN = 0; //index to contexts
           O.command[0] = '\0';
-          O.command_line[0] = '\0';
-          //O.command_line.clear();
+          O.command_line.clear();
           outlineSetMessage(":");
           O.mode = COMMAND_LINE;
           return;
@@ -2353,31 +2350,27 @@ void outlineProcessKeypress() {
         case ARROW_UP:
             if (NN == 11) NN = 1;
             else NN++;
-            outlineSetMessage(":%s %s", O.command_line, context[NN].c_str());
+            outlineSetMessage(":%s %s", O.command_line.c_str(), context[NN].c_str());
             return;
 
         case ARROW_DOWN:
             if (NN < 2) NN = 11;
             else NN--;
-            outlineSetMessage(":%s %s", O.command_line, context[NN].c_str());
+            outlineSetMessage(":%s %s", O.command_line.c_str(), context[NN].c_str());
             return;
 
         case '\r':
-          ;
-          //int pos;
+          //;
           std::size_t pos;
-          //char *new_context;
 
-          //pointer passes back position of space (if there is one) in var pos
-          //switch (commandfromstring(O.command_line, &pos))  
-          //command = commandfromstring(O.command_line, &pos);
-          command = commandfromstringcpp(O.command_line, pos);
+          // passes back position of space (if there is one) in var pos
+          command = commandfromstringcpp(O.command_line, pos); //assume pos paramter is now a reference but should check
           switch(command) {
 
             case 'w':
               update_rows();
               O.mode = 0;
-              O.command_line[0] = '\0';
+              O.command_line.clear();
               return;
 
              case 'x':
@@ -2436,7 +2429,7 @@ void outlineProcessKeypress() {
                }
             case 'f':
             case C_find: //catches 'fin' and 'find' 
-              if (strlen(O.command_line) < 6) {
+              if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
                 return;
               }  
@@ -2451,7 +2444,7 @@ void outlineProcessKeypress() {
               return;
 
             case C_fts: 
-              if (strlen(O.command_line) < 6) {
+              if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
                 return;
               }  
@@ -2478,7 +2471,7 @@ void outlineProcessKeypress() {
                if (NN) {
                  new_context = context[NN];
                  context_tid = NN;
-               } else if (strlen(O.command_line) > 7) {
+               } else if (O.command_line.size() > 7) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
                    if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
@@ -2498,7 +2491,8 @@ void outlineProcessKeypress() {
                  outlineSetMessage("You need to provide at least 3 characters"
                                    "that match a context!");
 
-                 O.command_line[1] = '\0';
+                 //O.command_line[1] = '\0'; //not sure why this is 1 and made it zero below in the rewrite
+                 O.command_line.clear();
                  return;
                }
 
@@ -2507,7 +2501,8 @@ void outlineProcessKeypress() {
 
                (*update_context)(context_tid); 
                O.mode = NORMAL;
-               O.command_line[0] = '\0'; //probably not necessary 
+               //O.command_line[0] = '\0'; //probably not necessary
+               O.command_line.clear(); //probably not necessary
                return;
                }
 
@@ -2520,7 +2515,7 @@ void outlineProcessKeypress() {
                } else if (pos) {
                  bool success = false;
                  for (int k = 1; k < 12; k++) { 
-                   if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      success = true;
                      break;
@@ -2531,7 +2526,8 @@ void outlineProcessKeypress() {
 
                } else {
                  outlineSetMessage("You did not provide a valid  context!");
-                 O.command_line[1] = '\0';
+                 //O.command_line[1] = '\0';
+                 O.command_line.resize(1);
                  return;
                }
                EraseRedrawLines(); //*****************************
@@ -2640,15 +2636,19 @@ void outlineProcessKeypress() {
 
         default: //default for switch 'c' in case COMMAND_LINE
           ;
-      int n = strlen(O.command_line);
+      //int n = strlen(O.command_line);
+      //int n = O.command_line.size();
           if (c == DEL_KEY || c == BACKSPACE) {
-            O.command_line[n-1] = '\0';
+            //O.command_line[n-1] = '\0';
+            O.command_line.pop_back();
           } else {
-            O.command_line[n] = c;
-            O.command_line[n+1] = '\0';
+            O.command_line.push_back(c);
+
+            //O.command_line[n] = c;
+            //O.command_line[n+1] = '\0';
           }
 
-          outlineSetMessage(":%s", O.command_line);
+          outlineSetMessage(":%s", O.command_line.c_str());
 
         } // end of 'c' switch within case COMMAND_LINE
 
@@ -2698,8 +2698,9 @@ void outlineProcessKeypress() {
         case ':':
           NN = 0; //index to contexts
           O.command[0] = '\0';
-          O.command_line[0] = '\0';
-          outlineSetMessage(":"); 
+          //O.command_line[0] = '\0';
+          O.command_line.clear();
+          outlineSetMessage(":");
           O.mode = COMMAND_LINE;
           return;
 
