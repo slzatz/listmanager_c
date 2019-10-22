@@ -54,7 +54,8 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms; //:find xxxxx
-static int fts_ids[50];
+//static int fts_ids[50];
+static std::vector<int> fts_ids;
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
 static std::vector<std::string> line_buffer; //yanking lines
@@ -65,6 +66,8 @@ some technical issues highlighting titles and getting chars right in the row
 Not sure it's that much of a problem not to highlight keywords in title
 */
 //static char *fts_titles[50];
+//static std::vector<std::string> fts_titles;
+static std::map<int, std::string> fts_titles;
 
 static std::string context[] = {
                         "", //maybe should be "search" - we'll see
@@ -318,6 +321,7 @@ void solr_find(void);
 void fts5_sqlite(void);
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
+int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 //int tid_callback(void *, int, char **, char **);
@@ -663,7 +667,6 @@ void get_items_by_context_sqlite(std::string context, int max) {
   }
 }
 
-//int data_callback(void *NotUsed, int argc, char **argv, char **azColName) {
 int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
     
   //UNUSED(NotUsed);
@@ -708,9 +711,6 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   title = argv[3];
   */
 
-  /* note my take is that memcpy and strncpy are essentially equivalent if
-  you check the size of the string you are copying before the copy*/
-
   orow row;
 
   int len = strlen(argv[3]);
@@ -729,6 +729,69 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) {
+
+  //UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  *flag = false;
+
+  /*
+  0: id = 1
+  1: tid = 1
+  2: priority = 3
+  3: title = Parents refrigerator broken.
+  4: tag =
+  5: folder_tid = 1
+  6: context_tid = 1
+  7: duetime = NULL
+  8: star = 0
+  9: added = 2009-07-04
+  10: completed = 2009-12-20
+  11: duedate = NULL
+  12: note = new one coming on Monday, June 6, 2009.
+  13: repeat = NULL
+  14: deleted = 0
+  15: created = 2016-08-05 23:05:16.256135
+  16: modified = 2016-08-05 23:05:16.256135
+  17: startdate = 2009-07-04
+  18: remind = NULL
+
+  I thought I should be using tid as the "id" for sqlite version but realized
+  that would work and mean you could always compare the tid to the pg id
+  but for new items created with sqlite, there would be no tid so
+  the right thing to use is the id.  At some point might also want to
+  store the tid in orow row
+  */
+
+  /*
+  char *title;
+  if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
+  else title = argv[3];
+  title = argv[3];
+  */
+
+  orow row;
+
+  //int len = strlen(argv[3]);
+  //row.title = std::string(argv[3], argv[3] + len);
+  row.id = atoi(argv[0]);
+  row.title = fts_titles.at(row.id);
+  row.star = (atoi(argv[8]) == 1) ? true: false;
+  row.deleted = (atoi(argv[14]) == 1) ? true: false;
+  row.completed = (argv[10]) ? true: false;
+  row.dirty = false;
+  int len = strlen(argv[16]);
+  len = (len > 16) ? 16 : len;
+  strncpy(row.modified, argv[16], len);
+  row.modified[len] = '\0';
+  O.rows.push_back(row);
+
+  return 0;
+}
+// I believe only called by search
 void get_items_by_id_sqlite(std::stringstream& query) {
 
   O.rows.clear();
@@ -745,7 +808,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
     }
 
     bool no_rows = true;
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, query.str().c_str(), by_id_data_callback, &no_rows, &err_msg);
     
     if (rc != SQLITE_OK ) {
         outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1078,7 +1141,7 @@ void update_solr(void) {
               outlineSetMessage("Problem retrieving ids from solr!");
           }
       } else { if (PyErr_Occurred()) PyErr_Print();
-          outlineSetMessage("Was not able to find the function: solr_find!");
+          outlineSetMessage("Was not able to find the function: update_solr!");
       }
 
       Py_XDECREF(pFunc);
@@ -1086,7 +1149,7 @@ void update_solr(void) {
 
   } else {
       PyErr_Print();
-      outlineSetMessage("Was not able to find the module: view_html!");
+      outlineSetMessage("Was not able to find the module: update_solr!");
   }
 
   //if (Py_FinalizeEx() < 0) {
@@ -2634,7 +2697,7 @@ void outlineProcessKeypress() {
             default: // default for commandfromstring
 
               //"\x1b[41m", 5); //red background
-              outlineSetMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line);
+              outlineSetMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
               O.mode = NORMAL;
               return;
 
@@ -3033,6 +3096,8 @@ void fts5_sqlite(void) {
     return;
   }
 
+  fts_ids.clear();
+  fts_titles.clear(); //////////////////////////////////
   fts_counter = 0;
 
   rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, 0, &err_msg);
@@ -3047,7 +3112,6 @@ void fts5_sqlite(void) {
 
   // need to think about this because WHERE task.deleted means can be out of sync with fts query
   query << "SELECT * FROM task WHERE task.id IN (";
-
 
   for (int i = 0; i < fts_counter-1; i++) {
     query << fts_ids[i] << ", ";
@@ -3074,18 +3138,10 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(azColName);
   if (fts_counter >= 50) return 0;
 
-  fts_ids[fts_counter] = atoi(argv[0]);
-
-  /* right now not pulling in highlighted titles just using id to get regular title
-   * and note
+  //fts_ids[fts_counter] = atoi(argv[0]);
+  fts_ids.push_back(atoi(argv[0]));
   int len = strlen(argv[1]);
-  // could just realloc
-  free(fts_titles[fts_counter]);
-  fts_titles[fts_counter] = (char*)malloc(len + 1);
-  memcpy(fts_titles[fts_counter], argv[1], len);
-  fts_titles[fts_counter][len] = '\0';
-  */
-
+  fts_titles[atoi(argv[0])] = std::string(argv[1], argv[1] + len);
   fts_counter++;
 
   return 0;
