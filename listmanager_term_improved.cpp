@@ -906,6 +906,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
+  if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
   std::string note(argv[0]);
   note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
   std::stringstream snote;
@@ -1322,14 +1323,6 @@ void outlineInsertRow(int at, std::string s, int id, bool star, bool deleted, bo
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
-
-  /*
-  if (s==nullptr) {
-    row.title = std::string();
-  } else {
-    row.title = std::string(s, s+len);
-  }
-  */
 
   row.title = s;
   row.id = id;
@@ -3831,8 +3824,6 @@ void update_row_sqlite(void) {
       sqlite3_close(db);
 
   } else { //row.id == -1
-
-    //insert_row_sqlite(O.fr);
     insert_row_sqlite(row);
   }
 }
