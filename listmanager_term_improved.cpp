@@ -131,7 +131,7 @@ static std::string mode_text[] = {
                         "NORMAL",
                         "INSERT",
                         "COMMAND LINE",
-                        "VISUAL_LINE",
+                        "VISUAL LINE",
                         "VISUAL",
                         "REPLACE",
                         "DATABASE",
