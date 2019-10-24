@@ -16,6 +16,7 @@ find_package(PostgreSQL REQUIRED)
 
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17")
 # was c++14
 set (source_dir "${PROJECT_SOURCE_DIR}/")
 

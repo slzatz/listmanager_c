@@ -28,6 +28,7 @@
 #include <sqlite3.h>
 
 #include <string>
+//#include <string_view> //not in use yet
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -170,7 +171,7 @@ enum Command {
   C_synch, // synchronixe sqlite and postgres dbs
   C_synch_test,//show what sync would do but don't do it 
 
-  //C_highlight,
+  C_highlight,
 
   C_quit,
   C_quit0,
@@ -218,8 +219,8 @@ static std::map<std::string, int> lookuptablemap {
   {"test", C_synch_test},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
-  //{"highlight", C_highlight},
-  //{"show", C_highlight},
+  {"highlight", C_highlight},
+  {"show", C_highlight},
   //{"sh", C_highlight},
   {"quit", C_quit},
   {"quit!", C_quit0},
@@ -241,8 +242,8 @@ static std::string string_buffer; //yanking chars
 /*** data ***/
 
 typedef struct orow {
-  // this should be std::string title
   std::string title;
+  std::string fts_title;
   int id; //listmanager db id of the row
   bool star;
   bool deleted;
@@ -272,6 +273,7 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
+  //bool show_highlight;
 };
 
 static struct outlineConfig O;
@@ -326,13 +328,10 @@ int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 //int tid_callback(void *, int, char **, char **);
 void outlineSetMessage(const char *fmt, ...);
-//void outlineRefreshScreen(void);
-void outlineRefreshScreenNew(void);
+void outlineRefreshScreen(void);
 //void getcharundercursor();
-//void outlineDrawStatusBar(struct abuf *);
-void outlineDrawStatusBarNew(std::string&);
-//void outlineDrawMessageBar(struct abuf *);
-void outlineDrawMessageBarNew(std::string&);
+void outlineDrawStatusBar(std::string&);
+void outlineDrawMessageBar(std::string&);
 void outlineDelWord();
 void outlineMoveCursor(int key);
 void outlineBackspace(void);
@@ -350,7 +349,8 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int at, std::string s, int id, bool star, bool deleted, bool completed, char *modified);
-void outlineDrawRowsNew(std::string&);
+void outlineDrawRows(std::string&);
+void outlineDrawSearchRows(std::string&);
 void outlineScroll(void);
 int get_id(int fr);
 void get_recent_pg(int);
@@ -376,10 +376,10 @@ int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
-void editorDrawMessageBarNew(std::string&);
-void editorDrawStatusBarNew(std::string&);
+void editorDrawMessageBar(std::string&);
+void editorDrawStatusBar(std::string&);
 void editorSetMessage(const char *fmt, ...);
-void editorRefreshScreenNew(void);
+void editorRefreshScreen(void);
 void editorInsertReturn(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
@@ -775,15 +775,15 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
 
   orow row;
 
-  //int len = strlen(argv[3]);
-  //row.title = std::string(argv[3], argv[3] + len);
+  int len = strlen(argv[3]);
+  row.title = std::string(argv[3], argv[3] + len);
   row.id = atoi(argv[0]);
-  row.title = fts_titles.at(row.id);
+  row.fts_title = fts_titles.at(row.id);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
-  int len = strlen(argv[16]);
+  len = strlen(argv[16]);
   len = (len > 16) ? 16 : len;
   strncpy(row.modified, argv[16], len);
   row.modified[len] = '\0';
@@ -876,7 +876,8 @@ void get_note_sqlite(int id) {
     query << "SELECT note FROM task WHERE id = " << id;
     rc = sqlite3_open(SQLITE_DB.c_str(), &db);
   } else {
-    query << "SELECT highlight(fts, 1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
+    //17m = blue; 31m = red
+    query << "SELECT highlight(fts, 1, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
     rc = sqlite3_open(FTS_DB.c_str(), &db);
   }
 
@@ -896,7 +897,7 @@ void get_note_sqlite(int id) {
 
   sqlite3_close(db);
 
-  editorRefreshScreenNew(); /****03102019*****/
+  editorRefreshScreen(); /****03102019*****/
 }
 
 // doesn't appear to be called if row is NULL
@@ -948,7 +949,7 @@ void get_note_pg(int id) {
   }
 
   E.dirty = 0;
-  editorRefreshScreenNew();
+  editorRefreshScreen();
   PQclear(res);
   return;
 }
@@ -1670,7 +1671,7 @@ void editorDisplayFile(void) {
   ab.append("\x1b[0m", 4);
 
   // not a huge deal but updating status bar here would mean mode would be correct
-  outlineDrawStatusBarNew(ab); // 03162019
+  outlineDrawStatusBar(ab); // 03162019
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -1724,7 +1725,7 @@ void outlineScroll(void) {
   O.cy = O.fr - O.rowoff;
 }
 
-void outlineDrawRowsNew(std::string& ab) {
+void outlineDrawRows(std::string& ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
   char buf[32];
 
@@ -1741,6 +1742,7 @@ void outlineDrawRowsNew(std::string& ab) {
     if (fr > O.rows.size() - 1) return;
     orow& row = O.rows[fr];
 
+    //if context is search; title = row.fts_title else title = row.title
     // if a line is long you only draw what fits on the screen
     //below solves  problem when deleting chars from a scrolled long line
     int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
@@ -1794,8 +1796,58 @@ void outlineDrawRowsNew(std::string& ab) {
   }
 }
 
+void outlineDrawSearchRows(std::string& ab) {
+  char buf[32];
+
+  if (O.rows.empty()) return;
+
+  int y;
+  char lf_ret[16];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN);
+
+  int spaces;
+
+  for (y = 0; y < O.screenlines; y++) {
+    int fr = y + O.rowoff;
+    if (fr > O.rows.size() - 1) return;
+    orow& row = O.rows[fr];
+    int len;
+
+    if (row.star) ab.append("\x1b[1m", 4); //bold
+
+    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
+    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
+    else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+
+    //if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey but gets stopped as soon as it hits search highlight
+
+    //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+
+    // I think the following blows up if there are multiple search terms hits in a line longer than O.screencols
+
+    if (row.title.size() <= O.screencols) // we know it fits
+      ab.append(row.fts_title.c_str(), row.fts_title.size());
+    else {
+      size_t pos = row.fts_title.find("\x1b[49m");
+      if (pos < O.screencols + 10) //length of highlight escape
+        ab.append(row.fts_title.c_str(), O.screencols + 15); // length of highlight escape + remove formatting escape
+      else
+        ab.append(row.title.c_str(), O.screencols);
+}
+    len = (row.title.size() <= O.screencols) ? row.title.size() : O.screencols;
+    spaces = O.screencols - len;
+    for (int i=0; i < spaces; i++) ab.append(" ", 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
+    ab.append("\x1b[0m", 4); // return background to normal
+    ab.append(buf, strlen(buf));
+    ab.append(row.modified, 16);
+    ab.append(lf_ret, nchars);
+    //abAppend(ab, "\x1b[0m", 4); // return background to normal
+  }
+}
+
 //status bar has inverted colors
-void outlineDrawStatusBarNew(std::string& ab) {
+void outlineDrawStatusBar(std::string& ab) {
 
   int len;
   /*
@@ -1860,7 +1912,7 @@ void outlineDrawStatusBarNew(std::string& ab) {
   ab.append("\x1b[m", 3); //switches back to normal formatting
 }
 
-void outlineDrawMessageBarNew(std::string& ab) {
+void outlineDrawMessageBar(std::string& ab) {
 
   // Erase from mid-screen to the left and then place cursor all the way left
   char buf[32];
@@ -1876,7 +1928,7 @@ void outlineDrawMessageBarNew(std::string& ab) {
   ab.append(O.message, msglen);
 }
 
-void outlineRefreshScreenNew(void) {
+void outlineRefreshScreen(void) {
 
   if (0)
     outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).title.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
@@ -1897,9 +1949,12 @@ void outlineRefreshScreenNew(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
 
   ab.append(buf, strlen(buf));
-  if (!O.rows.empty()) outlineDrawRowsNew(ab);
-  outlineDrawStatusBarNew(ab);
-  outlineDrawMessageBarNew(ab);
+  if (O.context == "search" && O.mode == DATABASE)
+    outlineDrawSearchRows(ab);
+  else
+    outlineDrawRows(ab);
+  outlineDrawStatusBar(ab);
+  outlineDrawMessageBar(ab);
 
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
@@ -2227,7 +2282,7 @@ void outlineProcessKeypress() {
           outlineInsertRow(0, "", -1, true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
-          outlineRefreshScreenNew();  //? necessary
+          outlineRefreshScreen();  //? necessary
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("");
@@ -2317,7 +2372,7 @@ void outlineProcessKeypress() {
         // not sure that this should be CTRL-h; maybe CTRL-m
         case CTRL_KEY('h'):
           editorMarkupLink(); 
-          editorRefreshScreenNew();
+          editorRefreshScreen();
           (*update_note)(); // write updated note to database
           O.command[0] = '\0';
           return;
@@ -2457,12 +2512,12 @@ void outlineProcessKeypress() {
               outlineInsertRow(0, "", -1, true, false, false, BASE_DATE);
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
-              outlineRefreshScreenNew();  //? necessary
+              outlineRefreshScreen();  //? necessary
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("");
               editorEraseScreen();
-              editorRefreshScreenNew(); // this causes a vector out of range fault
+              editorRefreshScreen(); // this causes a vector out of range fault
               O.mode = INSERT;
               return;
 
@@ -2473,7 +2528,7 @@ void outlineProcessKeypress() {
                int id = get_id(-1);
                if (id != -1) {
                  outlineSetMessage("Edit note %d", id);
-                 outlineRefreshScreenNew();
+                 outlineRefreshScreen();
                  //editor_mode needs go before get_note in case we retrieved item via a search
                  editor_mode = true;
                  (*get_note)(id); //if id == -1 does not try to retrieve note
@@ -2497,11 +2552,13 @@ void outlineProcessKeypress() {
 
               EraseRedrawLines(); //*****************************
               O.context = "search";
-             // search_terms.clear(); //substr copy seems to reinitialize string
+              //O.show_highlight = true; //not using
+              // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               (*search_db)();
               outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
-              O.mode = NORMAL;
+              //O.mode = NORMAL;
+              O.mode = DATABASE; //can't edit highlighted items which might actually work but maybe not
               if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
@@ -2636,7 +2693,7 @@ void outlineProcessKeypress() {
               O.mode = NORMAL;
               outlineSetMessage("Search result titles will %shave search times highlighted", (O.show_highlight) ? "" : "not ");
               return;
-              */
+            */
 
             case C_valgrind:
               initial_file_row = 0; //for arrowing or displaying files
@@ -3075,7 +3132,7 @@ void fts5_sqlite(void) {
 
   std::stringstream fts_query;
 
-  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
 
   sqlite3 *db;
   char *err_msg = nullptr;
@@ -3303,7 +3360,7 @@ void update_note_pg(void) {
     editorSetMessage(PQerrorMessage(conn));
   } else {
     outlineSetMessage("Updated note for item %d", id);
-    outlineRefreshScreenNew();
+    outlineRefreshScreen();
     //editorSetMessage("Note update succeeeded"); 
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
   }
@@ -3350,7 +3407,7 @@ void update_note_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note for item %d", id);
-    outlineRefreshScreenNew();
+    outlineRefreshScreen();
   }
 
   sqlite3_close(db);
@@ -3376,7 +3433,7 @@ void update_note_sqlite(void) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note and fts entry for item %d", id);
-    outlineRefreshScreenNew();
+    outlineRefreshScreen();
     editorSetMessage("Note update succeeeded"); 
   }
    
@@ -4524,7 +4581,7 @@ void editorDrawRowsNew(std::string& ab) {
 //status bar has inverted colors
 
 /*****************************************/
-void editorDrawStatusBarNew(std::string& ab) {
+void editorDrawStatusBar(std::string& ab) {
   int len;
   char status[100];
   // position the cursor at the beginning of the editor status bar at correct indent
@@ -4562,7 +4619,7 @@ void editorDrawStatusBarNew(std::string& ab) {
 
 }
 
-void editorDrawMessageBarNew(std::string& ab) {
+void editorDrawMessageBar(std::string& ab) {
   // Position cursor on last row and mid-screen
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 2,
@@ -4575,7 +4632,7 @@ void editorDrawMessageBarNew(std::string& ab) {
   ab.append(E.message, msglen);
 }
 
-void editorRefreshScreenNew(void) {
+void editorRefreshScreen(void) {
   char buf[32];
   editorScroll();
 
@@ -4598,8 +4655,8 @@ void editorRefreshScreenNew(void) {
 
 
   editorDrawRowsNew(ab);
-  editorDrawStatusBarNew(ab);
-  editorDrawMessageBarNew(ab);
+  editorDrawStatusBar(ab);
+  editorDrawMessageBar(ab);
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -4978,7 +5035,7 @@ void editorProcessKeypress(void) {
           editorRefreshScreen();
           */
 
-          outlineRefreshScreenNew(); //to get outline message updated (could just update that last row??)
+          outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';//}
           return;
 
@@ -5174,7 +5231,7 @@ void editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               editorSetMessage("");
-              editorRefreshScreenNew();
+              editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -5200,7 +5257,7 @@ void editorProcessKeypress(void) {
               E.command[0] = '\0';
               editor_mode = false;
               editorSetMessage("");
-              editorRefreshScreenNew();
+              editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -5235,7 +5292,7 @@ void editorProcessKeypress(void) {
                 editorSetMessage("");
                 editor_mode = false;
               }
-              editorRefreshScreenNew();
+              editorRefreshScreen();
               return;
 
           } // end of case '\r' switch
@@ -6402,6 +6459,7 @@ void initOutline() {
   O.context = "todo"; 
   O.show_deleted = false;
   O.show_completed = true;
+  //O.show_highlight = false;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -6537,11 +6595,11 @@ int main(int argc, char** argv) {
   while (1) {
     if (editor_mode){
       editorScroll();
-      editorRefreshScreenNew();
+      editorRefreshScreen();
       editorProcessKeypress();
     } else if (O.mode != FILE_DISPLAY) { 
       outlineScroll();
-      outlineRefreshScreenNew();
+      outlineRefreshScreen();
       outlineProcessKeypress();
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
