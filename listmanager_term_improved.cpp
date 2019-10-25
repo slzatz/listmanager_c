@@ -40,8 +40,8 @@
 /*** defines ***/
 
 /***the following is not yet in use and would get rid of switch statements***/
-typedef void (*pfunc)(void);
-static std::map<int, pfunc> outline_normal_map;
+//typedef void (*pfunc)(void);
+//static std::map<int, pfunc> outline_normal_map;
 
 static std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
@@ -791,8 +791,12 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
 
   return 0;
 }
-// I believe only called by search
+// called as part of :find -> fts_sqlite -> get_items_by_id_sqlite (by_id_data_callback)
 void get_items_by_id_sqlite(std::stringstream& query) {
+  /*
+   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
+   * may be retrieved from the fts db but they will not match when we look for them in the regular db
+  */
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -954,12 +958,14 @@ void get_note_pg(int id) {
   return;
 }
 
+/*
 bool starts_with(const char *str, const char *pre)
 {
     size_t lenpre = strlen(pre),
            lenstr = strlen(str);
     return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
 }
+*/
 
 void view_html(int id) {
 
@@ -2500,7 +2506,10 @@ void outlineProcessKeypress() {
              case C_refresh:
                EraseRedrawLines(); //****03102019*************************
                outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-               if (O.context == "search")  (*search_db)();
+               if (O.context == "search"){
+                   (*search_db)();
+                   O.mode = DATABASE;
+               }
                else if (O.context == "recent") (*get_recent)(MAX);
                else (*get_items_by_context)(O.context.c_str(), MAX);
                O.mode = NORMAL;
@@ -2557,8 +2566,7 @@ void outlineProcessKeypress() {
               search_terms = O.command_line.substr(pos+1);
               (*search_db)();
               outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
-              //O.mode = NORMAL;
-              O.mode = DATABASE; //can't edit highlighted items which might actually work but maybe not
+              O.mode = DATABASE; //so you can't edit highlighted items
               if (O.rows.size()) (*get_note)(get_id(-1));
               return;
 
@@ -2799,6 +2807,7 @@ void outlineProcessKeypress() {
         case '\x1b':
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
+          (*get_note)(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineSetMessage("");
           return;
 
@@ -3131,7 +3140,10 @@ void display_item_info_pg(int id) {
 void fts5_sqlite(void) {
 
   std::stringstream fts_query;
-
+  /*
+   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
+   * may be retrieved from the fts db but they will not match when we look for them in the regular db
+  */
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
 
   sqlite3 *db;
@@ -3160,7 +3172,7 @@ void fts5_sqlite(void) {
 
   std::stringstream query;
 
-  // need to think about this because WHERE task.deleted means can be out of sync with fts query
+  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
   query << "SELECT * FROM task WHERE task.id IN (";
 
   for (int i = 0; i < fts_counter-1; i++) {
@@ -3186,9 +3198,8 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
-  if (fts_counter >= 50) return 0;
+  if (fts_counter >= 50) return 1; // if callback returns non-zero stops more rows from being returned
 
-  //fts_ids[fts_counter] = atoi(argv[0]);
   fts_ids.push_back(atoi(argv[0]));
   int len = strlen(argv[1]);
   fts_titles[atoi(argv[0])] = std::string(argv[1], argv[1] + len);
@@ -3308,6 +3319,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   ab.append(lf_ret, nchars);
   ab.append(lf_ret, nchars);
 
+  /*
   std::string note(argv[12]);
   std::stringstream snote;
   snote << note;
@@ -3317,8 +3329,9 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   for (int k=0; k < lines; k++) {
       getline(snote, s, '\n');
       ab.append(s);
-      ab.append(lf_ret);
+      ab.append(lf_ret, nchars);
   }
+  */
 
   ab.append("\x1b[0m", 4);
 
@@ -6497,8 +6510,8 @@ void initEditor(void) {
 
 int main(int argc, char** argv) { 
 
-  outline_normal_map[ARROW_UP] = move_up;
-  outline_normal_map['k'] = move_up;
+  //outline_normal_map[ARROW_UP] = move_up;
+  //outline_normal_map['k'] = move_up;
 
   if (argc > 1 && argv[1][0] == 's') {
     get_items_by_context = &get_items_by_context_sqlite;
