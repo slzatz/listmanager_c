@@ -256,11 +256,11 @@ typedef struct orow {
 
 struct outlineConfig {
   int cx, cy; //cursor x and y position 
-  unsigned long fc, fr; // file x and y position
-  int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
-  int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
-  int screenlines; //number of lines in the display available to text
-  int screencols;  //number of columns in the display available to text
+  unsigned int fc, fr; // file x and y position
+  unsigned int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
+  unsigned int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
+  unsigned int screenlines; //number of lines in the display available to text
+  unsigned int screencols;  //number of columns in the display available to text
   std::vector<orow> rows;
   std::string context;
   char *filename; // in case try to save the titles
@@ -1737,40 +1737,31 @@ void outlineDrawRows(std::string& ab) {
 
   if (O.rows.empty()) return;
 
-  int y;
+  unsigned int y;
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN);
 
   int spaces;
 
   for (y = 0; y < O.screenlines; y++) {
-    int fr = y + O.rowoff;
+    unsigned int fr = y + O.rowoff;
     if (fr > O.rows.size() - 1) return;
     orow& row = O.rows[fr];
 
-    //if context is search; title = row.fts_title else title = row.title
     // if a line is long you only draw what fits on the screen
-    //below solves  problem when deleting chars from a scrolled long line
-    int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
+    //below solves problem when deleting chars from a scrolled long line
+    unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > O.screencols) len = O.screencols;
 
-    // was the below for a long time but changed on 03022019 to deal with scrolled line
-    // that has chars deleted from it so it doesn't take up the full row anymone
-    //int len = (row->size > O.screencols) ? O.screencols : row->size;
-
     if (row.star) ab.append("\x1b[1m", 4); //bold
-
     if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
     else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
-
     if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
-
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
-    // if (O.mode == VISUAL && fr == O.cy + O.rowoff) {
     if (O.mode == VISUAL && fr == O.fr) {
 
        // below in case E.highlight[1] < E.highlight[0]
@@ -2788,8 +2779,7 @@ void outlineProcessKeypress() {
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
-            O.fr -= O.screenlines; //should be screen lines although same
-            if (O.fr < 0) O.fr = 0;
+            O.fr = (O.screenlines > O.fr) ? 0 : O.fr - O.screenlines; //O.fr and O.screenlines are unsigned ints
           } else if (c == PAGE_DOWN) {
              O.fr += O.screenlines;
              if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
