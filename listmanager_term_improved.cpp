@@ -370,7 +370,7 @@ void editorDrawRows(struct abuf *ab);
 
 int editorGetFileRowByLineWW(int);
 int editorGetLineInRowWW(int, int);
-int editorGetLineInRowWW(int, int);
+//int editorGetLineInRowWW(int, int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
@@ -1928,7 +1928,7 @@ void outlineDrawMessageBar(std::string& ab) {
 void outlineRefreshScreen(void) {
 
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.cy).title.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.fr).title.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
 
   std::string ab;
 
@@ -2347,7 +2347,7 @@ void outlineProcessKeypress() {
           if (c == PAGE_UP) {
             O.fr -= O.screenlines; //should be screen lines although same
             if (O.fr < 0) O.fr = 0;
-          } else if (c == PAGE_DOWN) {
+          } else {
              O.fr += O.screenlines;
              if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
           }
@@ -2398,7 +2398,7 @@ void outlineProcessKeypress() {
           end = O.fc;
           O.fc = start; 
           for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          O.fc = (start < O.rows.at(O.cy).title.size()) ? start : O.rows.at(O.cy).title.size() -1;
+          O.fc = (start < O.rows.at(O.fr).title.size()) ? start : O.rows.at(O.fr).title.size() -1;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -4230,14 +4230,14 @@ void outlineYankLine(int n){
   line_buffer.clear();
 
   for (int i=0; i < n; i++) {
-    line_buffer.push_back(O.rows.at(O.cy+i).title);
+    line_buffer.push_back(O.rows.at(O.fr+i).title);
   }
   // set string_buffer to "" to signal should paste line and not chars
   string_buffer.clear();
 }
 
 void outlineYankString() {
-  orow& row = O.rows.at(O.cy);
+  orow& row = O.rows.at(O.fr);
   string_buffer.clear();
 
   std::string::const_iterator first = row.title.begin() + O.highlight[0];
@@ -5058,6 +5058,43 @@ void editorProcessKeypress(void) {
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
+            if(E.fr==0) return;
+            int lines = 0;
+            int r = E.fr - 1;
+            for(;;) {
+                lines += editorGetLinesInRowWW(r);
+                if (r == 0) {
+                    break;
+                }
+                if (lines > E.screenlines) {
+                    r++;
+                    break;
+                }
+                r--;
+            }
+            E.fr = r;
+          } else {
+            int lines = 0;
+            int r = E.fr;
+            for(;;) {
+                lines += editorGetLinesInRowWW(r);
+                if (r == E.rows.size() - 1) {
+                    break;
+                }
+                if (lines > E.screenlines) {
+                    r--;
+                    break;
+                }
+                r++;
+
+            }
+            E.fr = r;
+          }
+          return;
+        /*
+        case PAGE_UP:
+        case PAGE_DOWN:
+          if (c == PAGE_UP) {
             E.fr -= E.screenlines;
             if (E.fr < 0) E.fr = 0;
           } else if (c == PAGE_DOWN) {
@@ -5065,7 +5102,8 @@ void editorProcessKeypress(void) {
             if (E.fr > E.rows.size() - 1) E.fr = E.rows.size() - 1;
           }
           return;
-    
+        */
+
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
@@ -5509,8 +5547,7 @@ int editorGetFileRowByLineWW(int y){
 
 /****************************ESSENTIAL*****************************/
 int editorGetLinesInRowWW(int r) {
-  //erow *row = &E.row[r];
-
+  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
   //if (E.rows.empty()) return 0; ////////////////
   std::string& row = E.rows.at(r);
 
