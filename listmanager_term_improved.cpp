@@ -346,23 +346,23 @@ void update_note_sqlite(void);
 void synchronize(int);
 
 //editor Prototypes
-int editorGetScreenYFromRowColWW(int, int);
+int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not currently in use
+int *editorGetRowLineCharWW(void); //do not delete but not currently in use
+int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
-int *editorGetScreenPosFromRowCharPosWW(int, int); //ESENTIAL - do not delete
-void editorDrawRowsNew(std::string&);
-void editorDrawRows(struct abuf *ab);
 
 int editorGetFileRowByLineWW(int);
 int editorGetLineInRowWW(int, int);
-int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 
+void editorDrawRows(std::string&);
 void editorDrawMessageBar(std::string&);
 void editorDrawStatusBar(std::string&);
 void editorSetMessage(const char *fmt, ...);
+void editorScroll(void);
 void editorRefreshScreen(void);
 void editorInsertReturn(void);
 void editorDecorateWord(int c);
@@ -1882,16 +1882,15 @@ void outlineDrawStatusBar(std::string& ab) {
 }
 
 void outlineDrawMessageBar(std::string& ab) {
+  std::stringstream buf;
 
   // Erase from mid-screen to the left and then place cursor all the way left
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
-                             O.screenlines + 2 + TOP_MARGIN,
-                             screencols/2,
-                             O.screenlines + 2 + TOP_MARGIN,
-                             1);
+  buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
+      << screencols/2 << "H" << "\x1b[1K\x1b["
+      << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
-  ab.append(buf, strlen(buf));
+  ab += buf.str();
+
   int msglen = strlen(O.message);
   if (msglen > screencols/2) msglen = screencols/2;
   ab.append(O.message, msglen);
@@ -4404,7 +4403,7 @@ void editorScroll(void) {
   // it's either helpful or worthit but this is a placeholder for the idea
 }
 
-void editorDrawRowsNew(std::string& ab) {
+void editorDrawRows(std::string& ab) {
   //if (E.rows.empty()) return; /////////////////////
   if (E.rows.empty()) { //October 13, 2019
       editorEraseScreen();
@@ -4594,13 +4593,11 @@ void editorDrawStatusBar(std::string& ab) {
 }
 
 void editorDrawMessageBar(std::string& ab) {
-  // Position cursor on last row and mid-screen
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 2,
-                                            EDITOR_LEFT_MARGIN);  //+1
-  ab.append(buf, strlen(buf));
+  std::stringstream buf;
 
-  ab.append("\x1b[K", 3); // will erase midscreen -> R; cursor doesn't move after erase
+  buf  << "\x1b[" << E.screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  ab += buf.str();
+  ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(E.message);
   if (msglen > E.screencols) msglen = E.screencols;
   ab.append(E.message, msglen);
@@ -4608,7 +4605,7 @@ void editorDrawMessageBar(std::string& ab) {
 
 void editorRefreshScreen(void) {
   char buf[32];
-  editorScroll();
+  //editorScroll(); //commented out on 10-27-29019
 
   if (DEBUG) {
     if (!E.rows.empty()){
@@ -4628,7 +4625,7 @@ void editorRefreshScreen(void) {
   ab.append(buf, strlen(buf));
 
 
-  editorDrawRowsNew(ab);
+  editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
@@ -5782,7 +5779,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
 }
 /****************************ESSENTIAL (above) *****************************/
 
-// returns row, line in row and column
+// returns row, line in row, and column
 // now only useful (possibly) for debugging
 int *editorGetRowLineCharWW(void) {
   int screenrow = -1;
@@ -5981,7 +5978,6 @@ void editorYankLine(int n){
   for (int i=0; i < n; i++) {
     line_buffer.push_back(E.rows.at(E.cy+i));
   }
-
   string_buffer.clear();
 }
 
@@ -6581,11 +6577,11 @@ int main(int argc, char** argv) {
   while (1) {
     if (editor_mode){
       editorScroll();
-      editorRefreshScreen();
+      editorRefreshScreen(); // since it calls editorScroll do you need to call editorScroll before it??
       editorProcessKeypress();
     } else if (O.mode != FILE_DISPLAY) { 
       outlineScroll();
-      outlineRefreshScreen();
+      outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
       outlineProcessKeypress();
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
