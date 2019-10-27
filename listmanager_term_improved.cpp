@@ -55,21 +55,14 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms; //:find xxxxx
-//static int fts_ids[50];
 static std::vector<int> fts_ids;
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
 static std::vector<std::string> line_buffer; //yanking lines
 static std::string string_buffer; //yanking chars
-/*
-right now not bringing back titles so no title highlighting
-some technical issues highlighting titles and getting chars right in the row
-Not sure it's that much of a problem not to highlight keywords in title
-*/
-//static char *fts_titles[50];
-//static std::vector<std::string> fts_titles;
 static std::map<int, std::string> fts_titles;
 
+// context and context_map should probably should be a sql query and not hard coded
 static std::string context[] = {
                         "", //maybe should be "search" - we'll see
                         "No Context", // 1
@@ -185,7 +178,6 @@ enum Command {
   C_valgrind
 };
 
-/***new way to do lookuptable is with a map***/
 static std::map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
@@ -232,14 +224,6 @@ static std::map<std::string, int> lookuptablemap {
   {"valgrind", C_valgrind}
   //{"e", C_edit}
 };
-
-/*
-static std::string search_string; //word under cursor works with *, n, N etc.
-static std::vector<std::string> line_buffer; //yanking lines
-static std::string string_buffer; //yanking chars
-*/
-
-/*** data ***/
 
 typedef struct orow {
   std::string title;
@@ -304,7 +288,7 @@ struct editorConfig {
 static struct editorConfig E;
 
 /*** outline prototypes ***/
-static void (*get_items_by_context)(std::string, int);
+static void (*get_items_by_context)(std::string, int); //shouldn't have to pass context it's global
 static void (*get_recent)(int);
 static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
@@ -370,12 +354,12 @@ void editorDrawRows(struct abuf *ab);
 
 int editorGetFileRowByLineWW(int);
 int editorGetLineInRowWW(int, int);
-//int editorGetLineInRowWW(int, int);
 int *editorGetRowLineCharWW(void);
 int editorGetCharInRowWW(int, int); 
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
+
 void editorDrawMessageBar(std::string&);
 void editorDrawStatusBar(std::string&);
 void editorSetMessage(const char *fmt, ...);
@@ -407,7 +391,7 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-void editorInsertRow(int fr, char *, size_t);
+//void editorInsertRow(int fr, char *, size_t);
 void editorInsertRow(int fr, std::string);
 void EraseRedrawLines(void);
 void editorReadFile(std::string);
@@ -472,6 +456,10 @@ void get_conn(void) {
 
 void get_recent_pg(int max) {
   std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
   if (!O.show_deleted) {
 
     query << "SELECT * FROM task WHERE "
@@ -494,7 +482,6 @@ void get_recent_pg(int max) {
     do_exit(conn);
   }    
 
-  O.rows.clear();
   int i;
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
@@ -515,33 +502,27 @@ void get_recent_pg(int max) {
   }
   PQclear(res);
   // PQfinish(conn);
-
-  O.fc = O.fr = O.rowoff = 0;
 }
 
 void get_items_by_context_pg(std::string context, int max) {
-  char query[400];
+  std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
   if (!O.show_deleted) {
-  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' "
-                    "AND task.deleted = %s "
-                    "AND task.completed IS %s "
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    context.c_str(),
-                    "False",
-                    "NULL",
-                    max);
-  }
-  else {
-
-  sprintf(query, "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-                    "WHERE context.title = \'%s\' "
-                    "ORDER BY task.modified DESC LIMIT %d",
-                    context.c_str(),
-                    max);
+    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+          << "WHERE context.title = '" << context << "' "
+          << "AND task.deleted = False "
+          << "AND task.completed IS NULL "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  } else {
+    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
+          << "WHERE context.title = '" << context << "' "
+          << "ORDER BY task.modified DESC LIMIT " << max;
   }
 
-  PGresult *res = PQexec(conn, query);    
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
@@ -551,8 +532,6 @@ void get_items_by_context_pg(std::string context, int max) {
     do_exit(conn);
   }    
 
-  O.rows.clear();
-
   int i;
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
@@ -573,8 +552,6 @@ void get_items_by_context_pg(std::string context, int max) {
 
   PQclear(res);
   // PQfinish(conn);
-
-  O.fc = O.fr = O.rowoff = 0;
 }
 
 void get_recent_sqlite(int max) {
@@ -621,7 +598,6 @@ void get_recent_sqlite(int max) {
     O.mode = NO_ROWS;
   }
 }
-
 
 void get_items_by_context_sqlite(std::string context, int max) {
   std::stringstream query;
@@ -930,11 +906,12 @@ void get_note_pg(int id) {
   if (id ==-1) return;
 
   E.rows.clear();
+  E.fr = E.fc = E.cy = E.cx = 0;
 
-  char query[100];
-  sprintf(query, "SELECT note FROM task WHERE id = %d", id);
+  std::stringstream query;
+  query << "SELECT note FROM task WHERE id = " << id;
 
-  PGresult *res = PQexec(conn, query);    
+  PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
@@ -957,15 +934,6 @@ void get_note_pg(int id) {
   PQclear(res);
   return;
 }
-
-/*
-bool starts_with(const char *str, const char *pre)
-{
-    size_t lenpre = strlen(pre),
-           lenstr = strlen(str);
-    return lenstr < lenpre ? false : strncmp(pre, str, lenpre) == 0;
-}
-*/
 
 void view_html(int id) {
 
@@ -1168,11 +1136,11 @@ void update_solr(void) {
 
 int keyfromstringcpp(std::string key) {
   std::map<std::string,int>::iterator it;
-    it = lookuptablemap.find(key);
-    if (it != lookuptablemap.end())
-      return it->second;
-    else
-      return -1;
+  it = lookuptablemap.find(key);
+  if (it != lookuptablemap.end())
+    return it->second;
+  else
+    return -1;
 }
 
 int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
@@ -1376,8 +1344,6 @@ void outlineBackspace(void) {
 /*** file i/o ***/
 
 std::string outlineRowsToString() {
-
-
   std::string s = "";
   for (auto i: O.rows) {
       s += i.title;
@@ -1386,7 +1352,6 @@ std::string outlineRowsToString() {
   s.pop_back(); //pop last return that we added
   return s;
 }
-
 
 void outlineSave() {
   if (O.rows.empty()) return;
@@ -1405,6 +1370,7 @@ void outlineSave() {
 // used by numerous other functions to sometimes insert zero length rows
 // and other times rows with characters like when retrieving a note
 // fr is the position of the row with counting starting at zero
+/*
 void editorInsertRow(int fr, char *s, size_t len) {
 
   std::string row;
@@ -1419,7 +1385,7 @@ void editorInsertRow(int fr, char *s, size_t len) {
   E.rows.insert(pos, row);
   E.dirty++;
 }
-
+*/
 // version that takes row and string to insert
 void editorInsertRow(int fr, std::string s) {
 
@@ -1510,6 +1476,7 @@ void editorInsertNewline(int direction) {
   int indent = (E.smartindent) ? editorIndentAmount(E.fr) : 0;
 
   //VLA
+  /*
   char spaces[indent + 1]; 
   for (int j=0; j < indent; j++) {
     spaces[j] = ' ';
@@ -1517,11 +1484,16 @@ void editorInsertNewline(int direction) {
 
   // not sure this is  necessary since editorInsertRow is going to terminate the string
   spaces[indent] = '\0'; //not sure this is  necessary since editorInsertRow is going to terminate string with
+  */
 
+  std::string spaces;
+  for (int j=0; j<indent; j++) {
+      spaces.push_back(' ');
+  }
   E.fc = indent;
 
   E.fr += direction;
-  editorInsertRow(E.fr, spaces, indent);
+  editorInsertRow(E.fr, spaces);
 }
 
 void editorDelChar(void) {
@@ -2502,7 +2474,7 @@ void outlineProcessKeypress() {
                    O.mode = DATABASE;
                }
                else if (O.context == "recent") (*get_recent)(MAX);
-               else (*get_items_by_context)(O.context.c_str(), MAX);
+               else (*get_items_by_context)(O.context, MAX); //should have to pass context its global
                O.mode = NORMAL;
                return;
 
@@ -3990,8 +3962,7 @@ int insert_row_sqlite(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         << " 1," //folder_tid
-        //<< context_tid << ", " //context_tid
-        << context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
+        << context_map.at(O.context) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -6037,12 +6008,12 @@ void editorPasteString(void) {
 }
 
 void editorPasteLine(void){
-  if (E.rows.empty())  editorInsertRow(0, nullptr, 0);
+  if (E.rows.empty())  editorInsertRow(0, std::string());
 
   for (int i=0; i < line_buffer.size(); i++) {
-    int len = (line_buffer[i].size());
+    //int len = (line_buffer[i].size());
     E.fr++;
-    editorInsertRow(E.fr, &line_buffer[i][0], len);
+    editorInsertRow(E.fr, line_buffer[i]);
   }
 }
 
@@ -6378,64 +6349,39 @@ void editorFindNextWord(void) {
 }
 
 void editorMarkupLink(void) {
-  int y, numrows, j, n, p;
-  char *z;
-  char *http = "http";
-  char *bracket_http = "[http";
+  int y, numrows, j, n; //p;
+  std::string http = "http";
+  std::string bracket_http = "[http";
   numrows = E.rows.size();
+
   n = 1;
-
-
-  for ( n=1; E.rows[numrows-n][0] == '[' ; n++ );
-
+  for (n; E.rows[numrows-n][0] == '['; n++);
 
   for (y=0; y<numrows; y++){
-    std::string row = E.rows.at(y);
+    std::string& row = E.rows.at(y);
     if (row[0] == '[') continue;
-    if (strstr(&row[0], bracket_http)) continue;
+    if (row.find(bracket_http) != std::string::npos) continue;
 
-    z = strstr(&row[0], http);
-    if (z==NULL) continue;
-    E.fr = y;
-    p = z - &row[0];
+    auto beg = row.find(http);
+    if (beg==std::string::npos) continue;
 
-    //url including http:// must be at least 10 chars you'd think
-    for (j = p + 10; j < row.size() ; j++) {
-      if (row[j] == 32) break;
-    }
+    auto end = row.find(' ', beg);
+    if (end == std::string::npos) end = row.size();
+    std::string url = row.substr(beg, end - beg);
+    row.insert(beg, "[");
+    std::stringstream ss;
+    ss << "][" << n << "]";
+    row.insert(end + 1, ss.str());
+    editorInsertRow(E.rows.size(), url);
+    std::string& last_row = E.rows.back();
+    std::stringstream ss2;
+    ss2 << "[" << n << "]: ";
+    last_row.insert(0, ss2.str());
 
-    int len = j-p;
-    char *zz = (char*)malloc(len + 1);
-    memcpy(zz, z, len);
-    zz[len] = '\0';
-
-    E.fc = p;
-    editorInsertChar('[');
-    E.fc = j+1;
-    editorInsertChar(']');
-    editorInsertChar('[');
-    editorInsertChar(48+n);
-    editorInsertChar(']');
-
-    if ( E.rows.at(E.rows.size() - 1).at(0) != '[' ) {
-      E.fr = E.rows.size() - 1; //check why need - 1 otherwise seg faults
-      E.fc = 0;
-      editorInsertNewline(1);
-      }
-
-    editorInsertRow(E.rows.size(), zz, len);
-    free(zz);
-    E.fc = 0;
-    E.fr = E.rows.size() - 1;
-    editorInsertChar('[');
-    editorInsertChar(48+n);
-    editorInsertChar(']');
-    editorInsertChar(':');
-    editorInsertChar(' ');
-    editorSetMessage("z = %u and beginning position = %d and end = %d and %u", z, p, j,zz); 
     n++;
   }
   E.dirty++;
+  E.fc = E.fr = E.line_offset = 0;
 }
 
 void EraseRedrawLines(void) {
