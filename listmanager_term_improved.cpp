@@ -1,6 +1,6 @@
  /***  includes ***/
 
-#define CTRL_KEY(k) ((k) & 0x1f)
+#define CTRL_KEY(k) ((k) & 0x1f) // )x1f is 31; first ascii is 32 space anding removes all higher bits
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
 #define TOP_MARGIN 1
@@ -218,6 +218,8 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"quit!", C_quit0},
   {"q!", C_quit0},
   {"edit", C_edit},
+  //{"\0x17\0x17", C_edit}, //CTRL-W,CTRL-W
+  {{0x17,0x17}, C_edit}, //CTRL-W,CTRL-W; = dec 23; hex 17
   {"rec", C_recent},
   {"recent", C_recent},
   {"val", C_valgrind},
@@ -2328,6 +2330,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           return;
           }
+
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
@@ -2421,12 +2424,33 @@ void outlineProcessKeypress(void) {
           return;
 
         case C_gg:
-         O.fc = O.rowoff = 0;
-         O.fr = O.repeat-1; //this needs to take into account O.rowoff
-         O.command[0] = '\0';
-         O.repeat = 0;
-         get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-         return;
+          O.fc = O.rowoff = 0;
+          O.fr = O.repeat-1; //this needs to take into account O.rowoff
+          O.command[0] = '\0';
+          O.repeat = 0;
+          get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          return;
+
+        case C_edit:
+          {
+          int id = get_id(-1);
+          if (id != -1) {
+            outlineSetMessage("Edit note %d", id);
+            outlineRefreshScreen();
+            //editor_mode needs go before get_note in case we retrieved item via a search
+            editor_mode = true;
+            get_note(id); //if id == -1 does not try to retrieve note
+            E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
+            E.mode = NORMAL;
+            E.command[0] = '\0';
+          } else {
+            outlineSetMessage("You need to save item before you can "
+                                   "create a note");
+          }
+          O.command[0] = '\0';
+          O.mode = NORMAL;
+          return;
+          }
 
         default:
           // if a single char or sequence of chars doesn't match then
