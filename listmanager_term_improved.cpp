@@ -178,7 +178,7 @@ enum Command {
   C_valgrind
 };
 
-static std::map<std::string, int> lookuptablemap {
+static std::unordered_map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
   {"daw", C_daw},
@@ -288,6 +288,9 @@ struct editorConfig {
 static struct editorConfig E;
 
 /*** outline prototypes ***/
+/* note that you can call these either through explicit dereference: (*get_note)(4328)
+ * or through implicit dereference: get_note(4328)
+ */
 static void (*get_items_by_context)(std::string, int); //shouldn't have to pass context it's global
 static void (*get_recent)(int);
 static void (*get_items_by_id)(std::stringstream&);
@@ -303,6 +306,10 @@ static void (*update_row)(void);
 static void (*display_item_info)(int);
 static void (*touch)(void);
 static void (*search_db)(void);
+
+void outlineProcessKeypress(void);
+void editorProcessKeypress(void);
+
 void solr_find(void);
 void fts5_sqlite(void);
 int fts5_callback(void *, int, char **, char **);
@@ -1052,7 +1059,7 @@ void solr_find(void) {
 
               Py_DECREF(pValue);
 
-              (*get_items_by_id)(query);
+              get_items_by_id(query);
           } else {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
@@ -1135,7 +1142,7 @@ void update_solr(void) {
 }
 
 int keyfromstringcpp(std::string key) {
-  std::map<std::string,int>::iterator it;
+  std::unordered_map<std::string,int>::iterator it;
   it = lookuptablemap.find(key);
   if (it != lookuptablemap.end())
     return it->second;
@@ -1193,7 +1200,7 @@ void move_up(void)
 
   if (O.fr > 0) O.fr--;
   O.fc = O.coloff = 0;
-  (*get_note)(id); //if id == -1 does not try to retrieve note
+  get_note(id); //if id == -1 does not try to retrieve note
 }
 /*** end vim-like functions***/
 
@@ -1993,7 +2000,7 @@ void outlineMoveCursor(int key) {
 
       // note need to determine row after moving cursor
       id = O.rows.at(O.fr).id;
-      (*get_note)(id); //if id == -1 does not try to retrieve note 
+      get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
 
@@ -2006,7 +2013,7 @@ void outlineMoveCursor(int key) {
      {
       orow& row = O.rows.at(O.fr);
       //row = &O.row[O.fr];
-      (*get_note)(row.id); //if id == -1 does not try to retrieve note
+      get_note(row.id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
      }
@@ -2016,18 +2023,26 @@ void outlineMoveCursor(int key) {
   if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
 }
 
+void contextProcessKeypress(void) {
+}
+
+
+
+
 // higher level outline function depends on readKey()
-void outlineProcessKeypress() {
+void outlineProcessKeypress(void) {
   int start, end, command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
   int c = readKey();
+  int n; // need because of c++ initialization rules in switch
 
   switch (O.mode) { 
 
-    int n; // need because of c++ initialization in switch
+   // int n; // need because of c++ initialization in switch; moved before switch
+
     case NO_ROWS:
 
       if (c==':'){
@@ -2242,7 +2257,7 @@ void outlineProcessKeypress() {
           O.command[0] = '\0';
           O.repeat = 0;
 
-         (*get_note)(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+         get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
           return;
       
@@ -2341,7 +2356,7 @@ void outlineProcessKeypress() {
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           editorRefreshScreen();
-          (*update_note)(); // write updated note to database
+          update_note(); // write updated note to database
           O.command[0] = '\0';
           return;
 
@@ -2410,7 +2425,7 @@ void outlineProcessKeypress() {
          O.fr = O.repeat-1; //this needs to take into account O.rowoff
          O.command[0] = '\0';
          O.repeat = 0;
-         (*get_note)(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+         get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
          return;
 
         default:
@@ -2457,25 +2472,25 @@ void outlineProcessKeypress() {
               O.command_line.clear();
               return;
 
-             case 'x':
-               update_rows();
-               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
-               exit(0);
-               return;
+            case 'x':
+              update_rows();
+              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+              write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
+              exit(0);
+              return;
 
-             case 'r':
-             case C_refresh:
-               EraseRedrawLines(); //****03102019*************************
-               outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-               if (O.context == "search"){
-                   (*search_db)();
-                   O.mode = DATABASE;
-               }
-               else if (O.context == "recent") (*get_recent)(MAX);
-               else (*get_items_by_context)(O.context, MAX); //should have to pass context its global
-               O.mode = NORMAL;
-               return;
+            case 'r':
+            case C_refresh:
+              EraseRedrawLines(); //****03102019*************************
+              outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
+              if (O.context == "search"){
+                  search_db();
+                  O.mode = DATABASE;
+              }
+              else if (O.context == "recent") get_recent(MAX);
+              else get_items_by_context(O.context, MAX); //should have to pass context its global
+              O.mode = NORMAL;
+              return;
 
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
@@ -2494,7 +2509,6 @@ void outlineProcessKeypress() {
 
             case 'e':
             case C_edit: //edit the note of the current item
-             // ;
                {
                int id = get_id(-1);
                if (id != -1) {
@@ -2502,7 +2516,7 @@ void outlineProcessKeypress() {
                  outlineRefreshScreen();
                  //editor_mode needs go before get_note in case we retrieved item via a search
                  editor_mode = true;
-                 (*get_note)(id); //if id == -1 does not try to retrieve note
+                 get_note(id); //if id == -1 does not try to retrieve note
                  E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
                  E.mode = NORMAL;
                  E.command[0] = '\0';
@@ -2514,6 +2528,7 @@ void outlineProcessKeypress() {
                O.mode = NORMAL;
                return;
                }
+
             case 'f':
             case C_find: //catches 'fin' and 'find' 
               if (O.command_line.size() < 6) {
@@ -2523,13 +2538,12 @@ void outlineProcessKeypress() {
 
               EraseRedrawLines(); //*****************************
               O.context = "search";
-              //O.show_highlight = true; //not using
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
-              (*search_db)();
+              search_db();
               outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
               O.mode = DATABASE; //so you can't edit highlighted items
-              if (O.rows.size()) (*get_note)(get_id(-1));
+              if (O.rows.size()) get_note(get_id(-1));
               return;
 
             case C_fts: 
@@ -2544,7 +2558,7 @@ void outlineProcessKeypress() {
               fts5_sqlite();
               outlineSetMessage("Will use fts5 to search items for \'%s\'", search_terms.c_str());
               O.mode = NORMAL;
-              if (O.rows.size()) (*get_note)(get_id(-1));
+              if (O.rows.size()) get_note(get_id(-1));
               return;
 
             case C_update: //update solr
@@ -2588,7 +2602,7 @@ void outlineProcessKeypress() {
                outlineSetMessage("Item %d will get context \'%s\'(%d)",
                                  get_id(-1), new_context.c_str(), context_tid);
 
-               (*update_context)(context_tid); 
+               update_context(context_tid);
                O.mode = NORMAL;
                //O.command_line[0] = '\0'; //probably not necessary
                O.command_line.clear(); //probably not necessary
@@ -2622,19 +2636,19 @@ void outlineProcessKeypress() {
                EraseRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
-               (*get_items_by_context)(new_context, MAX); 
+               get_items_by_context(new_context, MAX);
                O.mode = NORMAL;
-               (*get_note)(O.rows.at(0).id);
+               get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
                }
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
-               (*get_recent)(20); 
+               get_recent(MAX);
                O.context = "recent";
                O.mode = NORMAL;
-               (*get_note)(O.rows.at(0).id);
+               get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
 
@@ -2768,7 +2782,7 @@ void outlineProcessKeypress() {
         case '\x1b':
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
-          (*get_note)(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineSetMessage("");
           return;
 
@@ -2794,32 +2808,32 @@ void outlineProcessKeypress() {
           return;
 
         case 'x':
-          (*toggle_completed)();
+          toggle_completed();
           return;
 
         case 'd':
-          (*toggle_deleted)();
+          toggle_deleted();
           return;
 
         case 't': //touch
-          (*touch)();
+          touch();
           return;
 
         case '*':
-          (*toggle_star)();
+          toggle_star();
           return;
 
         case 's': 
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
-          (*get_items_by_context)(O.context, MAX);
+          get_items_by_context(O.context, MAX);
             
           return;
 
         case 'r':
           outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-          if (O.context == "search") (*search_db)();
-          else (*get_items_by_context)(O.context, MAX);
+          if (O.context == "search") search_db();
+          else get_items_by_context(O.context, MAX);
           O.mode = NORMAL;
           return;
   
@@ -2951,8 +2965,8 @@ void outlineProcessKeypress() {
       editorDisplayFile();
 
       return;
-  } //End of outer switch(O.mode)
-}
+  } //end of outer switch(O.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
+} //end outlineProcessKeypress
 
 void synchronize(int report_only) { //using 1 or 0
 
@@ -3148,7 +3162,7 @@ void fts5_sqlite(void) {
   }
     query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  (*get_items_by_id)(query);
+  get_items_by_id(query);
 
   //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 
@@ -4168,6 +4182,7 @@ void update_rows_sqlite(void) {
   put = &msg[strlen(msg)];
 
   for (int j=0; j < n;j++) {
+    O.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
     put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
   }
 
@@ -5236,7 +5251,7 @@ void editorProcessKeypress(void) {
           switch (E.command[1]) {
 
             case 'w':
-              (*update_note)();
+              update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
               editorSetMessage("");
@@ -5261,7 +5276,7 @@ void editorProcessKeypress(void) {
               return;
   
             case 'x':
-              (*update_note)();
+              update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
               editor_mode = false;
@@ -5486,8 +5501,8 @@ void editorProcessKeypress(void) {
       E.mode = 0;
       return;
 
-  }  // End of main switch that deals with modes like NORMAL, INSERT etc.
-} 
+  }  //end of outer switch(E.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
+} //end of editorProcessKeyPress
 
 /********************************************************** WW stuff *****************************************/
 // used by editorDrawRows to figure out the first row to draw
@@ -6483,39 +6498,39 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   if (argc > 1 && argv[1][0] == 's') {
-    get_items_by_context = &get_items_by_context_sqlite;
-    get_items_by_id = &get_items_by_id_sqlite;
-    get_note = &get_note_sqlite;
-    update_note = &update_note_sqlite;
-    toggle_star = &toggle_star_sqlite;
-    toggle_completed = &toggle_completed_sqlite;
-    toggle_deleted = &toggle_deleted_sqlite;
-    //insert_row = &insert_row_sqlite;
-    update_rows = &update_rows_sqlite;
-    update_row = &update_row_sqlite;
-    update_context = &update_context_sqlite;
-    display_item_info = &display_item_info_sqlite;
-    touch = &touch_sqlite;
-    get_recent = &get_recent_sqlite;
-    search_db = &fts5_sqlite;
+    get_items_by_context = get_items_by_context_sqlite;
+    get_items_by_id = get_items_by_id_sqlite;
+    get_note = get_note_sqlite;
+    update_note = update_note_sqlite;
+    toggle_star = toggle_star_sqlite;
+    toggle_completed = toggle_completed_sqlite;
+    toggle_deleted = toggle_deleted_sqlite;
+    //insert_row = insert_row_sqlite;
+    update_rows = update_rows_sqlite;
+    update_row = update_row_sqlite;
+    update_context = update_context_sqlite;
+    display_item_info = display_item_info_sqlite;
+    touch = touch_sqlite;
+    get_recent = get_recent_sqlite;
+    search_db = fts5_sqlite;
     which_db = "sqlite";
   } else {
     get_conn();
-    get_items_by_context = &get_items_by_context_pg;
-    get_items_by_id = &get_items_by_id_pg;
-    get_note = &get_note_pg;
-    update_note = &update_note_pg;
-    toggle_star = &toggle_star_pg;
-    toggle_completed = &toggle_completed_pg;
-    toggle_deleted = &toggle_deleted_pg;
-    //insert_row = &insert_row_pg;
-    update_rows = &update_rows_pg;
-    update_row = &update_row_pg;
-    update_context = &update_context_pg;
-    display_item_info = &display_item_info_pg;
-    touch = &touch_pg;
-    get_recent = &get_recent_pg;
-    search_db = &solr_find;
+    get_items_by_context = get_items_by_context_pg;
+    get_items_by_id = get_items_by_id_pg;
+    get_note = get_note_pg;
+    update_note = update_note_pg;
+    toggle_star = toggle_star_pg;
+    toggle_completed = toggle_completed_pg;
+    toggle_deleted = toggle_deleted_pg;
+    //insert_row = insert_row_pg;
+    update_rows = update_rows_pg;
+    update_row = update_row_pg;
+    update_context = update_context_pg;
+    display_item_info = display_item_info_pg;
+    touch = touch_pg;
+    get_recent = get_recent_pg;
+    search_db = solr_find;
     which_db = "postgres";
   }
 
@@ -6557,11 +6572,11 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  (*get_items_by_context)(O.context, MAX); //? brings back deleted/completed-type data
+  get_items_by_context(O.context, MAX); //? brings back deleted/completed-type data
   // I need to look at below when incorrect queries were bringing back nother
   // without the guard segfault and even now searches could bring back nothing
   if (O.rows.size())
-  (*get_note)(O.rows.at(0).id);
+  get_note(O.rows.at(0).id);
    //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
