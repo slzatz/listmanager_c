@@ -63,7 +63,8 @@ static std::string string_buffer; //yanking chars
 static std::map<int, std::string> fts_titles;
 
 // context and context_map should probably should be a sql query and not hard coded
-static std::string context[] = {
+//static std::string context[] = {
+static const std::array<std::string, 12> context = {
                         "", //maybe should be "search" - we'll see
                         "No Context", // 1
                         "financial", // 2
@@ -146,6 +147,8 @@ enum Command {
   C_unindent,
   C_c$,
   C_gg,
+  C_gt,
+
   C_yy,
 
   C_open,
@@ -158,6 +161,8 @@ enum Command {
   C_new, //create a new item
 
   C_context, //change an item's context
+
+  C_get_contexts,
 
   C_update, //update solr db
 
@@ -188,22 +193,23 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {">>", C_indent},
   {"<<", C_unindent},
   {"gg", C_gg},
+  {"gt", C_gt},
   {"yy", C_yy},
   {"d$", C_d$},
 
   {"help", C_help},
   {"open", C_open},
   // doesn't work if you use arrow keys
-  {"o", C_open}, //need 'o' because this is command with target word
+  {"o", C_open}, //need because this is command line command with a target word
   {"fin", C_find},
   {"find", C_find},
   {"fts", C_fts},
   {"refresh", C_refresh},
   {"new", C_new}, //don't need "n" because there is no target
-  {"context", C_context},
+  {"contexts", C_get_contexts},
   {"con", C_context},
   // doesn't work if you use arrow keys
-  {"c", C_context}, //need because there is a target
+  {"c", C_context}, //need because this is a command line command with a target word
   {"update", C_update},
   {"sync", C_synch},
   {"synch", C_synch},
@@ -218,7 +224,6 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"quit!", C_quit0},
   {"q!", C_quit0},
   {"edit", C_edit},
-  //{"\0x17\0x17", C_edit}, //CTRL-W,CTRL-W
   {{0x17,0x17}, C_edit}, //CTRL-W,CTRL-W; = dec 23; hex 17
   {"rec", C_recent},
   {"recent", C_recent},
@@ -290,6 +295,8 @@ struct editorConfig {
 static struct editorConfig E;
 
 /*** outline prototypes ***/
+void get_items_by_context_sqlite(std::string, int);
+void retrieve_contexts(void);
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
  */
@@ -316,6 +323,7 @@ void solr_find(void);
 void fts5_sqlite(void);
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
+int context_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
@@ -590,16 +598,49 @@ void get_recent_sqlite(int max) {
   } else {
     query << "SELECT * FROM task "
           << "ORDER BY task.modified DESC LIMIT " << max;
-  }
-        
+      }
+
+        bool no_rows = true;
+        //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
+        rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+
+        if (rc != SQLITE_OK ) {
+          outlineSetMessage("SQL error: %s\n", err_msg);
+          sqlite3_free(err_msg);
+        }
+      sqlite3_close(db);
+
+      if (no_rows) {
+        outlineSetMessage("No results were returned");
+        O.mode = NO_ROWS;
+      }
+    }
+
+void retrieve_contexts(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  std::string query("SELECT * FROM context;");
+
     bool no_rows = true;
-    //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, query.c_str(), context_callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
       sqlite3_free(err_msg);
-    } 
+    }
   sqlite3_close(db);
 
   if (no_rows) {
@@ -608,6 +649,39 @@ void get_recent_sqlite(int max) {
   }
 }
 
+int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
+  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  *flag = false;
+
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: default = Boolean ? what this is
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  */
+
+  orow row;
+
+  int len = strlen(argv[2]);
+  row.title = std::string(argv[2], argv[2] + len);
+  row.id = atoi(argv[1]); //if we made id -1 would not try to retrieve note
+  row.star = (atoi(argv[3]) == 1) ? true: false;
+  row.deleted = (atoi(argv[5]) == 1) ? true: false;
+  row.completed = false;
+  row.dirty = false;
+  len = strlen(argv[4]);
+  len = (len > 16) ? 16 : len;
+  strncpy(row.modified, argv[4], len);
+  row.modified[len] = '\0';
+  O.rows.push_back(row);
+
+  return 0;
+}
 void get_items_by_context_sqlite(std::string context, int max) {
   std::stringstream query;
 
@@ -850,7 +924,7 @@ void get_items_by_id_pg(std::stringstream& query) {
 }
 
 void get_note_sqlite(int id) {
-  if (id ==-1) return;
+  if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = 0;
@@ -2014,7 +2088,6 @@ void outlineMoveCursor(int key) {
       // note need to determine row after moving cursor
      {
       orow& row = O.rows.at(O.fr);
-      //row = &O.row[O.fr];
       get_note(row.id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
@@ -2024,12 +2097,10 @@ void outlineMoveCursor(int key) {
   orow& row = O.rows.at(O.fr);
   if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
 }
-
+/**********************************************************************/
 void contextProcessKeypress(void) {
 }
-
-
-
+/**********************************************************************/
 
 // higher level outline function depends on readKey()
 void outlineProcessKeypress(void) {
@@ -2039,11 +2110,9 @@ void outlineProcessKeypress(void) {
      escape sequences for things like navigation keys */
 
   int c = readKey();
-  int n; // need because of c++ initialization rules in switch
+  size_t n;
 
   switch (O.mode) { 
-
-   // int n; // need because of c++ initialization in switch; moved before switch
 
     case NO_ROWS:
 
@@ -2138,7 +2207,6 @@ void outlineProcessKeypress(void) {
 
       if ( O.repeat == 0 ) O.repeat = 1;
 
-      //{ /***********************************************************************************
       n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
@@ -2259,7 +2327,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
 
-         get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
           return;
       
@@ -2431,7 +2499,27 @@ void outlineProcessKeypress(void) {
           get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
           return;
 
+        case C_gt:
+          // may actually work in context_mode
+          {
+          std::string new_context;
+          NN = (NN == 0) ? 1 : ((NN < context.size() - 1) ? NN + 1 : 1);
+          new_context = context[NN];
+          EraseRedrawLines(); //*****************************
+          outlineSetMessage("\'%s\' will be opened", new_context.c_str());
+          O.context = new_context;
+          get_items_by_context(new_context, MAX);
+          O.mode = NORMAL;
+          get_note(O.rows.at(0).id);
+          //editorRefreshScreen(); //in get_note
+          O.command[0] = '\0';
+          return;
+          }
+
         case C_edit:
+        // can't edit in context_mode
+        //{{0x17,0x17}, C_edit}, //CTRL-W,CTRL-W; = dec 23; hex 17
+          /***********************check mode****************************/
           {
           int id = get_id(-1);
           if (id != -1) {
@@ -2459,7 +2547,7 @@ void outlineProcessKeypress(void) {
 
       } //end of keyfromstring switch under case NORMAL 
 
-      return; // end of case NORMAL (don't think it can be reached)
+      //return; // end of case NORMAL (don't think it can be reached)
 
     case COMMAND_LINE:
 
@@ -2483,7 +2571,6 @@ void outlineProcessKeypress(void) {
             return;
 
         case '\r':
-          //;
           std::size_t pos;
 
           // passes back position of space (if there is one) in var pos
@@ -2501,7 +2588,7 @@ void outlineProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
               exit(0);
-              return;
+              //return;
 
             case 'r':
             case C_refresh:
@@ -2533,6 +2620,8 @@ void outlineProcessKeypress(void) {
 
             case 'e':
             case C_edit: //edit the note of the current item
+              // can't edit in context mode
+          /***********************check mode****************************/
                {
                int id = get_id(-1);
                if (id != -1) {
@@ -2589,6 +2678,12 @@ void outlineProcessKeypress(void) {
               update_solr();
               O.mode = NORMAL;
               return;
+
+            case C_get_contexts:
+             EraseRedrawLines();
+             retrieve_contexts();
+             O.mode = NO_ROWS;
+             return;
 
             case C_context:
               //NN is set to zero when entering COMMAND_LINE mode
@@ -2666,6 +2761,7 @@ void outlineProcessKeypress(void) {
                //editorRefreshScreen(); //in get_note
                return;
                }
+
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
@@ -2754,7 +2850,7 @@ void outlineProcessKeypress(void) {
 
             default: // default for commandfromstring
 
-              //"\x1b[41m", 5); //red background
+              //\x1b[41m => red background
               outlineSetMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
               O.mode = NORMAL;
               return;
@@ -2762,18 +2858,11 @@ void outlineProcessKeypress(void) {
           } //end of commandfromstring switch within '\r' of case COMMAND_LINE
 
         default: //default for switch 'c' in case COMMAND_LINE
-          ;
-      //int n = strlen(O.command_line);
-      //int n = O.command_line.size();
-          if (c == DEL_KEY || c == BACKSPACE) {
-            //O.command_line[n-1] = '\0';
+          if (c == DEL_KEY || c == BACKSPACE)
             O.command_line.pop_back();
-          } else {
+          else
             O.command_line.push_back(c);
 
-            //O.command_line[n] = c;
-            //O.command_line[n+1] = '\0';
-          }
 
           outlineSetMessage(":%s", O.command_line.c_str());
 
