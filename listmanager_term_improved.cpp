@@ -63,7 +63,7 @@ static std::vector<std::string> line_buffer; //yanking lines
 static std::string string_buffer; //yanking chars
 static std::map<int, std::string> fts_titles;
 
-// context and context_map should probably should be a sql query and not hard coded
+// context and context_map should be an sql query and not hard coded
 //static std::string context[] = {
 static const std::array<std::string, 12> context = {
                         "", //maybe should be "search" - we'll see
@@ -94,6 +94,9 @@ static std::unordered_map<std::string, int> context_map {
   {"test", 10},
   {"work", 11}
   };
+
+//static std::map<int, std::string> context_map2;
+static std::map<std::string, int> context_map2;
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -298,6 +301,7 @@ static struct editorConfig E;
 /*** outline prototypes ***/
 void get_items_by_context_sqlite(std::string, int);
 void retrieve_contexts(void);
+int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName);
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
  */
@@ -470,6 +474,59 @@ void get_conn(void) {
         do_exit(conn);
     }
   } 
+}
+
+void retrieve_context_titles(void) {
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  std::string query("SELECT tid,title FROM context;");
+
+    bool no_rows = true;
+    rc = sqlite3_exec(db, query.c_str(), context_titles_callback, &no_rows, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      //outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+  if (no_rows) {
+    //outlineSetMessage("No results were returned");
+    //O.mode = NO_ROWS;
+  }
+}
+
+int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
+  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  *flag = false;
+
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: default = Boolean ? what this is
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  */
+
+  //int len = strlen(argv[1]);
+  //context_map2[atoi(argv[0])] = std::string(argv[1], argv[1] + len);
+  context_map2[std::string(argv[1])] = atoi(argv[0]);
+
+  return 0;
 }
 
 void get_recent_pg(int max) {
@@ -684,6 +741,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   return 0;
 }
+
 void get_items_by_context_sqlite(std::string context, int max) {
   std::stringstream query;
 
@@ -2574,16 +2632,20 @@ void outlineProcessKeypress(void) {
           return;
 
         case ARROW_UP:
+            /*
             if (NN == 11) NN = 1;
             else NN++;
             outlineSetMessage(":%s %s", O.command_line.c_str(), context[NN].c_str());
-            return;
+            */
+          return;
 
         case ARROW_DOWN:
+          /*
             if (NN < 2) NN = 11;
             else NN--;
             outlineSetMessage(":%s %s", O.command_line.c_str(), context[NN].c_str());
-            return;
+          */
+          return;
 
         case '\r':
           std::size_t pos;
@@ -2713,15 +2775,23 @@ void outlineProcessKeypress(void) {
                {
                int context_tid;
                std::string new_context;
-               if (NN) {
+               if (0) {
+               //if (NN) {
                  new_context = context[NN];
                  context_tid = NN;
                } else if (O.command_line.size() > 7) {
                  bool success = false;
-                 for (int k = 1; k < 12; k++) { 
+                 /*for (int k = 1; k < 12; k++) {
                    if (strncmp(&O.command_line[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      context_tid = k;
+                     success = true;
+                     break;
+                   }
+                 }*/
+                 for (auto i : context_map2) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
+                     new_context = i.first;
                      success = true;
                      break;
                    }
@@ -2755,18 +2825,25 @@ void outlineProcessKeypress(void) {
               //NN is set to zero when entering COMMAND_LINE mode
                {
                std::string new_context;
-               if (NN) {
+               if (0) {
+               //if (NN) {
                  new_context = context[NN];
                } else if (pos) {
                  bool success = false;
-                 for (int k = 1; k < 12; k++) { 
+                 /*for (int k = 1; k < 12; k++) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], context[k].c_str(), 3) == 0) {
                      new_context = context[k];
                      success = true;
                      break;
                    }
+                 }*/
+                 for (auto i : context_map2) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
+                     new_context = i.first;
+                     success = true;
+                     break;
+                   }
                  }
-
                  if (!success) return;
 
                } else {
@@ -4111,7 +4188,7 @@ int insert_row_sqlite(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         << " 1," //folder_tid
-        << context_map.at(O.context) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << context_map2.at(O.context) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -6632,6 +6709,8 @@ int main(int argc, char** argv) {
 
   //outline_normal_map[ARROW_UP] = move_up;
   //outline_normal_map['k'] = move_up;
+  retrieve_context_titles();
+  context_map2["search"] = 1;
 
   if (argc > 1 && argv[1][0] == 's') {
     get_items_by_context = get_items_by_context_sqlite;
