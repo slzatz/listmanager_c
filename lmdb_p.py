@@ -62,6 +62,7 @@ context_table = Table('context', metadata,
                  Column('title', String(32), unique=True, nullable=False), 
                  Column('default', Boolean, default=False),
                  Column('created', DateTime, default=datetime.datetime.now), 
+                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
                  Column('deleted', Boolean, default=False),  # need to add this to delete contexts on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),

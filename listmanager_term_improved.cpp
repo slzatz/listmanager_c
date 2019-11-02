@@ -354,7 +354,7 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineInsertRow(int at, std::string s, int id, bool star, bool deleted, bool completed, char *modified);
+void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool completed, char *modified);
 void outlineDrawRows(std::string&);
 void outlineDrawSearchRows(std::string&);
 void outlineScroll(void);
@@ -363,6 +363,7 @@ void get_recent_pg(int);
 void get_recent_sqlite(int);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
+int insert_context_sqlite(orow&);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void synchronize(int);
@@ -720,6 +721,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   6: icon => string 32
   7: textcolor, Integer
   8: image, largebinary
+  9: modified
   */
 
   orow row;
@@ -730,7 +732,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[5]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
-  strncpy(row.modified, argv[4], 16);
+  strncpy(row.modified, argv[9], 16);
   O.rows.push_back(row);
 
   return 0;
@@ -1438,17 +1440,17 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline operations ***/
 
-void outlineInsertRow(int at, std::string s, int id, bool star, bool deleted, bool completed, char* modified) {
+void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool completed, char* modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
 
   row.title = s;
-  row.id = id;
+  row.id = -1;
   row.star = star;
   row.deleted = deleted;
   row.completed = completed;
-  row.dirty = (id != -1) ? false : true;
+  row.dirty = true;
   strncpy(row.modified, modified, 16);
   row.modified[16] = '\0';
 
@@ -1824,7 +1826,10 @@ void editorSave(void) {
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
-  if(O.rows.empty()) return;
+  if(O.rows.empty()) {
+      O.fr = O.fc = O.coloff = O.cx = O.cy = 0;
+      return;
+  }
 
   if (O.fr > O.screenlines + O.rowoff - 1) {
     O.rowoff =  O.fr - O.screenlines + 1;
@@ -2065,6 +2070,7 @@ void outlineRefreshScreen(void) {
     outlineDrawSearchRows(ab);
   else
     outlineDrawRows(ab);
+
   outlineDrawStatusBar(ab);
   outlineDrawMessageBar(ab);
 
@@ -2073,7 +2079,7 @@ void outlineRefreshScreen(void) {
   if (O.mode == DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     ab.append(buf, strlen(buf));
-  } else if (O.mode != NO_ROWS) {
+  } else {//if (O.mode != NO_ROWS) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN);
     ab.append(buf, strlen(buf));
     ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
@@ -2192,8 +2198,9 @@ void outlineProcessKeypress(void) {
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
-          if (rows_are_tasks) update_row();
-          else update_context_sqlite();
+          if (rows_are_tasks) {
+            update_row();
+          } else update_context_sqlite();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
           //outlineSetMessage("");
@@ -2280,13 +2287,12 @@ void outlineProcessKeypress(void) {
       switch(command) {  
 
         case '\r':
-          //update_row();
           if (rows_are_tasks) {
             update_row();
-          } else if (O.rows.at(O.fr).dirty) {
+          } else if (O.rows.at(O.fr).dirty) { // means context is dirty
             update_context_sqlite();
           } else {
-              get_items_by_context(O.rows.at(O.fr).title, MAX);
+            get_items_by_context(O.rows.at(O.fr).title, MAX); //go to context (not dirty)
           }
           O.command[0] = '\0';
           return;
@@ -2402,7 +2408,7 @@ void outlineProcessKeypress(void) {
           return;
       
         case 'O': //C_new: 
-          outlineInsertRow(0, "", -1, true, false, false, BASE_DATE);
+          outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
           outlineRefreshScreen();  //? necessary
@@ -2678,7 +2684,7 @@ void outlineProcessKeypress(void) {
             //in vim create new window and edit a file in it - here creates new item
             case 'n':
             case C_new: 
-              outlineInsertRow(0, "", -1, true, false, false, BASE_DATE);
+              outlineInsertRow(0, "", true, false, false, BASE_DATE);
               O.fc = O.fr = O.rowoff = 0;
               outlineScroll();
               outlineRefreshScreen();  //? necessary
@@ -4093,7 +4099,7 @@ void update_context_sqlite(void) {
     sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_row_sqlite(row);
+    insert_context_sqlite(row);
   }
 }
 
@@ -4267,6 +4273,72 @@ int insert_row_sqlite(orow& row) {
   }
   sqlite3_close(db);
   outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
+
+  return row.id;
+}
+
+int insert_context_sqlite(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO context ("
+        << "title, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "tid, "
+        << "\"default\", "
+        << "textcolor "
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " False," //deleted
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
+        << " 100," //tid
+        << " False," //default
+        << " 10" //textcolor
+        << ");"; // RETURNING id;",
+
+  /*
+   * not used:
+     "default" (not sure why in quotes but may be system variable
+      tid,
+      icon (varchar 32)
+      image (blob)
+    */
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  outlineSetMessage("Successfully inserted new context with id %d and indexed it", row.id);
 
   return row.id;
 }
