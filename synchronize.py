@@ -48,25 +48,20 @@ def synchronize(report_only=True):
     log+= "The last time client was synced (based on client clock) was {}, which was {} days and {} minutes ago.\n".format(last_client_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
     log+= "The last time server was synced (based on server clock) was {}, which was {} days and {} minutes ago.\n".format(last_server_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
 
-    #get new server contexts
-    server_new_contexts = remote_session.query(p.Context).filter(p.Context.created > last_server_sync).all()
+    # SERVER CHANGES
+    #server_updated_contexts: new and modified
+    server_updated_contexts = remote_session.query(p.Context).filter(and_(
+      p.Context.modified > last_server_sync, p.Context.deleted==False, p.Task.id > 1)).all()
 
-    if server_new_contexts:
-        nn+=len(server_new_contexts)
-        log+= "New server Contexts added since the last sync: {0}.\n".format(len(server_new_contexts))
+    if server_updated_contexts:
+        nn+=len(server_updated_contexts)
+        log+="Updated (new and modified) server Contexts since the last sync: {0}.\n".format(len(server_updated_contexts))
     else:
-        log+="There were no new server Contexts added since the last sync.\n"   
-            
-    #get new server folders
-    server_new_folders = remote_session.query(p.Folder).filter(p.Folder.created > last_server_sync).all() 
-    if server_new_folders:
-        nn+=len(server_new_folders) 
-        log+= "New server Folders added since the last sync: {0}.\n".format(len(server_new_folders))
-    else:
-        log+="There were no new server Folders added since the last sync.\n"    
+        log+="There were no updated (new and modified) server Contexts since the last sync.\n" 
 
-    #get server updated tasks
-    server_updated_tasks = remote_session.query(p.Task).filter(and_(p.Task.modified > last_server_sync, p.Task.deleted==False, p.Task.id > 1)).all()
+    #server_updated_tasks: new and modified
+    server_updated_tasks = remote_session.query(p.Task).filter(and_(
+      p.Task.modified > last_server_sync, p.Task.deleted==False, p.Task.id > 1)).all()
 
     if server_updated_tasks:
         nn+=len(server_updated_tasks)
@@ -74,8 +69,10 @@ def synchronize(report_only=True):
     else:
         log+="There were no updated (new and modified) server Tasks since the last sync.\n" 
 
-    #get server deleted tasks
-    server_deleted_tasks = remote_session.query(p.Task).filter(and_(p.Task.modified > last_server_sync, p.Task.deleted==True)).all()
+    #server_deleted_tasks
+    server_deleted_tasks = remote_session.query(p.Task).filter(and_(
+      p.Task.modified > last_server_sync, p.Task.deleted==True)).all()
+      
     if server_deleted_tasks:
         nn+=len(server_deleted_tasks)
         log+="Deleted server Tasks since the last sync: {0}.\n".format(len(server_deleted_tasks))
@@ -84,35 +81,29 @@ def synchronize(report_only=True):
 
     log+="\nThe total number of server postgresql changes is {0}.\n\n".format(nn)
 
-    ####################################################################################################################################################
+    # CLIENT CHANGES
+    #client_updated_contexts: new and modified
+    client_updated_contexts = local_session.query(Context).filter(and_(
+      Context.modified > last_client_sync, Context.deleted==False)).all()
 
-    #get new local  contexts
-    client_new_contexts = local_session.query(Context).filter(Context.created > last_client_sync).all()
-    if client_new_contexts:
-        nn+=len(client_new_contexts)
-        log+= "New client Contexts added since the last sync: {0}.\n".format(len(client_new_contexts))
+    if client_updated_contexts:
+        nn+=len(client_updated_contexts)
+        log+="Updated (new and modified) client Contexts since the last sync: {0}.\n".format(len(client_updated_contexts))
     else:
-        log+="There were no new client Contexts added since the last sync.\n"   
-            
-    #get new local folders
-    client_new_folders = local_session.query(Folder).filter(Folder.created > last_client_sync).all() 
-    if client_new_folders:
-        nn+=len(client_new_folders) 
-        log+= "New client Folders added since the last sync: {0}.\n".format(len(client_new_folders))
-    else:
-        log+="There were no new client Folders added since the last sync.\n"    
+        log+="There were no updated (new and modified) client Contexts since the last sync.\n" 
 
-    #get new local tasks
-    client_updated_tasks = local_session.query(Task).filter(and_(Task.modified > last_client_sync, Task.deleted==False)).all()
+    #client_updated_tasks: new and modified 
+    client_updated_tasks = local_session.query(Task).filter(and_(
+    Task.modified > last_client_sync, Task.deleted==False)).all()
+
     if client_updated_tasks:
         nn+=len(client_updated_tasks)
         log+="Updated (new and modified) client Tasks since the last sync: {0}.\n".format(len(client_updated_tasks))
     else:
         log+="There were no updated (new and modified) client Tasks since the last sync.\n" 
 
-    #get local deleted tasks
+    #client_deleted_tasks
     client_deleted_tasks = local_session.query(Task).filter(Task.deleted==True).all()
-    #client_deleted_tasks = local_session.query(Task).filter(and_(Task.modified > last_client_sync, Task.deleted==True, Task.tid != None)).all()
     if client_deleted_tasks:
         nn+=len(client_deleted_tasks)
         log+="Deleted client Tasks since the last sync: {0}.\n".format(len(client_deleted_tasks))
@@ -126,208 +117,99 @@ def synchronize(report_only=True):
             f.write(log)
         return nn
 
-    # put new server contexts on the client
-    for sc in server_new_contexts:
+    # updated server contexts -> client
+    if server_updated_contexts:
+        log += "\nContexts that were updated/created on the Server that need to be updated/created on the Client:\n"
+    for sc in server_updated_contexts:
 
-        # not sure there is any reason that this new server context would be on the client
-        try:
-            context = local_session.query(Context).filter_by(tid=sc.id).one()
-            
-        except sqla_orm_exc.NoResultFound:
-              
+        context = local_session.query(Context).filter_by(tid=sc.id).first()
+
+        if not context:
+            action = "created"
             context = Context()
             local_session.add(context)
+            # next line important: local db task.tid is the unique key that 
+            # links to the foreign key in context and folder tables
+            context.tid = sc.id
+        else:
+            action = "updated"
             
-            # the following line sets the foreign key for task.context_tid since that foreign key is context.tid on sqlite
-            # and it's context.id on postgres (which allows us to put the toodledo context.id into context.tid on postgres
-            context.tid = sc.id 
-            
-            log += "{title} is a new context received from the server\n".format(title=sc.title)
-
+        # Note that the foreign key that the server uses task.context_tid points to context.id is different
+        # between postgres and sqlite postgres points to context.id and local
+        # sqlite db points to context.tid but the actual values are identical
         context.title = sc.title
+        context.default = sc.default
+        context.textcolor = sc.textcolor
+
+        local_session.commit() #new/updated client task commit
         
-        try:
-            local_session.commit()
-            
-        except sqla_exc.IntegrityError:
-            local_session.rollback()
-            # probably means we ran into the unusual circumstance where context was simultaneously created on client and server
-            context.title = sc.title+' from server'
-            local_session.commit()
-            
-            log += "{title} is a new context received from the server but it was a dupe of new client context\n".format(title=sc.title)
+        log += f"{action} - id: {context.id} tid: {context.tid} title: {context.title} \n"
         
-    # put new client contexts on the server
-    for c in client_new_contexts: # this is where we could check for simultaneous creation of folders by checking for title in server_folders
+    # updated client contexts -> server
+    if client_updated_contexts:
+        log += "\nContexts that were updated/created on Client that need to be updated/created on Server:\n"
+    for cc in client_updated_contexts:
 
-        temp_tid = c.tid
+        context = remote_session.query(p.Context).filter_by(id=cc.tid).first()
 
-        # note that there could be a context with this title (created by another client) since last sync with current client
-
-        try:
-            server_context = remote_session.query(p.Context).filter_by(title=c.title).one()
-
-        except sqla_orm_exc.NoResultFound:
-
-            context = p.Context(title=c.title)
+        if not context:
+            action = "created"
+            context = p.Context(1000, "temp") # needs a title but will be changed below
             remote_session.add(context)
             remote_session.commit()
-            
-            server_context = remote_session.query(p.Context).filter_by(title=c.title).one()
-
-            log += "{title} is a new context received from the server\n".format(title=sc.title)
-            #print_("There was a problem adding new client context {} to the server".format(c.title))
-
-        server_tid = server_context.id
-        c.tid = server_tid
-        local_session.commit()
-        log+= "Context {title} was added to server and received tid: {tid}\n".format(title=server_context.name, tid=server_tid)
-        
-        #need to update all tasks that used the temp_tid
-        log+= "\nClient tasks that were updated with context id (tid) obtained from server:\n"
-        
-        tasks_with_temp_tid = local_session.query(Task).filter_by(context_tid=temp_tid) #tasks_with_temp_tid = c.tasks may be a better but would have to move higher
-        
-        # These changes on client do not get transmitted to the server because they are between old sync time and new sync time
-        for t in tasks_with_temp_tid:
-            t.context_tid = server_tid
+            cc.tid = context.id 
             local_session.commit()
+        else:
+            action = "updated"
+            if context in server_updated_contexts:
+                action += "-server won"
+                continue
             
-            log+= "{title} is in context {context}".format(title=t.title[:30], context=t.context.title) 
+        context.title = cc.title
+        context.default = cc.default
+        context.textcolor = cc.textcolor
 
+        remote_session.commit()
+
+        log += f"{action} - id: {context.id} title: {context.title} \n"
 
     # the following is intended to catch contexts deleted on the server
-    server_context_tids = set([sc.id for sc in remote_session.query(p.Context)])
-    client_context_tids = set([cc.tid for cc in local_session.query(Context)])
+    if 0:
+        server_context_tids = set([sc.id for sc in remote_session.query(p.Context)])
+        client_context_tids = set([cc.tid for cc in local_session.query(Context)])
 
-    client_not_server = client_context_tids - server_context_tids
+        client_not_server = client_context_tids - server_context_tids
 
-    for tid in client_not_server:
-        cc = local_session.query(Context).filter_by(tid=tid).one()
-        tasks = local_session.query(Task).filter_by(context_tid=tid).all()
-        title = cc.title
-        local_session.delete(cc)
-        local_session.commit()
-        #Note that the delete sets context_tid=None for all tasks in the context
-        #I wonder how you set to zero - this is done "manually" below
-        log+= "Deleted client context tid: {tid}  - {title}".format(title=title, tid=tid) # new server folders
+        for tid in client_not_server:
+            cc = local_session.query(Context).filter_by(tid=tid).one()
 
-        #These tasks are marked as changed by server so don't need to do this
-        #They temporarily pick of context_tid of None after the context is deleted on the client
-        #When tasks are updated later in sync they pick up correct folder_tid=0
+            tasks = local_session.query(Task).filter_by(context_tid=tid).all()
+            for t in tasks:
+                t.context_tid = 1
+                log+="client task id: {t.id} title {t.title} was put in context 'No Context'\n"
 
-        log+= "\nClient tasks that should be updated with context tid = 0 because the Context was deleted from the server:\n"
-        
-        for t in tasks:
-            log+="{title} should to be changed from context_tid: {tid} to 'No Context'\n".format(tid=t.context_tid, title=t.title)
-        
-    #no code for client deleted contexts yet
-
-    #put new server folders on the client
-    for sf in server_new_folders:
-
-        try:
-            folder = local_session.query(Folder).filter_by(tid=sf.id).one()
-            
-        except sqla_orm_exc.NoResultFound:
-            
-            folder = Folder()
-            local_session.add(folder)
-            
-            # the following line sets the foreign key for task.folder_tid since that foreign key is folder.tid on sqlite
-            # and it's folder.id on postgres (which allows us to put the toodledo folder.id into folder.tid on postgres
-            folder.tid = sf.id 
-            
-            log+= "New folder created on client with tid: {tid}; {title}\n".format(tid=sf.id, title=sf.name) # new server folders
-
-        folder.title = sf.title
-        folder.archived = sf.archived
-        folder.private = sf.private
-        folder.order= sf.order 
-
-        try:
+            title = cc.title
+            local_session.delete(cc)
             local_session.commit()
-            
-        except sqla_exc.IntegrityError:
-            local_session.rollback()
-            # probably means we ran into the unusual circumstance where folder was simultaneously created on client and server
-            # and title (name) already existed
-            folder.title = sf.title +' from server'
-            local_session.commit()
-            
-            log += "{title} is a new folder received from the server but it was a dupe of new client folder\n".format(title=sf.name)
+            #Note that the delete sets context_tid=None for all tasks in the context
+            #I wonder how you set to zero - this is done "manually" below
+            log+= "Deleted client context tid: {cc.tid}  - title {cc.title}"
+
+            #These tasks are marked as changed by server so don't need to do this
+            #They temporarily pick of context_tid of None after the context is deleted on the client
+            #When tasks are updated later in sync they pick up correct folder_tid=0
+
+        #no code for client deleted contexts yet
         
-
-    for f in client_new_folders:
-        temp_tid = f.tid
-
-        #[{"id":"12345","name":"MyFolder","private":"0","archived":"0","ord":"1"}]
-        try:
-            #[server_folder] = toodledo_call('folders/add', name=c.title) 
-            server_folder = remote_session.query(p.Folder).filter_by(title=f.title).one()
-                 
-        #except toodledo2.ToodledoError as e:
-        except Exception as e:
-            folder = p.Folder(title=f.title)
-            remote_session.add(folder)
-            remote_session.commit()
-            #print_(repr(e))
-            #print_("There was a problem adding new client folder {} to the server".format(f.title))
-
-
-        server_tid = server_folder.id
-        f.tid = server_tid
-        local_session.commit()
-        #tasks_with_temp_tid = f.tasks #see below could use this before you change the folders tid
-        log+= "Folder {title} was added to server and received tid: {tid}\n".format(title=server_folder.name, tid=server_tid)
-
-        #need to update all tasks that used the temp_tid
-        log+= "Client tasks that were updated with folder id (tid) obtained from server:\n"
-
-        tasks_with_temp_tid = local_session.query(Task).filter_by(folder_tid=temp_tid) #tasks_with_temp_tid = f.tasks may be a better way to go but would have to move higher
-
-        # These changes on client do not get transmitted to the server because they are between old sync time and new sync time
-        for t in tasks_with_temp_tid:
-            t.folder_tid = server_tid
-            local_session.commit() 
-
-            log+= "Task {title} in folder {folder} \n".format(title=t.title[:30], folder=t.folder.title)
-
-    # deleting from client, folders deleted on server
-    server_folder_tids = set([sf.id for sf in remote_session.query(p.Folder)])
-    client_folder_tids = set([cf.tid for cf in local_session.query(Folder)])
-
-    client_not_server = client_folder_tids - server_folder_tids
-
-    for tid in client_not_server:
-        cf = local_session.query(Folder).filter_by(tid=tid).one()
-        tasks = local_session.query(Task).filter_by(folder_tid=tid).all() #seems like it needs to be here
-        title = cf.title
-        local_session.delete(cf)
-        local_session.commit()
-        log+= "Deleted client folder tid: {tid}  - {title}".format(title=title, tid=tid) # new server folders
-
-        #These tasks are marked as changed by server so don't need to do this
-        #They temporarily pick of folder_tid of None after the folder is deleted on the client
-        #When tasks are updated later in sync they pick up correct folder_tid=0
-
-        log+= "\nClient tasks that should be updated with folder tid = 0 because Folder was deleted from the server:\n"
-        
-        for t in tasks:
-            log+="{title} should to be changed from folder_tid: {tid} to 'No Folder'\n".format(tid=t.folder_tid, title=t.title)
-        
-        
-    #no code for client deleted folders yet
-
-
+    # updated server tasks -> client
     if server_updated_tasks:
-        log+= "\nTask that were updated/created on Server that need to be updated/created on client:\n"
+        log += "\nTasks that were updated/created on the Server that need to be updated/created on the Client:\n"
 
     for st in server_updated_tasks:
         
         # to find the sqlite task that corresponds to the updated server task
         # you need to match the sqlite task.tid with the postgres task.id
-        task = local_session.query(Task).filter_by(tid=st.id).first()
+        task = local_session.query(Task).filter_by(tid=st.id).first() #if you use one, you can get exception
         
         if not task:
             action = "created"
@@ -355,12 +237,11 @@ def synchronize(report_only=True):
         task.tag = st.tag
         task.completed = st.completed if st.completed else None
         task.note = st.note
+        #task.modified = st.modified #not needed because sqlalchemy inserts default according lmdb_s.py
 
         local_session.commit() #new/updated client task commit
 
-        #log+="{action}: tid: {tid}; star: {star}; priority: {priority}; completed: {completed}; title: {title}\n".format(action=action, tid=st.id, star=st.star, priority=st.priority, completed=st.completed, title=st.title[:30])
-
-        log+="{action}: tid: {tid}; star: {star}; priority: {priority}; completed: {completed}; title: {title}\n".format(action=action, tid=task.tid, star=task.star, priority=task.priority, completed=task.completed, title=task.title[:30])
+        log += f"{action} - id: {task.id} tid: {task.tid}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
 
         if task.tag:
             for tk in task.taskkeywords:
@@ -381,7 +262,7 @@ def synchronize(report_only=True):
         tasklist.append(task)
         
     if client_updated_tasks:
-        log+= "\nTask that were updated/created on Client that need to be updated/created on Server:\n"
+        log += "\nTasks that were updated/created on the Client that need to be updated/created on the Server:\n"
 
     for ct in client_updated_tasks:
         
@@ -399,7 +280,7 @@ def synchronize(report_only=True):
         else:
             action = "updated"
             if task in server_updated_tasks:
-                action+= "-server won"
+                action += "-server won"
                 continue
 
         task.context_tid = ct.context_tid
@@ -415,10 +296,11 @@ def synchronize(report_only=True):
         task.tag = ct.tag
         task.completed = ct.completed if ct.completed else None
         task.note = ct.note
+        #task.modified = ct.modified # not necessary - done by sqlite
 
         remote_session.commit() #new/updated client task commit
 
-        log+="{action}: tid: {tid}; star: {star}; priority: {priority}; completed: {completed}; title: {title}\n".format(action=action, tid=ct.id, star=ct.star, priority=ct.priority, completed=ct.completed, title=ct.title[:30])
+        log += f"{action} - id: {task.id}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
 
         if task.tag:
             for tk in task.taskkeywords:
@@ -445,7 +327,7 @@ def synchronize(report_only=True):
         task = local_session.query(Task).filter_by(tid=t.id).first()
         if task:
                     
-            log+="Task deleted on Server deleted task on Client - id: {id_}; tid: {tid}; title: {title}\n".format(id_=task.id,tid=task.tid,title=task.title[:30])
+            log+="Task deleted on Server deleted task on Client - id: {id_}; tid: {tid}; title: {title}\n".format(id_=task.id,tid=task.tid,title=task.title[:32])
             
             deletelist.append(task.id)
             
