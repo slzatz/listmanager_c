@@ -705,6 +705,7 @@ void retrieve_contexts(void) {
     O.mode = NO_ROWS;
   }
   rows_are_tasks = false;
+  O.context = "";
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -2287,12 +2288,16 @@ void outlineProcessKeypress(void) {
       switch(command) {  
 
         case '\r':
+          {
+          orow& row = O.rows.at(O.fr);
           if (rows_are_tasks) {
             update_row();
-          } else if (O.rows.at(O.fr).dirty) { // means context is dirty
+          } else if (row.dirty) { // means context is dirty
             update_context_sqlite();
           } else {
-            get_items_by_context(O.rows.at(O.fr).title, MAX); //go to context (not dirty)
+            O.context = row.title;
+            get_items_by_context(row.title, MAX); //go to context (not dirty)
+          }
           }
           O.command[0] = '\0';
           return;
@@ -2654,7 +2659,6 @@ void outlineProcessKeypress(void) {
               return;
 
             case 'x':
-              //update_rows();
               if (rows_are_tasks) update_rows();
               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
@@ -2664,6 +2668,7 @@ void outlineProcessKeypress(void) {
             case 'r':
             case C_refresh:
               EraseRedrawLines(); //****03102019*************************
+
               if (rows_are_tasks) {
                 outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
                 if (O.context == "search") {
@@ -2678,6 +2683,7 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("contexts will be refreshed");
                 retrieve_contexts();
               }
+
               O.mode = NORMAL;
               return;
 
@@ -2859,15 +2865,6 @@ void outlineProcessKeypress(void) {
               editorDisplayFile();//put them in the command mode case synch
               return;
 
-            /*
-            case C_highlight:
-              // need to refresh to see the change
-              O.show_highlight = !O.show_highlight;
-              O.mode = NORMAL;
-              outlineSetMessage("Search result titles will %shave search times highlighted", (O.show_highlight) ? "" : "not ");
-              return;
-            */
-
             case C_valgrind:
               initial_file_row = 0; //for arrowing or displaying files
               editorReadFile("valgrind_log_file");
@@ -2881,7 +2878,6 @@ void outlineProcessKeypress(void) {
                bool unsaved_changes = false;
                for (int i=0;i<O.rows.size();i++) {
                  orow& row = O.rows.at(i);
-                 //orow *row = &O.row[i];
                  if (row.dirty) {
                    unsaved_changes = true;
                    break;
@@ -3007,7 +3003,6 @@ void outlineProcessKeypress(void) {
           O.show_deleted = !O.show_deleted;
           O.show_completed = !O.show_completed;
           get_items_by_context(O.context, MAX);
-            
           return;
 
         case 'r':
@@ -3111,7 +3106,6 @@ void outlineProcessKeypress(void) {
 
     case FILE_DISPLAY: 
 
-      //int initial_file_row; //for arrowing or displaying files
       switch (c) {
   
         case ARROW_UP:
@@ -3272,7 +3266,6 @@ void display_item_info_pg(int id) {
   ab.append(lf_ret, nchars);
   ab.append(lf_ret, nchars);
 
-  // new way with string
   std::string note(PQgetvalue(res, 0, 12));
   std::stringstream snote;
   snote << note;
@@ -3314,7 +3307,7 @@ void fts5_sqlite(void) {
   }
 
   fts_ids.clear();
-  fts_titles.clear(); //////////////////////////////////
+  fts_titles.clear();
   fts_counter = 0;
 
   rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, 0, &err_msg);
@@ -3694,7 +3687,6 @@ void toggle_completed_pg(void) {
   else {
     outlineSetMessage("Toggle completed succeeded");
     row.completed = !row.completed;
-    //row->dirty = true;
   }
   PQclear(res);
 }
@@ -3929,7 +3921,6 @@ void toggle_star_sqlite(void) {
   } else {
     outlineSetMessage("Toggle star succeeded");
     row.star = !row.star;
-    //row->dirty = true;
   }
 
   sqlite3_close(db);
@@ -4351,7 +4342,6 @@ void update_rows_pg(void) {
     if (PQstatus(conn) == CONNECTION_BAD) {
         
       outlineSetMessage(PQerrorMessage(conn));
-      //do_exit(conn);
     }
   }
 
@@ -4470,9 +4460,6 @@ void update_rows_sqlite(void) {
     return;
   }
 
-  //outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
-  
-  //outlineSetMessage("Rows successfully updated ... ");
   char msg[200];
   strncpy(msg, "Rows successfully updated: ", sizeof(msg));
   char *put;
@@ -4525,7 +4512,6 @@ void outlineYankString() {
   std::string::const_iterator first = row.title.begin() + O.highlight[0];
   std::string::const_iterator last = row.title.begin() + O.highlight[1];
   string_buffer = std::string(first, last);
-
 }
 
 void outlinePasteString(void) {
@@ -4616,12 +4602,6 @@ void outlineMoveBeginningWord() {
 
   O.fc = i + 1;
 }
-
-
-/***************************************restarted*****************************/
-
-
-
 
 void outlineMoveEndWord() {
   orow& row = O.rows.at(O.fr);
@@ -4716,7 +4696,6 @@ void editorScroll(void) {
 }
 
 void editorDrawRows(std::string& ab) {
-  //if (E.rows.empty()) return; /////////////////////
   if (E.rows.empty()) { //October 13, 2019
       editorEraseScreen();
       return;
@@ -4936,7 +4915,6 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
@@ -4962,7 +4940,6 @@ void editorRefreshScreen(void) {
     write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
     write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
   }
-
 
   ab.append("\x1b[?25h", 6); //shows the cursor
 
@@ -5130,13 +5107,13 @@ void editorProcessKeypress(void) {
     
       if ( E.repeat == 0 ) E.repeat = 1;
     
-      
       {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
+
       switch (command) {
     
         case SHIFT_TAB:
