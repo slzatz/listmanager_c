@@ -261,7 +261,7 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
  */
-static void (*get_items_by_context)(std::string, int); //shouldn't have to pass context it's global
+static void (*get_items_by_context)(const std::string&, int); //shouldn't have to pass context it's global
 static void (*get_recent)(int);
 static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
@@ -307,8 +307,8 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool completed, char *modified);
-void outlineDrawRows(std::string&);
-void outlineDrawSearchRows(std::string&);
+void outlineDrawRows(std::string&); //modify the string so maybe should be pointer
+void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 
 //Database-related Prototypes
@@ -321,8 +321,8 @@ int insert_context_pg(orow&); //need to write this one
 int insert_context_sqlite(orow&);
 void update_context_sqlite(void);
 void update_context_pg(void);
-void get_items_by_context_sqlite(std::string, int);
-void get_items_by_context_pg(std::string, int);
+void get_items_by_context_sqlite(const std::string&, int);
+void get_items_by_context_pg(const std::string&, int);
 void get_contexts_sqlite(void);
 void get_contexts_pg(void);
 void update_note_pg(void);
@@ -574,7 +574,7 @@ void get_recent_pg(int max) {
   // PQfinish(conn);
 }
 
-void get_items_by_context_pg(std::string context, int max) {
+void get_items_by_context_pg(const std::string& context, int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -766,7 +766,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void get_items_by_context_sqlite(std::string context, int max) {
+void get_items_by_context_sqlite(const std::string& context, int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -1516,34 +1516,18 @@ void outlineSave() {
 // used by numerous other functions to sometimes insert zero length rows
 // and other times rows with characters like when retrieving a note
 // fr is the position of the row with counting starting at zero
-/*
-void editorInsertRow(int fr, char *s, size_t len) {
-
-  std::string row;
-
-  if (s==nullptr) {
-    row = std::string();
-  } else {
-    row = std::string(s, s + len);
-  }
-
-  auto pos = E.rows.begin() + fr;
-  E.rows.insert(pos, row);
-  E.dirty++;
-}
-*/
-// version that takes row and string to insert
 void editorInsertRow(int fr, std::string s) {
 
   std::string row;
 
-  //if (!s.empty()) //appears to behave correctly without the if
-  std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
+  //std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
 
   auto pos = E.rows.begin() + fr;
-  E.rows.insert(pos, row);
+  //E.rows.insert(pos, row);
+  E.rows.insert(pos, s);
   E.dirty++;
 }
+
 // untested
 void editorDelRow(int r) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
@@ -6011,8 +5995,7 @@ int editorGetLineInRowWW__old(int r, int c) {
 }
 
 // ESSENTIAL*********************************************
-// used by editorGetScreenXFromRowCol and by
-// editorGetLineInRow
+// used by editorGetScreenXFromRowCol and by editorGetLineInRow
 int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
@@ -6026,10 +6009,6 @@ int editorGetLineCharCountWW(int r, int line) {
   start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
   width = E.screencols; //wrapping width
   
-  //length = 0;
-
-  //if (row->size == 0) return 0;///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
   num = 1; 
   for (;;) {
     if (left <= width) return left; 
@@ -6148,8 +6127,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
     //each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
 
-    // Alternative that if it works doesn't depend on knowing the line count
-    //seems to work
+    // Alternative that doesn't depend on knowing the line count
     if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
        length += left;
        len = left;
