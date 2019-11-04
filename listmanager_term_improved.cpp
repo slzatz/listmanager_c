@@ -7,7 +7,7 @@
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
-#define TZ_OFFSET 4 // time zone offset - either 4 or 5
+#define TZ_OFFSET 5 // time zone offset - either 4 or 5
 
 #include <Python.h>
 #include <ctype.h>
@@ -61,41 +61,7 @@ static std::string search_string; //word under cursor works with *, n, N etc.
 static std::vector<std::string> line_buffer; //yanking lines
 static std::string string_buffer; //yanking chars
 static std::map<int, std::string> fts_titles;
-
-// context and context_map should be an sql query and not hard coded
-//static std::string context[] = {
-static const std::array<std::string, 12> context = {
-                        "", //maybe should be "search" - we'll see
-                        "No Context", // 1
-                        "financial", // 2
-                        "health", // 3
-                        "wisdom",// 4
-                        "journal",// 5
-                        "facts", // 6
-                        "not work",// 7
-                        "programming",// 8
-                        "todo",// 9
-                        "test",// 10
-                        "work"//11
-                       }; 
-
-static std::unordered_map<std::string, int> context_map {
-  {"search", 1}, //should mean if search is context that new item gets assigned 1 = No Context
-  {"No Context", 1},
-  {"financial", 2},
-  {"health", 3},
-  {"wisdom", 4},
-  {"journal", 5},
-  {"facts", 6},
-  {"not work", 7},
-  {"programming", 8},
-  {"todo", 9},
-  {"test", 10},
-  {"work", 11}
-  };
-
-//static std::map<int, std::string> context_map2;
-static std::map<std::string, int> context_map2;
+static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -212,7 +178,6 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"context", C_contexts},
   {"m", C_moveto}, //need because this is command line command with a target word
   {"moveto", C_moveto},
-  // doesn't work if you use arrow keys
   {"update", C_update},
   {"sync", C_synch},
   {"synch", C_synch},
@@ -220,9 +185,6 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"test", C_synch_test},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
-  //{"highlight", C_highlight},
-  //{"show", C_highlight},
-  //{"sh", C_highlight},
   {"quit", C_quit},
   {"quit!", C_quit0},
   {"q!", C_quit0},
@@ -232,7 +194,6 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"recent", C_recent},
   {"val", C_valgrind},
   {"valgrind", C_valgrind}
-  //{"e", C_edit}
 };
 
 typedef struct orow {
@@ -297,11 +258,6 @@ struct editorConfig {
 
 static struct editorConfig E;
 
-/*** outline prototypes ***/
-void update_context_sqlite(void);
-void get_items_by_context_sqlite(std::string, int);
-void retrieve_contexts(void);
-int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName);
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
  */
@@ -321,18 +277,14 @@ static void (*display_item_info)(int);
 static void (*touch)(void);
 static void (*search_db)(void);
 
+static void (*get_contexts)(void);
+static void (*update_context)(void);
+//static void (*insert_context)(void); //not called directly
+
 void outlineProcessKeypress(void);
 void editorProcessKeypress(void);
 
-void solr_find(void);
-void fts5_sqlite(void);
-int fts5_callback(void *, int, char **, char **);
-int data_callback(void *, int, char **, char **);
-int context_callback(void *, int, char **, char **);
-int by_id_data_callback(void *, int, char **, char **);
-int note_callback(void *, int, char **, char **);
-int display_item_info_callback(void *, int, char **, char **);
-//int tid_callback(void *, int, char **, char **);
+//Outline Prototypes
 void outlineSetMessage(const char *fmt, ...);
 void outlineRefreshScreen(void);
 //void getcharundercursor();
@@ -358,17 +310,41 @@ void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool compl
 void outlineDrawRows(std::string&);
 void outlineDrawSearchRows(std::string&);
 void outlineScroll(void);
+
+//Database-related Prototypes
 int get_id(int fr);
 void get_recent_pg(int);
 void get_recent_sqlite(int);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
+int insert_context_pg(orow&); //need to write this one
 int insert_context_sqlite(orow&);
+void update_context_sqlite(void);
+void update_context_pg(void);
+void get_items_by_context_sqlite(std::string, int);
+void get_items_by_context_pg(std::string, int);
+void get_contexts_sqlite(void);
+void get_contexts_pg(void);
 void update_note_pg(void);
 void update_note_sqlite(void); 
+void solr_find(void);
+void fts5_sqlite(void);
+
+void map_context_titles_pg(void);
+void map_context_titles_sqlite(void);
+
+//sqlite callback functions
+int fts5_callback(void *, int, char **, char **);
+int data_callback(void *, int, char **, char **);
+int context_callback(void *, int, char **, char **);
+int context_titles_callback(void *, int, char **, char **);
+int by_id_data_callback(void *, int, char **, char **);
+int note_callback(void *, int, char **, char **);
+int display_item_info_callback(void *, int, char **, char **);
+
 void synchronize(int);
 
-//editor Prototypes
+//Editor Prototypes
 int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not currently in use
 int *editorGetRowLineCharWW(void); //do not delete but not currently in use
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
@@ -477,7 +453,31 @@ void get_conn(void) {
   } 
 }
 
-void map_context_titles(void) {
+void map_context_titles_pg(void) {
+
+  // note it's id because it's pg
+  std::string query("SELECT id,title FROM context;");
+
+  PGresult *res = PQexec(conn, query.c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }
+
+  int i;
+  int rows = PQntuples(res);
+  for(i=0; i<rows; i++) {
+    context_map[std::string(PQgetvalue(res, i, 1))] = atoi(PQgetvalue(res, i, 0));
+  }
+
+  PQclear(res);
+  // PQfinish(conn);
+}
+void map_context_titles_sqlite(void) {
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -490,6 +490,7 @@ void map_context_titles(void) {
     return;
     }
 
+  // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM context;");
 
     bool no_rows = true;
@@ -523,7 +524,7 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
   8: image, largebinary
   */
 
-  context_map2[std::string(argv[1])] = atoi(argv[0]);
+  context_map[std::string(argv[1])] = atoi(argv[0]);
 
   return 0;
 }
@@ -560,18 +561,13 @@ void get_recent_pg(int max) {
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
     orow row;
-    int len = strlen(PQgetvalue(res, i, 3));
-    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    len = strlen(PQgetvalue(res, i, 16));
-    len = (len > 16) ? 16 : len;
-    strncpy(row.modified, PQgetvalue(res, i, 16), len);
-    row.modified[len] = '\0';
-
+    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
     O.rows.push_back(row);
   }
   PQclear(res);
@@ -610,17 +606,48 @@ void get_items_by_context_pg(std::string context, int max) {
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
     orow row;
-    int len = strlen(PQgetvalue(res, i, 3));
-    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    len = strlen(PQgetvalue(res, i, 16));
-    len = (len > 16) ? 16 : len;
-    strncpy(row.modified, PQgetvalue(res, i, 16), len);
-    row.modified[len] = '\0';
+    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
+    O.rows.push_back(row);
+  }
+
+  PQclear(res);
+  // PQfinish(conn);
+}
+
+void get_contexts_pg(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  std::string query("SELECT * FROM context;");
+
+  PGresult *res = PQexec(conn, query.c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }
+
+  int i;
+  int rows = PQntuples(res);
+  for(i=0; i<rows; i++) {
+    orow row;
+    row.title = std::string(PQgetvalue(res, i, 2));
+    row.id = atoi(PQgetvalue(res, i, 0));
+    row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
+    row.deleted = (*PQgetvalue(res, i, 5) == 't') ? true: false;
+    row.completed = false;
+    row.dirty = false;
+    strncpy(row.modified, PQgetvalue(res, i, 9), 16);
     O.rows.push_back(row);
   }
 
@@ -673,7 +700,7 @@ void get_recent_sqlite(int max) {
       }
     }
 
-void retrieve_contexts(void) {
+void get_contexts_sqlite(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -823,13 +850,6 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   store the tid in orow row
   */
 
-  /*
-  char *title;
-  if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
-  else title = argv[3];
-  title = argv[3];
-  */
-
   orow row;
 
   row.title = std::string(argv[3]);
@@ -838,13 +858,6 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
-  /*
-  int len = strlen(argv[16]);
-  len = (len > 16) ? 16 : len;
-  strncpy(row.modified, argv[16], len);
-  row.modified[len] = '\0';
-  */
-
   strncpy(row.modified, argv[16], 16);
   O.rows.push_back(row);
 
@@ -888,13 +901,6 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   store the tid in orow row
   */
 
-  /*
-  char *title;
-  if (strcmp(O.context, "search") == 0 && O.show_highlight) title = fts_titles[O.numrows];
-  else title = argv[3];
-  title = argv[3];
-  */
-
   orow row;
 
   int len = strlen(argv[3]);
@@ -905,10 +911,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
-  len = strlen(argv[16]);
-  len = (len > 16) ? 16 : len;
-  strncpy(row.modified, argv[16], len);
-  row.modified[len] = '\0';
+  strncpy(row.modified, argv[16], 16);
   O.rows.push_back(row);
 
   return 0;
@@ -966,21 +969,18 @@ void get_items_by_id_pg(std::stringstream& query) {
   }    
   
   O.rows.clear();
-  int len, i;
+  int i;
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
     orow row;
-    len = strlen(PQgetvalue(res, i, 3));
-    row.title = std::string(PQgetvalue(res, i, 3), PQgetvalue(res, i, 3) + len);
+    row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
     row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    len = strlen(PQgetvalue(res, i, 16));
-    len = (len > 16) ? 16 : len;
-    strncpy(row.modified, PQgetvalue(res, i, 16), len);
-    row.modified[len] = '\0';
+    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
+    O.rows.push_back(row);
   }
   PQclear(res);
 
@@ -1453,7 +1453,6 @@ void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool compl
   row.completed = completed;
   row.dirty = true;
   strncpy(row.modified, modified, 16);
-  row.modified[16] = '\0';
 
   auto pos = O.rows.begin() + at;
   O.rows.insert(pos, row);
@@ -2201,7 +2200,7 @@ void outlineProcessKeypress(void) {
         case '\r': //also does escape into NORMAL mode
           if (rows_are_tasks) {
             update_row();
-          } else update_context_sqlite();
+          } else update_context();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
           //outlineSetMessage("");
@@ -2293,7 +2292,7 @@ void outlineProcessKeypress(void) {
           if (rows_are_tasks) {
             update_row();
           } else if (row.dirty) { // means context is dirty
-            update_context_sqlite();
+            update_context();
           } else {
             O.context = row.title;
             get_items_by_context(row.title, MAX); //go to context (not dirty)
@@ -2584,9 +2583,9 @@ void outlineProcessKeypress(void) {
           // may actually work in context_mode
           {
           std::string new_context;
-          auto it = context_map2.find(O.context);
+          auto it = context_map.find(O.context);
           it++;
-          if (it == context_map2.end()) it = context_map2.begin();
+          if (it == context_map.end()) it = context_map.begin();
           new_context = it->first;
           EraseRedrawLines(); //*****************************
           outlineSetMessage("\'%s\' will be opened", new_context.c_str());
@@ -2681,7 +2680,7 @@ void outlineProcessKeypress(void) {
                 }
               } else {
                 outlineSetMessage("contexts will be refreshed");
-                retrieve_contexts();
+                get_contexts();
               }
 
               O.mode = NORMAL;
@@ -2772,7 +2771,7 @@ void outlineProcessKeypress(void) {
             case 'c':
             case C_contexts: //catches context, contexts and c
               EraseRedrawLines();
-              retrieve_contexts();
+              get_contexts();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved contexts");
               return;
@@ -2782,9 +2781,17 @@ void outlineProcessKeypress(void) {
                std::string new_context;
                if (O.command_line.size() > 5) {
                  bool success = false;
-                 for (auto i : context_map2) {
+                 /*
+                 for (auto i : context_map) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
                      new_context = i.first;
+                     success = true;
+                     break;
+                   }*/
+                 // structured bindings
+                 for (const auto & [k,v] : context_map) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                     new_context = k;
                      success = true;
                      break;
                    }
@@ -2812,9 +2819,17 @@ void outlineProcessKeypress(void) {
                std::string new_context;
                if (pos) {
                  bool success = false;
-                 for (auto i : context_map2) {
+                 /*
+                 for (auto i : context_map) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
                      new_context = i.first;
+                     success = true;
+                     break;
+                   }*/
+                 //structured bindings
+                 for (const auto & [k,v] : context_map) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                     new_context = k;
                      success = true;
                      break;
                    }
@@ -3245,7 +3260,12 @@ void display_item_info_pg(int id) {
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(PQgetvalue(res, 0, 6))].c_str());
+
+  int context_tid = atoi(PQgetvalue(res, 0, 6));
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto&& p) { return p.second == context_tid; });
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
@@ -3446,7 +3466,12 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", context[atoi(argv[6])].c_str());
+
+  int context_tid = atoi(argv[6]);
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto&& p) { return p.second == context_tid; });
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
@@ -3613,7 +3638,7 @@ void update_task_context_pg(std::string& new_context) {
 
   std::stringstream query;
   int id = get_id(-1);
-  int context_tid = context_map2.at(new_context);
+  int context_tid = context_map.at(new_context);
 
   query << "UPDATE task SET context_tid=" << context_tid << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
@@ -3633,7 +3658,7 @@ void update_task_context_sqlite(std::string& new_context) {
 
   std::stringstream query;
   int id = get_id(-1);
-  int context_tid = context_map2.at(new_context);
+  int context_tid = context_map.at(new_context);
   query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
   sqlite3 *db;
@@ -3974,6 +3999,53 @@ void update_row_pg(void) {
   }  
 }
 
+void update_context_pg(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineSetMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+
+    if (PQstatus(conn) != CONNECTION_OK){
+      if (PQstatus(conn) == CONNECTION_BAD) {
+
+          fprintf(stderr, "Connection to database failed: %s\n",
+              PQerrorMessage(conn));
+          do_exit(conn);
+      }
+    }
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+    std::stringstream query;
+    query << "UPDATE context SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
+
+    PGresult *res = PQexec(conn, query.str().c_str());
+
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+      outlineSetMessage(PQerrorMessage(conn));
+    } else {
+      row.dirty = false;
+      outlineSetMessage("Successfully update row %d", row.id);
+    }
+
+    PQclear(res);
+
+  } else {
+    insert_context_pg(row);
+  }
+}
+
 void update_row_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
@@ -4104,14 +4176,6 @@ int insert_row_pg(orow& row) {
       pos = title.find("'", pos + 2);
     }
 
- int context_tid = 1; //just in case there isn't a match but there has to be
- for (int k = 1; k < 12; k++) {
-   if (O.context.compare(0,3, context[k]) == 0) {
-     context_tid = k;
-     break;
-   }
- }
-
   std::stringstream query;
   query << "INSERT INTO task ("
         << "priority, "
@@ -4130,7 +4194,8 @@ int insert_row_pg(orow& row) {
         << "'" << title << "'," //title
         << " 1," //folder_tid
         //<< context_tid << ", " //context_tid
-        << context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
+        //<< context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
+        << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -4169,6 +4234,61 @@ int insert_row_pg(orow& row) {
   return row.id;
 }
 
+int insert_context_pg(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+
+  query << "INSERT INTO context ("
+        << "title, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "tid, "
+        << "\"default\", "
+        << "textcolor "
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " False," //deleted
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
+        << " 100," //tid
+        << " False," //default
+        << " 10" //textcolor
+        << ") RETURNING id;";
+
+  /*
+   * not used:
+     "default" (not sure why in quotes but may be system variable
+      tid,
+      icon (varchar 32)
+      image (blob)
+    */
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
+    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    PQclear(res);
+    return -1;
+  }
+
+  row.id = atoi(PQgetvalue(res, 0, 0));
+  row.dirty = false;
+
+  PQclear(res);
+  outlineSetMessage("Successfully inserted new context with id %d", row.id);
+
+  return row.id;
+}
+
 int insert_row_sqlite(orow& row) {
 
   std::string title = row.title;
@@ -4196,8 +4316,7 @@ int insert_row_sqlite(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         << " 1," //folder_tid
-        //<< context_map2.at(O.context) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context != "search") ? context_map2.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -6770,7 +6889,6 @@ int main(int argc, char** argv) {
 
   //outline_normal_map[ARROW_UP] = move_up;
   //outline_normal_map['k'] = move_up;
-  map_context_titles();
 
   if (argc > 1 && argv[1][0] == 's') {
     get_items_by_context = get_items_by_context_sqlite;
@@ -6788,7 +6906,10 @@ int main(int argc, char** argv) {
     touch = touch_sqlite;
     get_recent = get_recent_sqlite;
     search_db = fts5_sqlite;
+    get_contexts = get_contexts_sqlite;
+    update_context = update_context_sqlite;
     which_db = "sqlite";
+    map_context_titles_sqlite();
   } else {
     get_conn();
     get_items_by_context = get_items_by_context_pg;
@@ -6806,7 +6927,10 @@ int main(int argc, char** argv) {
     touch = touch_pg;
     get_recent = get_recent_pg;
     search_db = solr_find;
+    get_contexts = get_contexts_pg;
+    update_context = update_context_pg;
     which_db = "postgres";
+    map_context_titles_pg();
   }
 
   enableRawMode();
