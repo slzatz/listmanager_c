@@ -98,8 +98,9 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
-static const char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
-//static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"}; //changed to 16 from 17
+static constexpr char BASE_DATE[] = "1970-01-01 00:00";
+//static constexpr char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
+//static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"}; //for array<char, n> wants room for terminating '\0'
 
 enum Command {
   C_caw = 2000,
