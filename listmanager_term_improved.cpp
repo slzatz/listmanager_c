@@ -618,6 +618,7 @@ void get_items_by_context_pg(const std::string& context, int max) {
 
   PQclear(res);
   // PQfinish(conn);
+  rows_are_tasks = true;
 }
 
 void get_contexts_pg(void) {
@@ -653,6 +654,7 @@ void get_contexts_pg(void) {
 
   PQclear(res);
   // PQfinish(conn);
+  rows_are_tasks = false;
 }
 
 void get_recent_sqlite(int max) {
@@ -682,23 +684,24 @@ void get_recent_sqlite(int max) {
   } else {
     query << "SELECT * FROM task "
           << "ORDER BY task.modified DESC LIMIT " << max;
-      }
+  }
 
-        bool no_rows = true;
-        //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
-        rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+  bool no_rows = true;
+  //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
+  rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
 
-        if (rc != SQLITE_OK ) {
-          outlineSetMessage("SQL error: %s\n", err_msg);
-          sqlite3_free(err_msg);
-        }
-      sqlite3_close(db);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+  sqlite3_close(db);
 
-      if (no_rows) {
-        outlineSetMessage("No results were returned");
-        O.mode = NO_ROWS;
-      }
-    }
+  if (no_rows) {
+     outlineSetMessage("No results were returned");
+     O.mode = NO_ROWS;
+  }
+  rows_are_tasks = true;
+}
 
 void get_contexts_sqlite(void) {
 
@@ -985,6 +988,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   PQclear(res);
 
   O.fc = O.fr = O.rowoff = 0;
+  rows_are_tasks = true;
 }
 
 void get_note_sqlite(int id) {
@@ -3247,7 +3251,7 @@ void display_item_info_pg(int id) {
 
   int context_tid = atoi(PQgetvalue(res, 0, 6));
   auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto&& p) { return p.second == context_tid; });
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
 
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -3267,21 +3271,6 @@ void display_item_info_pg(int id) {
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  ab.append(lf_ret, nchars);
-  ab.append(lf_ret, nchars);
-
-  std::string note(PQgetvalue(res, 0, 12));
-  std::stringstream snote;
-  snote << note;
-  std::string s;
-  int line_count = std::count(note.begin(), note.end(), '\n');
-  int lines = (line_count > 3) ? 4 : ((line_count > 0) ? line_count : 1);
-  for (int k=0; k < lines; k++) {
-      getline(snote, s, '\n');
-      ab.append(s);
-      ab.append(lf_ret);
-  }
-
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -3342,7 +3331,6 @@ void fts5_sqlite(void) {
   get_items_by_id(query);
 
   //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
-
 }
 
 int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
@@ -3453,7 +3441,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
   int context_tid = atoi(argv[6]);
   auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto&& p) { return p.second == context_tid; });
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
 
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -3473,23 +3461,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  ab.append(lf_ret, nchars);
-  ab.append(lf_ret, nchars);
-
-  /*
-  std::string note(argv[12]);
-  std::stringstream snote;
-  snote << note;
-  std::string s;
-  int line_count = std::count(note.begin(), note.end(), '\n');
-  int lines = (line_count > 3) ? 4 : ((line_count > 0) ? line_count : 1);
-  for (int k=0; k < lines; k++) {
-      getline(snote, s, '\n');
-      ab.append(s);
-      ab.append(lf_ret, nchars);
-  }
-  */
-
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -4181,11 +4152,11 @@ int insert_row_pg(orow& row) {
         //<< context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
         << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
-        << "date()," //added
+        << "CURRENT_DATE," //added
         << "'<This is a new note from sqlite>'," //note
         << " False," //deleted
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
         << " CURRENT_DATE" //startdate
         << ") RETURNING id;";
 
