@@ -1,5 +1,3 @@
- /***  includes ***/
-
 #define CTRL_KEY(k) ((k) & 0x1f) // )x1f is 31; first ascii is 32 space anding removes all higher bits
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
@@ -37,7 +35,6 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
-/*** defines ***/
 
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
@@ -101,8 +98,8 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
-static char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
-//static constexpr std::array<char,16> BASE_DATE {"1970-01-01 00:00"}; //changed to 16 from 17
+static const char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
+//static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"}; //changed to 16 from 17
 
 enum Command {
   C_caw = 2000,
@@ -306,7 +303,7 @@ void outlineMoveNextWord();
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool completed, char *modified);
+void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
 void outlineDrawRows(std::string&); //modify the string so maybe should be pointer
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
@@ -1445,7 +1442,7 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** outline operations ***/
 
-void outlineInsertRow(int at, std::string s, bool star, bool deleted, bool completed, char* modified) {
+void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool completed, const char* modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
@@ -4148,8 +4145,6 @@ int insert_row_pg(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         << " 1," //folder_tid
-        //<< context_tid << ", " //context_tid
-        //<< context_map.at(O.context) << ", " //context_tid if O.context == search context_id = 1 "No Context"
         << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "CURRENT_DATE," //added
@@ -4161,15 +4156,15 @@ int insert_row_pg(orow& row) {
         << ") RETURNING id;";
 
   /*
-   * not used:
-      tid,
-      tag,
-      duetime,
-      completed,
-      duedate,
-      repeat,
-      remind
-    */
+    not used:
+    tid
+    tag
+    duetime
+    completed
+    duedate
+    repeat
+    remind
+  */
 
   PGresult *res = PQexec(conn, query.str().c_str());
 
@@ -4220,12 +4215,13 @@ int insert_context_pg(orow& row) {
         << ") RETURNING id;";
 
   /*
-   * not used:
+     not used:
      "default" (not sure why in quotes but may be system variable
-      tid,
-      icon (varchar 32)
-      image (blob)
-    */
+     tid,
+     icon (varchar 32)
+     image (blob)
+   */
+
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
@@ -4282,18 +4278,18 @@ int insert_row_sqlite(orow& row) {
         << ");"; // RETURNING id;",
 
   /*
-   * not used:
-      tid,
-      tag,
-      duetime,
-      completed,
-      duedate,
-      repeat,
-      remind
-    */
+    not used:
+    tid,
+    tag,
+    duetime,
+    completed,
+    duedate,
+    repeat,
+    remind
+  */
 
   sqlite3 *db;
-  char *err_msg = 0;
+  char *err_msg = nullptr; //0
 
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
@@ -4380,7 +4376,7 @@ int insert_context_sqlite(orow& row) {
     */
 
   sqlite3 *db;
-  char *err_msg = 0;
+  char *err_msg = nullptr; //0
 
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
