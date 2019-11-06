@@ -6828,8 +6828,10 @@ int main(int argc, char** argv) {
     search_db = fts5_sqlite;
     get_contexts = get_contexts_sqlite;
     update_context = update_context_sqlite;
-    which_db = "sqlite";
     map_context_titles =  map_context_titles_sqlite;
+
+    which_db = "sqlite";
+
   } else {
     get_conn();
     get_items_by_context = get_items_by_context_pg;
@@ -6849,8 +6851,9 @@ int main(int argc, char** argv) {
     search_db = solr_find;
     get_contexts = get_contexts_pg;
     update_context = update_context_pg;
-    which_db = "postgres";
     map_context_titles = map_context_titles_pg;
+
+    which_db = "postgres";
   }
 
   map_context_titles();
