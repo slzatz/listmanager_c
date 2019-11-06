@@ -274,6 +274,7 @@ static void (*update_row)(void);
 static void (*display_item_info)(int);
 static void (*touch)(void);
 static void (*search_db)(void);
+static void (*map_context_titles)(void);
 
 static void (*get_contexts)(void);
 static void (*update_context)(void);
@@ -388,7 +389,6 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-//void editorInsertRow(int fr, char *, size_t);
 void editorInsertRow(int fr, std::string);
 void EraseRedrawLines(void);
 void editorReadFile(std::string);
@@ -466,9 +466,9 @@ void map_context_titles_pg(void) {
     do_exit(conn);
   }
 
-  int i;
+  context_map.clear();
   int rows = PQntuples(res);
-  for(i=0; i<rows; i++) {
+  for(int i=0; i<rows; i++) {
     context_map[std::string(PQgetvalue(res, i, 1))] = atoi(PQgetvalue(res, i, 0));
   }
 
@@ -1606,17 +1606,6 @@ void editorInsertNewline(int direction) {
   }
     
   int indent = (E.smartindent) ? editorIndentAmount(E.fr) : 0;
-
-  //VLA
-  /*
-  char spaces[indent + 1]; 
-  for (int j=0; j < indent; j++) {
-    spaces[j] = ' ';
-  }
-
-  // not sure this is  necessary since editorInsertRow is going to terminate the string
-  spaces[indent] = '\0'; //not sure this is  necessary since editorInsertRow is going to terminate string with
-  */
 
   std::string spaces;
   for (int j=0; j<indent; j++) {
@@ -2850,7 +2839,7 @@ void outlineProcessKeypress(void) {
 
             case C_synch:
               synchronize(0); // do actual sync
-
+              map_context_titles();
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               editorReadFile("log");
@@ -6326,7 +6315,6 @@ void editorChangeCase(void) {
 }
 
 void editorYankLine(int n){
-
   line_buffer.clear();
 
   for (int i=0; i < n; i++) {
@@ -6348,7 +6336,6 @@ void editorYankString(void) {
 }
 
 void editorPasteString(void) {
-
   if (E.rows.empty() || string_buffer.empty()) return;
   std::string& row = E.rows.at(E.fr);
 
@@ -6368,7 +6355,6 @@ void editorPasteLine(void){
 }
 
 void editorIndentRow(void) {
-
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
@@ -6378,7 +6364,6 @@ void editorIndentRow(void) {
 }
 
 void editorUnIndentRow(void) {
-
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
@@ -6392,13 +6377,11 @@ void editorUnIndentRow(void) {
 }
 
 int editorIndentAmount(int r) {
-  int i;
-
   if (E.rows.empty()) return 0;
-
+  int i;
   std::string& row = E.rows.at(r);
 
-  for ( i = 0; i < row.size(); i++) {
+  for (i = 0; i<row.size(); i++) {
     if (row[i] != ' ') break;}
 
   return i;
@@ -6427,10 +6410,8 @@ void editorDelWord(void) {
 }
 
 void editorDeleteToEndOfLine(void) {
-
   std::string& row = E.rows.at(E.fr);
   row.resize(E.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
-
   E.dirty++;
 }
 
@@ -6775,13 +6756,6 @@ void EraseRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 }
-/* below was used for testing
-void getcharundercursor(void) {
-  erow *row = &E.row[E.cy];
-  char d = row->chars[E.cx];
-  editorSetMessage("character under cursor at position %d of %d: %c", E.cx, row->size, d); 
-}
-*/
 
 /*** init ***/
 
@@ -6855,7 +6829,7 @@ int main(int argc, char** argv) {
     get_contexts = get_contexts_sqlite;
     update_context = update_context_sqlite;
     which_db = "sqlite";
-    map_context_titles_sqlite();
+    map_context_titles =  map_context_titles_sqlite;
   } else {
     get_conn();
     get_items_by_context = get_items_by_context_pg;
@@ -6876,8 +6850,10 @@ int main(int argc, char** argv) {
     get_contexts = get_contexts_pg;
     update_context = update_context_pg;
     which_db = "postgres";
-    map_context_titles_pg();
+    map_context_titles = map_context_titles_pg;
   }
+
+  map_context_titles();
 
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -6918,11 +6894,9 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
   get_items_by_context(O.context, MAX); //? brings back deleted/completed-type data
-  // I need to look at below when incorrect queries were bringing back nother
-  // without the guard segfault and even now searches could bring back nothing
   if (O.rows.size())
   get_note(O.rows.at(0).id);
-   //editorRefreshScreen(); //in get_note
+  //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
 
