@@ -1115,6 +1115,7 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
   }
   //rows_are_tasks = true;
   view = TASK;
+  //O.folder = ""; //in C_open code
 }
 
 void get_items_by_folder_sqlite(const std::string& folder, int max) {
@@ -3201,7 +3202,7 @@ void outlineProcessKeypress(void) {
                return;
                }
 
-            case C_open: //catches :o prog
+            case C_open: //by context
                {
                std::string new_context;
                if (pos) {
@@ -3232,6 +3233,7 @@ void outlineProcessKeypress(void) {
                EraseRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
+               O.folder = "";
                get_items_by_context(new_context, MAX);
                O.mode = NORMAL;
                get_note(O.rows.at(0).id);
@@ -3242,8 +3244,9 @@ void outlineProcessKeypress(void) {
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
-               get_recent(MAX);
                O.context = "recent";
+               O.folder = "";
+               get_recent(MAX);
                O.mode = NORMAL;
                get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
@@ -4636,8 +4639,10 @@ int insert_row_pg(orow& row) {
         << ") VALUES ("
         << " 3," //priority
         << "'" << title << "'," //title
-        << " 1," //folder_tid
-        << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        //<< " 1," //folder_tid
+        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
+        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "CURRENT_DATE," //added
         << "'<This is a new note from sqlite>'," //note
@@ -4760,8 +4765,10 @@ int insert_row_sqlite(orow& row) {
         << ") VALUES ("
         << " 3," //priority
         << "'" << title << "'," //title
-        << " 1," //folder_tid
-        << ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        //<< " 1," //folder_tid
+        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
+        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
