@@ -59,6 +59,16 @@ def synchronize(report_only=True):
     else:
         log+="There were no updated (new and modified) server Contexts since the last sync.\n" 
 
+    #server_deleted_contexts
+    server_deleted_contexts = remote_session.query(p.Context).filter(and_(
+      p.Context.modified > last_server_sync, p.Context.deleted==True)).all()
+      
+    if server_deleted_contexts:
+        nn+=len(server_deleted_contexts)
+        log+=f"Deleted server Contexts since the last sync: {len(server_deleted_contexts)}.\n"
+    else:
+        log+="There were no server Contexts deleted since the last sync.\n" 
+
     #server_updated_folders: new and modified
     server_updated_folders = remote_session.query(p.Folder).filter(and_(
       p.Folder.modified > last_server_sync, p.Folder.deleted==False)).all()
@@ -68,6 +78,16 @@ def synchronize(report_only=True):
         log+=f"Updated (new and modified) server Folders since the last sync: {len(server_updated_folders)}.\n"
     else:
         log+="There were no updated (new and modified) server Folders since the last sync.\n" 
+
+    #server_deleted_folders
+    server_deleted_folders = remote_session.query(p.Folder).filter(and_(
+      p.Folder.modified > last_server_sync, p.Folder.deleted==True)).all()
+      
+    if server_deleted_folders:
+        nn+=len(server_deleted_folders)
+        log+=f"Deleted server Folders since the last sync: {len(server_deleted_folders)}.\n"
+    else:
+        log+="There were no server Folders deleted since the last sync.\n" 
 
     #server_updated_tasks: new and modified
     server_updated_tasks = remote_session.query(p.Task).filter(and_(
@@ -102,6 +122,16 @@ def synchronize(report_only=True):
     else:
         log+="There were no updated (new and modified) client Contexts since the last sync.\n" 
 
+    #client_deleted_contexts
+    client_deleted_contexts = local_session.query(Context).filter(and_(
+      Context.modified > last_client_sync, Context.deleted==True)).all()
+      
+    if client_deleted_contexts:
+        nn+=len(client_deleted_contexts)
+        log+=f"Deleted client Contexts since the last sync: {len(client_deleted_contexts)}.\n"
+    else:
+        log+="There were no client Contexts deleted since the last sync.\n" 
+
     #client_updated_folders: new and modified
     client_updated_folders = local_session.query(Folder).filter(and_(
       Folder.modified > last_client_sync, Folder.deleted==False)).all()
@@ -111,6 +141,16 @@ def synchronize(report_only=True):
         log+=f"Updated (new and modified) client Folders since the last sync: {len(client_updated_folders)}.\n"
     else:
         log+="There were no updated (new and modified) client Folders since the last sync.\n" 
+
+    #client_deleted_folders
+    client_deleted_folders = local_session.query(Folder).filter(and_(
+      Folder.modified > last_client_sync, Folder.deleted==True)).all()
+      
+    if client_deleted_folders:
+        nn+=len(client_deleted_folders)
+        log+=f"Deleted client Folders since the last sync: {len(client_deleted_folders)}.\n"
+    else:
+        log+="There were no client Folders deleted since the last sync.\n" 
 
     #client_updated_tasks: new and modified 
     client_updated_tasks = local_session.query(Task).filter(and_(
@@ -195,7 +235,7 @@ def synchronize(report_only=True):
 
     # updated server folders -> client
     if server_updated_folders:
-        log += "\nContexts that were updated/created on the Server that need to be updated/created on the Client:\n"
+        log += "\nFolders that were updated/created on the Server that need to be updated/created on the Client:\n"
     for sf in server_updated_folders:
 
         folder = local_session.query(Folder).filter_by(tid=sf.id).first()
@@ -223,7 +263,7 @@ def synchronize(report_only=True):
         
     # updated client folders -> server
     if client_updated_folders:
-        log += "\nContexts that were updated/created on Client that need to be updated/created on Server:\n"
+        log += "\nFolders that were updated/created on Client that need to be updated/created on Server:\n"
     for cf in client_updated_folders:
 
         folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
@@ -398,7 +438,6 @@ def synchronize(report_only=True):
         #tasklist.append(task) #really need to look at this 09092015
         
     # Delete from client tasks deleted on server
-    # uses deletelist
     for t in server_deleted_tasks:
         task = local_session.query(Task).filter_by(tid=t.id).first()
         if task:
@@ -419,8 +458,7 @@ def synchronize(report_only=True):
             log+="Task deleted on Server unsuccessful trying to delete on Client - could not find Client Task with tid = {0}\n".format(t.id)   
 
     # uses deletelist 
-    tids_to_delete = []
-    client_tasks = []
+    # Delete from server tasks deleted on client
     for t in client_deleted_tasks:
         # need 'if' below because a task could be new and then deleted and therefore have not tid; 
         # it will be removed from client but can't send anything to server
@@ -432,9 +470,6 @@ def synchronize(report_only=True):
             else:
                 task.deleted = True
                 remote_session.commit()
-            #tids_to_delete.append(t.tid)
-            #client_tasks.append(t)
-        #else:
         deletelist.append(t.id)
         for tk in t.taskkeywords:
             local_session.delete(tk)
@@ -443,6 +478,53 @@ def synchronize(report_only=True):
         local_session.delete(t)
         local_session.commit()     
          
+    # Delete from client contexts deleted on server
+    for sc in server_deleted_contexts:
+        # deal with server context's related tasks    
+        tasks = sc.tasks
+        no_context = remote_session.query(p.Context).get(1)
+        for task in tasks:
+            task.context = no_context
+            remote_session.commit()
+
+        # deal with client context and its related tasks    
+        context = local_session.query(Context).filter_by(tid=sc.id).first()
+        if context:
+            log+=f"Context deleted on Server will be deleted on Client - id: {context.id}; tid: {context.tid}; title: {context.title}\n"
+            no_context = local_session.query(Context).filter_by(tid=1).one()
+            #tasks = local_session.query(Task).filter_by(context_tid=context.tid).all()
+            tasks = context.tasks
+            for task in tasks:
+                task.context = no_context
+            local_session.commit()
+            local_session.delete(context)
+            local_session.commit() 
+        else:
+            log+="Context deleted on Server unsuccessful trying to delete on Client - could not find Client context with tid = {sc.id}\n"
+
+    # Delete from client folders deleted on server
+    for sf in server_deleted_folders:
+        # deal with server folder's related tasks    
+        tasks = sf.tasks
+        no_folder = remote_session.query(p.Folder).get(1)
+        for task in tasks:
+            task.folder = no_folder
+            remote_session.commit()
+
+        # deal with client folder and its related tasks    
+        folder = local_session.query(Folder).filter_by(tid=sf.id).first()
+        if folder:
+            log+=f"Folder deleted on Server deleted on Client - id: {folder.id}; tid: {folder.tid}; title: {folder.title}\n"
+            no_folder = local_session.query(Folder).filter_by(tid=1).one()
+            tasks = local_session.query(Task).filter_by(folder_tid=folder.tid).all()
+            for task in tasks:
+                task.folder = no_folder
+            local_session.commit()
+            local_session.delete(folder)
+            local_session.commit() 
+        else:
+            log+="Folder deleted on Server unsuccessful trying to delete on Client - could not find Client context with tid = {sf.id}\n"
+
     client_sync.timestamp = datetime.datetime.now() + datetime.timedelta(seconds=5) # giving a little buffer if the db takes time to update on client or server
 
     # saw definitively that the resulting timestamp could be earlier than when the server tasks were modified -- no idea why

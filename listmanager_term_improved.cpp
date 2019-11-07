@@ -3129,7 +3129,7 @@ void outlineProcessKeypress(void) {
               view = FOLDER;
               get_contexts_folders();
               O.mode = NORMAL;
-              outlineSetMessage("Retrieved contexts");
+              outlineSetMessage("Retrieved folders");
               return;
 
             case C_movetocontext: //catches :movetocontext and :mtc todo
@@ -3252,6 +3252,7 @@ void outlineProcessKeypress(void) {
             case C_synch:
               synchronize(0); // do actual sync
               map_context_titles();
+              map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               editorReadFile("log");
@@ -3386,7 +3387,7 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'x':
-          toggle_completed();
+          if (view == TASK) toggle_completed();
           return;
 
         case 'd':
@@ -3394,11 +3395,11 @@ void outlineProcessKeypress(void) {
           return;
 
         case 't': //touch
-          touch();
+          if (view == TASK) touch();
           return;
 
         case '*':
-          toggle_star();
+          if (view == TASK) toggle_star();
           return;
 
         case 's': 
@@ -3856,10 +3857,17 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   int context_tid = atoi(argv[6]);
   auto it = std::find_if(std::begin(context_map), std::end(context_map),
                          [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
+
+  int folder_tid = atoi(argv[5]);
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -4194,8 +4202,10 @@ void toggle_deleted_pg(void) {
 
   std::stringstream query;
   int id = get_id(-1);
+  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
 
-  query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True")  << ", "
+  //query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True")  << ", "
+  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
@@ -4278,8 +4288,10 @@ void toggle_deleted_sqlite(void) {
 
   std::stringstream query;
   int id = get_id(-1);
+  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
 
-  query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
+  //query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
+  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
   sqlite3 *db;
@@ -4454,7 +4466,10 @@ void update_context_folder_pg(void) {
     }
 
     std::stringstream query;
-    query << "UPDATE context SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
+    //query << "UPDATE context SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
+    query << "UPDATE "
+          << ((view == CONTEXT) ? "context" : "folder")
+          << " SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
 
     PGresult *res = PQexec(conn, query.str().c_str());
 
