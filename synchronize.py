@@ -41,7 +41,7 @@ def synchronize(report_only=True):
     last_client_sync = client_sync.timestamp 
     last_server_sync = server_sync.timestamp 
 
-    log+= "LISTMANAGER SYNCRONIZATION\n"
+    log+= "LISTMANAGER SYNCRONIZATION NORM\n"
     log+= "Server you are synching with is {}\n".format(p.remote_engine)
     log+= "Local Time is {0}\n\n".format(datetime.datetime.now())
     delta = datetime.datetime.now() - last_client_sync
@@ -51,13 +51,23 @@ def synchronize(report_only=True):
     # SERVER CHANGES
     #server_updated_contexts: new and modified
     server_updated_contexts = remote_session.query(p.Context).filter(and_(
-      p.Context.modified > last_server_sync, p.Context.deleted==False, p.Task.id > 1)).all()
+      p.Context.modified > last_server_sync, p.Context.deleted==False)).all()
 
     if server_updated_contexts:
         nn+=len(server_updated_contexts)
-        log+="Updated (new and modified) server Contexts since the last sync: {0}.\n".format(len(server_updated_contexts))
+        log+=f"Updated (new and modified) server Contexts since the last sync: {len(server_updated_contexts)}.\n"
     else:
         log+="There were no updated (new and modified) server Contexts since the last sync.\n" 
+
+    #server_updated_folders: new and modified
+    server_updated_folders = remote_session.query(p.Folder).filter(and_(
+      p.Folder.modified > last_server_sync, p.Folder.deleted==False)).all()
+
+    if server_updated_folders:
+        nn+=len(server_updated_folders)
+        log+=f"Updated (new and modified) server Folders since the last sync: {len(server_updated_folders)}.\n"
+    else:
+        log+="There were no updated (new and modified) server Folders since the last sync.\n" 
 
     #server_updated_tasks: new and modified
     server_updated_tasks = remote_session.query(p.Task).filter(and_(
@@ -88,9 +98,19 @@ def synchronize(report_only=True):
 
     if client_updated_contexts:
         nn+=len(client_updated_contexts)
-        log+="Updated (new and modified) client Contexts since the last sync: {0}.\n".format(len(client_updated_contexts))
+        log+=f"Updated (new and modified) client Contexts since the last sync: {len(client_updated_contexts)}.\n"
     else:
         log+="There were no updated (new and modified) client Contexts since the last sync.\n" 
+
+    #client_updated_folders: new and modified
+    client_updated_folders = local_session.query(Folder).filter(and_(
+      Folder.modified > last_client_sync, Folder.deleted==False)).all()
+
+    if client_updated_folders:
+        nn+=len(client_updated_folders)
+        log+=f"Updated (new and modified) client Folders since the last sync: {len(client_updated_folders)}.\n"
+    else:
+        log+="There were no updated (new and modified) client Folders since the last sync.\n" 
 
     #client_updated_tasks: new and modified 
     client_updated_tasks = local_session.query(Task).filter(and_(
@@ -98,7 +118,7 @@ def synchronize(report_only=True):
 
     if client_updated_tasks:
         nn+=len(client_updated_tasks)
-        log+="Updated (new and modified) client Tasks since the last sync: {0}.\n".format(len(client_updated_tasks))
+        log+=f"Updated (new and modified) client Tasks since the last sync: {len(client_updated_tasks)}.\n"
     else:
         log+="There were no updated (new and modified) client Tasks since the last sync.\n" 
 
@@ -172,6 +192,62 @@ def synchronize(report_only=True):
         remote_session.commit()
 
         log += f"{action} - id: {context.id} title: {context.title} \n"
+
+    # updated server folders -> client
+    if server_updated_folders:
+        log += "\nContexts that were updated/created on the Server that need to be updated/created on the Client:\n"
+    for sf in server_updated_folders:
+
+        folder = local_session.query(Folder).filter_by(tid=sf.id).first()
+
+        if not folder:
+            action = "created"
+            folder = Folder()
+            local_session.add(folder)
+            # next line important: local db task.tid is the unique key that 
+            # links to the foreign key in context and folder tables
+            folder.tid = sf.id
+        else:
+            action = "updated"
+            
+        # Note that the foreign key that the server uses task.context_tid points to context.id is different
+        # between postgres and sqlite postgres points to context.id and local
+        # sqlite db points to context.tid but the actual values are identical
+        folder.title = sf.title
+        #folder.default = sf.default
+        folder.textcolor = sf.textcolor
+
+        local_session.commit() #new/updated client folder commit
+        
+        log += f"{action} - id: {folder.id} tid: {folder.tid} title: {folder.title} \n"
+        
+    # updated client folders -> server
+    if client_updated_folders:
+        log += "\nContexts that were updated/created on Client that need to be updated/created on Server:\n"
+    for cf in client_updated_folders:
+
+        folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
+
+        if not folder:
+            action = "created"
+            folder = p.Folder(1000, "temp") # needs a title but will be changed below
+            remote_session.add(folder)
+            remote_session.commit()
+            cf.tid = folder.id 
+            local_session.commit()
+        else:
+            action = "updated"
+            if folder in server_updated_folders:
+                action += "-server won"
+                continue
+            
+        folder.title = cf.title
+        #folder.default = cf.default
+        folder.textcolor = cf.textcolor
+
+        remote_session.commit()
+
+        log += f"{action} - id: {folder.id} title: {folder.title} \n"
 
     # the following is intended to catch contexts deleted on the server
     if 0:

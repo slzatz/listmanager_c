@@ -135,10 +135,11 @@ enum Command {
 
   C_new, //create a new item
 
-  C_contexts, //change view to CONTEXTs
-  C_folders,  //change view to FOLDERs
+  C_contexts, //change view to CONTEXTs :c
+  C_folders,  //change view to FOLDERs :f
+  C_movetocontext, //mtc
+  C_movetofolder, //mtf
 
-  C_moveto, //contexts :m prog
   C_update, //update solr db
 
   C_synch, // synchronixe sqlite and postgres dbs
@@ -185,8 +186,10 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"context", C_contexts},
   {"folders", C_folders},
   {"folder", C_folders},
-  {"m", C_moveto}, //need because this is command line command with a target word
-  {"moveto", C_moveto},
+  {"mtc", C_movetocontext}, //need because this is command line command with a target word
+  {"movetocontext", C_movetocontext},
+  {"mtf", C_movetofolder}, //need because this is command line command with a target word
+  {"movetofolder", C_movetofolder},
   {"update", C_update},
   {"sync", C_synch},
   {"synch", C_synch},
@@ -281,6 +284,7 @@ static void (*toggle_star)(void);
 static void (*toggle_completed)(void);
 static void (*toggle_deleted)(void);
 static void (*update_task_context)(std::string&);
+static void (*update_task_folder)(std::string&);
 static void (*update_rows)(void);
 static void (*update_row)(void);
 //static int (*insert_row)(int); //not called directly
@@ -346,6 +350,11 @@ void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
 void fts5_sqlite(void);
+
+void update_task_context_pg(const std::string&);
+void update_task_context_sqlite(const std::string&);
+void update_task_folder_pg(const std::string&);
+void update_task_folder_sqlite(const std::string&);
 
 void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
@@ -3123,7 +3132,7 @@ void outlineProcessKeypress(void) {
               outlineSetMessage("Retrieved contexts");
               return;
 
-            case C_moveto: //catches :moveto and :m todo
+            case C_movetocontext: //catches :movetocontext and :mtc todo
                {
                std::string new_context;
                if (O.command_line.size() > 5) {
@@ -3156,6 +3165,37 @@ void outlineProcessKeypress(void) {
                  return;
                }
                update_task_context(new_context);
+               O.mode = NORMAL;
+               O.command_line.clear(); //probably not necessary
+               return;
+               }
+
+            case C_movetofolder: //catches :movetocontext and :mtc todo
+               {
+               std::string new_folder;
+               if (O.command_line.size() > 5) {
+                 bool success = false;
+                 // structured bindings
+                 for (const auto & [k,v] : folder_map) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                     new_folder = k;
+                     success = true;
+                     break;
+                   }
+                 }
+                 if (!success) {
+                   outlineSetMessage("What you typed did not match any folder");
+                   return;
+                 }
+
+               } else {
+                 outlineSetMessage("You need to provide at least 3 characters "
+                                   "that match a folder!");
+
+                 O.command_line.clear();
+                 return;
+               }
+               update_task_folder(new_folder);
                O.mode = NORMAL;
                O.command_line.clear(); //probably not necessary
                return;
@@ -4009,6 +4049,63 @@ void update_task_context_sqlite(std::string& new_context) {
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Setting context to %s succeeded", new_context.c_str());
+  }
+
+  sqlite3_close(db);
+}
+
+void update_task_folder_pg(std::string& new_folder) {
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+      outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+    }
+  }
+
+  std::stringstream query;
+  int id = get_id(-1);
+  int folder_tid = folder_map.at(new_folder);
+
+  query << "UPDATE task SET folder_tid=" << folder_tid << ", "
+        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
+        << "WHERE id=" << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+  } else {
+    outlineSetMessage("Setting folder to %s succeeded", new_folder.c_str());
+  }
+  PQclear(res);
+}
+
+void update_task_folder_sqlite(std::string& new_folder) {
+
+  std::stringstream query;
+  int id = get_id(-1);
+  int folder_tid = folder_map.at(new_folder);
+  query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Setting folder to %s succeeded", new_folder.c_str());
   }
 
   sqlite3_close(db);
@@ -7218,6 +7315,7 @@ int main(int argc, char** argv) {
     update_rows = update_rows_sqlite;
     update_row = update_row_sqlite;
     update_task_context = update_task_context_sqlite;
+    update_task_folder = update_task_folder_sqlite;
     display_item_info = display_item_info_sqlite;
     touch = touch_sqlite;
     get_recent = get_recent_sqlite;
@@ -7243,6 +7341,7 @@ int main(int argc, char** argv) {
     update_rows = update_rows_pg;
     update_row = update_row_pg;
     update_task_context = update_task_context_pg;
+    update_task_folder = update_task_folder_pg;
     display_item_info = display_item_info_pg;
     touch = touch_pg;
     get_recent = get_recent_pg;
@@ -7256,6 +7355,7 @@ int main(int argc, char** argv) {
   }
 
   map_context_titles();
+  map_folder_titles();
 
   enableRawMode();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen

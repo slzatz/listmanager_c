@@ -84,6 +84,7 @@ folder_table = Table('folder', metadata,
                  Column('archived', Boolean, default=False),
                  Column('order', Integer),
                  Column('created', DateTime, default=datetime.datetime.now), 
+                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
                  Column('deleted', Boolean, default=False),  # need to add this to delete folders on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),
