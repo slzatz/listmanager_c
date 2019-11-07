@@ -50,7 +50,8 @@ static int screenlines, screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
-static bool rows_are_tasks;
+//static bool rows_are_tasks;
+static int view;
 static std::string search_terms; //:find xxxxx
 static std::vector<int> fts_ids;
 static int fts_counter;
@@ -59,6 +60,7 @@ static std::vector<std::string> line_buffer; //yanking lines
 static std::string string_buffer; //yanking chars
 static std::map<int, std::string> fts_titles;
 static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
+static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -85,6 +87,12 @@ enum Mode {
   DATABASE = 6, // only outline mode
   FILE_DISPLAY = 7, // only outline mode
   NO_ROWS = 8
+};
+
+enum View {
+  TASK,
+  CONTEXT,
+  FOLDER
 };
 
 static std::string mode_text[] = {
@@ -127,7 +135,8 @@ enum Command {
 
   C_new, //create a new item
 
-  C_contexts, //change an item's context
+  C_contexts, //change view to CONTEXTs
+  C_folders,  //change view to FOLDERs
 
   C_moveto, //contexts :m prog
   C_update, //update solr db
@@ -174,6 +183,8 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"new", C_new}, //don't need "n" because there is no target
   {"contexts", C_contexts},
   {"context", C_contexts},
+  {"folders", C_folders},
+  {"folder", C_folders},
   {"m", C_moveto}, //need because this is command line command with a target word
   {"moveto", C_moveto},
   {"update", C_update},
@@ -216,6 +227,7 @@ struct outlineConfig {
   unsigned int screencols;  //number of columns in the display available to text
   std::vector<orow> rows;
   std::string context;
+  std::string folder;
   char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
@@ -259,7 +271,8 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
  */
-static void (*get_items_by_context)(const std::string&, int); //shouldn't have to pass context it's global
+static void (*get_items_by_context)(const std::string&, int); //?shouldn't have to pass context it's global
+static void (*get_items_by_folder)(const std::string&, int); //?ditto
 static void (*get_recent)(int);
 static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
@@ -275,9 +288,10 @@ static void (*display_item_info)(int);
 static void (*touch)(void);
 static void (*search_db)(void);
 static void (*map_context_titles)(void);
+static void (*map_folder_titles)(void);
 
-static void (*get_contexts)(void);
-static void (*update_context)(void);
+static void (*get_contexts_folders)(void);
+static void (*update_context_folder)(void);
 //static void (*insert_context)(void); //not called directly
 
 void outlineProcessKeypress(void);
@@ -318,12 +332,16 @@ int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
 int insert_context_pg(orow&); //need to write this one
 int insert_context_sqlite(orow&);
-void update_context_sqlite(void);
-void update_context_pg(void);
+void update_context_folder_sqlite(void);
+void update_context_folder_pg(void);
 void get_items_by_context_sqlite(const std::string&, int);
+void get_items_by_folder_sqlite(const std::string&, int);
 void get_items_by_context_pg(const std::string&, int);
-void get_contexts_sqlite(void);
-void get_contexts_pg(void);
+void get_items_by_folder_pg(const std::string&, int);
+void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
+void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
+//void get_contexts_pg(void);
+//void get_folders_pg(void);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
@@ -331,12 +349,16 @@ void fts5_sqlite(void);
 
 void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
+void map_folder_titles_pg(void);
+void map_folder_titles_sqlite(void);
 
 //sqlite callback functions
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
 int context_callback(void *, int, char **, char **);
+int folder_callback(void *, int, char **, char **);
 int context_titles_callback(void *, int, char **, char **);
+int folder_titles_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
@@ -475,6 +497,32 @@ void map_context_titles_pg(void) {
   PQclear(res);
   // PQfinish(conn);
 }
+
+void map_folder_titles_pg(void) {
+
+  // note it's id because it's pg
+  std::string query("SELECT id,title FROM folder;");
+
+  PGresult *res = PQexec(conn, query.c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }
+
+  folder_map.clear();
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    folder_map[std::string(PQgetvalue(res, i, 1))] = atoi(PQgetvalue(res, i, 0));
+  }
+
+  PQclear(res);
+  // PQfinish(conn);
+}
+
 void map_context_titles_sqlite(void) {
 
   sqlite3 *db;
@@ -527,6 +575,58 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
   return 0;
 }
 
+void map_folder_titles_sqlite(void) {
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  // note it's tid because it's sqlite
+  std::string query("SELECT tid,title FROM folder;");
+
+    bool no_rows = true;
+    rc = sqlite3_exec(db, query.c_str(), folder_titles_callback, &no_rows, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      //outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+  if (no_rows) {
+    //outlineSetMessage("No results were returned");
+    //O.mode = NO_ROWS;
+  }
+}
+
+int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
+  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  *flag = false;
+
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: default = Boolean ? what this is
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  */
+
+  folder_map[std::string(argv[1])] = atoi(argv[0]);
+
+  return 0;
+}
+
 void get_recent_pg(int max) {
   std::stringstream query;
 
@@ -569,6 +669,7 @@ void get_recent_pg(int max) {
     O.rows.push_back(row);
   }
   PQclear(res);
+  view = TASK;
   // PQfinish(conn);
 }
 
@@ -616,17 +717,29 @@ void get_items_by_context_pg(const std::string& context, int max) {
 
   PQclear(res);
   // PQfinish(conn);
-  rows_are_tasks = true;
+  //rows_are_tasks = true;
+  view = TASK;
 }
 
-void get_contexts_pg(void) {
+void get_items_by_folder_pg(const std::string& folder, int max) {
+  std::stringstream query;
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  std::string query("SELECT * FROM context;");
+  if (!O.show_deleted) {
+    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
+          << "WHERE folder.title = '" << folder << "' "
+          << "AND task.deleted = False "
+          << "AND task.completed IS NULL "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  } else {
+    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
+          << "WHERE folder.title = '" << folder << "' "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  }
 
-  PGresult *res = PQexec(conn, query.c_str());
+  PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
@@ -640,19 +753,160 @@ void get_contexts_pg(void) {
   int rows = PQntuples(res);
   for(i=0; i<rows; i++) {
     orow row;
-    row.title = std::string(PQgetvalue(res, i, 2));
+    row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 5) == 't') ? true: false;
-    row.completed = false;
+    row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
+    row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
+    row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, 9), 16);
+    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
     O.rows.push_back(row);
   }
 
   PQclear(res);
   // PQfinish(conn);
-  rows_are_tasks = false;
+  //rows_are_tasks = true;
+  view = TASK;
+}
+
+void get_contexts_folders_pg(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  //std::string query("SELECT * FROM context;");
+  std::stringstream query;
+  query << "SELECT * FROM "
+        << ((view == CONTEXT) ? "context;" : "folder;");
+
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }
+
+  /* CONTEXT columns
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: default = Boolean ? what this is
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  9: modified
+  */
+
+  /* FOLDER Columns
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  4: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+
+  int rows = PQntuples(res);
+
+  if (view == CONTEXT) {
+    for(int i=0; i<rows; i++) {
+      orow row;
+      row.title = std::string(PQgetvalue(res, i, 2));
+      row.id = atoi(PQgetvalue(res, i, 0));
+      row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
+      row.deleted = (*PQgetvalue(res, i, 5) == 't') ? true: false;
+      row.completed = false;
+      row.dirty = false;
+      strncpy(row.modified, PQgetvalue(res, i, 9), 16);
+      O.rows.push_back(row);
+    }
+  } else {
+    for(int i=0; i<rows; i++) {
+      orow row;
+      row.title = std::string(PQgetvalue(res, i, 2));
+      row.id = atoi(PQgetvalue(res, i, 0));
+      row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
+      row.deleted = (*PQgetvalue(res, i, 7) == 't') ? true: false;
+      row.completed = false;
+      row.dirty = false;
+      strncpy(row.modified, PQgetvalue(res, i, 11), 16);
+      O.rows.push_back(row);
+    }
+  }
+  // PQfinish(conn);
+  //rows_are_tasks = false;
+  //view = CONTEXT;
+  PQclear(res);
+  O.context = O.folder = "";
+}
+
+//not used
+void get_folders_pg(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  //std::string query("SELECT * FROM context;");
+  std::stringstream query;
+  query << "SELECT * FROM "
+        << ((view == CONTEXT) ? "context;" : "folder;");
+
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+
+    printf("No data retrieved\n");
+    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    PQclear(res);
+    do_exit(conn);
+  }
+
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  4: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    orow row;
+    row.title = std::string(PQgetvalue(res, i, 2));
+    row.id = atoi(PQgetvalue(res, i, 0));
+    row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
+    row.deleted = (*PQgetvalue(res, i, 7) == 't') ? true: false;
+    row.completed = false;
+    row.dirty = false;
+    strncpy(row.modified, PQgetvalue(res, i, 11), 16);
+    O.rows.push_back(row);
+  }
+
+  PQclear(res);
+  // PQfinish(conn);
+  //rows_are_tasks = false;
+  //view = CONTEXT;
+  O.context = O.folder = "";
 }
 
 void get_recent_sqlite(int max) {
@@ -698,10 +952,11 @@ void get_recent_sqlite(int max) {
      outlineSetMessage("No results were returned");
      O.mode = NO_ROWS;
   }
-  rows_are_tasks = true;
+  //rows_are_tasks = true;
+  view = TASK;
 }
 
-void get_contexts_sqlite(void) {
+void get_contexts_folders_sqlite(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -717,10 +972,15 @@ void get_contexts_sqlite(void) {
     return;
     }
 
-  std::string query("SELECT * FROM context;");
+  //std::string query("SELECT * FROM context;");
+  std::stringstream query;
+  query << "SELECT * FROM "
+        << ((view == CONTEXT) ? "context;" : "folder;");
 
     bool no_rows = true;
-    rc = sqlite3_exec(db, query.c_str(), context_callback, &no_rows, &err_msg);
+
+    if (view == CONTEXT) rc = sqlite3_exec(db, query.str().c_str(), context_callback, &no_rows, &err_msg);
+    else rc = sqlite3_exec(db, query.str().c_str(), folder_callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -732,8 +992,10 @@ void get_contexts_sqlite(void) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   }
-  rows_are_tasks = false;
-  O.context = "";
+  //rows_are_tasks = false;
+  //view = CONTEXT;
+  O.context = O.folder = "";
+
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -767,6 +1029,37 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
+  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  *flag = false;
+
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  4: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+  orow row;
+
+  row.title = std::string(argv[2]);
+  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
+  row.star = (atoi(argv[3]) == 1) ? true: false;
+  row.deleted = (atoi(argv[7]) == 1) ? true: false;
+  row.completed = false;
+  row.dirty = false;
+  strncpy(row.modified, argv[11], 16);
+  O.rows.push_back(row);
+
+  return 0;
+}
 void get_items_by_context_sqlite(const std::string& context, int max) {
   std::stringstream query;
 
@@ -811,9 +1104,57 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   }
-  rows_are_tasks = true;
+  //rows_are_tasks = true;
+  view = TASK;
 }
 
+void get_items_by_folder_sqlite(const std::string& folder, int max) {
+  std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  if (!O.show_deleted) {
+    //query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
+    query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid "
+          << "WHERE folder.title = '" << folder << "' "
+          << "AND task.deleted = False "
+          << "AND task.completed IS NULL "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  } else {
+    //query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
+    query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid "
+          << "WHERE folder.title = '" << folder << "' "
+          << "ORDER BY task.modified DESC LIMIT " << max;
+  }
+
+    bool no_rows = true;
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+  if (no_rows) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  }
+  //rows_are_tasks = true;
+  view = TASK;
+}
 int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
     
   //UNUSED(NotUsed);
@@ -954,7 +1295,8 @@ void get_items_by_id_sqlite(std::stringstream& query) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   }
-  rows_are_tasks = true;
+  //rows_are_tasks = true;
+  view = TASK;
 }
 
 //brings back a set of ids generated by solr search
@@ -986,7 +1328,8 @@ void get_items_by_id_pg(std::stringstream& query) {
   PQclear(res);
 
   O.fc = O.fr = O.rowoff = 0;
-  rows_are_tasks = true;
+  //rows_are_tasks = true;
+  view = TASK;
 }
 
 void get_note_sqlite(int id) {
@@ -2118,7 +2461,8 @@ void outlineMoveCursor(int key) {
 
       // note need to determine row after moving cursor
       id = O.rows.at(O.fr).id;
-      if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
+      //if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
+      if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
 
@@ -2132,7 +2476,8 @@ void outlineMoveCursor(int key) {
       //orow& row = O.rows.at(O.fr);
       id = O.rows.at(O.fr).id;
       //get_note(row.id); //if id == -1 does not try to retrieve note
-      if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
+      //if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
+      if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
      }
@@ -2173,9 +2518,8 @@ void outlineProcessKeypress(void) {
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
-          if (rows_are_tasks) {
-            update_row();
-          } else update_context();
+          if (view == TASK) update_row();
+          else update_context_folder();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
           //outlineSetMessage("");
@@ -2264,13 +2608,27 @@ void outlineProcessKeypress(void) {
         case '\r':
           {
           orow& row = O.rows.at(O.fr);
-          if (rows_are_tasks) {
+
+          if (view == TASK) {
             update_row();
-          } else if (row.dirty) { // means context is dirty
-            update_context();
-          } else {
+            O.command[0] = '\0';
+            return;
+          }
+
+          if (row.dirty) { // means context or folder title has changed
+            update_context_folder();
+            O.command[0] = '\0';
+            return;
+          }
+
+          if (view == CONTEXT) {
             O.context = row.title;
+            O.folder = "";
             get_items_by_context(row.title, MAX); //go to context (not dirty)
+          } else {
+            O.folder = row.title;
+            O.context = "";
+            get_items_by_folder(row.title, MAX);
           }
           }
           O.command[0] = '\0';
@@ -2382,7 +2740,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
 
-          if (rows_are_tasks) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
           return;
       
@@ -2551,7 +2909,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           //get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-          if (rows_are_tasks) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
           return;
 
         case C_gt:
@@ -2567,7 +2925,7 @@ void outlineProcessKeypress(void) {
           O.context = new_context;
           get_items_by_context(new_context, MAX);
           O.mode = NORMAL;
-          if (rows_are_tasks) get_note(O.rows.at(0).id); //if id == -1 does not try to retrieve note
+          if (view == TASK) get_note(O.rows.at(0).id); //if id == -1 does not try to retrieve note
           //editorRefreshScreen(); //in get_note
           O.command[0] = '\0';
           return;
@@ -2575,7 +2933,7 @@ void outlineProcessKeypress(void) {
 
         case C_edit:
           // can't edit note if rows_are_contexts
-          if (!rows_are_tasks) {
+          if (!view == TASK) {
             O.command[0] = '\0';
             O.mode = NORMAL;
             outlineSetMessage("Contexts do not have notes to edit");
@@ -2627,13 +2985,13 @@ void outlineProcessKeypress(void) {
           switch(command) {
 
             case 'w':
-              if (rows_are_tasks) update_rows();
+              if (view == TASK) update_rows();
               O.mode = 0;
               O.command_line.clear();
               return;
 
             case 'x':
-              if (rows_are_tasks) update_rows();
+              if (view == TASK) update_rows();
               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
               exit(0);
@@ -2643,19 +3001,23 @@ void outlineProcessKeypress(void) {
             case C_refresh:
               EraseRedrawLines(); //****03102019*************************
 
-              if (rows_are_tasks) {
-                outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
+              if (view == TASK) {
+                outlineSetMessage("Tasks will be refreshed");
+
                 if (O.context == "search") {
                   search_db();
                   O.mode = DATABASE;
                 } else if (O.context == "recent") {
                   get_recent(MAX);
-                } else {
+                } else if (O.context != "") {
                   get_items_by_context(O.context, MAX);
+                } else {
+                  get_items_by_folder(O.folder, MAX);
                 }
+
               } else {
                 outlineSetMessage("contexts will be refreshed");
-                get_contexts();
+                get_contexts_folders();
               }
 
               O.mode = NORMAL;
@@ -2680,7 +3042,7 @@ void outlineProcessKeypress(void) {
             case C_edit: //edit the note of the current item
               // can't edit in context mode
           /***********************check mode****************************/
-              if (!rows_are_tasks) {
+              if (!view == TASK) {
                 O.command[0] = '\0';
                 O.mode = NORMAL;
                 outlineSetMessage("Contexts do not have notes to edit");
@@ -2706,7 +3068,7 @@ void outlineProcessKeypress(void) {
               return;
               }
 
-            case 'f':
+            //case 'f'://now using for folders
             case C_find: //catches 'fin' and 'find' 
               if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
@@ -2746,7 +3108,17 @@ void outlineProcessKeypress(void) {
             case 'c':
             case C_contexts: //catches context, contexts and c
               EraseRedrawLines();
-              get_contexts();
+              view = CONTEXT;
+              get_contexts_folders();
+              O.mode = NORMAL;
+              outlineSetMessage("Retrieved contexts");
+              return;
+
+            case 'f':
+            case C_folders: //catches folder, folders and f
+              EraseRedrawLines();
+              view = FOLDER;
+              get_contexts_folders();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved contexts");
               return;
@@ -2996,9 +3368,24 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'r':
-          outlineSetMessage("\'%s\' will be refreshed", O.context.c_str());
-          if (O.context == "search") search_db();
-          else get_items_by_context(O.context, MAX);
+          if (view == TASK) {
+            outlineSetMessage("Tasks will be refreshed");
+
+            if (O.context == "search") {
+              search_db();
+              O.mode = DATABASE;
+            } else if (O.context == "recent") {
+              get_recent(MAX);
+            } else if (O.context != "") {
+              get_items_by_context(O.context, MAX);
+            } else {
+              get_items_by_folder(O.folder, MAX);
+            }
+
+          } else {
+            outlineSetMessage("contexts will be refreshed");
+            get_contexts_folders();
+          }
           O.mode = NORMAL;
           return;
   
@@ -3941,7 +4328,7 @@ void update_row_pg(void) {
   }  
 }
 
-void update_context_pg(void) {
+void update_context_folder_pg(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -4059,7 +4446,7 @@ void update_row_sqlite(void) {
   }
 }
 
-void update_context_sqlite(void) {
+void update_context_folder_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -4078,7 +4465,10 @@ void update_context_sqlite(void) {
       }
 
     std::stringstream query;
-    query << "UPDATE context SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
+    query << "UPDATE "
+          //<< context
+          << ((view == CONTEXT) ? "context" : "folder")
+          << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
 
     sqlite3 *db;
     char *err_msg = 0;
@@ -4186,13 +4576,15 @@ int insert_context_pg(orow& row) {
 
   std::stringstream query;
 
-  query << "INSERT INTO context ("
+  query << "INSERT INTO "
+        << ((view == CONTEXT) ? "context" : "folder")
+        << " ("
         << "title, "
         << "deleted, "
         << "created, "
         << "modified, "
         << "tid, "
-        << "\"default\", "
+        //<< "\"default\", "
         << "textcolor "
         << ") VALUES ("
         << "'" << title << "'," //title
@@ -4200,7 +4592,7 @@ int insert_context_pg(orow& row) {
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
         << " 100," //tid
-        << " False," //default
+        //<< " False," //default
         << " 10" //textcolor
         << ") RETURNING id;";
 
@@ -4339,13 +4731,16 @@ int insert_context_sqlite(orow& row) {
     }
 
   std::stringstream query;
-  query << "INSERT INTO context ("
+  query << "INSERT INTO "
+        //<< context
+        << ((view == CONTEXT) ? "context" : "folder")
+        << " ("
         << "title, "
         << "deleted, "
         << "created, "
         << "modified, "
         << "tid, "
-        << "\"default\", "
+      //  << "\"default\", " //folder does not have default
         << "textcolor "
         << ") VALUES ("
         << "'" << title << "'," //title
@@ -4353,7 +4748,7 @@ int insert_context_sqlite(orow& row) {
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
         << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
         << " 100," //tid
-        << " False," //default
+       // << " False," //default //folder does not have default
         << " 10" //textcolor
         << ");"; // RETURNING id;",
 
@@ -6812,6 +7207,7 @@ int main(int argc, char** argv) {
 
   if (argc > 1 && argv[1][0] == 's') {
     get_items_by_context = get_items_by_context_sqlite;
+    get_items_by_folder = get_items_by_folder_sqlite;
     get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
     update_note = update_note_sqlite;
@@ -6826,15 +7222,17 @@ int main(int argc, char** argv) {
     touch = touch_sqlite;
     get_recent = get_recent_sqlite;
     search_db = fts5_sqlite;
-    get_contexts = get_contexts_sqlite;
-    update_context = update_context_sqlite;
+    get_contexts_folders = get_contexts_folders_sqlite;
+    update_context_folder = update_context_folder_sqlite;
     map_context_titles =  map_context_titles_sqlite;
+    map_folder_titles =  map_folder_titles_sqlite;
 
     which_db = "sqlite";
 
   } else {
     get_conn();
     get_items_by_context = get_items_by_context_pg;
+    get_items_by_folder = get_items_by_folder_pg;
     get_items_by_id = get_items_by_id_pg;
     get_note = get_note_pg;
     update_note = update_note_pg;
@@ -6849,9 +7247,10 @@ int main(int argc, char** argv) {
     touch = touch_pg;
     get_recent = get_recent_pg;
     search_db = solr_find;
-    get_contexts = get_contexts_pg;
-    update_context = update_context_pg;
+    get_contexts_folders = get_contexts_folders_pg;
+    update_context_folder = update_context_folder_pg;
     map_context_titles = map_context_titles_pg;
+    map_folder_titles = map_folder_titles_pg;
 
     which_db = "postgres";
   }
