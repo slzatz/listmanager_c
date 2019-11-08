@@ -80,7 +80,6 @@ enum Mode {
   NORMAL = 0,
   INSERT = 1,
   COMMAND_LINE = 2, //note: if no rows as result of search put in COMMAND_LINE mode
-
   VISUAL_LINE = 3, // only editor mode
   VISUAL = 4,
   REPLACE = 5,
@@ -107,8 +106,6 @@ static std::string mode_text[] = {
                         "NO ROWS"
                        }; 
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
-//static constexpr char BASE_DATE[] = {'1', '9', '7', '0', '-', '0', '1', '-', '0', '1', ' ', '0', '0', ':', '0', '0', '\0'};
-//static constexpr std::array<char,17> BASE_DATE {"1970-01-01 00:00"}; //for array<char, n> wants room for terminating '\0'
 
 enum Command {
   C_caw = 2000,
@@ -216,8 +213,7 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
-  char modified[16]; // display 16 chars plus need terminating '\0'
-  //std::array<char,16> modified; // display 16 chars plus need terminating '\0'
+  char modified[16];
   
 } orow;
 
@@ -241,7 +237,6 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
-  //bool show_highlight;
 };
 
 static struct outlineConfig O;
@@ -277,7 +272,7 @@ static struct editorConfig E;
 static void (*get_items_by_context)(const std::string&, int); //?shouldn't have to pass context it's global
 static void (*get_items_by_folder)(const std::string&, int); //?ditto
 static void (*get_recent)(int);
-static void (*get_items_by_id)(std::stringstream&);
+//static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
 static void (*update_note)(void);
 static void (*toggle_star)(void);
@@ -1293,8 +1288,6 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
 
   orow row;
 
-  //int len = strlen(argv[3]);
-  //row.title = std::string(argv[3], argv[3] + len);
   row.title = std::string(argv[3]);
   row.id = atoi(argv[0]);
   row.fts_title = fts_titles.at(row.id);
@@ -1553,7 +1546,8 @@ void solr_find(void) {
 
               Py_DECREF(pValue);
 
-              get_items_by_id(query);
+              //get_items_by_id(query);
+              get_items_by_id_pg(query);
           } else {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
@@ -3014,33 +3008,25 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("Tasks will be refreshed");
 
                 if (O.context == "search") {
-                  //search_terms = "norm";
                   search_db();
-                  //O.command_line.clear(); //this doesn't do it
-                  //O.command[0] = '\0';//this doesn't do it
-                  //inexplicable but without this it doesn't work
-                  outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
+                  //outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
                   O.mode = DATABASE;
                   if (O.rows.size()) get_note(get_id(-1));
                   return;
                 } else if (O.context == "recent") {
                   get_recent(MAX);
-                  O.mode = NORMAL;
                 } else if (O.context != "") {
                   get_items_by_context(O.context, MAX);
-                  O.mode = NORMAL;
                 } else {
                   get_items_by_folder(O.folder, MAX);
-                  O.mode = NORMAL;
                 }
 
               } else {
-                outlineSetMessage("contexts will be refreshed");
+                outlineSetMessage("contexts/folders will be refreshed");
                 get_contexts_folders();
-                O.mode = NORMAL;
               }
 
-              //O.mode = NORMAL;
+              O.mode = NORMAL;
               return;
 
             //in vim create new window and edit a file in it - here creates new item
@@ -3100,9 +3086,6 @@ void outlineProcessKeypress(void) {
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              // remove the line below and you get query aborted error on some searches
-              // how can that possibly be
-              // and it comes after the search should be complete!!!!!
               //outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
               O.mode = DATABASE; //so you can't edit highlighted items
               if (O.rows.size()) get_note(get_id(-1));
@@ -3737,7 +3720,8 @@ void fts5_sqlite(void) {
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            << search_terms << "' ORDER BY rank";
+            //<< search_terms << "' ORDER BY rank";
+            << search_terms << "' ORDER BY rank LIMIT " << 50;
 
   sqlite3 *db;
   char *err_msg = nullptr;
@@ -3780,8 +3764,8 @@ void fts5_sqlite(void) {
   }
   query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  get_items_by_id(query);
-  //get_items_by_id_sqlite(query);
+  //get_items_by_id(query);
+  get_items_by_id_sqlite(query);
 
   //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
   //outlineSetMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
@@ -3792,13 +3776,10 @@ int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
-  // cutting this off by returning a non-zero value is producing an sql error
-  // I don't understand the problem
-  //if (fts_counter >= 50) return 1; // if callback returns non-zero stops more rows from being returned
+  // cutting this off by returning a non-zero value produces an sql error
+  // so this is not the way to limit better to use LIMIT in the sql statement
 
   fts_ids.push_back(atoi(argv[0]));
-  //int len = strlen(argv[1]);
-  //fts_titles[atoi(argv[0])] = std::string(argv[1], argv[1] + len);
   fts_titles[atoi(argv[0])] = std::string(argv[1]);
   fts_counter++;
 
@@ -7366,7 +7347,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && argv[1][0] == 's') {
     get_items_by_context = get_items_by_context_sqlite;
     get_items_by_folder = get_items_by_folder_sqlite;
-    get_items_by_id = get_items_by_id_sqlite;
+    //get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
     update_note = update_note_sqlite;
     toggle_star = toggle_star_sqlite;
@@ -7392,7 +7373,7 @@ int main(int argc, char** argv) {
     get_conn();
     get_items_by_context = get_items_by_context_pg;
     get_items_by_folder = get_items_by_folder_pg;
-    get_items_by_id = get_items_by_id_pg;
+    //get_items_by_id = get_items_by_id_pg;
     get_note = get_note_pg;
     update_note = update_note_pg;
     toggle_star = toggle_star_pg;
