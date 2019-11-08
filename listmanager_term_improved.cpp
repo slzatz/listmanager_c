@@ -194,6 +194,8 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"synch", C_synch},
   {"synchronize", C_synch},
   {"test", C_synch_test},
+  {"showall", C_showall},
+  {"show", C_showall},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
   {"quit", C_quit},
@@ -331,8 +333,8 @@ void get_recent_pg(int);
 void get_recent_sqlite(int);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
-int insert_context_pg(orow&); //need to write this one
-int insert_context_sqlite(orow&);
+int insert_context_folder_pg(orow&); //need to write this one
+int insert_context_folder_sqlite(orow&);
 void update_context_folder_sqlite(void);
 void update_context_folder_pg(void);
 void get_items_by_context_sqlite(const std::string&, int);
@@ -341,8 +343,6 @@ void get_items_by_context_pg(const std::string&, int);
 void get_items_by_folder_pg(const std::string&, int);
 void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
-//void get_contexts_pg(void);
-//void get_folders_pg(void);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
@@ -639,17 +639,9 @@ void get_recent_pg(int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  if (!O.show_deleted) {
-
-    query << "SELECT * FROM task WHERE "
-          << "task.deleted = False "
-          << "AND task.completed IS NULL "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  } else {
-
-    query << "SELECT * FROM task "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
+  query << "SELECT * FROM task"
+        << ((!O.show_deleted) ? " WHERE task.deleted = False AND task.completed IS NULL" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -685,6 +677,7 @@ void get_items_by_context_pg(const std::string& context, int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
+  // note it's conext.id for pg
   query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
         << " WHERE context.title = '" << context << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -716,7 +709,6 @@ void get_items_by_context_pg(const std::string& context, int max) {
 
   PQclear(res);
   // PQfinish(conn);
-  //rows_are_tasks = true;
   view = TASK;
 }
 
@@ -726,6 +718,7 @@ void get_items_by_folder_pg(const std::string& folder, int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
+  // note it's folder.id for pg
   query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
         << " WHERE folder.title = '" << folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -757,7 +750,6 @@ void get_items_by_folder_pg(const std::string& folder, int max) {
 
   PQclear(res);
   // PQfinish(conn);
-  //rows_are_tasks = true;
   view = TASK;
 }
 
@@ -838,66 +830,7 @@ void get_contexts_folders_pg(void) {
     }
   }
   // PQfinish(conn);
-  //rows_are_tasks = false;
-  //view = CONTEXT;
   PQclear(res);
-  O.context = O.folder = "";
-}
-
-//not used
-void get_folders_pg(void) {
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  //std::string query("SELECT * FROM context;");
-  std::stringstream query;
-  query << "SELECT * FROM "
-        << ((view == CONTEXT) ? "context;" : "folder;");
-
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
-    PQclear(res);
-    do_exit(conn);
-  }
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: private = Boolean ? what this is
-  4: archived = Boolean ? what this is
-  4: "order" = integer
-  6: created = 2016-08-05 23:05:16.256135
-  7: deleted => bool
-  8: icon => string 32
-  9: textcolor, Integer
-  10: image, largebinary
-  11: modified
-  */
-
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    orow row;
-    row.title = std::string(PQgetvalue(res, i, 2));
-    row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 7) == 't') ? true: false;
-    row.completed = false;
-    row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, 11), 16);
-    O.rows.push_back(row);
-  }
-
-  PQclear(res);
-  // PQfinish(conn);
-  //rows_are_tasks = false;
-  //view = CONTEXT;
   O.context = O.folder = "";
 }
 
@@ -919,16 +852,9 @@ void get_recent_sqlite(int max) {
     return;
     }
 
-  if (!O.show_deleted) {
-   query << "SELECT * FROM task WHERE "
-         << "task.deleted = False "
-         << "AND task.completed IS NULL "
-         << "ORDER BY task.modified DESC LIMIT " << max;
-
-  } else {
-    query << "SELECT * FROM task "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
+  query << "SELECT * FROM task"
+        << ((!O.show_deleted) ? " WHERE task.deleted = False AND task.completed IS NULL" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
 
   bool no_rows = true;
   //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
@@ -944,7 +870,6 @@ void get_recent_sqlite(int max) {
      outlineSetMessage("No results were returned");
      O.mode = NO_ROWS;
   }
-  //rows_are_tasks = true;
   view = TASK;
 }
 
@@ -984,8 +909,6 @@ void get_contexts_folders_sqlite(void) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   }
-  //rows_are_tasks = false;
-  //view = CONTEXT;
   O.context = O.folder = "";
 
 }
@@ -1069,22 +992,7 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
     return;
     }
 
-  /*
-  if (!O.show_deleted) {
-    //query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid "
-          << "WHERE context.title = '" << context << "' "
-          << "AND task.deleted = False "
-          << "AND task.completed IS NULL "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  } else {
-    //query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid "
-          << "WHERE context.title = '" << context << "' "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
-  */
-
+  // note it's context.tid for sqlite
   query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
         << " WHERE context.title = '" << context << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -1104,7 +1012,6 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
     O.mode = NO_ROWS;
   }
   view = TASK;
-  //O.folder = ""; //in C_open code
 }
 
 void get_items_by_folder_sqlite(const std::string& folder, int max) {
@@ -1124,6 +1031,7 @@ void get_items_by_folder_sqlite(const std::string& folder, int max) {
     return;
     }
 
+  // note it's folder.tid for sqlite
   query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
         << " WHERE folder.title = '" << folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -1316,7 +1224,6 @@ void get_items_by_id_pg(std::stringstream& query) {
   PQclear(res);
 
   O.fc = O.fr = O.rowoff = 0;
-  //rows_are_tasks = true;
   view = TASK;
 }
 
@@ -1357,7 +1264,7 @@ void get_note_sqlite(int id) {
 
   sqlite3_close(db);
 
-  editorRefreshScreen(); /****03102019*****/
+  editorRefreshScreen();
 }
 
 // doesn't appear to be called if row is NULL
@@ -3233,6 +3140,30 @@ void outlineProcessKeypress(void) {
                get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
+/////////////////////////////////////////////////////////
+
+            case 's':
+            case C_showall:
+              if (view == TASK) {
+                O.show_deleted = !O.show_deleted;
+                O.show_completed = !O.show_completed;
+                if (O.context == "search") {
+                  search_db();
+                  O.mode = DATABASE;
+                  return;
+                } else if (O.context == "recent") {
+                  get_recent(MAX);
+                } else if (O.context != "") {
+                  get_items_by_context(O.context, MAX);
+                } else {
+                  get_items_by_folder(O.folder, MAX);
+                }
+                O.mode = NORMAL;
+              }
+              //O.command_line.clear(); //probably not necessary
+              outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
+              return;
+//////////////////////////////////////////////////////////
 
             case C_synch:
               synchronize(0); // do actual sync
@@ -4169,7 +4100,7 @@ void toggle_completed_sqlite(void) {
 
   query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
         << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
-        << "WHERE id=" << id; //tid
+        << "WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -4214,7 +4145,6 @@ void toggle_deleted_pg(void) {
   int id = get_id(-1);
   std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
 
-  //query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True")  << ", "
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
@@ -4300,7 +4230,6 @@ void toggle_deleted_sqlite(void) {
   int id = get_id(-1);
   std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
 
-  //query << "UPDATE task SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
@@ -4395,9 +4324,7 @@ void toggle_star_sqlite(void) {
     outlineSetMessage("Toggle star succeeded");
     row.star = !row.star;
   }
-
   sqlite3_close(db);
-
 }
 
 void update_row_pg(void) {
@@ -4476,7 +4403,6 @@ void update_context_folder_pg(void) {
     }
 
     std::stringstream query;
-    //query << "UPDATE context SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
     query << "UPDATE "
           << ((view == CONTEXT) ? "context" : "folder")
           << " SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
@@ -4493,7 +4419,7 @@ void update_context_folder_pg(void) {
     PQclear(res);
 
   } else {
-    insert_context_pg(row);
+    insert_context_folder_pg(row);
   }
 }
 
@@ -4588,7 +4514,6 @@ void update_context_folder_sqlite(void) {
 
     std::stringstream query;
     query << "UPDATE "
-          //<< context
           << ((view == CONTEXT) ? "context" : "folder")
           << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
 
@@ -4616,7 +4541,7 @@ void update_context_folder_sqlite(void) {
     sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_context_sqlite(row);
+    insert_context_folder_sqlite(row);
   }
 }
 
@@ -4688,7 +4613,7 @@ int insert_row_pg(orow& row) {
   return row.id;
 }
 
-int insert_context_pg(orow& row) {
+int insert_context_folder_pg(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -4821,7 +4746,8 @@ int insert_row_sqlite(orow& row) {
 
   sqlite3_close(db);
 
-  /*virtual table insert*/
+  /***************fts virtual table update*********************/
+
   std::stringstream query2;
   query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
 
@@ -4846,7 +4772,7 @@ int insert_row_sqlite(orow& row) {
   return row.id;
 }
 
-int insert_context_sqlite(orow& row) {
+int insert_context_folder_sqlite(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
