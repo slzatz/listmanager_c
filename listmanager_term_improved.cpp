@@ -137,6 +137,8 @@ enum Command {
   C_movetocontext, //mtc
   C_movetofolder, //mtf
 
+  C_showall,
+
   C_update, //update solr db
 
   C_synch, // synchronixe sqlite and postgres dbs
@@ -683,17 +685,10 @@ void get_items_by_context_pg(const std::string& context, int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  if (!O.show_deleted) {
-    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-          << "WHERE context.title = '" << context << "' "
-          << "AND task.deleted = False "
-          << "AND task.completed IS NULL "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  } else {
-    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
-          << "WHERE context.title = '" << context << "' "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
+  query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
+        << " WHERE context.title = '" << context << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -731,17 +726,10 @@ void get_items_by_folder_pg(const std::string& folder, int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  if (!O.show_deleted) {
-    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
-          << "WHERE folder.title = '" << folder << "' "
-          << "AND task.deleted = False "
-          << "AND task.completed IS NULL "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  } else {
-    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
-          << "WHERE folder.title = '" << folder << "' "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
+  query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
+        << " WHERE folder.title = '" << folder << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
 
   PGresult *res = PQexec(conn, query.str().c_str());
 
@@ -1081,6 +1069,7 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
     return;
     }
 
+  /*
   if (!O.show_deleted) {
     //query << "SELECT * FROM task JOIN context ON context.id = task.context_tid "
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid "
@@ -1094,7 +1083,13 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
           << "WHERE context.title = '" << context << "' "
           << "ORDER BY task.modified DESC LIMIT " << max;
   }
-        
+  */
+
+  query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
+        << " WHERE context.title = '" << context << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
+
     bool no_rows = true;
     rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
 
@@ -1129,19 +1124,10 @@ void get_items_by_folder_sqlite(const std::string& folder, int max) {
     return;
     }
 
-  if (!O.show_deleted) {
-    //query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
-    query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid "
-          << "WHERE folder.title = '" << folder << "' "
-          << "AND task.deleted = False "
-          << "AND task.completed IS NULL "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  } else {
-    //query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid "
-    query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid "
-          << "WHERE folder.title = '" << folder << "' "
-          << "ORDER BY task.modified DESC LIMIT " << max;
-  }
+  query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
+        << " WHERE folder.title = '" << folder << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task.modified DESC LIMIT " << max;
 
     bool no_rows = true;
     rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
@@ -3405,22 +3391,23 @@ void outlineProcessKeypress(void) {
           return;
 
         case 's':
+          //maybe should just leave you in mode you're in
+          //unless redoing search
           if (view == TASK) {
             O.show_deleted = !O.show_deleted;
             O.show_completed = !O.show_completed;
             if (O.context == "search") {
               search_db();
               O.mode = DATABASE;
+              return;
             } else if (O.context == "recent") {
               get_recent(MAX);
-              O.mode = NORMAL;
             } else if (O.context != "") {
               get_items_by_context(O.context, MAX);
-              O.mode = NORMAL;
             } else {
               get_items_by_folder(O.folder, MAX);
-              O.mode = NORMAL;
             }
+            //O.mode = NORMAL;
           }
           return;
 
@@ -3755,16 +3742,16 @@ void fts5_sqlite(void) {
   for (int i = 0; i < fts_counter-1; i++) {
     query << fts_ids[i] << ", ";
   }
-  query << fts_ids[fts_counter-1];
-
-  query << ") ORDER BY ";
+  query << fts_ids[fts_counter-1]
+        << ")"
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY ";
 
   for (int i = 0; i < fts_counter-1; i++) {
     query << "task.id = " << fts_ids[i] << " DESC, ";
   }
   query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  //get_items_by_id(query);
   get_items_by_id_sqlite(query);
 
   //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
