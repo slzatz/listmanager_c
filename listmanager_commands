@@ -1,0 +1,110 @@
+There are three high level modes:  OUTLINE, DATABASE and EDITOR.
+
+The following commands all move from OUTLINE mode to DATABASE mode:
+
+  "<" || SHIfT_TAB || "\t" || left arrow from 0 char position
+
+To move from DATABASE mode to OUTLINE mode:
+
+  ESC || right arrow || ":" puts in COMMAND_LINE and switches to NORMAL mode
+
+ctrl-h in NORMAL mode for editor and outline try to markup links.
+
+OUTLINE and EDITOR mode support the following Vim-like modes:
+
+  NORMAL = 0,
+  INSERT = 1,
+  COMMAND_LINE = 2,
+  VISUAL_LINE = 3, //not available in OUTLINE
+  VISUAL = 4,
+  REPLACE = 5,
+  DATABASE = 6 //not available in Editor
+  FILE_DISPLAY = 7 //not available in Editor
+
+COMMAND_LINE mode supports the following:
+
+  esc - cancel
+  arrow keys (select contexts)
+  contexts, context, c -> show context list
+  update -> update solr database
+  c, context -> change context of an item
+  e, edit
+  fin, find -> search the fts5 or Solr db
+  folders, folder, f -> show folder list
+  movetocontext, mtc -> move item to new context
+  movetofolder, mtf -> move item to new folder
+  n, new, O -> new item
+  o, open -> open a context
+  recent -> show recent new and changed items
+  refresh, r -> refresh view
+  showall, show, s -> toggle show completed/deleted
+  sync, synch - > sink sqlite db with aws postgres db
+  test, synch_test -> show what will happen with sync but don't do it
+  q, quit -> with ! exit without writing changes
+  w - write changes
+  x - in EDITOR mode write changes and return to NORMAL mode; in NORMAL mode write changes and quit
+
+  NORMAL Mode commands:
+  :
+  *
+  ~
+  $
+  0
+  a, A
+  b, e, w
+  cw, caw, c$
+  dd, de dw, daw, d$
+  gg, G
+  i, I
+  o, O //o not available in outline
+  p
+  r
+  s
+  u
+  v, V
+  x
+  yy
+
+  ctrl-b
+  ctrl-i
+  ctrle
+  h
+  j
+  k
+  l
+  arrow keys
+
+  >>  //not available in outline
+  << // not available in outline
+
+  VISUAL LINE MODE COMMANDS
+
+  h
+  j
+  k
+  l
+  arrow keys
+
+  x
+  y
+  >
+  <
+  escape
+
+  VISUAL MODE
+  h
+  j
+  k
+  l
+
+  x
+
+DATABASE MODE
+
+  x - toggle completed
+  d - toggle deleted
+  * - toggle starred
+  i - info
+  r - refresh
+  s - toggle show completed/deleted
+  v - render in browser
