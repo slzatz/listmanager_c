@@ -124,6 +124,7 @@ enum Command {
   C_yy,
 
   C_open,
+  C_openfolder,
 
   C_find,
   C_fts,
@@ -176,6 +177,7 @@ static std::unordered_map<std::string, int> lookuptablemap {
   {"open", C_open},
   // doesn't work if you use arrow keys
   {"o", C_open}, //need because this is command line command with a target word
+  {"of", C_openfolder}, //need because this is command line command with a target word
   {"fin", C_find},
   {"find", C_find},
   {"fts", C_fts},
@@ -921,7 +923,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   0: id => int
   1: tid => int
   2: title = string 32
-  3: default = Boolean ? what this is
+  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
   4: created = 2016-08-05 23:05:16.256135
   5: deleted => bool
   6: icon => string 32
@@ -934,7 +936,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   row.title = std::string(argv[2]);
   row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false;
+  row.star = (atoi(argv[3]) == 1) ? true: false; //"default"
   row.deleted = (atoi(argv[5]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
@@ -966,7 +968,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   row.title = std::string(argv[2]);
   row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false;
+  row.star = (atoi(argv[3]) == 1) ? true: false; //private
   row.deleted = (atoi(argv[7]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
@@ -2008,8 +2010,7 @@ void editorDisplayFile(void) {
 
   ab.append("\x1b[0m", 4);
 
-  // not a huge deal but updating status bar here would mean mode would be correct
-  outlineDrawStatusBar(ab); // 03162019
+  outlineDrawStatusBar(ab);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -2201,23 +2202,22 @@ void outlineDrawStatusBar(std::string& ab) {
   ab.append("\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
+  std::string s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
-                              O.context.c_str(), (O.context == "search")  ? " - " : "",
+                              s.c_str(), (O.context == "search")  ? " - " : "",
                               (O.context == "search") ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
     orow& row = O.rows.at(O.fr);
-    //std::string title(row.chars.data(), row.chars.size());
-    //std::string truncated_title = title.substr(0, 19);
     std::string truncated_title = row.title.substr(0, 19);
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              O.context.c_str(), (O.context == "search")  ? " - " : "",
+                              s.c_str(), (O.context == "search")  ? " - " : "",
                               (O.context == "search") ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
@@ -3130,6 +3130,37 @@ void outlineProcessKeypress(void) {
                return;
                }
 
+            case C_openfolder: //by context
+               {
+               std::string new_folder;
+               if (pos) {
+                 bool success = false;
+                 for (const auto & [k,v] : folder_map) {
+                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                     new_folder = k;
+                     success = true;
+                     break;
+                   }
+                 }
+                 if (!success) return;
+
+               } else {
+                 outlineSetMessage("You did not provide a valid  folder!");
+                 //O.command_line[1] = '\0';
+                 O.command_line.resize(1);
+                 return;
+               }
+               EraseRedrawLines(); //*****************************
+               outlineSetMessage("\'%s\' will be opened", new_folder.c_str());
+               O.folder = new_folder;
+               O.context = "";
+               get_items_by_folder(new_folder, MAX);
+               O.mode = NORMAL;
+               get_note(O.rows.at(0).id);
+               //editorRefreshScreen(); //in get_note
+               return;
+               }
+
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
@@ -3140,7 +3171,6 @@ void outlineProcessKeypress(void) {
                get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
-/////////////////////////////////////////////////////////
 
             case 's':
             case C_showall:
@@ -3163,7 +3193,6 @@ void outlineProcessKeypress(void) {
               //O.command_line.clear(); //probably not necessary
               outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
               return;
-//////////////////////////////////////////////////////////
 
             case C_synch:
               synchronize(0); // do actual sync
@@ -3318,7 +3347,8 @@ void outlineProcessKeypress(void) {
           return;
 
         case '*':
-          if (view == TASK) toggle_star();
+          //if (view == TASK) toggle_star();
+          toggle_star(); //row.star -> "default" (sqlite) or default for context and private for folder
           return;
 
         case 's':
@@ -4274,9 +4304,11 @@ void toggle_star_pg(void) {
 
   std::stringstream query;
   int id = get_id(-1);
+  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
+  std::string column= (view == TASK) ? "star" : ((view == CONTEXT) ? "\"default\"" : "private");
 
 
-  query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
+  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "FALSE" : "TRUE") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
   PGresult *res = PQexec(conn, query.str().c_str());
@@ -4299,8 +4331,10 @@ void toggle_star_sqlite(void) {
 
   std::stringstream query;
   int id = get_id(-1);
+  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
+  std::string column= (view == TASK) ? "star" : ((view == CONTEXT) ? "\"default\"" : "private");
 
-  query << "UPDATE task SET star=" << ((row.star) ? "False" : "True") << ", "
+  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
         << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
   sqlite3 *db;
@@ -4578,7 +4612,7 @@ int insert_row_pg(orow& row) {
         << " True," //star
         << "CURRENT_DATE," //added
         << "'<This is a new note from sqlite>'," //note
-        << " False," //deleted
+        << " FALSE," //deleted
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
         << " CURRENT_DATE" //startdate
@@ -4633,7 +4667,7 @@ int insert_context_folder_pg(orow& row) {
         << "created, "
         << "modified, "
         << "tid, "
-        //<< "\"default\", "
+        << ((view == CONTEXT) ? "\"default\", " : "private, ") //context -> default; folder -> private
         << "textcolor "
         << ") VALUES ("
         << "'" << title << "'," //title
@@ -4641,13 +4675,12 @@ int insert_context_folder_pg(orow& row) {
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
         << " 100," //tid
-        //<< " False," //default
+        << " False," //default for context and private for folder
         << " 10" //textcolor
         << ") RETURNING id;";
 
   /*
      not used:
-     "default" (not sure why in quotes but may be system variable
      tid,
      icon (varchar 32)
      image (blob)
@@ -4792,6 +4825,7 @@ int insert_context_folder_sqlite(orow& row) {
         << "created, "
         << "modified, "
         << "tid, "
+        << ((view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
       //  << "\"default\", " //folder does not have default
         << "textcolor "
         << ") VALUES ("
@@ -4800,7 +4834,7 @@ int insert_context_folder_sqlite(orow& row) {
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
         << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
         << " 100," //tid
-       // << " False," //default //folder does not have default
+        << " False," //default for context and private for folder
         << " 10" //textcolor
         << ");"; // RETURNING id;",
 
@@ -7213,10 +7247,10 @@ void initOutline() {
   O.fr = 0; //file y position
   O.rowoff = 0;  //number of rows scrolled off the screen
   O.coloff = 0;  //col the user is currently scrolled to  
-  O.context = "todo"; 
-  O.show_deleted = false;
+  O.folder = "todo";
+  O.context = "";
+  O.show_deleted = false; //not treating these separately right now
   O.show_completed = true;
-  //O.show_highlight = false;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -7350,9 +7384,9 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  get_items_by_context(O.context, MAX); //? brings back deleted/completed-type data
+  get_items_by_folder(O.folder, MAX);
   if (O.rows.size())
-  get_note(O.rows.at(0).id);
+    get_note(O.rows.at(0).id);
   //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting

@@ -198,7 +198,7 @@ def synchronize(report_only=True):
         # between postgres and sqlite postgres points to context.id and local
         # sqlite db points to context.tid but the actual values are identical
         context.title = sc.title
-        context.default = sc.default
+        context.default = sc.default # -> row.star; sqla knows this is "default"
         context.textcolor = sc.textcolor
 
         local_session.commit() #new/updated client task commit
@@ -226,7 +226,7 @@ def synchronize(report_only=True):
                 continue
             
         context.title = cc.title
-        context.default = cc.default
+        context.default = cc.default # -> row.star; sqla knows this is "default"
         context.textcolor = cc.textcolor
 
         remote_session.commit()
@@ -254,7 +254,7 @@ def synchronize(report_only=True):
         # between postgres and sqlite postgres points to context.id and local
         # sqlite db points to context.tid but the actual values are identical
         folder.title = sf.title
-        #folder.default = sf.default
+        folder.private = sf.private # -> row.star
         folder.textcolor = sf.textcolor
 
         local_session.commit() #new/updated client folder commit
@@ -282,7 +282,7 @@ def synchronize(report_only=True):
                 continue
             
         folder.title = cf.title
-        #folder.default = cf.default
+        folder.private = cf.private # -> row.star
         folder.textcolor = cf.textcolor
 
         remote_session.commit()

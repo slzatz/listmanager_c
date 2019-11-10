@@ -27,7 +27,7 @@ COMMAND_LINE mode supports the following:
   arrow keys (select contexts)
   contexts, context, c -> show context list
   update -> update solr database
-  c, context -> change context of an item
+  contexts, context, c -> show context list
   e, edit
   fin, find -> search the fts5 or Solr db
   folders, folder, f -> show folder list
