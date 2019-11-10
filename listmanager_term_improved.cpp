@@ -1545,7 +1545,7 @@ int commandfromstringcpp(std::string key, std::size_t& found) { //for commands l
     return keyfromstringcpp(key);
 }
 
-void die(const char *s) {
+[[ noreturn]] void die(const char *s) {
   // write is from <unistd.h> 
   //ssize_t write(int fildes, const void *buf, size_t nbytes);
   write(STDOUT_FILENO, "\x1b[2J", 4);
@@ -5654,6 +5654,8 @@ void editorProcessKeypress(void) {
       E.command[n+1] = '\0';
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
+
+      //if (commmand == 'x') editornormal_x();
 
       switch (command) {
     

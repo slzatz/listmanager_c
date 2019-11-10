@@ -1,8 +1,5 @@
-# This is the CMakeLists.txt for compiling listmanager_term_improved.c
+# This is the CMakeLists.txt for compiling listmanager_term_improved.cpp
 # with QT Creator.
-# This works for C and is called CMakeLists.txt.works so that 
-# I could start working on a c++ CMakeLists.txt (09012019)
-# The only change that was made was changing include <iniparser.h> to "iniparser.h"
 # The output executable is listmanager_term_improved_qtc and I moved it from
 # the build directory to ~/c_stuff/listmanager
 
