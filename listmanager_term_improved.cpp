@@ -40,10 +40,10 @@
 //typedef void (*pfunc)(void);
 //static std::map<int, pfunc> outline_normal_map;
 
-static std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-static std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
+static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+static const std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
+static const std::string DB_INI = "db.ini";
 static std::string which_db;
-static std::string DB_INI = "db.ini";
 static int EDITOR_LEFT_MARGIN;
 static struct termios orig_termios;
 static int screenlines, screencols;
@@ -94,7 +94,7 @@ enum View {
   FOLDER
 };
 
-static std::string mode_text[] = {
+static const std::string mode_text[] = {
                         "NORMAL",
                         "INSERT",
                         "COMMAND LINE",
@@ -105,6 +105,7 @@ static std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS"
                        }; 
+
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
 
 enum Command {
@@ -159,7 +160,7 @@ enum Command {
   C_valgrind
 };
 
-static std::unordered_map<std::string, int> lookuptablemap {
+static const std::unordered_map<std::string, int> lookuptablemap {
   {"caw", C_caw},
   {"cw", C_cw},
   {"daw", C_daw},
@@ -1525,7 +1526,7 @@ void update_solr(void) {
 }
 
 int keyfromstringcpp(std::string key) {
-  std::unordered_map<std::string,int>::iterator it;
+  std::unordered_map<std::string,int>::const_iterator it;
   it = lookuptablemap.find(key);
   if (it != lookuptablemap.end())
     return it->second;
@@ -3200,6 +3201,8 @@ void outlineProcessKeypress(void) {
               map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+              outlineSetMessage("Synching local db and server and displaying results");
+              outlineRefreshScreen();
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3209,6 +3212,8 @@ void outlineProcessKeypress(void) {
 
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+              outlineSetMessage("Testing synching local db and server and displaying results");
+              outlineRefreshScreen();
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3256,7 +3261,8 @@ void outlineProcessKeypress(void) {
             case C_help:
               initial_file_row = 0;
               O.mode = FILE_DISPLAY;
-              initial_file_row = 0; //for arrowing or displaying files
+              outlineSetMessage("Displaying help file");
+              outlineRefreshScreen();
               editorReadFile("listmanager_commands");
               editorDisplayFile();
               return;
@@ -3512,6 +3518,13 @@ void outlineProcessKeypress(void) {
         case PAGE_DOWN:
           initial_file_row = initial_file_row + E.screenlines;
           break;
+
+        case ':':
+          O.command[0] = '\0';
+          O.command_line.clear();
+          outlineSetMessage(":");
+          O.mode = COMMAND_LINE;
+          return;
 
         case '\x1b':
           O.mode = NORMAL;
