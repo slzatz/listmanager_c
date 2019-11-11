@@ -1798,11 +1798,9 @@ void editorRowAppendString(std::string& row, std::string& s) {
 
 /*** editor operations ***/
 void editorInsertChar(int chr) {
-
   if (E.rows.empty()) {
     editorInsertRow(0, std::string());
   }
-
   std::string& row = E.rows.at(E.fr);
   row.insert(row.begin() + E.fc, chr);
   E.dirty++;
@@ -1947,13 +1945,12 @@ void editorReadFile(std::string file_name) {
   std::string line;
 
   display_text.str(std::string());
-  display_text.clear(); ///////////
+  display_text.clear();
   //display_text.seekg(0, std::ios::beg); /////////////
 
   while (getline(f, line)) {
     display_text << line << '\n';
   }
-
   f.close();
 }
 
@@ -1988,31 +1985,28 @@ void editorDisplayFile(void) {
   display_text.clear();
   display_text.seekg(0, std::ios::beg);
   while(std::getline(display_text, row, '\n')) {
+    if (line_num > E.screenlines - 2) break;
+    row_num++;
+    if (row_num < initial_file_row) continue;
+    if (row.size() < E.screencols) {
+      ab.append(row);
+      ab.append(lf_ret);
+      line_num++;
+      continue;
+    }
+    int n = 0;
+    for(;;) {
+      line_num++;
       if (line_num > E.screenlines - 2) break;
-      row_num++;
-      if (row_num < initial_file_row) continue;
-      if (row.size() < E.screencols) {
-          ab.append(row);
-          ab.append(lf_ret);
-          line_num++;
-          continue;
-      }
-      int n = 0;
-      for(;;) {
-          line_num++;
-          if (line_num > E.screenlines - 2) break;
-          line = row.substr(n*E.screencols, (n+1)*E.screencols);
-          ab.append(line);
-          ab.append(lf_ret);
-          if (line.size() < E.screencols) break;
-          n++;
-      }
+      line = row.substr(n*E.screencols, (n+1)*E.screencols);
+      ab.append(line);
+      ab.append(lf_ret);
+      if (line.size() < E.screencols) break;
+      n++;
+    }
   }
-
   ab.append("\x1b[0m", 4);
-
   outlineDrawStatusBar(ab);
-
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
@@ -2294,7 +2288,7 @@ void outlineRefreshScreen(void) {
   if (O.mode == DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     ab.append(buf, strlen(buf));
-  } else {//if (O.mode != NO_ROWS) {
+  } else {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN);
     ab.append(buf, strlen(buf));
     ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
@@ -2323,7 +2317,6 @@ void outlineSetMessage(const char *fmt, ...) {
 
   std::vsnprintf(O.message, sizeof(O.message), fmt, ap);
   va_end(ap); //free a va_list
-  //O.message_time = time(NULL);
 }
 
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
@@ -2356,9 +2349,7 @@ void outlineMoveCursor(int key) {
       if (O.fr > 0) O.fr--; 
       O.fc = O.coloff = 0; 
 
-      // note need to determine row after moving cursor
       id = O.rows.at(O.fr).id;
-      //if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
       if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
@@ -2367,17 +2358,10 @@ void outlineMoveCursor(int key) {
     case 'j':
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
-
-      // note need to determine row after moving cursor
-     {
-      //orow& row = O.rows.at(O.fr);
       id = O.rows.at(O.fr).id;
-      //get_note(row.id); //if id == -1 does not try to retrieve note
-      //if (rows_are_tasks) get_note(id); //if id == -1 does not try to retrieve note
       if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
-     }
   }
 
   orow& row = O.rows.at(O.fr);
@@ -2395,10 +2379,10 @@ void outlineProcessKeypress(void) {
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  int c = readKey();
+  //int c = readKey();
   size_t n;
-
-  switch (O.mode) { 
+  switch (int c = readKey(); O.mode) { //init statement for if/switch - may want to try it
+  //switch (O.mode) {
 
     case NO_ROWS:
 
