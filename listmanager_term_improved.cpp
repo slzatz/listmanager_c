@@ -8,21 +8,21 @@
 #define TZ_OFFSET 5 // time zone offset - either 4 or 5
 
 #include <Python.h>
-#include <ctype.h>
-#include <errno.h>
+//#include <ctype.h>
+//#include <errno.h>
 #include <fcntl.h>
-#include <stdio.h>
-#include <stdarg.h>
-#include <stdlib.h>
-#include <string.h>
+//#include <stdio.h>
+//#include <stdarg.h>
+//#include <stdlib.h>
+//#include <string.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
+//#include <sys/types.h>
 #include <termios.h>
-#include <time.h>
-#include <stdbool.h>
-#include <unistd.h>
+//#include <time.h>
+//#include <stdbool.h>
+//#include <unistd.h>
 #include <libpq-fe.h>
-#include "iniparser.h"
+#include "inipp.h" //https://github.com/mcmtroffaes/inipp
 #include <sqlite3.h>
 
 #include <string>
@@ -426,6 +426,7 @@ void editorReadFile(std::string);
 void editorDisplayFile(void);
 
 // config struct for reading db.ini file
+/*
 struct config {
   const char *user;
   const char *password;
@@ -433,7 +434,15 @@ struct config {
   const char *hostaddr;
   int port;
 };
+*/
 
+struct config {
+  std::string user;
+  std::string password;
+  std::string dbname;
+  std::string hostaddr;
+  int port;
+};
 struct config c;
 
 PGconn *conn = NULL;
@@ -444,32 +453,23 @@ void do_exit(PGconn *conn) {
     exit(1);
 }
 
-int parse_ini_file(const char *ini_name)
+void parse_ini_file(std::string ini_name)
 {
-    dictionary  *ini;
-
-    ini = iniparser_load(ini_name);
-
-    if (ini==nullptr) { //NULL
-        fprintf(stderr, "cannot parse file: %s\n", ini_name);
-        return -1 ;
-    }
-
-    c.user = iniparser_getstring(ini, "ini:user", NULL);
-    c.password = iniparser_getstring(ini, "ini:password", NULL);
-    c.dbname = iniparser_getstring(ini, "ini:dbname", NULL);
-    c.hostaddr = iniparser_getstring(ini, "ini:hostaddr", NULL);
-    c.port = iniparser_getint(ini, "ini:port", -1);
-  
-  return 0;
+  inipp::Ini<char> ini;
+  std::ifstream is(ini_name);
+  ini.parse(is);
+  inipp::extract(ini.sections["ini"]["user"], c.user);
+  inipp::extract(ini.sections["ini"]["password"], c.password);
+  inipp::extract(ini.sections["ini"]["dbname"], c.dbname);
+  inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
+  inipp::extract(ini.sections["ini"]["port"], c.port);
 }
-
 void get_conn(void) {
   char conninfo[250];
-  parse_ini_file(DB_INI.c_str());
+  parse_ini_file(DB_INI);
   
   sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
-          c.user, c.password, c.dbname, c.hostaddr, c.port);
+          c.user.c_str(), c.password.c_str(), c.dbname.c_str(), c.hostaddr.c_str(), c.port);
   conn = PQconnectdb(conninfo);
 
   if (PQstatus(conn) != CONNECTION_OK){
