@@ -274,7 +274,7 @@ static struct editorConfig E;
 
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
- */
+*/
 static void (*get_items_by_context)(const std::string&, int); //?shouldn't have to pass context it's global
 static void (*get_items_by_folder)(const std::string&, int); //?ditto
 static void (*get_recent)(int);
