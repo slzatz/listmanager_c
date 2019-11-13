@@ -176,7 +176,6 @@ static const std::unordered_map<std::string, int> lookuptablemap {
 
   {"help", C_help},
   {"open", C_open},
-  // doesn't work if you use arrow keys
   {"o", C_open}, //need because this is command line command with a target word
   {"of", C_openfolder}, //need because this is command line command with a target word
   {"fin", C_find},
@@ -2355,7 +2354,7 @@ void outlineMoveCursor(int key) {
     case 'l':
     {
       orow& row = O.rows.at(O.fr);
-      if (!O.rows.empty()) O.fc++;  //segfaults on opening if you arrow right w/o row
+      if (!O.rows.empty()) O.fc++;
       break;
     }
     case ARROW_UP:
@@ -2399,26 +2398,42 @@ void outlineProcessKeypress(void) {
 
     case NO_ROWS:
 
-      if (c==':'){
-        O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
-        O.command_line.clear();
-        outlineSetMessage(":");
-        O.mode = COMMAND_LINE;
-        return;
-      }
+      switch(c) {
+        case ':':
+          O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
+          O.command_line.clear();
+          outlineSetMessage(":");
+          O.mode = COMMAND_LINE;
+          return;
 
-      if (c == '\x1b') {
-        O.command[0] = '\0';
-        O.repeat = 0;
-        return;
-      }
+        case '\x1b':
+          O.command[0] = '\0';
+          O.repeat = 0;
+          return;
 
-      if (c == 'i') {
+        case 'i':
+        case 'I':
+        case 'a':
+        case 'A':
+        case 's':
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.mode = INSERT;
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+
+        case 'O': //Same as C_new in COMMAND_LINE mode
+          outlineInsertRow(0, "", true, false, false, BASE_DATE);
+          O.fc = O.fr = O.rowoff = 0;
+          outlineScroll();
+          outlineRefreshScreen();  //? necessary
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          editorEraseScreen();
+          //editorRefreshScreen();
+          O.mode = INSERT;
           return;
       }
 
@@ -2459,9 +2474,9 @@ void outlineProcessKeypress(void) {
         if (O.mode == NORMAL) get_note(O.rows.at(0).id); //means there are rows
         O.command[0] = '\0';
         return;
-        }
+      }
 
-        return; //in NO_ROWS with no escape, : or gt
+      return; //in NO_ROWS - do nothing if no command match
 
     case INSERT:  
 
@@ -2516,9 +2531,9 @@ void outlineProcessKeypress(void) {
         default:
           outlineInsertChar(c);
           return;
+      } //end of switch inside INSERT
 
-      } 
-      return; //end outer case INSERT
+     // return; //End of case INSERT: No need for a return at the end of INSERT because we insert the characters that fall through in switch default:
 
     case NORMAL:  
 
@@ -2550,8 +2565,10 @@ void outlineProcessKeypress(void) {
       O.command[n] = c;
       O.command[n+1] = '\0';
 
-      // I believe because arrow keys above ascii range could not just
-      // have keyfromstring return command[0]
+      // arrow keys are mapped above ascii range (start at 1000) so
+      // can't just have below be keyfromstring return command[0]
+      //probably also faster to check if n=0 and just return c as below
+      //also means that any key sequence ending in arrow key will move cursor
       command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
       switch(command) {  
@@ -2695,14 +2712,14 @@ void outlineProcessKeypress(void) {
 
           return;
       
-        case 'O': //C_new: 
+        case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
           outlineScroll();
           outlineRefreshScreen();  //? necessary
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("");
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           editorEraseScreen();
           //editorRefreshScreen();
           O.mode = INSERT;
@@ -2981,19 +2998,23 @@ void outlineProcessKeypress(void) {
                   if (O.rows.size()) get_note(get_id(-1));
                   return;
                 } else if (O.context == "recent") {
+                  O.mode = NORMAL;
                   get_recent(MAX);
                 } else if (O.context != "") {
+                  O.mode = NORMAL;
                   get_items_by_context(O.context, MAX);
                 } else {
+                  O.mode = NORMAL;
                   get_items_by_folder(O.folder, MAX);
                 }
 
               } else {
                 outlineSetMessage("contexts/folders will be refreshed");
+                O.mode = NORMAL;
                 get_contexts_folders();
               }
 
-              O.mode = NORMAL;
+              //O.mode = NORMAL;
               return;
 
             //in vim create new window and edit a file in it - here creates new item
@@ -3005,7 +3026,7 @@ void outlineProcessKeypress(void) {
               outlineRefreshScreen();  //? necessary
               O.command[0] = '\0';
               O.repeat = 0;
-              outlineSetMessage("");
+              outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
               editorEraseScreen();
               editorRefreshScreen(); // this causes a vector out of range fault
               O.mode = INSERT;
@@ -3256,13 +3277,16 @@ void outlineProcessKeypress(void) {
                   O.mode = DATABASE;
                   return;
                 } else if (O.context == "recent") {
+                  O.mode = NORMAL;
                   get_recent(MAX);
                 } else if (O.context != "") {
+                  O.mode = NORMAL;
                   get_items_by_context(O.context, MAX);
                 } else {
+                  O.mode = NORMAL;
                   get_items_by_folder(O.folder, MAX);
                 }
-                O.mode = NORMAL;
+                //O.mode = NORMAL;
               }
               //O.command_line.clear(); //probably not necessary
               outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
