@@ -425,6 +425,8 @@ void EraseRedrawLines(void);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
 
+int keyfromstringcpp(const std::string&);
+int commandfromstringcpp(const std::string&, std::size_t&);
 // config struct for reading db.ini file
 /*
 struct config {
@@ -1525,16 +1527,26 @@ void update_solr(void) {
   outlineSetMessage("%d items were added/updated to solr db", num);
 }
 
-int keyfromstringcpp(std::string key) {
+int keyfromstringcpp(const std::string& key) {
+  /*
   std::unordered_map<std::string,int>::const_iterator it;
-  it = lookuptablemap.find(key);
+  it = lookuptablemap.find(key); // or could have been done through count(key) which returns 0 or 1
   if (it != lookuptablemap.end())
     return it->second;
   else
     return -1;
+  */
+
+  // c++20 = c++2a contains on associate containers
+  if (lookuptablemap.contains(key))
+    return lookuptablemap.at(key); //note can't use [] on const unordered map since it could change map
+  else
+    return -1;
+
+
 }
 
-int commandfromstringcpp(std::string key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
+int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
 
   if (key.size() == 1) return key[0];  //need this
 
@@ -1761,13 +1773,7 @@ void outlineSave() {
 // and other times rows with characters like when retrieving a note
 // fr is the position of the row with counting starting at zero
 void editorInsertRow(int fr, std::string s) {
-
-  std::string row;
-
-  //std::copy(s.begin(), s.end(), std::back_inserter(row)); //does not include terminating '\0' so it's not s.end() - 1
-
   auto pos = E.rows.begin() + fr;
-  //E.rows.insert(pos, row);
   E.rows.insert(pos, s);
   E.dirty++;
 }
@@ -2197,9 +2203,17 @@ void outlineDrawStatusBar(std::string& ab) {
   ab.append("\x1b[7m", 4); //switches to inverted colors
   char status[80], rstatus[80];
 
-  std::string s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
+  std::string s;
+  if (view == TASK)
+    s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
+  else if (view == CONTEXT)
+    s = "Contexts";
+  else
+    s = "Folders";
+
   if (O.rows.empty()) { //********************************** or (!O.numrows)
-    len = snprintf(status, sizeof(status), "%s%s%s \x1b[1m%.15s\x1b[0;7m %d %d/%zu %s",
+    len = snprintf(status, sizeof(status),
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               s.c_str(), (O.context == "search")  ? " - " : "",
                               (O.context == "search") ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
@@ -2382,17 +2396,72 @@ void outlineProcessKeypress(void) {
   //int c = readKey();
   size_t n;
   switch (int c = readKey(); O.mode) { //init statement for if/switch - may want to try it
-  //switch (O.mode) {
 
     case NO_ROWS:
 
       if (c==':'){
-          O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
-          O.command_line.clear();
-          outlineSetMessage(":"); 
-          O.mode = COMMAND_LINE;
+        O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
+        O.command_line.clear();
+        outlineSetMessage(":");
+        O.mode = COMMAND_LINE;
+        return;
       }
-      return;
+
+      if (c == '\x1b') {
+        O.command[0] = '\0';
+        O.repeat = 0;
+        return;
+      }
+
+      if (c == 'i') {
+          outlineInsertRow(0, "", true, false, false, BASE_DATE);
+          O.mode = INSERT;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+      }
+
+      n = strlen(O.command);
+      O.command[n] = c;
+      O.command[n+1] = '\0';
+
+      //C_gt
+      if (keyfromstringcpp(O.command) == C_gt) {
+        std::map<std::string, int>::iterator it;
+
+        if (!O.folder.empty() || view == FOLDER) {
+          if (!O.folder.empty()) {
+            it = folder_map.find(O.folder);
+            it++;
+            if (it == folder_map.end()) it = folder_map.begin();
+          } else {
+            it = folder_map.begin();
+          }
+          O.folder = it->first;
+          outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+          O.mode = NORMAL; // will become NO_ROWS if there are no rows
+          get_items_by_folder(O.folder, MAX);
+        } else {
+          if (O.context.empty() || O.context == "search") {
+            it = context_map.begin();
+          } else {
+            it = context_map.find(O.context);
+            it++;
+            if (it == context_map.end()) it = context_map.begin();
+          }
+          O.context = it->first;
+          outlineSetMessage("\'%s\' will be opened", O.context.c_str());
+          O.mode = NORMAL; // will become NO_ROWS if there are no rows
+          get_items_by_context(O.context, MAX);
+        }
+        EraseRedrawLines(); //*****************************
+        if (O.mode == NORMAL) get_note(O.rows.at(0).id); //means there are rows
+        O.command[0] = '\0';
+        return;
+        }
+
+        return; //in NO_ROWS with no escape, : or gt
 
     case INSERT:  
 
@@ -2453,11 +2522,11 @@ void outlineProcessKeypress(void) {
 
     case NORMAL:  
 
-        if (c == '\x1b') {
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-        }  
+      if (c == '\x1b') {
+        O.command[0] = '\0';
+        O.repeat = 0;
+        return;
+      }
  
       /*leading digit is a multiplier*/
       if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
@@ -2480,6 +2549,7 @@ void outlineProcessKeypress(void) {
       n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
+
       // I believe because arrow keys above ascii range could not just
       // have keyfromstring return command[0]
       command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
@@ -2796,17 +2866,36 @@ void outlineProcessKeypress(void) {
         case C_gt:
           // may actually work in context_mode
           {
-          std::string new_context;
-          auto it = context_map.find(O.context);
-          it++;
-          if (it == context_map.end()) it = context_map.begin();
-          new_context = it->first;
+          std::map<std::string, int>::iterator it;
+
+          if (!O.folder.empty() || view == FOLDER) {
+            if (!O.folder.empty()) {
+              it = folder_map.find(O.folder);
+              it++;
+              if (it == folder_map.end()) it = folder_map.begin();
+            } else {
+              it = folder_map.begin();
+            }
+            O.folder = it->first;
+            outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+            O.mode = NORMAL;
+            get_items_by_folder(O.folder, MAX);
+          } else {
+            if (O.context.empty() || O.context == "search") {
+              it = context_map.begin();
+            } else {
+              it = context_map.find(O.context);
+              it++;
+              if (it == context_map.end()) it = context_map.begin();
+            }
+            O.context = it->first;
+            outlineSetMessage("\'%s\' will be opened", O.context.c_str());
+            O.mode = NORMAL;
+            get_items_by_context(O.context, MAX);
+          }
           EraseRedrawLines(); //*****************************
-          outlineSetMessage("\'%s\' will be opened", new_context.c_str());
-          O.context = new_context;
-          get_items_by_context(new_context, MAX);
-          O.mode = NORMAL;
-          if (view == TASK) get_note(O.rows.at(0).id); //if id == -1 does not try to retrieve note
+          if (O.mode == NORMAL) get_note(O.rows.at(0).id);
+          //if (view == TASK) get_note(O.rows.at(0).id); //if id == -1 does not try to retrieve note
           //editorRefreshScreen(); //in get_note
           O.command[0] = '\0';
           return;
@@ -3108,9 +3197,9 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
                O.folder = "";
+               O.mode = NORMAL; // must come before in case NO_ROWS returned
                get_items_by_context(new_context, MAX);
-               O.mode = NORMAL;
-               get_note(O.rows.at(0).id);
+               if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
                }
@@ -3139,9 +3228,9 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_folder.c_str());
                O.folder = new_folder;
                O.context = "";
-               get_items_by_folder(new_folder, MAX);
                O.mode = NORMAL;
-               get_note(O.rows.at(0).id);
+               get_items_by_folder(new_folder, MAX);
+               if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
                }
@@ -3151,9 +3240,9 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("Will retrieve recent items");
                O.context = "recent";
                O.folder = "";
+               O.mode = NORMAL; // must come before in case NO_ROWS returned
                get_recent(MAX);
-               O.mode = NORMAL;
-               get_note(O.rows.at(0).id);
+               if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
 
@@ -7384,8 +7473,7 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
   get_items_by_folder(O.folder, MAX);
-  if (O.rows.size())
-    get_note(O.rows.at(0).id);
+  if (O.rows.size()) get_note(O.rows.at(0).id);
   //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
