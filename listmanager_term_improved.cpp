@@ -280,8 +280,8 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
 */
-static void (*get_items_by_context)(int); //?shouldn't have to pass context it's global
-static void (*get_items_by_folder)(const std::string&, int); //?ditto
+static void (*get_items_by_context)(int);
+static void (*get_items_by_folder)(int); //?ditto
 static void (*get_recent)(int);
 //static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
@@ -345,9 +345,9 @@ int insert_context_folder_sqlite(orow&);
 void update_context_folder_sqlite(void);
 void update_context_folder_pg(void);
 void get_items_by_context_sqlite(int);
-void get_items_by_folder_sqlite(const std::string&, int);
+void get_items_by_folder_sqlite(int);
 void get_items_by_context_pg(int);
-void get_items_by_folder_pg(const std::string&, int);
+void get_items_by_folder_pg(int);
 void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
 void update_note_pg(void);
@@ -725,7 +725,7 @@ void get_items_by_context_pg(int max) {
   view = TASK;
 }
 
-void get_items_by_folder_pg(const std::string& folder, int max) {
+void get_items_by_folder_pg(int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -733,7 +733,7 @@ void get_items_by_folder_pg(const std::string& folder, int max) {
 
   // note it's folder.id for pg
   query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
-        << " WHERE folder.title = '" << folder << "' "
+        << " WHERE folder.title = '" << O.folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         //<< " ORDER BY task.modified DESC LIMIT " << max;
         << " ORDER BY task."
@@ -1016,8 +1016,10 @@ void get_items_by_context_sqlite(int max) {
         << O.sort
         << " DESC LIMIT " << max;
 
-    bool no_rows = true;
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    //bool no_rows = true;
+    int nn = sort_map[O.sort];
+    //rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &nn, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1025,14 +1027,16 @@ void get_items_by_context_sqlite(int max) {
     } 
   sqlite3_close(db);
 
-  if (no_rows) {
+  if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
   }
   view = TASK;
 }
 
-void get_items_by_folder_sqlite(const std::string& folder, int max) {
+void get_items_by_folder_sqlite(int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -1051,15 +1055,17 @@ void get_items_by_folder_sqlite(const std::string& folder, int max) {
 
   // note it's folder.tid for sqlite
   query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
-        << " WHERE folder.title = '" << folder << "' "
+        << " WHERE folder.title = '" << O.folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         //<< " ORDER BY task.modified DESC LIMIT " << max;
         << " ORDER BY task."
         << O.sort
         << " DESC LIMIT " << max;
 
-    bool no_rows = true;
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    //bool no_rows = true;
+    int nn = sort_map[O.sort];
+    //rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &nn, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1067,22 +1073,27 @@ void get_items_by_folder_sqlite(const std::string& folder, int max) {
     }
   sqlite3_close(db);
 
-  if (no_rows) {
+  if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
   }
   view = TASK;
 }
-int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
-    
+
+//int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
+int data_callback(void *nn, int argc, char **argv, char **azColName) {
+
   //UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
-  *flag = false; 
+  //bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  //*flag = false;
+  int *nnn = (int*)(nn);
 
-  /*
+  /*``
   0: id = 1
   1: tid = 1
   2: priority = 3
@@ -1121,6 +1132,7 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   //strncpy(row.modified, argv[16], 16);
   //strncpy(row.modified, argv[sort_map[O.sort]], 16);
   (argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
+  (argv[*nnn] != nullptr) ? strncpy(row.modified, argv[*nnn], 16) : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
   return 0;
@@ -2475,7 +2487,7 @@ void outlineProcessKeypress(void) {
           O.folder = it->first;
           outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
           O.mode = NORMAL; // will become NO_ROWS if there are no rows
-          get_items_by_folder(O.folder, MAX);
+          get_items_by_folder(MAX);
         } else {
           if (O.context.empty() || O.context == "search") {
             it = context_map.begin();
@@ -2615,7 +2627,7 @@ void outlineProcessKeypress(void) {
           } else {
             O.folder = row.title;
             O.context = "";
-            get_items_by_folder(row.title, MAX);
+            get_items_by_folder(MAX);
           }
           }
           O.command[0] = '\0';
@@ -2915,7 +2927,7 @@ void outlineProcessKeypress(void) {
             O.folder = it->first;
             outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
             O.mode = NORMAL;
-            get_items_by_folder(O.folder, MAX);
+            get_items_by_folder(MAX);
           } else {
             if (O.context.empty() || O.context == "search") {
               it = context_map.begin();
@@ -3024,7 +3036,7 @@ void outlineProcessKeypress(void) {
                   get_items_by_context(MAX);
                 } else {
                   O.mode = NORMAL;
-                  get_items_by_folder(O.folder, MAX);
+                  get_items_by_folder(MAX);
                 }
 
               } else {
@@ -3267,18 +3279,21 @@ void outlineProcessKeypress(void) {
                O.folder = new_folder;
                O.context = "";
                O.mode = NORMAL;
-               get_items_by_folder(new_folder, MAX);
+               get_items_by_folder(MAX);
                if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
                }
 
             case C_sort:
-              if (pos) {
+              if (pos && view == TASK) {
                 EraseRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 O.mode = NORMAL;
-                get_items_by_context(MAX);
+                if (!O.context.empty())
+                  get_items_by_context(MAX);
+                else
+                  get_items_by_folder(MAX);
                 outlineSetMessage("\'%s\' sorted by \'%s\'", O.context.c_str(), O.sort.c_str());
                 //O.command_line.clear(); //not necessary - in NORMAL mode calling : clears the command line
               }
@@ -3312,7 +3327,7 @@ void outlineProcessKeypress(void) {
                   get_items_by_context(MAX);
                 } else {
                   O.mode = NORMAL;
-                  get_items_by_folder(O.folder, MAX);
+                  get_items_by_folder(MAX);
                 }
                 //O.mode = NORMAL;
               }
@@ -3497,7 +3512,7 @@ void outlineProcessKeypress(void) {
             } else if (O.context != "") {
               get_items_by_context(MAX);
             } else {
-              get_items_by_folder(O.folder, MAX);
+              get_items_by_folder(MAX);
             }
             //O.mode = NORMAL;
           }
@@ -3517,7 +3532,7 @@ void outlineProcessKeypress(void) {
               get_items_by_context(MAX);
               O.mode = NORMAL;
             } else {
-              get_items_by_folder(O.folder, MAX);
+              get_items_by_folder(MAX);
               O.mode = NORMAL;
             }
 
@@ -7525,7 +7540,7 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  get_items_by_folder(O.folder, MAX);
+  get_items_by_folder(MAX);
   if (O.rows.size()) get_note(O.rows.at(0).id);
   //editorRefreshScreen(); //in get_note
   
