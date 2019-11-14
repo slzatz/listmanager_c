@@ -61,6 +61,7 @@ static std::string string_buffer; //yanking chars
 static std::map<int, std::string> fts_titles;
 static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
+static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -127,6 +128,8 @@ enum Command {
   C_open,
   C_openfolder,
 
+  C_sort,
+
   C_find,
   C_fts,
 
@@ -192,6 +195,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
   {"movetofolder", C_movetofolder},
   {"update", C_update},
+  {"sort", C_sort},
   {"sync", C_synch},
   {"synch", C_synch},
   {"synchronize", C_synch},
@@ -233,6 +237,7 @@ struct outlineConfig {
   std::vector<orow> rows;
   std::string context;
   std::string folder;
+  std::string sort;
   char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
@@ -275,7 +280,7 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
 */
-static void (*get_items_by_context)(const std::string&, int); //?shouldn't have to pass context it's global
+static void (*get_items_by_context)(int); //?shouldn't have to pass context it's global
 static void (*get_items_by_folder)(const std::string&, int); //?ditto
 static void (*get_recent)(int);
 //static void (*get_items_by_id)(std::stringstream&);
@@ -339,9 +344,9 @@ int insert_context_folder_pg(orow&); //need to write this one
 int insert_context_folder_sqlite(orow&);
 void update_context_folder_sqlite(void);
 void update_context_folder_pg(void);
-void get_items_by_context_sqlite(const std::string&, int);
+void get_items_by_context_sqlite(int);
 void get_items_by_folder_sqlite(const std::string&, int);
-void get_items_by_context_pg(const std::string&, int);
+void get_items_by_context_pg(int);
 void get_items_by_folder_pg(const std::string&, int);
 void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
@@ -675,7 +680,7 @@ void get_recent_pg(int max) {
   // PQfinish(conn);
 }
 
-void get_items_by_context_pg(const std::string& context, int max) {
+void get_items_by_context_pg(int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -683,9 +688,12 @@ void get_items_by_context_pg(const std::string& context, int max) {
 
   // note it's conext.id for pg
   query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
-        << " WHERE context.title = '" << context << "' "
+        << " WHERE context.title = '" << O.context << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task.modified DESC LIMIT " << max;
+        //<< " ORDER BY task.modified DESC LIMIT " << max;
+        << " ORDER BY task."
+        << O.sort
+        << " DESC NULLS LAST LIMIT " << max;
 
   PGresult *res = PQexec(conn, query.str().c_str());
     
@@ -707,7 +715,8 @@ void get_items_by_context_pg(const std::string& context, int max) {
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
+    //strncpy(row.modified, PQgetvalue(res, i, 16), 16);
+    (PQgetvalue(res, i, sort_map[O.sort]) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sort_map[O.sort]), 16) : strncpy(row.modified, " ", 16);
     O.rows.push_back(row);
   }
 
@@ -726,7 +735,10 @@ void get_items_by_folder_pg(const std::string& folder, int max) {
   query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
         << " WHERE folder.title = '" << folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task.modified DESC LIMIT " << max;
+        //<< " ORDER BY task.modified DESC LIMIT " << max;
+        << " ORDER BY task."
+        << O.sort
+        << " DESC NULLS LAST LIMIT " << max;
 
   PGresult *res = PQexec(conn, query.str().c_str());
 
@@ -979,7 +991,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   return 0;
 }
-void get_items_by_context_sqlite(const std::string& context, int max) {
+void get_items_by_context_sqlite(int max) {
   std::stringstream query;
 
   O.rows.clear();
@@ -998,9 +1010,11 @@ void get_items_by_context_sqlite(const std::string& context, int max) {
 
   // note it's context.tid for sqlite
   query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-        << " WHERE context.title = '" << context << "' "
+        << " WHERE context.title = '" << O.context << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task.modified DESC LIMIT " << max;
+        << " ORDER BY task."
+        << O.sort
+        << " DESC LIMIT " << max;
 
     bool no_rows = true;
     rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
@@ -1039,7 +1053,10 @@ void get_items_by_folder_sqlite(const std::string& folder, int max) {
   query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
         << " WHERE folder.title = '" << folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task.modified DESC LIMIT " << max;
+        //<< " ORDER BY task.modified DESC LIMIT " << max;
+        << " ORDER BY task."
+        << O.sort
+        << " DESC LIMIT " << max;
 
     bool no_rows = true;
     rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
@@ -1101,7 +1118,9 @@ int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
-  strncpy(row.modified, argv[16], 16);
+  //strncpy(row.modified, argv[16], 16);
+  //strncpy(row.modified, argv[sort_map[O.sort]], 16);
+  (argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
   return 0;
@@ -2468,7 +2487,7 @@ void outlineProcessKeypress(void) {
           O.context = it->first;
           outlineSetMessage("\'%s\' will be opened", O.context.c_str());
           O.mode = NORMAL; // will become NO_ROWS if there are no rows
-          get_items_by_context(O.context, MAX);
+          get_items_by_context(MAX);
         }
         EraseRedrawLines(); //*****************************
         if (O.mode == NORMAL) get_note(O.rows.at(0).id); //means there are rows
@@ -2592,7 +2611,7 @@ void outlineProcessKeypress(void) {
           if (view == CONTEXT) {
             O.context = row.title;
             O.folder = "";
-            get_items_by_context(row.title, MAX); //go to context (not dirty)
+            get_items_by_context(MAX); //go to context (not dirty)
           } else {
             O.folder = row.title;
             O.context = "";
@@ -2908,7 +2927,7 @@ void outlineProcessKeypress(void) {
             O.context = it->first;
             outlineSetMessage("\'%s\' will be opened", O.context.c_str());
             O.mode = NORMAL;
-            get_items_by_context(O.context, MAX);
+            get_items_by_context(MAX);
           }
           EraseRedrawLines(); //*****************************
           if (O.mode == NORMAL) get_note(O.rows.at(0).id);
@@ -3002,7 +3021,7 @@ void outlineProcessKeypress(void) {
                   get_recent(MAX);
                 } else if (O.context != "") {
                   O.mode = NORMAL;
-                  get_items_by_context(O.context, MAX);
+                  get_items_by_context(MAX);
                 } else {
                   O.mode = NORMAL;
                   get_items_by_folder(O.folder, MAX);
@@ -3034,12 +3053,10 @@ void outlineProcessKeypress(void) {
 
             case 'e':
             case C_edit: //edit the note of the current item
-              // can't edit in context mode
-          /***********************check mode****************************/
               if (!view == TASK) {
                 O.command[0] = '\0';
                 O.mode = NORMAL;
-                outlineSetMessage("Contexts do not have notes to edit");
+                outlineSetMessage("Only tasks have notes to edit!");
                 return;
               }
               {
@@ -3151,7 +3168,7 @@ void outlineProcessKeypress(void) {
                }
                update_task_context(new_context);
                O.mode = NORMAL;
-               O.command_line.clear(); //probably not necessary
+               //O.command_line.clear(); //calling : in NORMAL clears command_line
                return;
                }
 
@@ -3182,7 +3199,7 @@ void outlineProcessKeypress(void) {
                }
                update_task_folder(new_folder);
                O.mode = NORMAL;
-               O.command_line.clear(); //probably not necessary
+               //O.command_line.clear(); //calling : in NORMAL clears command_line
                return;
                }
 
@@ -3219,7 +3236,7 @@ void outlineProcessKeypress(void) {
                O.context = new_context; 
                O.folder = "";
                O.mode = NORMAL; // must come before in case NO_ROWS returned
-               get_items_by_context(new_context, MAX);
+               get_items_by_context(MAX);
                if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
                return;
@@ -3256,6 +3273,17 @@ void outlineProcessKeypress(void) {
                return;
                }
 
+            case C_sort:
+              if (pos) {
+                EraseRedrawLines(); //*****************************
+                O.sort = O.command_line.substr(pos + 1);
+                O.mode = NORMAL;
+                get_items_by_context(MAX);
+                outlineSetMessage("\'%s\' sorted by \'%s\'", O.context.c_str(), O.sort.c_str());
+                //O.command_line.clear(); //not necessary - in NORMAL mode calling : clears the command line
+              }
+              return;
+
             case C_recent:
                EraseRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
@@ -3281,7 +3309,7 @@ void outlineProcessKeypress(void) {
                   get_recent(MAX);
                 } else if (O.context != "") {
                   O.mode = NORMAL;
-                  get_items_by_context(O.context, MAX);
+                  get_items_by_context(MAX);
                 } else {
                   O.mode = NORMAL;
                   get_items_by_folder(O.folder, MAX);
@@ -3467,7 +3495,7 @@ void outlineProcessKeypress(void) {
             } else if (O.context == "recent") {
               get_recent(MAX);
             } else if (O.context != "") {
-              get_items_by_context(O.context, MAX);
+              get_items_by_context(MAX);
             } else {
               get_items_by_folder(O.folder, MAX);
             }
@@ -3486,7 +3514,7 @@ void outlineProcessKeypress(void) {
               get_recent(MAX);
               O.mode = NORMAL;
             } else if (O.context != "") {
-              get_items_by_context(O.context, MAX);
+              get_items_by_context(MAX);
               O.mode = NORMAL;
             } else {
               get_items_by_folder(O.folder, MAX);
@@ -5729,7 +5757,7 @@ void editorProcessKeypress(void) {
           editorInsertChar(c);
           return;
      
-      } //end inner switch for outer case NORMAL 
+      } //end inner switch for outer case INSERT
 
       return;
 
@@ -7361,6 +7389,7 @@ void initOutline() {
   O.coloff = 0;  //col the user is currently scrolled to  
   O.folder = "todo";
   O.context = "";
+  O.sort = "modified";
   O.show_deleted = false; //not treating these separately right now
   O.show_completed = true;
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
