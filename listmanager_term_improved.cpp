@@ -1089,9 +1089,7 @@ int data_callback(void *nn, int argc, char **argv, char **azColName) {
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  //bool *flag = (bool*)no_rows; // used to tell if no results were returned
-  //*flag = false;
-  int *nnn = (int*)(nn);
+  //int *nnn = (int*)(nn);
 
   /*``
   0: id = 1
@@ -1131,8 +1129,9 @@ int data_callback(void *nn, int argc, char **argv, char **azColName) {
   row.dirty = false;
   //strncpy(row.modified, argv[16], 16);
   //strncpy(row.modified, argv[sort_map[O.sort]], 16);
-  (argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
-  (argv[*nnn] != nullptr) ? strncpy(row.modified, argv[*nnn], 16) : strncpy(row.modified, " ", 16);
+  //(argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
+  //(argv[*nnn] != nullptr) ? strncpy(row.modified, argv[*nnn], 16) : strncpy(row.modified, " ", 16);
+  (argv[*((int*)(nn))] != nullptr) ? strncpy(row.modified, argv[*((int*)(nn))], 16) : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
   return 0;
