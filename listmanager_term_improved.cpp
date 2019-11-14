@@ -1131,7 +1131,9 @@ int data_callback(void *nn, int argc, char **argv, char **azColName) {
   //strncpy(row.modified, argv[sort_map[O.sort]], 16);
   //(argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
   //(argv[*nnn] != nullptr) ? strncpy(row.modified, argv[*nnn], 16) : strncpy(row.modified, " ", 16);
-  (argv[*((int*)(nn))] != nullptr) ? strncpy(row.modified, argv[*((int*)(nn))], 16) : strncpy(row.modified, " ", 16);
+  //both of these work: *((int*)(nn)) //*reinterpret_cast<int*>(nn)
+  (argv[*reinterpret_cast<int*>(nn)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(nn)], 16)
+                                                 : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
   return 0;
@@ -3289,11 +3291,13 @@ void outlineProcessKeypress(void) {
                 EraseRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 O.mode = NORMAL;
-                if (!O.context.empty())
+                if (!O.context.empty()) {
                   get_items_by_context(MAX);
-                else
+                  outlineSetMessage("\'%s\' sorted by \'%s\'", O.context.c_str(), O.sort.c_str());
+                } else {
                   get_items_by_folder(MAX);
-                outlineSetMessage("\'%s\' sorted by \'%s\'", O.context.c_str(), O.sort.c_str());
+                  outlineSetMessage("\'%s\' sorted by \'%s\'", O.folder.c_str(), O.sort.c_str());
+                }
                 //O.command_line.clear(); //not necessary - in NORMAL mode calling : clears the command line
               }
               return;
