@@ -2082,6 +2082,16 @@ void editorDisplayFile(void) {
 
 //not used
 void editorSave(void) {
+
+  std::ofstream myfile;
+  myfile.open("test_save");
+  myfile << editorRowsToString();
+  editorSetMessage("wrote file");
+  myfile.close();
+}
+
+
+void editorSave_old(void) {
   if (E.filename == NULL) return;
   std::string s = editorRowsToString();
   size_t len = s.size();
@@ -3916,13 +3926,15 @@ void fts5_sqlite(void) {
   //outlineSetMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 }
 
-int fts5_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
-  UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
   // cutting this off by returning a non-zero value produces an sql error
   // so this is not the way to limit better to use LIMIT in the sql statement
+  //bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  bool *flag = reinterpret_cast<bool*>(no_rows);
+  *flag = false;
 
   fts_ids.push_back(atoi(argv[0]));
   fts_titles[atoi(argv[0])] = std::string(argv[1]);
@@ -5747,11 +5759,9 @@ void editorProcessKeypress(void) {
           editorInsertReturn();
           break;
     
-        /*
         case CTRL_KEY('s'):
           editorSave();
           break;
-        */
 
         case HOME_KEY:
           editorMoveCursorBOL();
@@ -6050,6 +6060,11 @@ void editorProcessKeypress(void) {
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
+          return;
+
+
+        case CTRL_KEY('s'):
+          editorSave();
           return;
 
         case PAGE_UP:
