@@ -43,14 +43,13 @@
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
 static const std::string DB_INI = "db.ini";
-static std::string which_db;
+static int which_db;
 static int EDITOR_LEFT_MARGIN;
 static struct termios orig_termios;
 static int screenlines, screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
-//static bool rows_are_tasks;
 static int view; // enum TASK, CONTEXT, FOLDER
 static int taskview; //enun BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
 static std::string search_terms;
@@ -101,6 +100,11 @@ enum TaskView {
   BY_FOLDER,
   BY_RECENT,
   BY_SEARCH
+};
+
+enum DB {
+  SQLITE,
+  POSTGRES
 };
 
 static const std::string mode_text[] = {
@@ -345,19 +349,14 @@ void outlineScroll(void);
 
 //Database-related Prototypes
 int get_id(int fr);
-void get_recent_pg(int);
-void get_recent_sqlite(int);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
 int insert_context_folder_pg(orow&); //need to write this one
 int insert_context_folder_sqlite(orow&);
 void update_context_folder_sqlite(void);
 void update_context_folder_pg(void);
-void get_items_by_context_sqlite(int);
-void get_items_by_folder_sqlite(int);
 void get_items_sqlite(int); //////////
-void get_items_by_context_pg(int);
-void get_items_by_folder_pg(int);
+void get_items_pg(int);
 void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
 void update_note_pg(void);
@@ -647,66 +646,24 @@ int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColNam
   return 0;
 }
 
-void get_recent_pg(int max) {
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-  //O.sort = "modified";
-
-  query << "SELECT * FROM task"
-        << ((!O.show_deleted) ? " WHERE task.deleted = False AND task.completed IS NULL" : "")
-        //<< " ORDER BY task.modified DESC LIMIT " << max;
-        << " ORDER BY task."
-        << O.sort
-        << " DESC NULLS LAST LIMIT " << max;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");        
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
-    PQclear(res);
-    do_exit(conn);
-  }    
-
-  int rows = PQntuples(res);
-  int nn = sort_map[O.sort];
-  for(int i=0; i<rows; i++) {
-    orow row;
-    row.title = std::string(PQgetvalue(res, i, 3));
-    row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, nn), 16);
-    O.rows.push_back(row);
-  }
-  PQclear(res);
-  // PQfinish(conn);
-
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-  }
-  view = TASK;
-}
-
-void get_items_by_context_pg(int max) {
+void get_items_pg(int max) {
   std::stringstream query;
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  // note it's conext.id for pg
-  query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
-        << " WHERE context.title = '" << O.context << "' "
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        //<< " ORDER BY task.modified DESC LIMIT " << max;
+
+  if (taskview == BY_CONTEXT) {
+    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
+          << " WHERE context.title = '" << O.context << "' ";
+  } else if (taskview == BY_FOLDER) {
+    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
+          << " WHERE folder.title = '" << O.folder << "' ";
+  } else if (taskview == BY_RECENT) {
+    query << "SELECT * FROM task";
+  }
+
+  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY task."
         << O.sort
         << " DESC NULLS LAST LIMIT " << max;
@@ -738,63 +695,15 @@ void get_items_by_context_pg(int max) {
   PQclear(res);
   // PQfinish(conn);
 
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-  }
   view = TASK;
-}
-
-void get_items_by_folder_pg(int max) {
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  // note it's folder.id for pg
-  query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
-        << " WHERE folder.title = '" << O.folder << "' "
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC NULLS LAST LIMIT " << max;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
-    PQclear(res);
-    do_exit(conn);
-  }
-
-  int rows = PQntuples(res);
-  int sortcolnum = sort_map[O.sort];
-  for(int i=0; i<rows; i++) {
-    orow row;
-    row.title = std::string(PQgetvalue(res, i, 3));
-    row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    row.dirty = false;
-    (PQgetvalue(res, i, sortcolnum) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sortcolnum), 16) : strncpy(row.modified, " ", 16);
-    O.rows.push_back(row);
-  }
-
-  PQclear(res);
-  // PQfinish(conn);
 
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   } else {
     O.mode = NORMAL;
+    get_note(O.rows.at(0).id);
   }
-  view = TASK;
 }
 
 void get_contexts_folders_pg(void) {
@@ -876,49 +785,6 @@ void get_contexts_folders_pg(void) {
   // PQfinish(conn);
   PQclear(res);
   O.context = O.folder = "";
-}
-
-void get_recent_sqlite(int max) {
-// identical to get_items_by_context_sqlite
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  query << "SELECT * FROM task"
-        << ((!O.show_deleted) ? " WHERE task.deleted = False AND task.completed IS NULL" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC LIMIT " << max;
-
-  int sortcolnum = sort_map[O.sort];
-  //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
-  rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
-    sqlite3_free(err_msg);
-  }
-  sqlite3_close(db);
-
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-  }
-  view = TASK;
 }
 
 void get_contexts_folders_sqlite(void) {
@@ -1027,48 +893,6 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   return 0;
 }
-void get_items_by_context_sqlite(int max) {
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  // note it's context.tid for sqlite
-  query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-        << " WHERE context.title = '" << O.context << "' "
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC LIMIT " << max;
-
-    int sortcolnum = sort_map[O.sort];
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
-    } 
-  sqlite3_close(db);
-
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-  }
-  view = TASK;
-}
 
 void get_items_sqlite(int max) {
   std::stringstream query;
@@ -1121,50 +945,7 @@ void get_items_sqlite(int max) {
     get_note(O.rows.at(0).id);
   }
 }
-void get_items_by_folder_sqlite(int max) {
-  std::stringstream query;
 
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  // note it's folder.tid for sqlite
-  query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
-        << " WHERE folder.title = '" << O.folder << "' "
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC LIMIT " << max;
-
-    int sortcolnum = sort_map[O.sort];
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
-    }
-  sqlite3_close(db);
-
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-  }
-  view = TASK;
-}
-
-//int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
 int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
 
   UNUSED(argc); //number of columns in the result
@@ -1337,13 +1118,15 @@ void get_items_by_id_pg(std::stringstream& query) {
   }
   PQclear(res);
 
+  view = TASK;
+
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
   } else {
-    O.mode = NORMAL;
+    O.mode = DATABASE;
+    get_note(O.rows.at(0).id);
   }
-  view = TASK;
 }
 
 void get_note_sqlite(int id) {
@@ -1447,7 +1230,7 @@ void view_html(int id) {
   PyObject *pArgs, *pValue;
 
   Py_Initialize();
-  if (which_db == "postgres")
+  if (which_db == POSTGRES)
     pName = PyUnicode_DecodeFSDefault("view_html_pg"); //module
   else 
     pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
@@ -1528,6 +1311,11 @@ void solr_find(void) {
               Py_ssize_t size; 
               int len = PyList_Size(pValue);
 
+          if (O.rows.empty()) {
+            outlineSetMessage("No results were returned");
+            O.mode = NO_ROWS;
+            return;
+          }
               /*
               We want to create a query that looks like:
               SELECT * FROM task 
@@ -1537,19 +1325,15 @@ void solr_find(void) {
 
               std::stringstream query;
 
-              if (which_db == "postgres") {
-                query << "SELECT * FROM task WHERE task.deleted = False and task.id IN (";
-              } else {
-                query << "SELECT * FROM task WHERE task.deleted = False and task.id IN (";
-              }
-
+              query << "SELECT * FROM task WHERE task.deleted = False and task.id IN (";
 
               for (int i=0; i<len-1; i++) {
                 query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << ", ";
               }
-              query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size);
-
-              query << ") ORDER BY ";
+              query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size)
+                    << ")"
+                    << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+                    << ") ORDER BY ";
 
               for (int i = 0; i < len-1; i++) {
                 query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << " DESC, ";
@@ -1558,7 +1342,6 @@ void solr_find(void) {
 
               Py_DECREF(pValue);
 
-              //get_items_by_id(query);
               get_items_by_id_pg(query);
           } else {
               Py_DECREF(pFunc);
@@ -2358,7 +2141,7 @@ void outlineDrawStatusBar(std::string& ab) {
   //because of escapes
   len-=22;
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", which_db.c_str(), "c++");
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "c++");
 
   if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
 
@@ -3535,7 +3318,7 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'd':
-          if (view == TASK || which_db == "postgres")
+          if (view == TASK || which_db == POSTGRES)
             toggle_deleted();
           else
             outlineSetMessage("At the moment you can only delete contexts/folders on server");
@@ -7504,10 +7287,6 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   if (argc > 1 && argv[1][0] == 's') {
-    //get_items_by_context = get_items_by_context_sqlite;
-    //get_items_by_folder = get_items_by_folder_sqlite;
-    //get_items_by_context = get_items_sqlite;
-    //get_items_by_folder = get_items_sqlite;
     get_items = get_items_sqlite;
     //get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
@@ -7530,12 +7309,11 @@ int main(int argc, char** argv) {
     map_context_titles =  map_context_titles_sqlite;
     map_folder_titles =  map_folder_titles_sqlite;
 
-    which_db = "sqlite";
+    which_db = SQLITE;
 
   } else {
     get_conn();
-    get_items_by_context = get_items_by_context_pg;
-    get_items_by_folder = get_items_by_folder_pg;
+    get_items = get_items_pg;
     //get_items_by_id = get_items_by_id_pg;
     get_note = get_note_pg;
     update_note = update_note_pg;
@@ -7549,14 +7327,14 @@ int main(int argc, char** argv) {
     update_task_folder = update_task_folder_pg;
     display_item_info = display_item_info_pg;
     touch = touch_pg;
-    get_recent = get_recent_pg;
+    //get_recent = get_recent_pg;
     search_db = solr_find;
     get_contexts_folders = get_contexts_folders_pg;
     update_context_folder = update_context_folder_pg;
     map_context_titles = map_context_titles_pg;
     map_folder_titles = map_folder_titles_pg;
 
-    which_db = "postgres";
+    which_db = POSTGRES;
   }
 
   map_context_titles();
