@@ -50,8 +50,6 @@ static int screenlines, screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
-static int view; // enum TASK, CONTEXT, FOLDER
-static int taskview; //enun BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
 static std::string search_terms;
 static std::vector<int> fts_ids;
 static int fts_counter;
@@ -149,8 +147,8 @@ enum Command {
 
   C_new, //create a new item
 
-  C_contexts, //change view to CONTEXTs :c
-  C_folders,  //change view to FOLDERs :f
+  C_contexts, //change O.view to CONTEXTs :c
+  C_folders,  //change O.view to FOLDERs :f
   C_movetocontext, //mtc
   C_movetofolder, //mtf
 
@@ -240,10 +238,10 @@ typedef struct orow {
 } orow;
 
 struct outlineConfig {
-  int cx, cy; //cursor x and y position 
+  int cx, cy; //cursor x and y position
   unsigned int fc, fr; // file x and y position
-  unsigned int rowoff; //the number of rows the view is scrolled (aka number of top rows now off-screen
-  unsigned int coloff; //the number of columns the view is scrolled (aka number of left rows now off-screen
+  unsigned int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
+  unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
   unsigned int screenlines; //number of lines in the display available to text
   unsigned int screencols;  //number of columns in the display available to text
   std::vector<orow> rows;
@@ -260,6 +258,8 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
+  int view; // enum TASK, CONTEXT, FOLDER
+  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
 };
 
 static struct outlineConfig O;
@@ -626,13 +626,13 @@ void get_items_pg(int max) {
   O.fc = O.fr = O.rowoff = 0;
 
 
-  if (taskview == BY_CONTEXT) {
+  if (O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
           << " WHERE context.title = '" << O.context << "' ";
-  } else if (taskview == BY_FOLDER) {
+  } else if (O.taskview == BY_FOLDER) {
     query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
           << " WHERE folder.title = '" << O.folder << "' ";
-  } else if (taskview == BY_RECENT) {
+  } else if (O.taskview == BY_RECENT) {
     query << "SELECT * FROM task";
   }
 
@@ -668,7 +668,7 @@ void get_items_pg(int max) {
   PQclear(res);
   // PQfinish(conn);
 
-  view = TASK;
+  O.view = TASK;
 
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
@@ -687,7 +687,7 @@ void get_containers_pg(void) {
   //std::string query("SELECT * FROM context;");
   std::stringstream query;
   query << "SELECT * FROM "
-        << ((view == CONTEXT) ? "context;" : "folder;");
+        << ((O.view == CONTEXT) ? "context;" : "folder;");
 
 
   PGresult *res = PQexec(conn, query.str().c_str());
@@ -730,7 +730,7 @@ void get_containers_pg(void) {
 
   int rows = PQntuples(res);
 
-  if (view == CONTEXT) {
+  if (O.view == CONTEXT) {
     for(int i=0; i<rows; i++) {
       orow row;
       row.title = std::string(PQgetvalue(res, i, 2));
@@ -786,11 +786,11 @@ void get_containers_sqlite(void) {
   //std::string query("SELECT * FROM context;");
   std::stringstream query;
   query << "SELECT * FROM "
-        << ((view == CONTEXT) ? "context;" : "folder;");
+        << ((O.view == CONTEXT) ? "context;" : "folder;");
 
     bool no_rows = true;
 
-    if (view == CONTEXT) rc = sqlite3_exec(db, query.str().c_str(), context_callback, &no_rows, &err_msg);
+    if (O.view == CONTEXT) rc = sqlite3_exec(db, query.str().c_str(), context_callback, &no_rows, &err_msg);
     else rc = sqlite3_exec(db, query.str().c_str(), folder_callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
@@ -891,13 +891,13 @@ void get_items_sqlite(int max) {
     return;
     }
 
-  if (taskview == BY_CONTEXT) {
+  if (O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
           << " WHERE context.title = '" << O.context << "' ";
-  } else if (taskview == BY_FOLDER) {
+  } else if (O.taskview == BY_FOLDER) {
     query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
           << " WHERE folder.title = '" << O.folder << "' ";
-  } else if (taskview == BY_RECENT) {
+  } else if (O.taskview == BY_RECENT) {
     query << "SELECT * FROM task";
   }
 
@@ -915,7 +915,7 @@ void get_items_sqlite(int max) {
     }
   sqlite3_close(db);
 
-  view = TASK;
+  O.view = TASK;
 
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
@@ -1007,7 +1007,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
 
   sqlite3_close(db);
 
-  view = TASK;
+  O.view = TASK;
 
   if (no_rows) {
     outlineSetMessage("No results were returned");
@@ -1098,7 +1098,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   }
   PQclear(res);
 
-  view = TASK;
+  O.view = TASK;
 
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
@@ -2068,9 +2068,9 @@ void outlineDrawStatusBar(std::string& ab) {
   char status[80], rstatus[80];
 
   std::string s;
-  if (view == TASK)
+  if (O.view == TASK)
     s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
-  else if (view == CONTEXT)
+  else if (O.view == CONTEXT)
     s = "Contexts";
   else
     s = "Folders";
@@ -2228,7 +2228,7 @@ void outlineMoveCursor(int key) {
       O.fc = O.coloff = 0; 
 
       id = O.rows.at(O.fr).id;
-      if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
+      if (O.view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
 
@@ -2237,7 +2237,7 @@ void outlineMoveCursor(int key) {
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
       id = O.rows.at(O.fr).id;
-      if (view == TASK) get_note(id); //if id == -1 does not try to retrieve note
+      if (O.view == TASK) get_note(id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
   }
@@ -2310,7 +2310,7 @@ void outlineProcessKeypress(void) {
       if (keyfromstringcpp(O.command) == C_gt) {
         std::map<std::string, int>::iterator it;
 
-        if ((view == TASK && taskview == BY_FOLDER) || view == FOLDER) {
+        if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
           if (!O.folder.empty()) {
             it = folder_map.find(O.folder);
             it++;
@@ -2346,7 +2346,7 @@ void outlineProcessKeypress(void) {
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
-          if (view == TASK) update_row();
+          if (O.view == TASK) update_row();
           else update_container();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
@@ -2440,7 +2440,7 @@ void outlineProcessKeypress(void) {
           {
           orow& row = O.rows.at(O.fr);
 
-          if (view == TASK) {
+          if (O.view == TASK) {
             update_row();
             O.command[0] = '\0';
             return;
@@ -2452,15 +2452,15 @@ void outlineProcessKeypress(void) {
             return;
           }
           // return means retrieve items
-          if (view == CONTEXT) {
+          if (O.view == CONTEXT) {
             O.context = row.title;
             O.folder = "";
-            taskview = BY_CONTEXT;
+            O.taskview = BY_CONTEXT;
             get_items(MAX); //go to context (not dirty)
           } else {
             O.folder = row.title;
             O.context = "";
-            taskview = BY_FOLDER;
+            O.taskview = BY_FOLDER;
             get_items(MAX);
           }
           }
@@ -2573,7 +2573,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
 
-          if (view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
           return;
       
@@ -2742,7 +2742,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           //get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-          if (view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
           return;
 
         case C_gt:
@@ -2750,7 +2750,7 @@ void outlineProcessKeypress(void) {
           {
           std::map<std::string, int>::iterator it;
 
-          if ((view == TASK && taskview == BY_FOLDER) || view == FOLDER) {
+          if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
             if (!O.folder.empty()) {
               it = folder_map.find(O.folder);
               it++;
@@ -2780,7 +2780,7 @@ void outlineProcessKeypress(void) {
 
         case C_edit:
           // can't edit note if rows_are_contexts
-          if (!view == TASK) {
+          if (!O.view == TASK) {
             O.command[0] = '\0';
             O.mode = NORMAL;
             outlineSetMessage("Contexts and Folders do not have notes to edit");
@@ -2832,13 +2832,13 @@ void outlineProcessKeypress(void) {
           switch(command) {
 
             case 'w':
-              if (view == TASK) update_rows();
+              if (O.view == TASK) update_rows();
               O.mode = 0;
               O.command_line.clear();
               return;
 
             case 'x':
-              if (view == TASK) update_rows();
+              if (O.view == TASK) update_rows();
               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
               write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
               exit(0);
@@ -2848,9 +2848,9 @@ void outlineProcessKeypress(void) {
             case C_refresh:
               EraseScreenRedrawLines(); //****03102019*************************
 
-              if (view == TASK) {
+              if (O.view == TASK) {
                 outlineSetMessage("Tasks will be refreshed");
-                if (taskview == BY_SEARCH)
+                if (O.taskview == BY_SEARCH)
                   search_db();
                 else
                   get_items(MAX);
@@ -2877,7 +2877,7 @@ void outlineProcessKeypress(void) {
 
             case 'e':
             case C_edit: //edit the note of the current item
-              if (!view == TASK) {
+              if (!O.view == TASK) {
                 O.command[0] = '\0';
                 O.mode = NORMAL;
                 outlineSetMessage("Only tasks have notes to edit!");
@@ -2912,7 +2912,7 @@ void outlineProcessKeypress(void) {
 
               EraseScreenRedrawLines(); //is this really EraseNote
               O.context = "search";
-              taskview = BY_SEARCH;
+              O.taskview = BY_SEARCH;
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               search_db();
@@ -2945,7 +2945,7 @@ void outlineProcessKeypress(void) {
             case 'c':
             case C_contexts: //catches context, contexts and c
               EraseScreenRedrawLines();
-              view = CONTEXT;
+              O.view = CONTEXT;
               get_containers();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved contexts");
@@ -2954,7 +2954,7 @@ void outlineProcessKeypress(void) {
             case 'f':
             case C_folders: //catches folder, folders and f
               EraseScreenRedrawLines();
-              view = FOLDER;
+              O.view = FOLDER;
               get_containers();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved folders");
@@ -3061,7 +3061,7 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
                O.folder = "";
-               taskview = BY_CONTEXT;
+               O.taskview = BY_CONTEXT;
                get_items(MAX);
                //editorRefreshScreen(); //in get_note
                return;
@@ -3091,14 +3091,14 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_folder.c_str());
                O.folder = new_folder;
                O.context = "";
-               taskview = BY_FOLDER;
+               O.taskview = BY_FOLDER;
                get_items(MAX);
                //editorRefreshScreen(); //in get_note
                return;
                }
 
             case C_sort:
-              if (pos && view == TASK && taskview != BY_SEARCH) {
+              if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
                 EraseScreenRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 get_items(MAX);
@@ -3112,7 +3112,7 @@ void outlineProcessKeypress(void) {
                EraseScreenRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
                O.context = "recent";
-               taskview = BY_RECENT;
+               O.taskview = BY_RECENT;
                O.folder = "";
                get_items(MAX);
                //editorRefreshScreen(); //in get_note
@@ -3120,10 +3120,10 @@ void outlineProcessKeypress(void) {
 
             case 's':
             case C_showall:
-              if (view == TASK) {
+              if (O.view == TASK) {
                 O.show_deleted = !O.show_deleted;
                 O.show_completed = !O.show_completed;
-                if (taskview == BY_SEARCH)
+                if (O.taskview == BY_SEARCH)
                   search_db();
                 else
                   get_items(MAX);
@@ -3270,30 +3270,29 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'x':
-          if (view == TASK) toggle_completed();
+          if (O.view == TASK) toggle_completed();
           return;
 
         case 'd':
-          if (view == TASK || which_db == POSTGRES)
+          if (O.view == TASK || which_db == POSTGRES)
             toggle_deleted();
           else
             outlineSetMessage("At the moment you can only delete contexts/folders on server");
           return;
 
         case 't': //touch
-          if (view == TASK) touch();
+          if (O.view == TASK) touch();
           return;
 
         case '*':
-          //if (view == TASK) toggle_star();
           toggle_star(); //row.star -> "default" (sqlite) or default for context and private for folder
           return;
 
         case 's':
-          if (view == TASK) {
+          if (O.view == TASK) {
             O.show_deleted = !O.show_deleted;
             O.show_completed = !O.show_completed;
-            if (taskview == BY_SEARCH)
+            if (O.taskview == BY_SEARCH)
               search_db();
             else
               get_items(MAX);
@@ -3302,9 +3301,9 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'r':
-          if (view == TASK) {
+          if (O.view == TASK) {
             outlineSetMessage("Tasks will be refreshed");
-            if (taskview == BY_SEARCH)
+            if (O.taskview == BY_SEARCH)
               search_db();
              else
               get_items(MAX);
@@ -4106,7 +4105,7 @@ void toggle_deleted_pg(void) {
 
   std::stringstream query;
   int id = get_id(-1);
-  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
+  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
 
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
@@ -4191,7 +4190,7 @@ void toggle_deleted_sqlite(void) {
 
   std::stringstream query;
   int id = get_id(-1);
-  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
+  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
 
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
@@ -4237,8 +4236,8 @@ void toggle_star_pg(void) {
 
   std::stringstream query;
   int id = get_id(-1);
-  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
-  std::string column= (view == TASK) ? "star" : ((view == CONTEXT) ? "\"default\"" : "private");
+  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
+  std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
 
 
   query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "FALSE" : "TRUE") << ", "
@@ -4264,8 +4263,8 @@ void toggle_star_sqlite(void) {
 
   std::stringstream query;
   int id = get_id(-1);
-  std::string table = (view == TASK) ? "task" : ((view == CONTEXT) ? "context" : "folder");
-  std::string column= (view == TASK) ? "star" : ((view == CONTEXT) ? "\"default\"" : "private");
+  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
+  std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
 
   query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
         << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
@@ -4371,7 +4370,7 @@ void update_container_pg(void) {
 
     std::stringstream query;
     query << "UPDATE "
-          << ((view == CONTEXT) ? "context" : "folder")
+          << ((O.view == CONTEXT) ? "context" : "folder")
           << " SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
 
     PGresult *res = PQexec(conn, query.str().c_str());
@@ -4481,7 +4480,7 @@ void update_container_sqlite(void) {
 
     std::stringstream query;
     query << "UPDATE "
-          << ((view == CONTEXT) ? "context" : "folder")
+          << ((O.view == CONTEXT) ? "context" : "folder")
           << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
 
     sqlite3 *db;
@@ -4593,14 +4592,14 @@ int insert_container_pg(orow& row) {
   std::stringstream query;
 
   query << "INSERT INTO "
-        << ((view == CONTEXT) ? "context" : "folder")
+        << ((O.view == CONTEXT) ? "context" : "folder")
         << " ("
         << "title, "
         << "deleted, "
         << "created, "
         << "modified, "
         << "tid, "
-        << ((view == CONTEXT) ? "\"default\", " : "private, ") //context -> default; folder -> private
+        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> default; folder -> private
         << "textcolor "
         << ") VALUES ("
         << "'" << title << "'," //title
@@ -4751,14 +4750,14 @@ int insert_container_sqlite(orow& row) {
   std::stringstream query;
   query << "INSERT INTO "
         //<< context
-        << ((view == CONTEXT) ? "context" : "folder")
+        << ((O.view == CONTEXT) ? "context" : "folder")
         << " ("
         << "title, "
         << "deleted, "
         << "created, "
         << "modified, "
         << "tid, "
-        << ((view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
+        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
       //  << "\"default\", " //folder does not have default
         << "textcolor "
         << ") VALUES ("
@@ -7185,8 +7184,6 @@ void initOutline() {
   O.fr = 0; //file y position
   O.rowoff = 0;  //number of rows scrolled off the screen
   O.coloff = 0;  //col the user is currently scrolled to  
-  O.folder = "todo";
-  O.context = "";
   O.sort = "modified";
   O.show_deleted = false; //not treating these separately right now
   O.show_completed = true;
@@ -7195,6 +7192,11 @@ void initOutline() {
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   O.command[0] = '\0';
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
+
+  O.view = TASK; // not necessary here since set when searching database
+  O.taskview = BY_FOLDER;
+  O.folder = "todo";
+  O.context = "";
 
   if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
@@ -7319,10 +7321,8 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
   write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
 
-  taskview = BY_FOLDER;
+  //O.taskview = BY_FOLDER; //set in initOutline
   get_items(MAX);
-  if (O.rows.size()) get_note(O.rows.at(0).id);
-  //editorRefreshScreen(); //in get_note
   
  // PQfinish(conn); // this should happen when exiting
 
