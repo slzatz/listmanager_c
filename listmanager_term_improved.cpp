@@ -250,7 +250,7 @@ struct outlineConfig {
   std::string context;
   std::string folder;
   std::string sort;
-  char *filename; // in case try to save the titles
+  //char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
@@ -275,7 +275,7 @@ struct editorConfig {
   std::vector<std::string> rows;
   std::vector<std::string> prev_rows;
   int dirty; //file changes since last save
-  char *filename;
+  //char *filename;
   char message[120]; //status msg is a character array max 80 char
   int highlight[2];
   int mode;
@@ -292,9 +292,6 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
 */
-static void (*get_items_by_context)(int);
-static void (*get_items_by_folder)(int); //?ditto
-static void (*get_recent)(int);
 static void (*get_items)(int);
 //static void (*get_items_by_id)(std::stringstream&);
 static void (*get_note)(int);
@@ -313,8 +310,8 @@ static void (*search_db)(void);
 static void (*map_context_titles)(void);
 static void (*map_folder_titles)(void);
 
-static void (*get_contexts_folders)(void);
-static void (*update_context_folder)(void);
+static void (*get_containers)(void);
+static void (*update_container)(void);
 //static void (*insert_context)(void); //not called directly
 
 void outlineProcessKeypress(void);
@@ -351,14 +348,14 @@ void outlineScroll(void);
 int get_id(int fr);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
-int insert_context_folder_pg(orow&); //need to write this one
-int insert_context_folder_sqlite(orow&);
-void update_context_folder_sqlite(void);
-void update_context_folder_pg(void);
+int insert_container_pg(orow&);
+int insert_container_sqlite(orow&);
+void update_container_sqlite(void);
+void update_container_pg(void);
 void get_items_sqlite(int); //////////
 void get_items_pg(int);
-void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
-void get_contexts_folders_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
+void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
+void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
@@ -575,18 +572,6 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
   bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: default = Boolean ? what this is
-  4: created = 2016-08-05 23:05:16.256135
-  5: deleted => bool
-  6: icon => string 32
-  7: textcolor, Integer
-  8: image, largebinary
-  */
-
   context_map[std::string(argv[1])] = atoi(argv[0]);
 
   return 0;
@@ -628,18 +613,6 @@ int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColNam
 
   bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: default = Boolean ? what this is
-  4: created = 2016-08-05 23:05:16.256135
-  5: deleted => bool
-  6: icon => string 32
-  7: textcolor, Integer
-  8: image, largebinary
-  */
 
   folder_map[std::string(argv[1])] = atoi(argv[0]);
 
@@ -706,7 +679,7 @@ void get_items_pg(int max) {
   }
 }
 
-void get_contexts_folders_pg(void) {
+void get_containers_pg(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -784,10 +757,17 @@ void get_contexts_folders_pg(void) {
   }
   // PQfinish(conn);
   PQclear(res);
+
+  if (O.rows.empty()) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else
+    O.mode = NORMAL;
+
   O.context = O.folder = "";
 }
 
-void get_contexts_folders_sqlite(void) {
+void get_containers_sqlite(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -1917,33 +1897,10 @@ void editorDisplayFile(void) {
 void editorSave(void) {
 
   std::ofstream myfile;
-  myfile.open("test_save");
+  myfile.open("test_save"); //filename
   myfile << editorRowsToString();
   editorSetMessage("wrote file");
   myfile.close();
-}
-
-
-void editorSave_old(void) {
-  if (E.filename == NULL) return;
-  std::string s = editorRowsToString();
-  size_t len = s.size();
-
-
-  int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
-  if (fd != -1) {
-    if (ftruncate(fd, len) != -1) {
-      if (write(fd, s.c_str(), len) == len) {
-        close(fd);
-        E.dirty = 0;
-        editorSetMessage("%d bytes written to disk", len);
-        return;
-      }
-    }
-    close(fd);
-  }
-
-  editorSetMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
@@ -2390,7 +2347,7 @@ void outlineProcessKeypress(void) {
 
         case '\r': //also does escape into NORMAL mode
           if (view == TASK) update_row();
-          else update_context_folder();
+          else update_container();
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
           //outlineSetMessage("");
@@ -2488,13 +2445,13 @@ void outlineProcessKeypress(void) {
             O.command[0] = '\0';
             return;
           }
-
+          // this is correct but it is cryptic
           if (row.dirty) { // means context or folder title has changed
-            update_context_folder();
+            update_container();
             O.command[0] = '\0';
             return;
           }
-
+          // return means retrieve items
           if (view == CONTEXT) {
             O.context = row.title;
             O.folder = "";
@@ -2893,14 +2850,13 @@ void outlineProcessKeypress(void) {
 
               if (view == TASK) {
                 outlineSetMessage("Tasks will be refreshed");
-                if (taskview == BY_SEARCH) {
+                if (taskview == BY_SEARCH)
                   search_db();
-                } else {
+                else
                   get_items(MAX);
-                }
               } else {
                 outlineSetMessage("contexts/folders will be refreshed");
-                get_contexts_folders();
+                get_containers();
               }
               return;
 
@@ -2990,7 +2946,7 @@ void outlineProcessKeypress(void) {
             case C_contexts: //catches context, contexts and c
               EraseScreenRedrawLines();
               view = CONTEXT;
-              get_contexts_folders();
+              get_containers();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved contexts");
               return;
@@ -2999,7 +2955,7 @@ void outlineProcessKeypress(void) {
             case C_folders: //catches folder, folders and f
               EraseScreenRedrawLines();
               view = FOLDER;
-              get_contexts_folders();
+              get_containers();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved folders");
               return;
@@ -3348,25 +3304,13 @@ void outlineProcessKeypress(void) {
         case 'r':
           if (view == TASK) {
             outlineSetMessage("Tasks will be refreshed");
-
-            if (O.context == "search") {
+            if (taskview == BY_SEARCH)
               search_db();
-              O.mode = DATABASE;
-            } else if (O.context == "recent") {
-              get_recent(MAX);
-              O.mode = NORMAL;
-            } else if (O.context != "") {
-              get_items_by_context(MAX);
-              O.mode = NORMAL;
-            } else {
-              get_items_by_folder(MAX);
-              O.mode = NORMAL;
-            }
-
+             else
+              get_items(MAX);
           } else {
             outlineSetMessage("contexts will be refreshed");
-            get_contexts_folders();
-            O.mode = NORMAL;
+            get_containers();
           }
           return;
   
@@ -4397,7 +4341,7 @@ void update_row_pg(void) {
   }  
 }
 
-void update_context_folder_pg(void) {
+void update_container_pg(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -4442,7 +4386,7 @@ void update_context_folder_pg(void) {
     PQclear(res);
 
   } else {
-    insert_context_folder_pg(row);
+    insert_container_pg(row);
   }
 }
 
@@ -4517,7 +4461,7 @@ void update_row_sqlite(void) {
   }
 }
 
-void update_context_folder_sqlite(void) {
+void update_container_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -4564,7 +4508,7 @@ void update_context_folder_sqlite(void) {
     sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_context_folder_sqlite(row);
+    insert_container_sqlite(row);
   }
 }
 
@@ -4636,7 +4580,7 @@ int insert_row_pg(orow& row) {
   return row.id;
 }
 
-int insert_context_folder_pg(orow& row) {
+int insert_container_pg(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -4794,7 +4738,7 @@ int insert_row_sqlite(orow& row) {
   return row.id;
 }
 
-int insert_context_folder_sqlite(orow& row) {
+int insert_container_sqlite(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -7265,7 +7209,7 @@ void initEditor(void) {
   E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
   E.dirty = 0; //has filed changed since last save
-  E.filename = NULL; //not used currently
+  //E.filename = NULL; //not used currently
   E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -7301,11 +7245,9 @@ int main(int argc, char** argv) {
     update_task_folder = update_task_folder_sqlite;
     display_item_info = display_item_info_sqlite;
     touch = touch_sqlite;
-    //get_recent = get_recent_sqlite;
-    get_recent = get_items_sqlite;
     search_db = fts5_sqlite;
-    get_contexts_folders = get_contexts_folders_sqlite;
-    update_context_folder = update_context_folder_sqlite;
+    get_containers = get_containers_sqlite;
+    update_container = update_container_sqlite;
     map_context_titles =  map_context_titles_sqlite;
     map_folder_titles =  map_folder_titles_sqlite;
 
@@ -7327,10 +7269,9 @@ int main(int argc, char** argv) {
     update_task_folder = update_task_folder_pg;
     display_item_info = display_item_info_pg;
     touch = touch_pg;
-    //get_recent = get_recent_pg;
     search_db = solr_find;
-    get_contexts_folders = get_contexts_folders_pg;
-    update_context_folder = update_context_folder_pg;
+    get_containers = get_containers_pg;
+    update_container = update_container_pg;
     map_context_titles = map_context_titles_pg;
     map_folder_titles = map_folder_titles_pg;
 
