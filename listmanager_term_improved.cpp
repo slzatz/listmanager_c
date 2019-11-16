@@ -346,6 +346,7 @@ void update_context_folder_sqlite(void);
 void update_context_folder_pg(void);
 void get_items_by_context_sqlite(int);
 void get_items_by_folder_sqlite(int);
+void get_items_sqlite(int); //////////
 void get_items_by_context_pg(int);
 void get_items_by_folder_pg(int);
 void get_contexts_folders_sqlite(void); //has an if that determines callback: context_callback or folder_callback
@@ -431,17 +432,8 @@ void editorDisplayFile(void);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
-// config struct for reading db.ini file
-/*
-struct config {
-  const char *user;
-  const char *password;
-  const char *dbname;
-  const char *hostaddr;
-  int port;
-};
-*/
 
+// config struct for reading db.ini file
 struct config {
   std::string user;
   std::string password;
@@ -451,7 +443,7 @@ struct config {
 };
 struct config c;
 
-PGconn *conn = NULL;
+PGconn *conn = nullptr;
 
 void do_exit(PGconn *conn) {
     
@@ -541,7 +533,7 @@ void map_folder_titles_pg(void) {
 void map_context_titles_sqlite(void) {
 
   sqlite3 *db;
-  char *err_msg = 0;
+  char *err_msg = nullptr;
 
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
@@ -563,14 +555,16 @@ void map_context_titles_sqlite(void) {
     }
   sqlite3_close(db);
 
-  if (no_rows) {
-    //outlineSetMessage("No results were returned");
-    //O.mode = NO_ROWS;
-  }
+  if (no_rows)
+    outlineSetMessage("There were no context titles to map!");
 }
 
 int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+
+  UNUSED(argc);
+  UNUSED(azColName);
+
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   /*
@@ -593,7 +587,7 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
 void map_folder_titles_sqlite(void) {
 
   sqlite3 *db;
-  char *err_msg = 0;
+  char *err_msg = nullptr;
 
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
@@ -615,14 +609,16 @@ void map_folder_titles_sqlite(void) {
     }
   sqlite3_close(db);
 
-  if (no_rows) {
-    //outlineSetMessage("No results were returned");
-    //O.mode = NO_ROWS;
-  }
+  if (no_rows)
+    outlineSetMessage("There were no folder titles to map!");
 }
 
 int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+
+  UNUSED(argc);
+  UNUSED(azColName);
+
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   /*
@@ -717,7 +713,7 @@ void get_items_by_context_pg(int max) {
   }    
 
   int rows = PQntuples(res);
-  int nn = sort_map[O.sort];
+  int sortcolnum = sort_map[O.sort];
   for(int i=0; i<rows; i++) {
     orow row;
     row.title = std::string(PQgetvalue(res, i, 3));
@@ -726,9 +722,7 @@ void get_items_by_context_pg(int max) {
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    //strncpy(row.modified, PQgetvalue(res, i, 16), 16);
-    //(PQgetvalue(res, i, sort_map[O.sort]) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sort_map[O.sort]), 16) : strncpy(row.modified, " ", 16);
-    (PQgetvalue(res, i, nn) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, nn), 16) : strncpy(row.modified, " ", 16);
+    (PQgetvalue(res, i, sortcolnum) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sortcolnum), 16) : strncpy(row.modified, " ", 16);
     O.rows.push_back(row);
   }
 
@@ -754,7 +748,6 @@ void get_items_by_folder_pg(int max) {
   query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
         << " WHERE folder.title = '" << O.folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        //<< " ORDER BY task.modified DESC LIMIT " << max;
         << " ORDER BY task."
         << O.sort
         << " DESC NULLS LAST LIMIT " << max;
@@ -769,9 +762,9 @@ void get_items_by_folder_pg(int max) {
     do_exit(conn);
   }
 
-  int i;
   int rows = PQntuples(res);
-  for(i=0; i<rows; i++) {
+  int sortcolnum = sort_map[O.sort];
+  for(int i=0; i<rows; i++) {
     orow row;
     row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
@@ -779,7 +772,7 @@ void get_items_by_folder_pg(int max) {
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
+    (PQgetvalue(res, i, sortcolnum) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sortcolnum), 16) : strncpy(row.modified, " ", 16);
     O.rows.push_back(row);
   }
 
@@ -897,15 +890,13 @@ void get_recent_sqlite(int max) {
 
   query << "SELECT * FROM task"
         << ((!O.show_deleted) ? " WHERE task.deleted = False AND task.completed IS NULL" : "")
-        //<< " ORDER BY task.modified DESC LIMIT " << max;
         << " ORDER BY task."
         << O.sort
         << " DESC LIMIT " << max;
 
-  //bool no_rows = true;
-  int nn = sort_map[O.sort];
+  int sortcolnum = sort_map[O.sort];
   //note: it may be necessary to do following if c_str is deallocated: auto query = ss.str(); query.c_str();
-  rc = sqlite3_exec(db, query.str().c_str(), data_callback, &nn, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -957,13 +948,16 @@ void get_contexts_folders_sqlite(void) {
   if (no_rows) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
-  }
+  } else
+    O.mode = NORMAL;
+
   O.context = O.folder = "";
 
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   /*
@@ -994,7 +988,8 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
 }
 
 int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   /*
@@ -1049,10 +1044,8 @@ void get_items_by_context_sqlite(int max) {
         << O.sort
         << " DESC LIMIT " << max;
 
-    //bool no_rows = true;
-    int nn = sort_map[O.sort];
-    //rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &nn, &err_msg);
+    int sortcolnum = sort_map[O.sort];
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1069,6 +1062,57 @@ void get_items_by_context_sqlite(int max) {
   view = TASK;
 }
 
+void get_items_sqlite(int max) {
+  std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = nullptr;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  // note it's context.tid for sqlite
+  if (!O.context.empty()) {
+  query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
+        << " WHERE context.title = '" << O.context << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task."
+        << O.sort
+        << " DESC LIMIT " << max;
+   } else {
+  query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
+        << " WHERE folder.title = '" << O.folder << "' "
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task."
+        << O.sort
+        << " DESC LIMIT " << max;
+   }
+
+    int sortcolnum = sort_map[O.sort];
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+  if (O.rows.empty()) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
+  }
+  view = TASK;
+}
 void get_items_by_folder_sqlite(int max) {
   std::stringstream query;
 
@@ -1090,15 +1134,12 @@ void get_items_by_folder_sqlite(int max) {
   query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
         << " WHERE folder.title = '" << O.folder << "' "
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        //<< " ORDER BY task.modified DESC LIMIT " << max;
         << " ORDER BY task."
         << O.sort
         << " DESC LIMIT " << max;
 
-    //bool no_rows = true;
-    int nn = sort_map[O.sort];
-    //rc = sqlite3_exec(db, query.str().c_str(), data_callback, &no_rows, &err_msg);
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &nn, &err_msg);
+    int sortcolnum = sort_map[O.sort];
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1116,15 +1157,12 @@ void get_items_by_folder_sqlite(int max) {
 }
 
 //int data_callback(void *no_rows, int argc, char **argv, char **azColName) {
-int data_callback(void *nn, int argc, char **argv, char **azColName) {
+int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
 
-  //UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  //int *nnn = (int*)(nn);
-
-  /*``
+  /*
   0: id = 1
   1: tid = 1
   2: priority = 3
@@ -1160,12 +1198,7 @@ int data_callback(void *nn, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
-  //strncpy(row.modified, argv[16], 16);
-  //strncpy(row.modified, argv[sort_map[O.sort]], 16);
-  //(argv[sort_map[O.sort]] != nullptr) ? strncpy(row.modified, argv[sort_map[O.sort]], 16) : strncpy(row.modified, " ", 16);
-  //(argv[*nnn] != nullptr) ? strncpy(row.modified, argv[*nnn], 16) : strncpy(row.modified, " ", 16);
-  //both of these work: *((int*)(nn)) //*reinterpret_cast<int*>(nn)
-  (argv[*reinterpret_cast<int*>(nn)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(nn)], 16)
+  (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
                                                  : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
@@ -1179,6 +1212,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
 
+  // in fts5_sqlite
   //O.rows.clear();
   //O.fc = O.fr = O.rowoff = 0;
 
@@ -1204,21 +1238,21 @@ void get_items_by_id_sqlite(std::stringstream& query) {
 
   sqlite3_close(db);
 
-  // created a new mode when no rows since really can only do command line
   if (no_rows) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
   }
   view = TASK;
 }
 
 int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
-  //UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  bool *flag = (bool*)no_rows; // used to tell if no results were returned
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   /*
@@ -1277,9 +1311,10 @@ void get_items_by_id_pg(std::stringstream& query) {
   }    
   
   O.rows.clear();
-  int i;
+  O.fc = O.fr = O.rowoff = 0;
+
   int rows = PQntuples(res);
-  for(i=0; i<rows; i++) {
+  for(int i=0; i<rows; i++) {
     orow row;
     row.title = std::string(PQgetvalue(res, i, 3));
     row.id = atoi(PQgetvalue(res, i, 0));
@@ -1292,7 +1327,12 @@ void get_items_by_id_pg(std::stringstream& query) {
   }
   PQclear(res);
 
-  O.fc = O.fr = O.rowoff = 0;
+  if (O.rows.empty()) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
+  }
   view = TASK;
 }
 
@@ -1303,7 +1343,7 @@ void get_note_sqlite(int id) {
   E.fr = E.fc = E.cy = E.cx = 0;
 
   sqlite3 *db;
-  char *err_msg = 0;
+  char *err_msg = nullptr;
     
   std::stringstream query;
   int rc;
@@ -1323,7 +1363,7 @@ void get_note_sqlite(int id) {
     }
 
   // callback does *not* appear to be called if result (argv) is null
-  rc = sqlite3_exec(db, query.str().c_str(), note_callback, 0, &err_msg);
+  rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineSetMessage("In get_note_sqlite: %s SAL error: %s\n", FTS_DB.c_str(), err_msg);
@@ -2530,7 +2570,7 @@ void outlineProcessKeypress(void) {
           }
           O.folder = it->first;
           outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
-          O.mode = NORMAL; // will become NO_ROWS if there are no rows
+          //O.mode = NORMAL; // will become NO_ROWS if there are no rows
           get_items_by_folder(MAX);
         } else {
           if (O.context.empty() || O.context == "search") {
@@ -2542,7 +2582,7 @@ void outlineProcessKeypress(void) {
           }
           O.context = it->first;
           outlineSetMessage("\'%s\' will be opened", O.context.c_str());
-          O.mode = NORMAL; // will become NO_ROWS if there are no rows
+          //O.mode = NORMAL; // will become NO_ROWS if there are no rows
           get_items_by_context(MAX);
         }
         EraseScreenRedrawLines(); //*****************************
@@ -2970,7 +3010,7 @@ void outlineProcessKeypress(void) {
             }
             O.folder = it->first;
             outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
-            O.mode = NORMAL;
+            //O.mode = NORMAL;
             get_items_by_folder(MAX);
           } else {
             if (O.context.empty() || O.context == "search") {
@@ -2982,7 +3022,7 @@ void outlineProcessKeypress(void) {
             }
             O.context = it->first;
             outlineSetMessage("\'%s\' will be opened", O.context.c_str());
-            O.mode = NORMAL;
+            //O.mode = NORMAL;
             get_items_by_context(MAX);
           }
           EraseScreenRedrawLines(); //*****************************
@@ -2998,7 +3038,7 @@ void outlineProcessKeypress(void) {
           if (!view == TASK) {
             O.command[0] = '\0';
             O.mode = NORMAL;
-            outlineSetMessage("Contexts do not have notes to edit");
+            outlineSetMessage("Contexts and Folders do not have notes to edit");
             return;
           }
           {
@@ -3143,7 +3183,6 @@ void outlineProcessKeypress(void) {
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              //outlineSetMessage("Will search items for \'%s\'", search_terms.c_str());
               if (O.mode != NO_ROWS) {
                 O.mode = DATABASE;
                 get_note(get_id(-1));
@@ -3162,9 +3201,12 @@ void outlineProcessKeypress(void) {
               O.context = "search";
               search_terms = O.command_line.substr(pos+1);
               fts5_sqlite();
-              outlineSetMessage("Will use fts5 to search items for \'%s\'", search_terms.c_str());
-              O.mode = NORMAL;
-              if (O.rows.size()) get_note(get_id(-1));
+              if (O.mode != NO_ROWS) {
+                O.mode = DATABASE;
+                get_note(get_id(-1));
+              } else {
+                outlineRefreshScreen();
+              }
               return;
 
             case C_update: //update solr
@@ -3291,7 +3333,7 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
                O.folder = "";
-               O.mode = NORMAL; // must come before in case NO_ROWS returned
+               //O.mode = NORMAL; // must come before in case NO_ROWS returned
                get_items_by_context(MAX);
                if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
@@ -3322,7 +3364,7 @@ void outlineProcessKeypress(void) {
                outlineSetMessage("\'%s\' will be opened", new_folder.c_str());
                O.folder = new_folder;
                O.context = "";
-               O.mode = NORMAL;
+               //O.mode = NORMAL;
                get_items_by_folder(MAX);
                if (O.rows.size()) get_note(O.rows.at(0).id);
                //editorRefreshScreen(); //in get_note
@@ -3330,7 +3372,7 @@ void outlineProcessKeypress(void) {
                }
 
             case C_sort:
-              if (pos && view == TASK) {
+              if (pos && view == TASK && O.context != "search") {
                 EraseScreenRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 if (!O.context.empty()) {
@@ -3340,11 +3382,9 @@ void outlineProcessKeypress(void) {
                   get_items_by_folder(MAX);
                   outlineSetMessage("\'%s\' sorted by \'%s\'", O.folder.c_str(), O.sort.c_str());
                 }
-                //O.command_line.clear(); //not necessary - in NORMAL mode calling : clears the command line
-                if (O.mode != NO_ROWS) {
-                  O.mode = DATABASE;
-                  get_note(get_id(-1));
-                }
+                if (O.mode != NO_ROWS)  get_note(get_id(-1));
+              } else {
+                outlineSetMessage("Currently can't sort search, which is sorted on best match");
               }
               return;
 
@@ -3374,9 +3414,7 @@ void outlineProcessKeypress(void) {
                 } else {
                   get_items_by_folder(MAX);
                 }
-                //O.mode = NORMAL;
               }
-              //O.command_line.clear(); //probably not necessary
               outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
               return;
 
@@ -3414,14 +3452,12 @@ void outlineProcessKeypress(void) {
             case 'q':
                {
                bool unsaved_changes = false;
-               for (int i=0;i<O.rows.size();i++) {
-                 orow& row = O.rows.at(i);
-                 if (row.dirty) {
+               for (auto it : O.rows) {
+                 if (it.dirty) {
                    unsaved_changes = true;
                    break;
                  }
-               } 
-
+               }
                if (unsaved_changes) {
                  O.mode = NORMAL;
                  outlineSetMessage("No db write since last change");
@@ -3440,7 +3476,6 @@ void outlineProcessKeypress(void) {
                write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
                Py_FinalizeEx();
                exit(0);
-               return;
 
             case 'h':
             case C_help:
@@ -3466,7 +3501,6 @@ void outlineProcessKeypress(void) {
             O.command_line.pop_back();
           else
             O.command_line.push_back(c);
-
 
           outlineSetMessage(":%s", O.command_line.c_str());
 
@@ -3930,10 +3964,8 @@ int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
-  // cutting this off by returning a non-zero value produces an sql error
-  // so this is not the way to limit better to use LIMIT in the sql statement
-  //bool *flag = (bool*)no_rows; // used to tell if no results were returned
-  bool *flag = reinterpret_cast<bool*>(no_rows);
+
+  bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
   fts_ids.push_back(atoi(argv[0]));
@@ -7507,8 +7539,10 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   if (argc > 1 && argv[1][0] == 's') {
-    get_items_by_context = get_items_by_context_sqlite;
-    get_items_by_folder = get_items_by_folder_sqlite;
+    //get_items_by_context = get_items_by_context_sqlite;
+    //get_items_by_folder = get_items_by_folder_sqlite;
+    get_items_by_context = get_items_sqlite;
+    get_items_by_folder = get_items_sqlite;
     //get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
     update_note = update_note_sqlite;
