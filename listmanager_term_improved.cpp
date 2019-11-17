@@ -3172,7 +3172,6 @@ void outlineProcessKeypress(void) {
 
                } else {
                  outlineSetMessage("You did not provide a valid  folder!");
-                 //O.command_line[1] = '\0';
                  O.command_line.resize(1);
                  return;
                }
@@ -3187,8 +3186,13 @@ void outlineProcessKeypress(void) {
 
             case C_join:
               {
-              if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) return;
-
+              if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
+                outlineSetMessage("You are either in a view where you can't join or provided no join container");
+                //O.command_line.clear();
+                //O.command[0] = '\0';
+                O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+                return;
+              }
               bool success = false;
 
               if (O.taskview == BY_CONTEXT) {
