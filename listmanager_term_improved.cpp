@@ -97,6 +97,7 @@ enum View {
 enum TaskView {
   BY_CONTEXT,
   BY_FOLDER,
+  BY_JOIN,
   BY_RECENT,
   BY_SEARCH
 };
@@ -138,6 +139,7 @@ enum Command {
 
   C_open,
   C_openfolder,
+  C_join,
 
   C_sort,
 
@@ -192,6 +194,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"open", C_open},
   {"o", C_open}, //need because this is command line command with a target word
   {"of", C_openfolder}, //need because this is command line command with a target word
+  {"join", C_join}, //need because this is command line command with a target word
+  {"filter", C_join}, //need because this is command line command with a target word
   {"fin", C_find},
   {"find", C_find},
   {"fts", C_fts},
@@ -317,12 +321,15 @@ static void (*update_container)(void);
 
 int getWindowSize(int *, int *);
 
+// I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
+void EraseScreenRedrawLines(void);
+
 void outlineProcessKeypress(void);
 void editorProcessKeypress(void);
 
 //Outline Prototypes
 void outlineSetMessage(const char *fmt, ...);
-void outlineRefreshScreen(void);
+void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 //void getcharundercursor();
 void outlineDrawStatusBar(std::string&);
 void outlineDrawMessageBar(std::string&);
@@ -343,7 +350,7 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
-void outlineDrawRows(std::string&); //modify the string so maybe should be pointer
+void outlineDrawRows(std::string&); // doesn't do any erasing which is done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 
@@ -400,12 +407,12 @@ int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 
-void editorDrawRows(std::string&);
+void editorDrawRows(std::string&); //erases lines to right as it goes
 void editorDrawMessageBar(std::string&);
 void editorDrawStatusBar(std::string&);
 void editorSetMessage(const char *fmt, ...);
 void editorScroll(void);
-void editorRefreshScreen(void);
+void editorRefreshScreen(void); //(re)draws the note
 void editorInsertReturn(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
@@ -434,9 +441,9 @@ void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
 void editorInsertRow(int fr, std::string);
-void EraseScreenRedrawLines(void);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
+void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
@@ -469,11 +476,12 @@ void signalHandler(int signum) {
     E.screenlines = screenlines - 2 - TOP_MARGIN;
     E.screencols = -2 + screencols/2;
     EDITOR_LEFT_MARGIN = screencols/2 + 1;
-    //outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
+
     if (O.view == TASK && O.mode != NO_ROWS)
       get_note(O.rows.at(O.fr).id);
+
     // note this order puts cursor in outline regardless of where it was before resize
-    outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
+    outlineRefreshScreen();
 }
 
 void parse_ini_file(std::string ini_name)
@@ -654,8 +662,15 @@ void get_items_pg(int max) {
           << " WHERE folder.title = '" << O.folder << "' ";
   } else if (O.taskview == BY_RECENT) {
     query << "SELECT * FROM task";
+  } else if (O.taskview == BY_JOIN) {
+    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
+          << " JOIN folder ON folder.tid = task.folder_tid"
+          << " WHERE context.title = '" << O.context << "'"
+          << " AND folder.title = '" << O.folder << "'";
+  } else {
+      outlineSetMessage("You asked for an unsupported db query");
+      return;
   }
-
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY task."
         << O.sort
@@ -919,7 +934,62 @@ void get_items_sqlite(int max) {
           << " WHERE folder.title = '" << O.folder << "' ";
   } else if (O.taskview == BY_RECENT) {
     query << "SELECT * FROM task";
+  } else if (O.taskview == BY_JOIN) {
+    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
+          << " JOIN folder ON folder.tid = task.folder_tid"
+          << " WHERE context.title = '" << O.context << "'"
+          << " AND folder.title = '" << O.folder << "'";
+  } else {
+      outlineSetMessage("You asked for an unsupported db query");
+      return;
   }
+
+  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY task."
+        << O.sort
+        << " DESC LIMIT " << max;
+
+    int sortcolnum = sort_map[O.sort];
+    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+  O.view = TASK;
+
+  if (O.rows.empty()) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else {
+    O.mode = NORMAL;
+    get_note(O.rows.at(0).id);
+  }
+}
+
+void get_items_join_sqlite(int max) {
+  std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = nullptr;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
+          << " JOIN folder ON folder.tid = task.folder_tid"
+          << " WHERE context.title = '" << O.context << "'"
+          << " AND folder.title = '" << O.folder << "'";
 
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY task."
@@ -2161,8 +2231,10 @@ void outlineRefreshScreen(void) {
 
   ab.append("\x1b[?25l", 6); //hides the cursor
 
-  //Below erase screen from middle to left - `1K` below is cursor to left erasing
   char buf[20];
+
+  //Below erase screen from middle to left - `1K` below is cursor to left erasing
+  //Doesn't erase time/sort column and if proceeded by EraseScreenRedrawLines seems redundant
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
     O.screencols + OUTLINE_LEFT_MARGIN);
@@ -2176,7 +2248,7 @@ void outlineRefreshScreen(void) {
   if (O.context == "search" && O.mode == DATABASE)
     outlineDrawSearchRows(ab);
   else
-    outlineDrawRows(ab);
+    outlineDrawRows(ab); //unlike editorDrawRows, outDrawRows doesn't do any erasing
 
   outlineDrawStatusBar(ab);
   outlineDrawMessageBar(ab);
@@ -2316,8 +2388,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          editorEraseScreen();
-          //editorRefreshScreen();
+          editorEraseScreen(); //erases the note area
           O.mode = INSERT;
           return;
       }
@@ -2605,8 +2676,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          editorEraseScreen();
-          //editorRefreshScreen();
+          editorEraseScreen(); //erases the note area
           O.mode = INSERT;
           return;
 
@@ -2890,8 +2960,8 @@ void outlineProcessKeypress(void) {
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-              editorEraseScreen();
-              editorRefreshScreen(); // this causes a vector out of range fault
+              editorEraseScreen(); //erases the note area
+              //editorRefreshScreen();
               O.mode = INSERT;
               return;
 
@@ -3089,12 +3159,11 @@ void outlineProcessKeypress(void) {
 
             case C_openfolder:
                {
-               std::string new_folder;
                if (pos) {
                  bool success = false;
                  for (const auto & [k,v] : folder_map) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                     new_folder = k;
+                     O.folder = k;
                      success = true;
                      break;
                    }
@@ -3108,12 +3177,48 @@ void outlineProcessKeypress(void) {
                  return;
                }
                EraseScreenRedrawLines(); //*****************************
-               outlineSetMessage("\'%s\' will be opened", new_folder.c_str());
-               O.folder = new_folder;
+               outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
                O.context = "";
                O.taskview = BY_FOLDER;
                get_items(MAX);
                //editorRefreshScreen(); //in get_note
+               return;
+               }
+
+            case C_join:
+              {
+              if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) return;
+
+              bool success = false;
+
+              if (O.taskview == BY_CONTEXT) {
+              for (const auto & [k,v] : folder_map) {
+                if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                  O.folder = k;
+                  success = true;
+                  break;
+                }
+              }
+          } else if (O.taskview == BY_FOLDER) {
+              for (const auto & [k,v] : context_map) {
+                if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                  O.context = k;
+                  success = true;
+                  break;
+                }
+              }
+              }
+
+              if (!success) {
+                outlineSetMessage("You did not provide a valid folder or context to join!");
+                O.command_line.resize(1);
+                return;
+               }
+
+               EraseScreenRedrawLines(); //needed to erase sort (time) column*****************************
+               outlineSetMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
+               O.taskview = BY_JOIN;
+               get_items(MAX);
                return;
                }
 
@@ -5189,15 +5294,15 @@ void editorScroll(void) {
 }
 
 void editorDrawRows(std::string& ab) {
-  if (E.rows.empty()) { //October 13, 2019
-      editorEraseScreen();
+  if (E.rows.empty()) {
+      editorEraseScreen(); //erases the note area since E.rows is empty
       return;
   }
+  //appears that it erases old text to the right of text as it goes.
   int y = 0;
   int len; //, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char lf_ret[16];
-  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC\x1b[%dB", EDITOR_LEFT_MARGIN, TOP_MARGIN);
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   // this is the first visible row on the screen given E.line_offset
@@ -5389,7 +5494,6 @@ void editorDrawMessageBar(std::string& ab) {
 
 void editorRefreshScreen(void) {
   char buf[32];
-  //editorScroll(); //commented out on 10-27-29019
 
   if (DEBUG) {
     if (!E.rows.empty()){
@@ -7327,11 +7431,11 @@ int main(int argc, char** argv) {
 
     if (editor_mode){
       editorScroll();
-      editorRefreshScreen(); // since it calls editorScroll do you need to call editorScroll before it??
+      editorRefreshScreen();
       editorProcessKeypress();
     } else if (O.mode != FILE_DISPLAY) { 
       outlineScroll();
-      outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
+      outlineRefreshScreen();
       outlineProcessKeypress();
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
