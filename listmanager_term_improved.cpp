@@ -16,6 +16,7 @@
 //#include <stdlib.h>
 //#include <string.h>
 #include <sys/ioctl.h>
+#include <csignal>
 //#include <sys/types.h>
 #include <termios.h>
 //#include <time.h>
@@ -46,7 +47,7 @@ static const std::string DB_INI = "db.ini";
 static int which_db;
 static int EDITOR_LEFT_MARGIN;
 static struct termios orig_termios;
-static int screenlines, screencols;
+static int screenlines, screencols, new_screenlines, new_screencols;
 static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
@@ -314,6 +315,8 @@ static void (*get_containers)(void);
 static void (*update_container)(void);
 //static void (*insert_context)(void); //not called directly
 
+int getWindowSize(int *, int *);
+
 void outlineProcessKeypress(void);
 void editorProcessKeypress(void);
 
@@ -454,6 +457,23 @@ void do_exit(PGconn *conn) {
     
     PQfinish(conn);
     exit(1);
+}
+
+void signalHandler(int signum) {
+    getWindowSize(&new_screenlines, &new_screencols);
+    screenlines = new_screenlines;
+    screencols = new_screencols;
+    EraseScreenRedrawLines();
+    O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+    O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
+    E.screenlines = screenlines - 2 - TOP_MARGIN;
+    E.screencols = -2 + screencols/2;
+    EDITOR_LEFT_MARGIN = screencols/2 + 1;
+    //outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
+    if (O.view == TASK && O.mode != NO_ROWS)
+      get_note(O.rows.at(O.fr).id);
+    // note this order puts cursor in outline regardless of where it was before resize
+    outlineRefreshScreen(); //does not call outlineScroll while editorRefreshScreen does call editorScroll
 }
 
 void parse_ini_file(std::string ini_name)
@@ -1135,7 +1155,7 @@ void get_note_sqlite(int id) {
     sqlite3_close(db);
     }
 
-  // callback does *not* appear to be called if result (argv) is null
+  // callback is *not* called if result (argv) is null
   rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &err_msg);
     
   if (rc != SQLITE_OK ) {
@@ -2291,8 +2311,8 @@ void outlineProcessKeypress(void) {
         case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
-          outlineScroll();
-          outlineRefreshScreen();  //? necessary
+          //outlineScroll(); ////////////////////////////////////////////////////////////////////////////
+          //outlineRefreshScreen();  //? necessary //////////////////////////////////////////
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -2580,8 +2600,8 @@ void outlineProcessKeypress(void) {
         case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
-          outlineScroll();
-          outlineRefreshScreen();  //? necessary
+          //outlineScroll();//////////////////////////////////////////////////////////////////////////////////////
+          //outlineRefreshScreen();  //? necessary ///////////////////////////////////////////////////////////////
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -2846,7 +2866,7 @@ void outlineProcessKeypress(void) {
 
             case 'r':
             case C_refresh:
-              EraseScreenRedrawLines(); //****03102019*************************
+              //EraseScreenRedrawLines(); //doesn't seem necessary ****11162019*************************
 
               if (O.view == TASK) {
                 outlineSetMessage("Tasks will be refreshed");
@@ -2865,8 +2885,8 @@ void outlineProcessKeypress(void) {
             case C_new: 
               outlineInsertRow(0, "", true, false, false, BASE_DATE);
               O.fc = O.fr = O.rowoff = 0;
-              outlineScroll();
-              outlineRefreshScreen();  //? necessary
+              //outlineScroll();////////////////////////////////////////////////////////////
+              //outlineRefreshScreen();  //? necessary///////////////////////////////////
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -2910,13 +2930,13 @@ void outlineProcessKeypress(void) {
                 return;
               }  
 
-              EraseScreenRedrawLines(); //is this really EraseNote
+              //EraseScreenRedrawLines(); //is this really EraseNote/////////////////////////////////////////////
               O.context = "search";
               O.taskview = BY_SEARCH;
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              outlineRefreshScreen();
+              //outlineRefreshScreen(); /////////////////////////////////////////////////////////////////////////
               return;
 
             case C_fts: 
@@ -2944,7 +2964,7 @@ void outlineProcessKeypress(void) {
 
             case 'c':
             case C_contexts: //catches context, contexts and c
-              EraseScreenRedrawLines();
+              EraseScreenRedrawLines(); //while it does a lot more, it does erase the note is there just an erasenote
               O.view = CONTEXT;
               get_containers();
               O.mode = NORMAL;
@@ -3138,7 +3158,7 @@ void outlineProcessKeypress(void) {
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Synching local db and server and displaying results");
-              outlineRefreshScreen();
+              //outlineRefreshScreen(); ////////////////////////////////////////////
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3149,7 +3169,7 @@ void outlineProcessKeypress(void) {
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Testing synching local db and server and displaying results");
-              outlineRefreshScreen();
+              //outlineRefreshScreen(); ///////////////////////////////////////////////////////////////
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3195,7 +3215,7 @@ void outlineProcessKeypress(void) {
               initial_file_row = 0;
               O.mode = FILE_DISPLAY;
               outlineSetMessage("Displaying help file");
-              outlineRefreshScreen();
+              //outlineRefreshScreen();///////////////////////////////////////////////////////////////////////
               editorReadFile("listmanager_commands");
               editorDisplayFile();
               return;
@@ -7134,10 +7154,9 @@ void editorMarkupLink(void) {
 }
 
 void EraseScreenRedrawLines(void) {
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
   int pos = screencols/2;
   char buf[32];
-
-  write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
   for (int j = 1; j < screenlines + 1; j++) {
 
@@ -7198,7 +7217,7 @@ void initOutline() {
   O.folder = "todo";
   O.context = "";
 
-  if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
+  // ? whether the screen-related stuff should be in one place
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
 }
@@ -7221,7 +7240,7 @@ void initEditor(void) {
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
   E.continuation = 0; //circumstance when a line wraps
 
-  if (getWindowSize(&E.screenlines, &E.screencols) == -1) die("getWindowSize");
+  // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
   E.screencols = -2 + screencols/2;
   EDITOR_LEFT_MARGIN = screencols/2 + 1;
@@ -7283,44 +7302,12 @@ int main(int argc, char** argv) {
   map_context_titles();
   map_folder_titles();
 
+  //if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
+  getWindowSize(&screenlines, &screencols);
   enableRawMode();
-  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+  EraseScreenRedrawLines();
   initOutline();
   initEditor();
-  int pos = screencols/2;
-  char buf[32];
-  write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-  for (int j=1; j < screenlines + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    //below x = 0x78 vertical line and q = 0x71 is horizontal
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8); //31 = red; 37 = white; 1m = bold (only need last 'm')
-}
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, 1);
-  write(STDOUT_FILENO, buf, strlen(buf));
-  for (int k=1; k < screencols ;k++) {
-    // note: cursor advances automatically so don't need to 
-    // do that explicitly
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-  }
-
-  // draw first column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - OUTLINE_RIGHT_MARGIN + 1);
-  write(STDOUT_FILENO, buf, strlen(buf));
-  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-
-  // draw next column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
-  write(STDOUT_FILENO, buf, strlen(buf));
-  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-
-  write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-  write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-
   //O.taskview = BY_FOLDER; //set in initOutline
   get_items(MAX);
   
@@ -7334,7 +7321,10 @@ int main(int argc, char** argv) {
   // assume the reimports are essentially no-ops
   //Py_Initialize(); 
 
+  signal(SIGWINCH, signalHandler);
+
   while (1) {
+
     if (editor_mode){
       editorScroll();
       editorRefreshScreen(); // since it calls editorScroll do you need to call editorScroll before it??
