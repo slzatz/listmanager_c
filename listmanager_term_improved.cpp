@@ -708,6 +708,7 @@ void get_items_pg(int max) {
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+    editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = NORMAL;
     get_note(O.rows.at(0).id);
@@ -963,53 +964,7 @@ void get_items_sqlite(int max) {
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
-  } else {
-    O.mode = NORMAL;
-    get_note(O.rows.at(0).id);
-  }
-}
-
-void get_items_join_sqlite(int max) {
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = nullptr;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-          << " JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE context.title = '" << O.context << "'"
-          << " AND folder.title = '" << O.folder << "'";
-
-  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC LIMIT " << max;
-
-    int sortcolnum = sort_map[O.sort];
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
-    }
-  sqlite3_close(db);
-
-  O.view = TASK;
-
-  if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
-    O.mode = NO_ROWS;
+    editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = NORMAL;
     get_note(O.rows.at(0).id);
@@ -1102,6 +1057,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
   if (no_rows) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+    editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = DATABASE;
     get_note(O.rows.at(0).id);
@@ -1193,6 +1149,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   if (O.rows.empty()) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
+    editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = DATABASE;
     get_note(O.rows.at(0).id);
@@ -2076,11 +2033,10 @@ void outlineDrawRows(std::string& ab) {
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
-    ab.append("\x1b[0m", 4); // return background to normal
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
+    ab.append("\x1b[0m", 4); // return background to normal ////////////////////////////////
     ab.append(lf_ret, nchars);
-    //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
 
@@ -2237,7 +2193,8 @@ void outlineRefreshScreen(void) {
   //Doesn't erase time/sort column and if proceeded by EraseScreenRedrawLines seems redundant
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-    O.screencols + OUTLINE_LEFT_MARGIN);
+    //O.screencols + OUTLINE_LEFT_MARGIN);
+    O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
     ab.append(buf, strlen(buf));
   }
 
@@ -2411,8 +2368,6 @@ void outlineProcessKeypress(void) {
           }
           O.folder = it->first;
           outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
-          //O.mode = NORMAL; // will become NO_ROWS if there are no rows
-          //get_items_by_folder(MAX);
         } else {
           if (O.context.empty() || O.context == "search") {
             it = context_map.begin();
@@ -2424,7 +2379,7 @@ void outlineProcessKeypress(void) {
           O.context = it->first;
           outlineSetMessage("\'%s\' will be opened", O.context.c_str());
         }
-        EraseScreenRedrawLines(); //*****************************
+        //EraseScreenRedrawLines(); //*****************************
         get_items(MAX);
         O.command[0] = '\0';
         return;
@@ -2861,7 +2816,7 @@ void outlineProcessKeypress(void) {
             O.context = it->first;
             outlineSetMessage("\'%s\' will be opened", O.context.c_str());
           }
-          EraseScreenRedrawLines(); //*****************************
+          //EraseScreenRedrawLines(); //*****************************
           get_items(MAX);
           //editorRefreshScreen(); //in get_note
           O.command[0] = '\0';
@@ -3015,7 +2970,7 @@ void outlineProcessKeypress(void) {
                 return;
               }  
 
-              EraseScreenRedrawLines(); //*****************************
+              //EraseScreenRedrawLines(); //*****************************
               O.context = "search";
               search_terms = O.command_line.substr(pos+1);
               fts5_sqlite();
@@ -3034,7 +2989,8 @@ void outlineProcessKeypress(void) {
 
             case 'c':
             case C_contexts: //catches context, contexts and c
-              EraseScreenRedrawLines(); //while it does a lot more, it does erase the note is there just an erasenote
+              editorEraseScreen();
+              //EraseScreenRedrawLines(); //while it does a lot more, it does erase the note is there just an erasenote
               O.view = CONTEXT;
               get_containers();
               O.mode = NORMAL;
@@ -3043,7 +2999,8 @@ void outlineProcessKeypress(void) {
 
             case 'f':
             case C_folders: //catches folder, folders and f
-              EraseScreenRedrawLines();
+              editorEraseScreen();
+              //EraseScreenRedrawLines();
               O.view = FOLDER;
               get_containers();
               O.mode = NORMAL;
@@ -3147,7 +3104,7 @@ void outlineProcessKeypress(void) {
                  O.command_line.resize(1);
                  return;
                }
-               EraseScreenRedrawLines(); //*****************************
+               //EraseScreenRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", new_context.c_str());
                O.context = new_context; 
                O.folder = "";
@@ -3175,7 +3132,7 @@ void outlineProcessKeypress(void) {
                  O.command_line.resize(1);
                  return;
                }
-               EraseScreenRedrawLines(); //*****************************
+               //EraseScreenRedrawLines(); //*****************************
                outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
                O.context = "";
                O.taskview = BY_FOLDER;
@@ -3219,7 +3176,7 @@ void outlineProcessKeypress(void) {
                 return;
                }
 
-               EraseScreenRedrawLines(); //needed to erase sort (time) column*****************************
+               //EraseScreenRedrawLines(); //needed to erase sort (time) column*****************************
                outlineSetMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
                O.taskview = BY_JOIN;
                get_items(MAX);
@@ -3228,7 +3185,7 @@ void outlineProcessKeypress(void) {
 
             case C_sort:
               if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
-                EraseScreenRedrawLines(); //*****************************
+                //EraseScreenRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 get_items(MAX);
                 outlineSetMessage("sorted by \'%s\'", O.sort.c_str());
@@ -3238,7 +3195,7 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_recent:
-               EraseScreenRedrawLines(); //*****************************
+               //EraseScreenRedrawLines(); //*****************************
                outlineSetMessage("Will retrieve recent items");
                O.context = "recent";
                O.taskview = BY_RECENT;
@@ -4380,7 +4337,6 @@ void toggle_star_pg(void) {
   else {
     outlineSetMessage("Toggle star succeeded");
     row.star = !row.star;
-    row.dirty = true;
   }
   PQclear(res);
   return;
@@ -5496,6 +5452,7 @@ void editorDrawMessageBar(std::string& ab) {
   ab.append(E.message, msglen);
 }
 
+// called by get_note (and others)
 void editorRefreshScreen(void) {
   char buf[32];
 
