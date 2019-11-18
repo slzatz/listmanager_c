@@ -152,9 +152,10 @@ enum Command {
 
   C_contexts, //change O.view to CONTEXTs :c
   C_folders,  //change O.view to FOLDERs :f
-  C_movetocontext, //mtc
-  C_movetofolder, //mtf
+  C_movetocontext,
+  C_movetofolder,
 
+  C_delmarks,
   C_showall,
 
   C_update, //update solr db
@@ -209,6 +210,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"movetocontext", C_movetocontext},
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
   {"movetofolder", C_movetofolder},
+  {"delmarks", C_delmarks},
+  {"delm", C_delmarks},
   {"update", C_update},
   {"sort", C_sort},
   {"sync", C_synch},
@@ -238,6 +241,7 @@ typedef struct orow {
   bool deleted;
   bool completed;
   bool dirty;
+  bool mark;
   char modified[16];
   
 } orow;
@@ -305,7 +309,7 @@ static void (*toggle_star)(void);
 static void (*toggle_completed)(void);
 static void (*toggle_deleted)(void);
 static void (*update_task_context)(std::string&);
-static void (*update_task_folder)(std::string&);
+static void (*update_task_folder)(std::string&, int);
 static void (*update_rows)(void);
 static void (*update_row)(void);
 //static int (*insert_row)(int); //not called directly
@@ -355,7 +359,7 @@ void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 
 //Database-related Prototypes
-int get_id(int fr);
+int get_id(void);
 int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
 int insert_container_pg(orow&);
@@ -373,8 +377,8 @@ void fts5_sqlite(void);
 
 void update_task_context_pg(const std::string&);
 void update_task_context_sqlite(const std::string&);
-void update_task_folder_pg(const std::string&);
-void update_task_folder_sqlite(const std::string&);
+void update_task_folder_pg(const std::string&, int);
+void update_task_folder_sqlite(const std::string&, int);
 
 void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
@@ -1012,6 +1016,7 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
+  row.mark = false;
   (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
                                                  : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
@@ -2007,6 +2012,7 @@ void outlineDrawRows(std::string& ab) {
     else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
     if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
+    if (row.mark) ab.append("\x1b[46m", 5); //cyan background
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
@@ -2181,7 +2187,7 @@ void outlineDrawMessageBar(std::string& ab) {
 void outlineRefreshScreen(void) {
 
   if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.fr).title.size(), O.cx, O.cy, O.fc, O.fr, get_id(-1));
+    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.fr).title.size(), O.cx, O.cy, O.fc, O.fr, get_id());
 
   std::string ab;
 
@@ -2832,7 +2838,7 @@ void outlineProcessKeypress(void) {
             return;
           }
           {
-          int id = get_id(-1);
+          int id = get_id();
           if (id != -1) {
             outlineSetMessage("Edit note %d", id);
             outlineRefreshScreen();
@@ -2929,7 +2935,7 @@ void outlineProcessKeypress(void) {
                 return;
               }
               {
-              int id = get_id(-1);
+              int id = get_id();
               if (id != -1) {
                 outlineSetMessage("Edit note %d", id);
                 outlineRefreshScreen();
@@ -2976,7 +2982,7 @@ void outlineProcessKeypress(void) {
               fts5_sqlite();
               if (O.mode != NO_ROWS) {
                 O.mode = DATABASE;
-                get_note(get_id(-1));
+                get_note(get_id());
               } else {
                 outlineRefreshScreen();
               }
@@ -3007,18 +3013,11 @@ void outlineProcessKeypress(void) {
               outlineSetMessage("Retrieved folders");
               return;
 
-            case C_movetocontext: //catches :movetocontext and :mtc todo
+            case C_movetocontext:
                {
                std::string new_context;
+               bool success = false;
                if (O.command_line.size() > 5) {
-                 bool success = false;
-                 /*
-                 for (auto i : context_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
-                     new_context = i.first;
-                     success = true;
-                     break;
-                   }*/
                  // structured bindings
                  for (const auto & [k,v] : context_map) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
@@ -3039,17 +3038,29 @@ void outlineProcessKeypress(void) {
                  O.command_line.clear();
                  return;
                }
-               update_task_context(new_context);
+               success = false;
+               for (const auto& it : O.rows) {
+                 if (it.mark) {
+                   update_task_context(new_context);
+                   success = true;
+                 }
+               }
+
+               if (success)
+                 outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
+               else
+                 outlineSetMessage("No tasks were marked!");
+
                O.mode = NORMAL;
                //O.command_line.clear(); //calling : in NORMAL clears command_line
                return;
                }
 
-            case C_movetofolder: //catches :movetocontext and :mtc todo
+            case C_movetofolder:
                {
                std::string new_folder;
+               bool success = false;
                if (O.command_line.size() > 5) {
-                 bool success = false;
                  // structured bindings
                  for (const auto & [k,v] : folder_map) {
                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
@@ -3070,9 +3081,21 @@ void outlineProcessKeypress(void) {
                  O.command_line.clear();
                  return;
                }
-               update_task_folder(new_folder);
+               success = false;
+               for (const auto& it : O.rows) {
+                 if (it.mark) {
+                   update_task_folder(new_folder, it.id);
+                   success = true;
+                 }
+               }
+
+               if (success)
+                 outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
+               else
+                 outlineSetMessage("No tasks were marked!");
+
                O.mode = NORMAL;
-               //O.command_line.clear(); //calling : in NORMAL clears command_line
+               //O.command_line.clear(); //calling : in NORMAL clears command_line before changing mode to COMMAND_LINE
                return;
                }
 
@@ -3247,6 +3270,14 @@ void outlineProcessKeypress(void) {
               O.mode = FILE_DISPLAY;
               return;
 
+            case C_delmarks:
+              for (auto& it : O.rows) {
+                it.mark = false;}
+              O.mode = NORMAL;
+              outlineSetMessage("Marks all deleted");
+
+              return;
+
             case C_quit:
             case 'q':
                {
@@ -3373,6 +3404,14 @@ void outlineProcessKeypress(void) {
         case '*':
           toggle_star(); //row.star -> "default" (sqlite) or default for context and private for folder
           return;
+
+        case 'm':
+          if (O.view == TASK) {
+            O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
+          outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+          }
+          return;
+
 
         case 's':
           if (O.view == TASK) {
@@ -3899,7 +3938,7 @@ void update_note_pg(void) {
       pos = text.find("'", pos + 2);
     }
 
-  int id = get_id(O.fr);
+  int id = get_id();
 
   std::stringstream query;
 
@@ -3938,7 +3977,7 @@ void update_note_sqlite(void) {
     pos = text.find("'", pos + 2);
   }
 
-  int id = get_id(O.fr);
+  int id = get_id();
   query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
   sqlite3 *db;
@@ -4003,7 +4042,7 @@ void update_task_context_pg(std::string& new_context) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   int context_tid = context_map.at(new_context);
 
   query << "UPDATE task SET context_tid=" << context_tid << ", "
@@ -4023,7 +4062,7 @@ void update_task_context_pg(std::string& new_context) {
 void update_task_context_sqlite(std::string& new_context) {
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   int context_tid = context_map.at(new_context);
   query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
@@ -4051,7 +4090,7 @@ void update_task_context_sqlite(std::string& new_context) {
   sqlite3_close(db);
 }
 
-void update_task_folder_pg(std::string& new_folder) {
+void update_task_folder_pg(std::string& new_folder, int id) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -4060,7 +4099,7 @@ void update_task_folder_pg(std::string& new_folder) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int folder_tid = folder_map.at(new_folder);
 
   query << "UPDATE task SET folder_tid=" << folder_tid << ", "
@@ -4077,10 +4116,10 @@ void update_task_folder_pg(std::string& new_folder) {
   PQclear(res);
 }
 
-void update_task_folder_sqlite(std::string& new_folder) {
+void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   std::stringstream query;
-  int id = get_id(-1);
+  id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int folder_tid = folder_map.at(new_folder);
   query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
@@ -4122,7 +4161,7 @@ void toggle_completed_pg(void) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "CURRENT_DATE") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
         <<  "WHERE id=" << id;
@@ -4144,7 +4183,7 @@ void toggle_completed_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
 
   query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
         << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
@@ -4190,7 +4229,7 @@ void toggle_deleted_pg(void) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
 
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
@@ -4221,7 +4260,7 @@ void touch_pg(void) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
 
   query << "UPDATE task SET modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
 
@@ -4241,7 +4280,7 @@ void touch_pg(void) {
 void touch_sqlite(void) {
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
 
   query << "UPDATE task SET modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
@@ -4275,7 +4314,7 @@ void toggle_deleted_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
 
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
@@ -4321,7 +4360,7 @@ void toggle_star_pg(void) {
   }
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
   std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
 
@@ -4347,7 +4386,7 @@ void toggle_star_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   std::stringstream query;
-  int id = get_id(-1);
+  int id = get_id();
   std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
   std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
 
@@ -5033,10 +5072,8 @@ void update_rows_sqlite(void) {
   outlineSetMessage("%s",  msg);
 }
 
-int get_id(int fr) {
-  if(fr==-1) fr = O.fr;
-  int id = O.rows.at(fr).id;
-  return id;
+int get_id(void) { //default is in prototype but should have no default at all
+  return O.rows.at(O.fr).id;
 }
 
 void outlineChangeCase() {
