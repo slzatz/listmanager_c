@@ -2134,19 +2134,23 @@ void outlineDrawStatusBar(std::string& ab) {
   char status[80], rstatus[80];
 
   std::string s;
-  if (O.view == TASK)
-    //s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
-    s = (O.mode == SEARCH) ? "search" : ((O.context == "") ? (O.folder + "[f]") : (O.context + "[c]"));
-  else if (O.view == CONTEXT)
+  if (O.view == TASK) {
+      if (O.taskview == BY_SEARCH) { s = "search";
+    } else if (O.taskview == BY_FOLDER) { s = O.folder + "[f]";
+    } else if (O.taskview == BY_CONTEXT) { s = O.context + "[c]";
+    } else if (O.taskview == BY_RECENT) {s = "recent";
+    } else if (O.taskview == BY_JOIN) {s = O.context + "[c] + " + O.folder + "[f]";}
+  } else if (O.view == CONTEXT) {
     s = "Contexts";
-  else
+  } else {
     s = "Folders";
+  }
 
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.mode == SEARCH)  ? " - " : "",
-                              (O.mode == SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
@@ -2157,8 +2161,8 @@ void outlineDrawStatusBar(std::string& ab) {
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.mode == SEARCH)  ? " - " : "",
-                              (O.mode == SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   }
@@ -3405,6 +3409,18 @@ void outlineProcessKeypress(void) {
           O.mode = NORMAL;
           get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineSetMessage("");
+          return;
+
+        case ARROW_LEFT:
+          if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
+            O.mode = SEARCH;
+            outlineSetMessage("You are now in SEARCH mode");
+          } else if (O.mode == SEARCH) {
+            O.mode = DATABASE;
+            outlineSetMessage("You are now in DATABASE mode");
+          } else {
+            outlineSetMessage("There is no active search!");
+          }
           return;
 
         case '0':
