@@ -77,15 +77,16 @@ enum outlineKey {
 };
 
 enum Mode {
-  NORMAL = 0,
-  INSERT = 1,
-  COMMAND_LINE = 2, //note: if no rows as result of search put in COMMAND_LINE mode
-  VISUAL_LINE = 3, // only editor mode
-  VISUAL = 4,
-  REPLACE = 5,
-  DATABASE = 6, // only outline mode
-  FILE_DISPLAY = 7, // only outline mode
-  NO_ROWS = 8
+  NORMAL, // = 0,
+  INSERT, // = 1,
+  COMMAND_LINE, // = 2, //note: if no rows as result of search put in COMMAND_LINE mode
+  VISUAL_LINE, // = 3, // only editor mode
+  VISUAL, // = 4,
+  REPLACE, // = 5,
+  DATABASE, // = 6, // only outline mode
+  FILE_DISPLAY,// = 7, // only outline mode
+  NO_ROWS,// = 8
+  SEARCH
 };
 
 enum View {
@@ -116,7 +117,8 @@ static const std::string mode_text[] = {
                         "REPLACE",
                         "DATABASE",
                         "FILE DISPLAY",
-                        "NO ROWS"
+                        "NO ROWS",
+                        "SEARCH"
                        }; 
 
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
@@ -174,6 +176,9 @@ enum Command {
 
   C_edit,
 
+  C_dbase,
+  C_search,
+
   C_valgrind
 };
 
@@ -230,6 +235,9 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"rec", C_recent},
   {"recent", C_recent},
   {"val", C_valgrind},
+  {"dbase", C_dbase},
+  {"database", C_dbase},
+  {"search", C_search},
   {"valgrind", C_valgrind}
 };
 
@@ -1064,7 +1072,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = DATABASE;
+    O.mode = SEARCH;
     get_note(O.rows.at(0).id);
   }
 }
@@ -1114,6 +1122,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
+  row.mark = false;
   strncpy(row.modified, argv[16], 16);
   O.rows.push_back(row);
 
@@ -1164,8 +1173,13 @@ void get_items_by_id_pg(std::stringstream& query) {
 void get_note_sqlite(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
+  if (!editor_mode && O.mode == DATABASE) {
+    display_item_info(O.rows.at(O.fr).id);
+    return;
+  }
+
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = 0;
+  //E.fr = E.fc = E.cy = E.cx = 0; // 11-18-2019 because in C_edit
 
   sqlite3 *db;
   char *err_msg = nullptr;
@@ -1173,7 +1187,7 @@ void get_note_sqlite(int id) {
   std::stringstream query;
   int rc;
 
-  if (editor_mode || O.context != "search") {
+  if (editor_mode || O.mode != SEARCH) {
     query << "SELECT note FROM task WHERE id = " << id;
     rc = sqlite3_open(SQLITE_DB.c_str(), &db);
   } else {
@@ -2121,7 +2135,8 @@ void outlineDrawStatusBar(std::string& ab) {
 
   std::string s;
   if (O.view == TASK)
-    s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
+    //s = (O.context == "") ? (O.folder + "[f]") : ((O.context == "search") ? "search" : (O.context + "[c]"));
+    s = (O.mode == SEARCH) ? "search" : ((O.context == "") ? (O.folder + "[f]") : (O.context + "[c]"));
   else if (O.view == CONTEXT)
     s = "Contexts";
   else
@@ -2130,8 +2145,8 @@ void outlineDrawStatusBar(std::string& ab) {
   if (O.rows.empty()) { //********************************** or (!O.numrows)
     len = snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.mode == SEARCH)  ? " - " : "",
+                              (O.mode == SEARCH) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   } else {
 
@@ -2142,8 +2157,8 @@ void outlineDrawStatusBar(std::string& ab) {
                               // because video is reversted [42 sets text to green and 49 undoes it
                               // I think the [0;7m is revert to normal and reverse video
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.context == "search")  ? " - " : "",
-                              (O.context == "search") ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.mode == SEARCH)  ? " - " : "",
+                              (O.mode == SEARCH) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   }
@@ -2208,7 +2223,8 @@ void outlineRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
 
   ab.append(buf, strlen(buf));
-  if (O.context == "search" && O.mode == DATABASE)
+  //if (O.context == "search" && O.mode == DATABASE)
+  if (O.mode == SEARCH)
     outlineDrawSearchRows(ab);
   else
     outlineDrawRows(ab); //unlike editorDrawRows, outDrawRows doesn't do any erasing
@@ -2218,7 +2234,7 @@ void outlineRefreshScreen(void) {
 
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
-  if (O.mode == DATABASE) {
+  if (O.mode == SEARCH || O.mode == DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     ab.append(buf, strlen(buf));
   } else {
@@ -2668,6 +2684,13 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           return;
 
+        case 'm':
+          if (O.view == TASK) {
+            O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
+          outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+          }
+          return;
+
         case 'n':
           outlineFindNextWord();
           O.command[0] = '\0';
@@ -2962,7 +2985,9 @@ void outlineProcessKeypress(void) {
               }  
 
               //EraseScreenRedrawLines(); //is this really EraseNote/////////////////////////////////////////////
-              O.context = "search";
+              O.context = "";
+              O.folder = "";
+              //O.mode = SEARCH;
               O.taskview = BY_SEARCH;
               // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
@@ -3278,6 +3303,20 @@ void outlineProcessKeypress(void) {
 
               return;
 
+            case C_dbase:
+              O.mode = DATABASE;
+              O.command[0] = '\0';
+              O.repeat = 0;
+              return;
+
+            case C_search:
+              if (O.taskview == BY_SEARCH) {
+                O.mode = SEARCH;
+                O.command[0] = '\0';
+                O.repeat = 0;
+              }
+              return;
+
             case C_quit:
             case 'q':
                {
@@ -3339,6 +3378,7 @@ void outlineProcessKeypress(void) {
       return; //end of outer case COMMAND_LINE
 
     case DATABASE:
+    case SEARCH:
 
       switch (c) {
 
@@ -3411,7 +3451,6 @@ void outlineProcessKeypress(void) {
           outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
           }
           return;
-
 
         case 's':
           if (O.view == TASK) {
