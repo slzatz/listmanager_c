@@ -2705,6 +2705,7 @@ void outlineProcessKeypress(void) {
             O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
           outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
           }
+          O.command[0] = '\0';
           return;
 
         case 'n':
@@ -3395,6 +3396,8 @@ void outlineProcessKeypress(void) {
 
       return; //end of outer case COMMAND_LINE
 
+    // note database mode always deals with current character regardless of previously typed char
+    // since all commands are one char.
     case DATABASE:
     case SEARCH:
 
@@ -3458,6 +3461,22 @@ void outlineProcessKeypress(void) {
 
         case 'x':
           if (O.view == TASK) toggle_completed();
+          return;
+
+        case 'c': // show contexts
+          editorEraseScreen(); //erase note if there is one
+          O.view = CONTEXT;
+          get_containers();
+          O.mode = NORMAL;
+          outlineSetMessage("Retrieved contexts");
+          return;
+
+        case 'f':
+          editorEraseScreen(); //erase note if there is one
+          O.view = FOLDER;
+          get_containers();
+          O.mode = NORMAL;
+          outlineSetMessage("Retrieved folders");
           return;
 
         case 'd':
@@ -3525,12 +3544,12 @@ void outlineProcessKeypress(void) {
           return;
 
         default:
-          if (c < 33 || c > 127) outlineSetMessage("<%d> doesn't do anything in DATABASE mode", c);
-          else outlineSetMessage("<%c> doesn't do anything in DATABASE mode", c);
+          if (c < 33 || c > 127) outlineSetMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
+          else outlineSetMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
           return;
       } // end of switch(c) in case DATABASLE
 
-      return; //end of outer case DATABASE
+      //return; //end of outer case DATABASE //won't be executed
 
     case VISUAL:
   
