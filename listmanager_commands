@@ -10,37 +10,47 @@ To move from DATABASE mode to OUTLINE mode:
 
 ctrl-h in NORMAL mode for editor and outline try to markup links.
 
-OUTLINE and EDITOR mode support the following Vim-like modes:
+OUTLINE and EDITOR mode support the following somewhat Vim-like modes:
 
-  NORMAL = 0,
-  INSERT = 1,
-  COMMAND_LINE = 2,
-  VISUAL_LINE = 3, //not available in OUTLINE
-  VISUAL = 4,
-  REPLACE = 5,
-  DATABASE = 6 //not available in Editor
-  FILE_DISPLAY = 7 //not available in Editor
+  NORMAL
+  INSERT
+  COMMAND_LINE
+  VISUAL_LINE //not available in OUTLINE
+  VISUAL
+  REPLACE
+  DATABASE //not available in Editor
+  FILE_DISPLAY  //not available in Editor
+  NO_ROWS -> only editing possible is inserting a new row
+  SEARCH -> shows notes and titles with highlighting; similar to DATABASE
 
 COMMAND_LINE mode supports the following:
 
-  esc - cancel
+  esc -> switch to NORMAL mode
   arrow keys (select contexts)
   contexts, context, c -> show context list
   update -> update solr database
   contexts, context, c -> show context list
+  delmarks, delm -> remove marks
+  dbase -> switch to DATABASE mode
   e, edit
   fin, find -> search the fts5 or Solr db
   folders, folder, f -> show folder list
+  join -> join folder and context
   movetocontext, mtc -> move item to new context
   movetofolder, mtf -> move item to new folder
   n, new, O -> new item
   o, open -> open a context
+  of, openfolder -> open a folder
   recent -> show recent new and changed items
   refresh, r -> refresh view
+  saveoutline, so -> saveoutline/so [filename]
+  search -> move into SEARCH mode (if active search)
   showall, show, s -> toggle show completed/deleted
+  sort -> sort by added, created, modified, startdate
   sync, synch - > sink sqlite db with aws postgres db
   test, synch_test -> show what will happen with sync but don't do it
   q, quit -> with ! exit without writing changes
+  \r -> update the row if changed
   w - write changes
   x - in EDITOR mode write changes and return to NORMAL mode; in NORMAL mode write changes and quit
 
@@ -74,8 +84,10 @@ COMMAND_LINE mode supports the following:
   l
   arrow keys
 
-  >>  //not available in outline
-  << // not available in outline
+  >>  //not available in OUTLINE mode
+  << // not available in OUTLINE mode
+
+  m - toggle mark (only available in OUTLINE mode)
 
   VISUAL LINE MODE COMMANDS
 
@@ -99,12 +111,21 @@ COMMAND_LINE mode supports the following:
 
   x
 
-DATABASE MODE
+DATABASE/SEARCH MODE
 
   x - toggle completed
+  f - display folders
+  c - display contexts
   d - toggle deleted
   * - toggle starred
   i - info
   r - refresh
   s - toggle show completed/deleted
+  m - toggle mark
+  t - touch the task
+  0, HOME KEY  - go to beginning of title
+  $, END KEY  - go to end of title
   v - render in browser
+  ARROW LEFT - cycles between DATABASE and SEARCH mode (if there is an active search)
+  ARROW RIGHT - switch to NORMAL mode
+  ARROW UP/DOWN
