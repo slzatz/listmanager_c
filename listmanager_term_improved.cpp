@@ -179,6 +179,8 @@ enum Command {
   C_dbase,
   C_search,
 
+  C_saveoutline,
+
   C_valgrind
 };
 
@@ -238,6 +240,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"dbase", C_dbase},
   {"database", C_dbase},
   {"search", C_search},
+  {"saveoutline", C_saveoutline},
+  {"so", C_saveoutline},
   {"valgrind", C_valgrind}
 };
 
@@ -365,6 +369,8 @@ void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
 void outlineDrawRows(std::string&); // doesn't do any erasing which is done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
+
+void outlineSave(const std::string &);
 
 //Database-related Prototypes
 int get_id(void);
@@ -708,6 +714,7 @@ void get_items_pg(int max) {
     row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
     row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
     row.dirty = false;
+    row.mark = false;
     (PQgetvalue(res, i, sortcolnum) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sortcolnum), 16) : strncpy(row.modified, " ", 16);
     O.rows.push_back(row);
   }
@@ -787,6 +794,7 @@ void get_containers_pg(void) {
       row.deleted = (*PQgetvalue(res, i, 5) == 't') ? true: false;
       row.completed = false;
       row.dirty = false;
+      row.mark = false;
       strncpy(row.modified, PQgetvalue(res, i, 9), 16);
       O.rows.push_back(row);
     }
@@ -883,6 +891,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[5]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
+  row.mark = false;
   strncpy(row.modified, argv[9], 16);
   O.rows.push_back(row);
 
@@ -916,6 +925,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.deleted = (atoi(argv[7]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
+  row.mark = false;
   strncpy(row.modified, argv[11], 16);
   O.rows.push_back(row);
 
@@ -1698,11 +1708,11 @@ std::string outlineRowsToString() {
   return s;
 }
 
-void outlineSave() {
+void outlineSave(const std::string& fname) {
   if (O.rows.empty()) return;
 
   std::ofstream f;
-  f.open("outline.txt");
+  f.open(fname);
   f << outlineRowsToString();
   f.close();
 
@@ -1807,16 +1817,18 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
+  if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
-  if (E.rows.size() == 0 || row.size() == 0 ) return;
+  if (row.empty()) return;
   row.erase(row.begin() + E.fc);
   E.dirty++;
 }
 
 // used by 'x' in editor/visual mode
 void editorDelChar2(int fr, int fc) {
+  if (E.rows.empty()) return;
   std::string& row = E.rows.at(fr);
-  if (E.rows.size() == 0 || row.size() == 0 ) return;
+  if (row.empty()) return;
   row.erase(row.begin() + fc);
   E.dirty++;
 }
@@ -2517,25 +2529,25 @@ void outlineProcessKeypress(void) {
             O.command[0] = '\0';
             return;
           }
-          // this is correct but it is cryptic
+          // because of first if above - this is in effect:
+          //if (O.view != TASK && row.dirty)
           if (row.dirty) { // means context or folder title has changed
             update_container();
             O.command[0] = '\0';
             return;
           }
-          // return means retrieve items
+          // return means retrieve items by context or folder
           if (O.view == CONTEXT) {
             O.context = row.title;
             O.folder = "";
             O.taskview = BY_CONTEXT;
-            get_items(MAX); //go to context (not dirty)
           } else {
             O.folder = row.title;
             O.context = "";
             O.taskview = BY_FOLDER;
-            get_items(MAX);
           }
           }
+          get_items(MAX);
           O.command[0] = '\0';
           return;
 
@@ -2943,13 +2955,10 @@ void outlineProcessKeypress(void) {
             case C_new: 
               outlineInsertRow(0, "", true, false, false, BASE_DATE);
               O.fc = O.fr = O.rowoff = 0;
-              //outlineScroll();////////////////////////////////////////////////////////////
-              //outlineRefreshScreen();  //? necessary///////////////////////////////////
               O.command[0] = '\0';
               O.repeat = 0;
               outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
               editorEraseScreen(); //erases the note area
-              //editorRefreshScreen();
               O.mode = INSERT;
               return;
 
@@ -2981,22 +2990,17 @@ void outlineProcessKeypress(void) {
               return;
               }
 
-            //case 'f'://now using for folders
             case C_find: //catches 'fin' and 'find' 
               if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
                 return;
               }  
 
-              //EraseScreenRedrawLines(); //is this really EraseNote/////////////////////////////////////////////
               O.context = "";
               O.folder = "";
-              //O.mode = SEARCH;
               O.taskview = BY_SEARCH;
-              // search_terms.clear(); //substr copy seems to reinitialize string
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              //outlineRefreshScreen(); /////////////////////////////////////////////////////////////////////////
               return;
 
             case C_fts: 
@@ -3304,7 +3308,6 @@ void outlineProcessKeypress(void) {
                 it.mark = false;}
               O.mode = NORMAL;
               outlineSetMessage("Marks all deleted");
-
               return;
 
             case C_dbase:
@@ -3318,6 +3321,17 @@ void outlineProcessKeypress(void) {
                 O.mode = SEARCH;
                 O.command[0] = '\0';
                 O.repeat = 0;
+              }
+              return;
+
+            case C_saveoutline: //saveoutline, so
+              if (pos) {
+                std::string fname = O.command_line.substr(pos + 1);
+                outlineSave(fname);
+                O.mode = NORMAL;
+                outlineSetMessage("Saved outline to %s", fname.c_str());
+              } else {
+                outlineSetMessage("You didn't provide a file name!");
               }
               return;
 
