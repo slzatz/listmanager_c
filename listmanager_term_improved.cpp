@@ -2287,8 +2287,6 @@ void outlineSetMessage(const char *fmt, ...) {
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
-  int id;
-  //orow *row;
 
   switch (key) {
     case ARROW_LEFT:
@@ -2297,6 +2295,7 @@ void outlineMoveCursor(int key) {
       // arowing left in NORMAL puts you into DATABASE mode
       else {
         O.mode = DATABASE;
+        display_item_info(O.rows.at(O.fr).id);
         O.command[0] = '\0';
         O.repeat = 0;
       }
@@ -2314,8 +2313,8 @@ void outlineMoveCursor(int key) {
       if (O.fr > 0) O.fr--; 
       O.fc = O.coloff = 0; 
 
-      id = O.rows.at(O.fr).id;
-      if (O.view == TASK) get_note(id); //if id == -1 does not try to retrieve note
+      //id = O.rows.at(O.fr).id;
+      if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
 
@@ -2323,8 +2322,8 @@ void outlineMoveCursor(int key) {
     case 'j':
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
-      id = O.rows.at(O.fr).id;
-      if (O.view == TASK) get_note(id); //if id == -1 does not try to retrieve note
+      //id = O.rows.at(O.fr).id;
+      if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
       //editorRefreshScreen(); //in get_note
       break;
   }
@@ -2332,10 +2331,6 @@ void outlineMoveCursor(int key) {
   orow& row = O.rows.at(O.fr);
   if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
 }
-/**********************************************************************/
-void contextProcessKeypress(void) {
-}
-/**********************************************************************/
 
 // higher level outline function depends on readKey()
 void outlineProcessKeypress(void) {
