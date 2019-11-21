@@ -2,22 +2,18 @@
 
 '''
 module to sync remote sql-based server (currently postgreSQL) database with a local (currently sqlite) database
-But confusingly the downloadtasksfromserver is about downloading from toodledo to sql-based server with
-the additional factor that you want to run the sql-based server in front of the local database such that the
-local server cannot synch directly with toodledo only the remote server can.
 '''
 
 import datetime
 from lmdb_s import * 
 import lmdb_p as p
-#import lmglobals_s as g
 
 def synchronize(report_only=True):
-    '''
-    This synch is designed to be between postgreSQL and sqlite.  It is not the synch between toodledo and postgreSQL
-    '''
     nn = 0
     log = "****************************** BEGIN SYNC *******************************************\n\n"
+
+    remote_conn = p.remote_engine.connect()
+    local_conn = local_engine.connect()
 
     # may want to return a dictionary that identifies what might need further processing
     # "server_tasks", "client_tasks", "changes", "server_deleted", "client_deleted"
@@ -26,8 +22,6 @@ def synchronize(report_only=True):
     tasklist= [] #server changed tasks
     deletelist = [] #server deleted tasks
 
-    # Seems necessary to create the remote session when needed since it appears to close if unused
-    # Have now added pool_recycle to create_engine so remote_session = p.remote_session may be OK
     remote_session = p.remote_session
     try:
         remote_session.execute("SELECT 1")
@@ -41,7 +35,7 @@ def synchronize(report_only=True):
     last_client_sync = client_sync.timestamp 
     last_server_sync = server_sync.timestamp 
 
-    log+= "LISTMANAGER SYNCRONIZATION NORM\n"
+    log+= "LISTMANAGER SYNCRONIZATION\n"
     log+= "Server you are synching with is {}\n".format(p.remote_engine)
     log+= "Local Time is {0}\n\n".format(datetime.datetime.now())
     delta = datetime.datetime.now() - last_client_sync
@@ -289,34 +283,6 @@ def synchronize(report_only=True):
 
         log += f"{action} - id: {folder.id} title: {folder.title} \n"
 
-    # the following is intended to catch contexts deleted on the server
-    if 0:
-        server_context_tids = set([sc.id for sc in remote_session.query(p.Context)])
-        client_context_tids = set([cc.tid for cc in local_session.query(Context)])
-
-        client_not_server = client_context_tids - server_context_tids
-
-        for tid in client_not_server:
-            cc = local_session.query(Context).filter_by(tid=tid).one()
-
-            tasks = local_session.query(Task).filter_by(context_tid=tid).all()
-            for t in tasks:
-                t.context_tid = 1
-                log+="client task id: {t.id} title {t.title} was put in context 'No Context'\n"
-
-            title = cc.title
-            local_session.delete(cc)
-            local_session.commit()
-            #Note that the delete sets context_tid=None for all tasks in the context
-            #I wonder how you set to zero - this is done "manually" below
-            log+= "Deleted client context tid: {cc.tid}  - title {cc.title}"
-
-            #These tasks are marked as changed by server so don't need to do this
-            #They temporarily pick of context_tid of None after the context is deleted on the client
-            #When tasks are updated later in sync they pick up correct folder_tid=0
-
-        #no code for client deleted contexts yet
-        
     # updated server tasks -> client
     if server_updated_tasks:
         log += "\nTasks that were updated/created on the Server that need to be updated/created on the Client:\n"
@@ -481,6 +447,12 @@ def synchronize(report_only=True):
     # Delete from client contexts deleted on server
     for sc in server_deleted_contexts:
         # deal with server context's related tasks    
+        
+        ##########################################################################################
+        #stmt = p.task_table.update().where(p.task_table.c.context_tid==sc.id) values(context_tid=1)
+        #result = remote_conn.execute(stmt)
+        ##########################################################################################
+
         tasks = sc.tasks
         no_context = remote_session.query(p.Context).get(1)
         for task in tasks:
@@ -491,6 +463,12 @@ def synchronize(report_only=True):
         context = local_session.query(Context).filter_by(tid=sc.id).first()
         if context:
             log+=f"Context deleted on Server will be deleted on Client - id: {context.id}; tid: {context.tid}; title: {context.title}\n"
+
+        ##########################################################################################
+        #stmt = task_table.update().where(task_table.c.context_tid==sc.id).values(context_tid=1)
+        #result = local_conn.execute(stmt)
+        ##########################################################################################
+
             no_context = local_session.query(Context).filter_by(tid=1).one()
             #tasks = local_session.query(Task).filter_by(context_tid=context.tid).all()
             tasks = context.tasks
@@ -502,9 +480,55 @@ def synchronize(report_only=True):
         else:
             log+="Context deleted on Server unsuccessful trying to delete on Client - could not find Client context with tid = {sc.id}\n"
 
+    # Delete from server contexts deleted on client
+    for cc in client_deleted_contexts:
+        # deal with client context's related tasks    
+
+        ######################################################################################
+        #stmt = task_table.update().where(task_table.c.context_tid==cc.tid).values(context_tid=1)
+        #result = local_conn.execute(stmt)
+        ######################################################################################
+
+        tasks = cc.tasks
+        #no_context = local_session.query(Context).get(1) #prob should be tid??
+        no_context = local_session.query(Context).filter_by(tid=1).first() #prob should be tid??
+        for task in tasks:
+            task.context = no_context
+            local_session.commit()
+
+        # deal with server context and its related tasks    
+        context = remote_session.query(p.Context).filter_by(id=cc.tid).first()
+        if context:
+            log+=f"Context deleted on Client will be deleted on Server - id: {context.id}; title: {context.title}\n"
+
+        ######################################################################################
+        #stmt = p.task_table.update().where(p.task_table.c.context_tid==cc.tid).values(context_tid=1)
+        #result = remote_conn.execute(stmt)
+        ######################################################################################
+
+            no_context = remote_session.query(p.Context).get(1)
+            #tasks = local_session.query(Task).filter_by(context_tid=context.tid).all()
+            tasks = context.tasks
+            for task in tasks:
+                task.context = no_context
+            remote_session.commit()
+            remote_session.delete(context)
+            remote_session.commit() 
+        else:
+            log+="Context deleted on Client unsuccessful trying to delete on Server - could not find Server context with id = {cc.tid}\n"
+
+        local_session.delete(cc)
+        local_session.commit()
+
     # Delete from client folders deleted on server
     for sf in server_deleted_folders:
         # deal with server folder's related tasks    
+        
+        ##########################################################################################
+        #stmt = p.task_table.update().where(p.task_table.c.folder_tid==sc.id).values(folder_tid=1)
+        #result = remote_conn.execute(stmt)
+        ##########################################################################################
+
         tasks = sf.tasks
         no_folder = remote_session.query(p.Folder).get(1)
         for task in tasks:
@@ -515,6 +539,12 @@ def synchronize(report_only=True):
         folder = local_session.query(Folder).filter_by(tid=sf.id).first()
         if folder:
             log+=f"Folder deleted on Server deleted on Client - id: {folder.id}; tid: {folder.tid}; title: {folder.title}\n"
+
+        ##########################################################################################
+        #stmt = task_table.update().where(task_table.c.folder_tid==sc.id).values(folder_tid=1)
+        #result = local_conn.execute(stmt)
+        ##########################################################################################
+
             no_folder = local_session.query(Folder).filter_by(tid=1).one()
             tasks = local_session.query(Task).filter_by(folder_tid=folder.tid).all()
             for task in tasks:
@@ -524,6 +554,47 @@ def synchronize(report_only=True):
             local_session.commit() 
         else:
             log+="Folder deleted on Server unsuccessful trying to delete on Client - could not find Client context with tid = {sf.id}\n"
+
+    # Delete from server folders deleted on client
+    for cf in client_deleted_folders:
+        # deal with client folder's related tasks    
+
+        ######################################################################################
+        #stmt = task_table.update().where(task_table.c.folder_tid==cc.tid) values(folder_tid=1)
+        #result = local_conn.execute(stmt)
+        ######################################################################################
+
+        tasks = cf.tasks
+        #no_context = local_session.query(Context).get(1) #prob should be tid??
+        no_folder = local_session.query(Folder).filter_by(tid=1).first() #prob should be tid??
+        for task in tasks:
+            task.folder = no_folder
+            local_session.commit()
+
+
+        # deal with server folder and its related tasks    
+        folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
+        if folder:
+            log+=f"Folder deleted on Client will be deleted on Server - id: {context.id}; title: {context.title}\n"
+
+        ######################################################################################
+        #stmt = p.task_table.update().where(p.task_table.c.folder_tid==cc.tid) values(folder_tid=1)
+        #result = remote_conn.execute(stmt)
+        ######################################################################################
+
+            no_folder = remote_session.query(p.Folder).get(1)
+            #tasks = local_session.query(Task).filter_by(context_tid=context.tid).all()
+            tasks = folder.tasks
+            for task in tasks:
+                task.folder = no_folder
+            remote_session.commit()
+            remote_session.delete(folder)
+            remote_session.commit() 
+        else:
+            log+="Folder deleted on Client unsuccessful trying to delete on Server - could not find Server folder with id = {cf.tid}\n"
+
+        local_session.delete(cf)
+        local_session.commit()
 
     client_sync.timestamp = datetime.datetime.now() + datetime.timedelta(seconds=5) # giving a little buffer if the db takes time to update on client or server
 

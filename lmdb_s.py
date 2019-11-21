@@ -14,7 +14,7 @@ from config import LOCAL_DB_FILE
 
 sqlite_uri = 'sqlite:///' + LOCAL_DB_FILE
 
-__all__ = ['Task', 'Context', 'Folder', 'Keyword', 'TaskKeyword', 'Sync', 'local_engine', 'sqla_exc', 'sqla_orm_exc', 'local_session', 'or_', 'and_', 'case', 'literal', 'asc', 'desc', 'joinedload', 'func'] #'RDS_URI', 'REMOTE_DB''remote_session', 'remote_engine', 'Remote_Session' - these all removed because lmdb_s.py should only provide local sqlite objects; also removed metadata, Temp_tid
+__all__ = ['Task', 'Context', 'Folder', 'Keyword', 'TaskKeyword', 'Sync', 'local_engine', 'sqla_exc', 'sqla_orm_exc', 'local_session', 'or_', 'and_', 'case', 'literal', 'asc', 'desc', 'joinedload', 'func', 'task_table'] #'RDS_URI', 'REMOTE_DB''remote_session', 'remote_engine', 'Remote_Session' - these all removed because lmdb_s.py should only provide local sqlite objects; also removed metadata, Temp_tid
 
 metadata = MetaData()
 task_table = Table('task',metadata,
