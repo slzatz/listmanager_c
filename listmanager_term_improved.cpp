@@ -681,7 +681,7 @@ void get_items_pg(int max) {
     query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
           << " WHERE folder.title = '" << O.folder << "' ";
   } else if (O.taskview == BY_RECENT) {
-    query << "SELECT * FROM task";
+    query << "SELECT * FROM task WHERE 1=1";
   } else if (O.taskview == BY_JOIN) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
           << " JOIN folder ON folder.tid = task.folder_tid"
@@ -959,7 +959,7 @@ void get_items_sqlite(int max) {
     query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
           << " WHERE folder.title = '" << O.folder << "' ";
   } else if (O.taskview == BY_RECENT) {
-    query << "SELECT * FROM task";
+    query << "SELECT * FROM task WHERE 1=1";
   } else if (O.taskview == BY_JOIN) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
           << " JOIN folder ON folder.tid = task.folder_tid"
