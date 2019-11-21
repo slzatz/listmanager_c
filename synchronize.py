@@ -482,12 +482,12 @@ def synchronize(report_only=True):
         if context:
             log+=f"Context deleted on Server will be deleted on Client - id: {context.id}; tid: {context.tid}; title: {context.title}\n"
 
-        ##########################################################################################
-        #stmt = task_table.update().where(task_table.c.context_tid==sc.id).values(context_tid=1)
-        #result = local_conn.execute(stmt)
-        local_session.query(Task).filter(Task.context_tid==sc.id).update({Task.context_tid : 1}) #, synchronize_session=
-        local_session.commit()
-        ##########################################################################################
+            ##########################################################################################
+            #stmt = task_table.update().where(task_table.c.context_tid==sc.id).values(context_tid=1)
+            #result = local_conn.execute(stmt)
+            local_session.query(Task).filter(Task.context_tid==sc.id).update({Task.context_tid : 1}) #, synchronize_session=
+            local_session.commit()
+            ##########################################################################################
 
         # eliminate below
         ######################################################################################
