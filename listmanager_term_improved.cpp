@@ -273,6 +273,7 @@ struct outlineConfig {
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
+  int last_mode;
   // probably ok that command isn't a std::string although it could be
   char command[10]; // doesn't include command_line commands
   std::string command_line; //for commands on the command line; string doesn't include ':'
@@ -731,7 +732,8 @@ void get_items_pg(int max) {
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = NORMAL;
+    //O.mode = NORMAL;
+    O.mode = O.last_mode;
     get_note(O.rows.at(0).id);
   }
 }
@@ -991,7 +993,8 @@ void get_items_sqlite(int max) {
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = NORMAL;
+    //O.mode = NORMAL;
+    O.mode = O.last_mode;
     get_note(O.rows.at(0).id);
   }
 }
@@ -1882,6 +1885,7 @@ std::string editorRowsToString(void) {
   return z;
 }
 
+// erases note
 void editorEraseScreen(void) {
 
   E.rows.clear();
@@ -2235,7 +2239,7 @@ void outlineRefreshScreen(void) {
   char buf[20];
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
-  //Doesn't erase time/sort column and if proceeded by EraseScreenRedrawLines seems redundant
+  //Now erases time/sort column (+ 17 in line below)
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
     //O.screencols + OUTLINE_LEFT_MARGIN);
@@ -2245,9 +2249,8 @@ void outlineRefreshScreen(void) {
 
   // put cursor at upper left after erasing
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
-
   ab.append(buf, strlen(buf));
-  //if (O.context == "search" && O.mode == DATABASE)
+
   if (O.mode == SEARCH)
     outlineDrawSearchRows(ab);
   else
@@ -2261,18 +2264,20 @@ void outlineRefreshScreen(void) {
   if (O.mode == SEARCH || O.mode == DATABASE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
     ab.append(buf, strlen(buf));
-  } else {
+  } else if (O.mode != COMMAND_LINE) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN);
+    ab.append(buf, strlen(buf));
+    // below restores the cursor position based on O.cx and O.cy + margin
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
+    ab.append(buf, strlen(buf));
+    ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+  // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
+  } else { //O.mode == COMMAND_LINE
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + OUTLINE_LEFT_MARGIN); /// ****
     ab.append(buf, strlen(buf));
     ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
   }
-
-  // below restores the cursor position based on O.cx and O.cy + margin
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
-  ab.append(buf, strlen(buf));
-
   ab.append("\x1b[0m", 4); //return background to normal
-
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
@@ -2677,9 +2682,10 @@ void outlineProcessKeypress(void) {
           return;
 
         case ':':
+          outlineSetMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
-          outlineSetMessage(":");
+          O.last_mode = O.mode;
           O.mode = COMMAND_LINE;
           return;
 
@@ -2927,7 +2933,7 @@ void outlineProcessKeypress(void) {
 
             case 'w':
               if (O.view == TASK) update_rows();
-              O.mode = 0;
+              O.mode = O.last_mode;
               O.command_line.clear();
               return;
 
@@ -2952,6 +2958,7 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("contexts/folders will be refreshed");
                 get_containers();
               }
+              O.mode = O.last_mode;
               return;
 
             //in vim create new window and edit a file in it - here creates new item
@@ -3005,6 +3012,7 @@ void outlineProcessKeypress(void) {
               O.taskview = BY_SEARCH;
               search_terms = O.command_line.substr(pos+1);
               search_db();
+              O.mode = O.last_mode;
               return;
 
             case C_fts: 
@@ -3051,155 +3059,155 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_movetocontext:
-               {
-               std::string new_context;
-               bool success = false;
-               if (O.command_line.size() > 5) {
-                 // structured bindings
-                 for (const auto & [k,v] : context_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                     new_context = k;
-                     success = true;
-                     break;
-                   }
-                 }
-                 if (!success) {
-                   outlineSetMessage("What you typed did not match any context");
-                   return;
-                 }
+              {
+              std::string new_context;
+              bool success = false;
+              if (O.command_line.size() > 5) {
+                // structured bindings
+                for (const auto & [k,v] : context_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    new_context = k;
+                    success = true;
+                    break;
+                  }
+                }
+                if (!success) {
+                  outlineSetMessage("What you typed did not match any context");
+                  return;
+                }
 
-               } else {
-                 outlineSetMessage("You need to provide at least 3 characters "
-                                   "that match a context!");
+              } else {
+                outlineSetMessage("You need to provide at least 3 characters "
+                                  "that match a context!");
 
-                 O.command_line.clear();
-                 return;
-               }
-               success = false;
-               for (const auto& it : O.rows) {
-                 if (it.mark) {
-                   update_task_context(new_context);
-                   success = true;
-                 }
-               }
+                O.command_line.clear();
+                return;
+              }
+              success = false;
+              for (const auto& it : O.rows) {
+                if (it.mark) {
+                  update_task_context(new_context);
+                  success = true;
+                }
+              }
 
-               if (success)
-                 outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
-               else
-                 outlineSetMessage("No tasks were marked!");
+              if (success)
+                outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
+              else
+                outlineSetMessage("No tasks were marked!");
 
-               O.mode = NORMAL;
-               //O.command_line.clear(); //calling : in NORMAL clears command_line
-               return;
-               }
+              O.mode = NORMAL;
+              //O.command_line.clear(); //calling : in NORMAL clears command_line
+              return;
+              }
 
             case C_movetofolder:
-               {
-               std::string new_folder;
-               bool success = false;
-               if (O.command_line.size() > 5) {
-                 // structured bindings
-                 for (const auto & [k,v] : folder_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                     new_folder = k;
-                     success = true;
-                     break;
-                   }
-                 }
-                 if (!success) {
-                   outlineSetMessage("What you typed did not match any folder");
-                   return;
-                 }
+              {
+              std::string new_folder;
+              bool success = false;
+              if (O.command_line.size() > 5) {
+                // structured bindings
+                for (const auto & [k,v] : folder_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    new_folder = k;
+                    success = true;
+                    break;
+                  }
+                }
+                if (!success) {
+                  outlineSetMessage("What you typed did not match any folder");
+                  return;
+                }
 
-               } else {
-                 outlineSetMessage("You need to provide at least 3 characters "
-                                   "that match a folder!");
+              } else {
+                outlineSetMessage("You need to provide at least 3 characters "
+                                  "that match a folder!");
 
-                 O.command_line.clear();
-                 return;
-               }
-               success = false;
-               for (const auto& it : O.rows) {
-                 if (it.mark) {
-                   update_task_folder(new_folder, it.id);
-                   success = true;
-                 }
-               }
+                O.command_line.clear();
+                return;
+              }
+              success = false;
+              for (const auto& it : O.rows) {
+                if (it.mark) {
+                  update_task_folder(new_folder, it.id);
+                  success = true;
+                }
+              }
 
-               if (success)
-                 outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
-               else
-                 outlineSetMessage("No tasks were marked!");
-
-               O.mode = NORMAL;
-               //O.command_line.clear(); //calling : in NORMAL clears command_line before changing mode to COMMAND_LINE
-               return;
-               }
+              if (success)
+                outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
+              else
+                outlineSetMessage("No tasks were marked!");
+              //NORMAL and DATABASE/SEARCH clear command_line and command before switching to mode COMMAND_LINE
+              O.mode = NORMAL;
+              return;
+              }
 
             case C_open: //by context
-               {
-               std::string new_context;
-               if (pos) {
-                 bool success = false;
-                 /*
-                 for (auto i : context_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
-                     new_context = i.first;
-                     success = true;
-                     break;
-                   }*/
-                 //structured bindings
-                 for (const auto & [k,v] : context_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                     new_context = k;
-                     success = true;
-                     break;
-                   }
-                 }
-                 if (!success) return;
+              {
+              std::string new_context;
+              if (pos) {
+                bool success = false;
+                /*
+                for (auto i : context_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
+                    new_context = i.first;
+                    success = true;
+                    break;
+                  }*/
+                //structured bindings
+                for (const auto & [k,v] : context_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    new_context = k;
+                    success = true;
+                    break;
+                  }
+                }
+                if (!success) return;
 
-               } else {
-                 outlineSetMessage("You did not provide a valid  context!");
-                 //O.command_line[1] = '\0';
-                 O.command_line.resize(1);
-                 return;
-               }
-               //EraseScreenRedrawLines(); //*****************************
-               outlineSetMessage("\'%s\' will be opened", new_context.c_str());
-               O.context = new_context; 
-               O.folder = "";
-               O.taskview = BY_CONTEXT;
-               get_items(MAX);
-               //editorRefreshScreen(); //in get_note
-               return;
-               }
+              } else {
+                outlineSetMessage("You did not provide a valid  context!");
+                //O.command_line[1] = '\0';
+                O.command_line.resize(1);
+                return;
+              }
+              //EraseScreenRedrawLines(); //*****************************
+              outlineSetMessage("\'%s\' will be opened", new_context.c_str());
+              O.context = new_context;
+              O.folder = "";
+              O.taskview = BY_CONTEXT;
+              get_items(MAX);
+              //editorRefreshScreen(); //in get_note
+              O.mode = O.last_mode;
+              return;
+              }
 
             case C_openfolder:
-               {
-               if (pos) {
-                 bool success = false;
-                 for (const auto & [k,v] : folder_map) {
-                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                     O.folder = k;
-                     success = true;
-                     break;
-                   }
-                 }
-                 if (!success) return;
+              {
+              if (pos) {
+                bool success = false;
+                for (const auto & [k,v] : folder_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    O.folder = k;
+                    success = true;
+                    break;
+                  }
+                }
+                if (!success) return;
 
-               } else {
-                 outlineSetMessage("You did not provide a valid  folder!");
-                 O.command_line.resize(1);
-                 return;
-               }
-               //EraseScreenRedrawLines(); //*****************************
-               outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
-               O.context = "";
-               O.taskview = BY_FOLDER;
-               get_items(MAX);
-               //editorRefreshScreen(); //in get_note
-               return;
-               }
+              } else {
+                outlineSetMessage("You did not provide a valid  folder!");
+                O.command_line.resize(1);
+                return;
+              }
+              //EraseScreenRedrawLines(); //*****************************
+              outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+              O.context = "";
+              O.taskview = BY_FOLDER;
+              get_items(MAX);
+              //editorRefreshScreen(); //in get_note
+              return;
+              }
 
             case C_join:
               {
@@ -3234,7 +3242,7 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("You did not provide a valid folder or context to join!");
                 O.command_line.resize(1);
                 return;
-               }
+              }
 
                //EraseScreenRedrawLines(); //needed to erase sort (time) column*****************************
                outlineSetMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
@@ -3255,14 +3263,14 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_recent:
-               //EraseScreenRedrawLines(); //*****************************
-               outlineSetMessage("Will retrieve recent items");
-               O.context = "recent";
-               O.taskview = BY_RECENT;
-               O.folder = "";
-               get_items(MAX);
-               //editorRefreshScreen(); //in get_note
-               return;
+              //EraseScreenRedrawLines(); //*****************************
+              outlineSetMessage("Will retrieve recent items");
+              O.context = "recent";
+              O.taskview = BY_RECENT;
+              O.folder = "";
+              get_items(MAX);
+              //editorRefreshScreen(); //in get_note
+              return;
 
             case 's':
             case C_showall:
@@ -3310,7 +3318,7 @@ void outlineProcessKeypress(void) {
             case C_delmarks:
               for (auto& it : O.rows) {
                 it.mark = false;}
-              O.mode = NORMAL;
+              O.mode = O.last_mode;
               outlineSetMessage("Marks all deleted");
               return;
 
@@ -3341,32 +3349,32 @@ void outlineProcessKeypress(void) {
 
             case C_quit:
             case 'q':
-               {
-               bool unsaved_changes = false;
-               for (auto it : O.rows) {
-                 if (it.dirty) {
-                   unsaved_changes = true;
-                   break;
-                 }
-               }
-               if (unsaved_changes) {
-                 O.mode = NORMAL;
-                 outlineSetMessage("No db write since last change");
+              {
+              bool unsaved_changes = false;
+              for (auto it : O.rows) {
+                if (it.dirty) {
+                  unsaved_changes = true;
+                  break;
+                }
+              }
+              if (unsaved_changes) {
+                O.mode = NORMAL;
+                outlineSetMessage("No db write since last change");
            
-               } else {
-                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-                 write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-                 Py_FinalizeEx();
-                 exit(0);
-               }
-               return;
-               }
+              } else {
+                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+                write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+                Py_FinalizeEx();
+                exit(0);
+              }
+              return;
+              }
 
             case C_quit0: //catches both :q! and :quit!
-               write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-               write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-               Py_FinalizeEx();
-               exit(0);
+              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+              write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+              Py_FinalizeEx();
+              exit(0);
 
             case 'h':
             case C_help:
@@ -3456,9 +3464,10 @@ void outlineProcessKeypress(void) {
           }
 
         case ':':
+          outlineSetMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
-          outlineSetMessage(":");
+          O.last_mode = O.mode;
           O.mode = COMMAND_LINE;
           return;
 
@@ -3646,10 +3655,12 @@ void outlineProcessKeypress(void) {
           break;
 
         case ':':
+          outlineSetMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
-          outlineSetMessage(":");
+          O.last_mode = O.mode;
           O.mode = COMMAND_LINE;
+
           return;
 
         case '\x1b':
@@ -7411,6 +7422,7 @@ void initOutline() {
   O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   O.highlight[0] = O.highlight[1] = -1;
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
+  O.last_mode = NORMAL;
   O.command[0] = '\0';
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
