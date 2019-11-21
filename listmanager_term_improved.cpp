@@ -408,6 +408,8 @@ int context_titles_callback(void *, int, char **, char **);
 int folder_titles_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
+void display_item_info_pg(int);
+void display_item_info_sqlite(int);
 int display_item_info_callback(void *, int, char **, char **);
 
 void synchronize(int);
@@ -807,6 +809,7 @@ void get_containers_pg(void) {
       row.deleted = (*PQgetvalue(res, i, 7) == 't') ? true: false;
       row.completed = false;
       row.dirty = false;
+      row.mark = false;
       strncpy(row.modified, PQgetvalue(res, i, 11), 16);
       O.rows.push_back(row);
     }
@@ -1250,8 +1253,13 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 void get_note_pg(int id) {
   if (id ==-1) return;
 
+  if (!editor_mode && O.mode == DATABASE) {
+    display_item_info(O.rows.at(O.fr).id);
+    return;
+  }
+
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = 0;
+  //E.fr = E.fc = E.cy = E.cx = 0;
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -3769,6 +3777,15 @@ void display_item_info_pg(int id) {
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
+
+  //int folder_tid = atoi(argv[5]);
+  int folder_tid = atoi(PQgetvalue(res, 0, 5));
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
