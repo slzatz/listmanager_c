@@ -528,12 +528,12 @@ def synchronize(report_only=True):
         if context:
             log+=f"Context deleted on Client will be marked as deleted on Server - id: {context.id}; title: {context.title}\n"
 
-        ######################################################################################
-        #stmt = p.task_table.update().where(p.task_table.c.context_tid==cc.tid).values(context_tid=1)
-        #result = remote_conn.execute(stmt)
-        remote_session.query(p.Task).filter(p.Task.context_tid==cc.tid).update({p.Task.context_tid : 1}) #? synchronize_session =   False
-        remote_session.commit()
-        ######################################################################################
+            ######################################################################################
+            #stmt = p.task_table.update().where(p.task_table.c.context_tid==cc.tid).values(context_tid=1)
+            #result = remote_conn.execute(stmt)
+            remote_session.query(p.Task).filter(p.Task.context_tid==cc.tid).update({p.Task.context_tid : 1}) #? synchronize_session =   False
+            remote_session.commit()
+            ######################################################################################
 
         # eliminate below
         ######################################################################################
@@ -578,12 +578,12 @@ def synchronize(report_only=True):
         if folder:
             log+=f"Folder deleted on Server deleted on Client - id: {folder.id}; tid: {folder.tid}; title: {folder.title}\n"
 
-        ##########################################################################################
-        #stmt = task_table.update().where(task_table.c.folder_tid==sf.id).values(folder_tid=1)
-        #result = local_conn.execute(stmt)
-        local_session.query(Task).filter(Task.folder_tid==sf.id).update({Task.folder_tid : 1}) #, synchronize_session=
-        local_session.commit()
-        ##########################################################################################
+            ##########################################################################################
+            #stmt = task_table.update().where(task_table.c.folder_tid==sf.id).values(folder_tid=1)
+            #result = local_conn.execute(stmt)
+            local_session.query(Task).filter(Task.folder_tid==sf.id).update({Task.folder_tid : 1}) #, synchronize_session=
+            local_session.commit()
+            ##########################################################################################
 
         # eliminate below
         ######################################################################################
@@ -624,12 +624,12 @@ def synchronize(report_only=True):
         if folder:
             log+=f"Folder deleted on Client will be marked as deleted on Server - id: {context.id}; title: {context.title}\n"
 
-        ######################################################################################
-        #stmt = p.task_table.update().where(p.task_table.c.folder_tid==cf.tid) values(folder_tid=1)
-        #result = remote_conn.execute(stmt)
-        remote_session.query(p.Task).filter(p.Task.folder_tid==cf.tid).update({p.Task.folder_tid : 1}) #? synchronize_session =   False
-        remote_session.commit()
-        ######################################################################################
+            ######################################################################################
+            #stmt = p.task_table.update().where(p.task_table.c.folder_tid==cf.tid) values(folder_tid=1)
+            #result = remote_conn.execute(stmt)
+            remote_session.query(p.Task).filter(p.Task.folder_tid==cf.tid).update({p.Task.folder_tid : 1}) #? synchronize_session =   False
+            remote_session.commit()
+            ######################################################################################
 
         # eliminate below
         ######################################################################################
