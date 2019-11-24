@@ -349,7 +349,8 @@ static void (*map_folder_titles)(void);
 static void (*get_containers)(void);
 static void (*update_container)(void);
 //static void (*insert_context)(void); //not called directly
-
+static void (*add_task_keyword)(const std::string&);
+static void (*delete_task_keywords)(void);
 int getWindowSize(int *, int *);
 
 // I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
@@ -413,6 +414,11 @@ void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
 void map_folder_titles_pg(void);
 void map_folder_titles_sqlite(void);
+
+void add_task_keyword_sqlite(const std::string &);
+void add_task_keyword_pg(const std::string &);
+void delete_task_keywords_pg(void);
+void delete_task_keywords_sqlite(void);
 
 //sqlite callback functions
 int fts5_callback(void *, int, char **, char **);
@@ -705,6 +711,9 @@ void get_items_pg(int max) {
           << " JOIN folder ON folder.tid = task.folder_tid"
           << " WHERE context.title = '" << O.context << "'"
           << " AND folder.title = '" << O.folder << "'";
+  } else if (O.taskview == BY_KEYWORD) {
+    query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
+          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
   } else {
       outlineSetMessage("You asked for an unsupported db query");
       return;
@@ -1070,9 +1079,45 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void add_task_keyword_sqlite(const std::string &kw) {
+void add_task_keyword_pg(const std::string &kw) {
 
-  //task_keywords.clear();
+  std::stringstream query;
+  // adds keyword user wants to add to task to list of keywords if it doesn't exist
+  // for some reason right now can't alter pg keyword table to add star or modified!!
+  query <<  "INSERT INTO keyword (name) VALUES ('" << kw << "') ON CONFLICT DO NOTHING;";  //<- works for postgres
+  PGresult *res = PQexec(conn, query.str().c_str());
+  //if (PQresultStatus(res) != PGRES_TUPLES_OK) { //for selects returning data
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Problem inserting into keyword table (whether kw present or not");
+    //outlineSetMessage("Problem: %s", PQerrorMessage(conn));
+    PQclear(res);
+    return;
+  }
+
+  std::stringstream query2;
+  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+
+  res = PQexec(conn, query2.str().c_str());
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Problem inserting into task_keyword");
+    PQclear(res);
+    return;
+  }
+
+  std::stringstream query3;
+  // updates task modified column so know that something changed with the task
+  query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
+
+  res = PQexec(conn, query3.str().c_str());
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Problem updating tasks modified date");
+    PQclear(res);
+    return;
+  }
+  PQclear(res);
+}
+
+void add_task_keyword_sqlite(const std::string &kw) {
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1088,6 +1133,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
   std::stringstream query;
   // adds keyword user wants to add to task to list of keywords if it doesn't exist
+  // note you don't have to do INSERT OR IGNORE but could just do INSERT since there is a unique constraint on keyword.name
+  // but you don't want to trigger an error either so probably best to retain INSERT OR IGNORE
   query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
         <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
 
@@ -1100,10 +1147,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
   }
 
   std::stringstream query2;
-  //gets the id of the keyword just added (if needed). Am sure this can be combined with the below
-  query2 << "SELECT keyword.id from keyword WHERE keyword.name = '" << kw << "';";
-  int keyword_id = 0;
-  rc = sqlite3_exec(db, query2.str().c_str(), keyword_id_callback, &keyword_id, &err_msg);
+  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
@@ -1112,8 +1157,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
   }
 
   std::stringstream query3;
-  query3 << "INSERT INTO task_keyword (task_id, keyword_id) VALUES (" << O.rows.at(O.fr).id << "," << keyword_id << ");";
-
+  // updates task modified column so know that something changed with the task
+  query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
   rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s", err_msg);
@@ -1121,16 +1166,36 @@ void add_task_keyword_sqlite(const std::string &kw) {
     sqlite3_close(db);
     return;
   }
-  std::stringstream query4;
-  // updates task modified column so know that something changed with the task
-  query4 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
-  rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
-    return;
+
+
+    /**************fts virtual table update**********************/
+
+
+  /* if include tag in fts virtual table will have to update tag here
+  task_keywords.clear();
+  get_task_keywords_pg();
+  std::string delim = "";
+  std::string s;
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
   }
+  std::stringstream query2;
+  query2 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL fts error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Updated note and fts entry for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded");
+  }
+  */
+
+
   sqlite3_close(db);
 }
 
@@ -1140,7 +1205,7 @@ int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColNam
   return 0;
 }
 
-void delete_task_keywords(void) {
+void delete_task_keywords_sqlite(void) {
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1160,13 +1225,43 @@ void delete_task_keywords(void) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
   }
+    /**************fts virtual table update**********************/
+
+
+  /* if include tag in fts virtual table will have to update tag here
+  std::stringstream query2;
+  query2 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL fts error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineSetMessage("Updated note and fts entry for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded");
+  }
+  */
+  sqlite3_close(db);
 }
+
+void delete_task_keywords_pg(void) {
+
+  std::stringstream query;
+  query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
+  PGresult *res = PQexec(conn, query.str().c_str());
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Problem deleting the task's keywords");
+  }
+  PQclear(res);
+}
+
 void get_task_keywords_pg(void) {
 
   std::stringstream query;
   task_keywords.clear();
 
-  //query << "SELECT task_keyword.task_id, task_keyword.keyword_id, keyword.id, keyword.name "
   query << "SELECT keyword.name "
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
@@ -1176,7 +1271,7 @@ void get_task_keywords_pg(void) {
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
     outlineSetMessage("Problem retrieving the task's keywords");
     PQclear(res);
-    //do_exit(conn);
+    return;
   }
   int rows = PQntuples(res);
   for(int i=0; i<rows; i++) {
@@ -3415,7 +3510,7 @@ void outlineProcessKeypress(void) {
             {
               std::string keyword = O.command_line.substr(pos+1);
               outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
-              add_task_keyword_sqlite(keyword);
+              add_task_keyword(keyword);
               O.mode = O.last_mode;
               //outlineSetMessage("keyword \'%s\' was added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               return;
@@ -5004,6 +5099,7 @@ void update_row_sqlite(void) {
     sqlite3_close(db);
     
     /**************fts virtual table update**********************/
+
     rc = sqlite3_open(FTS_DB.c_str(), &db);
     if (rc != SQLITE_OK) {
           
@@ -7821,6 +7917,8 @@ int main(int argc, char** argv) {
     update_container = update_container_sqlite;
     map_context_titles =  map_context_titles_sqlite;
     map_folder_titles =  map_folder_titles_sqlite;
+    add_task_keyword = add_task_keyword_sqlite;
+    delete_task_keywords = delete_task_keywords_sqlite;
 
     which_db = SQLITE;
 
@@ -7845,6 +7943,8 @@ int main(int argc, char** argv) {
     update_container = update_container_pg;
     map_context_titles = map_context_titles_pg;
     map_folder_titles = map_folder_titles_pg;
+    add_task_keyword = add_task_keyword_pg;
+    delete_task_keywords = delete_task_keywords_pg;
 
     which_db = POSTGRES;
   }
