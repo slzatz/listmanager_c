@@ -61,6 +61,7 @@ static std::map<int, std::string> fts_titles;
 static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
+static std::vector<std::string> task_keywords;
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -92,12 +93,14 @@ enum Mode {
 enum View {
   TASK,
   CONTEXT,
-  FOLDER
+  FOLDER,
+  KEYWORD
 };
 
 enum TaskView {
   BY_CONTEXT,
   BY_FOLDER,
+  BY_KEYWORD,
   BY_JOIN,
   BY_RECENT,
   BY_SEARCH
@@ -154,8 +157,11 @@ enum Command {
 
   C_contexts, //change O.view to CONTEXTs :c
   C_folders,  //change O.view to FOLDERs :f
+  C_keywords,
   C_movetocontext,
   C_movetofolder,
+  C_addkeyword,
+  C_deletekeywords,
 
   C_delmarks,
   C_showall,
@@ -213,10 +219,17 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"context", C_contexts},
   {"folders", C_folders},
   {"folder", C_folders},
+  {"keywords", C_keywords},
+  {"keyword", C_keywords},
   {"mtc", C_movetocontext}, //need because this is command line command with a target word
   {"movetocontext", C_movetocontext},
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
   {"movetofolder", C_movetofolder},
+  {"addkeyword", C_addkeyword},
+  {"addkw", C_addkeyword},
+  {"deletekeywords", C_deletekeywords},
+  {"deletekeyword", C_deletekeywords},
+  {"delkw", C_deletekeywords},
   {"delmarks", C_delmarks},
   {"delm", C_delmarks},
   {"update", C_update},
@@ -268,6 +281,7 @@ struct outlineConfig {
   std::vector<orow> rows;
   std::string context;
   std::string folder;
+  std::string keyword;
   std::string sort;
   //char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
@@ -405,6 +419,7 @@ int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
 int context_callback(void *, int, char **, char **);
 int folder_callback(void *, int, char **, char **);
+int keyword_callback(void *, int, char **, char **);
 int context_titles_callback(void *, int, char **, char **);
 int folder_titles_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
@@ -412,6 +427,8 @@ int note_callback(void *, int, char **, char **);
 void display_item_info_pg(int);
 void display_item_info_sqlite(int);
 int display_item_info_callback(void *, int, char **, char **);
+int task_keywords_callback(void *, int, char **, char **);
+int keyword_id_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
@@ -844,7 +861,6 @@ void get_containers_sqlite(void) {
     return;
     }
 
-  //std::string query("SELECT * FROM context;");
   std::stringstream query;
   query << "SELECT * FROM "
         << ((O.view == CONTEXT) ? "context;" : "folder;");
@@ -937,6 +953,199 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+void get_keywords_sqlite(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  std::stringstream query;
+  query << "SELECT * FROM keyword;";
+
+  bool no_rows = true;
+
+  rc = sqlite3_exec(db, query.str().c_str(), keyword_callback, &no_rows, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+
+  sqlite3_close(db);
+
+  if (no_rows) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else
+    O.mode = NORMAL;
+
+  O.context = O.folder = "";
+
+}
+
+void get_task_keywords_sqlite(void) {
+
+  task_keywords.clear();
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  std::stringstream query;
+  //query << "SELECT task_keyword.task_id, task_keyword.keyword_id, keyword.id, keyword.name "
+  query << "SELECT keyword.name "
+           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
+           "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
+
+    bool no_rows = true;
+
+    rc = sqlite3_exec(db, query.str().c_str(), task_keywords_callback, &no_rows, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s\n", err_msg);
+      sqlite3_free(err_msg);
+    }
+  sqlite3_close(db);
+
+}
+
+int task_keywords_callback(void *no_rows, int argc, char **argv, char **azColName) {
+
+  bool *flag = static_cast<bool*>(no_rows);
+  *flag = false;
+
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  */
+
+  task_keywords.push_back(std::string(argv[0]));
+
+  return 0; //you need this
+}
+
+int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
+
+  bool *flag = static_cast<bool*>(no_rows);
+  *flag = false;
+
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  */
+  orow row;
+
+  row.title = std::string(argv[1]);
+  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
+  row.star = (atoi(argv[3]) == 1) ? true: false; //private
+  row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
+  row.completed = false;
+  row.dirty = false;
+  row.mark = false;
+  strncpy(row.modified, argv[4], 16);
+  O.rows.push_back(row);
+
+  return 0;
+}
+
+void add_task_keyword_sqlite(const std::string &kw) {
+
+  //task_keywords.clear();
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
+  std::stringstream query;
+  query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
+        <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+
+  std::stringstream query2;
+  query2 << "SELECT keyword.id from keyword WHERE keyword.name = '" << kw << "';";
+  int keyword_id = 0;
+  rc = sqlite3_exec(db, query2.str().c_str(), keyword_id_callback, &keyword_id, &err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+
+  std::stringstream query3;
+  query3 << "INSERT INTO task_keyword (task_id, keyword_id) VALUES (" << O.rows.at(O.fr).id << "," << keyword_id << ");";
+
+  rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+  sqlite3_close(db);
+
+}
+
+int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
+  int *id = static_cast<int*>(keyword_id);
+  *id = atoi(argv[0]);
+  return 0;
+}
+
+void delete_task_keywords(void) {
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+  std::stringstream query;
+  query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s\n", err_msg);
+    sqlite3_free(err_msg);
+  }
+}
+
 void get_items_sqlite(int max) {
   std::stringstream query;
 
@@ -967,6 +1176,9 @@ void get_items_sqlite(int max) {
           << " JOIN folder ON folder.tid = task.folder_tid"
           << " WHERE context.title = '" << O.context << "'"
           << " AND folder.title = '" << O.folder << "'";
+  } else if (O.taskview == BY_KEYWORD) {
+    query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
+          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
   } else {
       outlineSetMessage("You asked for an unsupported db query");
       return;
@@ -2549,10 +2761,15 @@ void outlineProcessKeypress(void) {
             O.context = row.title;
             O.folder = "";
             O.taskview = BY_CONTEXT;
-          } else {
+          } else if (O.view == FOLDER) {
             O.folder = row.title;
             O.context = "";
             O.taskview = BY_FOLDER;
+          } else if (O.view == KEYWORD) {
+            O.keyword = row.title;
+            O.folder = "";
+            O.context = "";
+            O.taskview = BY_KEYWORD;
           }
           }
           get_items(MAX);
@@ -3058,6 +3275,16 @@ void outlineProcessKeypress(void) {
               outlineSetMessage("Retrieved folders");
               return;
 
+            case 'y':
+            case C_keywords: //catches folder, folders and f
+              editorEraseScreen();
+              //EraseScreenRedrawLines();
+              O.view = KEYWORD;
+              get_keywords_sqlite();
+              O.mode = NORMAL;
+              outlineSetMessage("Retrieved keywords");
+              return;
+
             case C_movetocontext:
               {
               std::string new_context;
@@ -3142,6 +3369,21 @@ void outlineProcessKeypress(void) {
               O.mode = NORMAL;
               return;
               }
+
+            case C_addkeyword:
+            {
+              std::string keyword = O.command_line.substr(pos+1);
+              add_task_keyword_sqlite(keyword);
+              O.mode = O.last_mode;
+              outlineSetMessage("keyword \'%s\' was added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
+              return;
+            }
+
+            case C_deletekeywords:
+              delete_task_keywords();
+              O.mode = O.last_mode;
+              outlineSetMessage("Keyword(s) for task %d were deleted", O.rows.at(O.fr).id);
+              return;
 
             case C_open: //by context
               {
@@ -3489,6 +3731,14 @@ void outlineProcessKeypress(void) {
           get_containers();
           O.mode = NORMAL;
           outlineSetMessage("Retrieved folders");
+          return;
+
+        case 'y':
+          editorEraseScreen(); //erase note if there is one
+          O.view = KEYWORD;
+          get_keywords_sqlite();
+          O.mode = NORMAL;
+          outlineSetMessage("Retrieved keywords");
           return;
 
         case 'd':
@@ -4022,7 +4272,32 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
+  //ab.append("\x1b[0m", 4);
+
+  ///////////////////////////
+
+  get_task_keywords_sqlite();
+  std::string delim = "";
+  std::string s;
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
+  }
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+
+  ///////////////////////////
+
+
   ab.append("\x1b[0m", 4);
+
+
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
@@ -7430,6 +7705,7 @@ void initOutline() {
   O.taskview = BY_FOLDER;
   O.folder = "todo";
   O.context = "";
+  O.keyword = "";
 
   // ? whether the screen-related stuff should be in one place
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
