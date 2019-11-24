@@ -12,8 +12,8 @@ def synchronize(report_only=True):
     nn = 0
     log = "****************************** BEGIN SYNC *******************************************\n\n"
 
-    remote_conn = p.remote_engine.connect()
-    local_conn = local_engine.connect()
+    #remote_conn = p.remote_engine.connect()
+    #local_conn = local_engine.connect()
 
     remote_session = p.remote_session
     try:
@@ -22,6 +22,7 @@ def synchronize(report_only=True):
         log+= "Could not establish a remote session with the PG database"
         return 0
         
+    # The last sync is stored on client since each client will have a different server and client sync time    
     client_sync = local_session.query(Sync).get('client') 
     server_sync = local_session.query(Sync).get('server') 
 
@@ -297,7 +298,7 @@ def synchronize(report_only=True):
             action = "updated"
             
         # Note that the foreign key that context_tid points to is different
-        # between postgres and sqlite postgres points to context.id and local
+        # between postgres and sqlite: postgres points to context.id and local
         # sqlite db points to context.tid; the pg and sqlite task.context_tid values
         # are the same 
         task.context_tid = st.context_tid
@@ -318,7 +319,7 @@ def synchronize(report_only=True):
         local_session.commit() #new/updated client task commit
 
         log += f"{action} - id: {task.id} tid: {task.tid}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
-        # if eliminate all tags this code can go away
+        # ? could be an update query
         if task.tag:
             for tk in task.taskkeywords:
                 local_session.delete(tk)
@@ -335,8 +336,6 @@ def synchronize(report_only=True):
 
             local_session.commit()
             
-        #tasklist.append(task)
-        
     if client_updated_tasks:
         log += "\nTasks that were updated/created on the Client that need to be updated/created on the Server:\n"
 
@@ -378,7 +377,7 @@ def synchronize(report_only=True):
 
         log += f"{action} - id: {task.id}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
 
-        # if eliminate all tags this code can go away
+        # ? could be an update query
         if task.tag:
             for tk in task.taskkeywords:
                 remote_session.delete(tk)
@@ -410,7 +409,7 @@ def synchronize(report_only=True):
                     
             log+="Task deleted on Server deleted task on Client - id: {id_}; tid: {tid}; title: {title}\n".format(id_=task.id,tid=task.tid,title=task.title[:32])
             
-            # if eliminate all tags this code can go away
+            # ? could be an update query
             for tk in task.taskkeywords:
                 local_session.delete(tk)
             local_session.commit()
@@ -530,6 +529,9 @@ def synchronize(report_only=True):
         local_session.delete(cf)
         local_session.commit()
 
+    # note that if we want to find unused keywords, this query does it:  SELECT name from keyword WHERE keyword.id NOT IN (SELECT keyword_id from task_keyword)
+
+
     client_sync.timestamp = datetime.datetime.now() + datetime.timedelta(seconds=5) # giving a little buffer if the db takes time to update on client or server
 
     # saw definitively that the resulting timestamp could be earlier than when the server tasks were modified -- no idea why
@@ -537,6 +539,8 @@ def synchronize(report_only=True):
     #result = connection.execute("select extract(epoch from now())")
     #server_sync.timestamp = datetime.datetime.fromtimestamp(result.scalar()) + datetime.timedelta(seconds=10) # not sure why this is necessary but it really is
 
+    # if you thought server and client sync times were close enough you wouldn't have to do this
+    # and would have just one sync time
     task = remote_session.query(p.Task).get(1) #Call Spectacles ...
     priority = task.priority
     task.priority = priority + 1 if priority < 3 else 0
