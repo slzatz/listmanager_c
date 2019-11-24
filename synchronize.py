@@ -314,27 +314,31 @@ def synchronize(report_only=True):
         task.tag = st.tag
         task.completed = st.completed if st.completed else None
         task.note = st.note
-        #task.modified = st.modified #not needed because sqlalchemy inserts default according lmdb_s.py
+        task.modified = st.modified # usually not necessary - done by sqla onupdate but might be needed if no changes detected ie keywords change
 
         local_session.commit() #new/updated client task commit
 
         log += f"{action} - id: {task.id} tid: {task.tid}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
-        # ? could be an update query
-        if task.tag:
-            for tk in task.taskkeywords:
-                local_session.delete(tk)
-            local_session.commit()
+        # ? could be an delete query
+        #if task.tag:
+        #local_session.query(TaskKeyword).filter(TaskKeyword.task_id = task.id).delete(synchronize_session=False)
+        for tk in task.taskkeywords:
+            local_session.delete(tk)
+        local_session.commit()
 
-            for kwn in task.tag.split(','):
-                keyword = local_session.query(Keyword).filter_by(name=kwn).first()
-                if keyword is None:
-                    keyword = Keyword(kwn)
-                    local_session.add(keyword)
-                    local_session.commit()
-                tk = TaskKeyword(task,keyword)
-                local_session.add(tk)
+        for kw in st.keywords:
+        #for kwn in task.tag.split(','):
+            keyword = local_session.query(Keyword).filter_by(name=kw.name).first()
+            #keyword = local_session.query(Keyword).filter_by(name=kwn).first()
+            if keyword is None:
+                #keyword = Keyword(kwn)
+                keyword = Keyword(kw.name)
+                local_session.add(keyword)
+                local_session.commit()
+            tk = TaskKeyword(task,keyword)
+            local_session.add(tk)
 
-            local_session.commit()
+        local_session.commit()
             
     if client_updated_tasks:
         log += "\nTasks that were updated/created on the Client that need to be updated/created on the Server:\n"
@@ -371,28 +375,32 @@ def synchronize(report_only=True):
         task.tag = ct.tag
         task.completed = ct.completed if ct.completed else None
         task.note = ct.note
-        #task.modified = ct.modified # not necessary - done by sqlite
+        task.modified = ct.modified # not necessary - done by sqla onupdate but might be if no changes detected ie keywords change
 
         remote_session.commit() #new/updated client task commit
 
         log += f"{action} - id: {task.id}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
 
-        # ? could be an update query
-        if task.tag:
-            for tk in task.taskkeywords:
-                remote_session.delete(tk)
-            remote_session.commit()
+        # ? could be an dekete query
+        #remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.task_id = task.id).delete(synchronize_session=False)
+        #if task.tag:
+        for tk in task.taskkeywords:
+            remote_session.delete(tk)
+        remote_session.commit()
 
-            for kwn in task.tag.split(','):
-                keyword = remote_session.query(p.Keyword).filter_by(name=kwn).first()
-                if keyword is None:
-                    keyword = p.Keyword(kwn)
-                    remote_session.add(keyword)
-                    remote_session.commit()
-                tk = p.TaskKeyword(task,keyword)
-                remote_session.add(tk)
+        for kw in ct.keywords:
+        #for kwn in task.tag.split(','):
+            keyword = remote_session.query(p.Keyword).filter_by(name=kw.name).first()
+            #keyword = remote_session.query(p.Keyword).filter_by(name=kwn).first()
+            if keyword is None:
+                #keyword = p.Keyword(kwn)
+                keyword = p.Keyword(kw.name)
+                remote_session.add(keyword)
+                remote_session.commit()
+            tk = p.TaskKeyword(task,keyword)
+            remote_session.add(tk)
 
-            remote_session.commit()
+        remote_session.commit()
             
     # Delete from client tasks deleted on server
     for t in server_deleted_tasks:
@@ -404,12 +412,20 @@ def synchronize(report_only=True):
         #result = remote_conn.execute(stmt)
         ##########################################################################################
 
+        # delete remote keywords
+        # sql: DELETE FROM task_keyword WHERE task_id = t.id
+        #remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.task_id = t.id).delete(synchronize_session=False)
+        for tk in t.taskkeywords:
+            remote_session.delete(tk)
+        remote_session.commit()
+
         task = local_session.query(Task).filter_by(tid=t.id).first()
         if task:
                     
-            log+="Task deleted on Server deleted task on Client - id: {id_}; tid: {tid}; title: {title}\n".format(id_=task.id,tid=task.tid,title=task.title[:32])
+            log+=f"Task deleted on Server deleted task on Client - id: {task.id}; tid: {task.tid}; title: {task.title[:32]}\n"
             
-            # ? could be an update query
+            # ? could be an delete query
+            #local_session.query(TaskKeyword).filter(TaskKeyword.task_id = task.id).delete(synchronize_session=False)
             for tk in task.taskkeywords:
                 local_session.delete(tk)
             local_session.commit()
@@ -419,7 +435,7 @@ def synchronize(report_only=True):
             
         else:
             
-            log+="Task deleted on Server unsuccessful trying to delete on Client - could not find Client Task with tid = {0}\n".format(t.id)   
+            log+=f"Task deleted on Server unsuccessful trying to delete on Client - could not find Client Task with tid = {t.id}\n"
 
     # uses deletelist 
     # Delete from server tasks deleted on client
@@ -443,7 +459,14 @@ def synchronize(report_only=True):
                 task.deleted = True
                 remote_session.commit()
 
-        # if eliminate all tags this code can go away
+                # delete remote keywords
+                #remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.task_id = task.id).delete(synchronize_session=False)
+                for tk in task.taskkeywords:
+                    remote_session.delete(tk)
+                remote_session.commit()
+                
+        # delete local keywords
+        #local_session.query(TaskKeyword).filter(TaskKeyword.task_id = t.id).delete(synchronize_session=False)
         for tk in t.taskkeywords:
             local_session.delete(tk)
         local_session.commit()
@@ -511,6 +534,7 @@ def synchronize(report_only=True):
     # Delete from server folders deleted on client
     for cf in client_deleted_folders:
         # deal with client folder's related tasks    
+        # could do this immediately in listmanager but that could cause lots of task changes (? modified would be updated)
         local_session.query(Task).filter(Task.folder_tid==cf.tid).update({Task.folder_tid : 1})
         local_session.commit()
 
