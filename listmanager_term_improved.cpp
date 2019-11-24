@@ -717,7 +717,6 @@ void get_items_pg(int max) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
     printf("No data retrieved\n");        
     printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
@@ -1088,22 +1087,28 @@ void add_task_keyword_sqlite(const std::string &kw) {
 
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
   std::stringstream query;
+  // adds keyword user wants to add to task to list of keywords if it doesn't exist
   query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
         <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
 
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
+    sqlite3_close(db);
+    return;
   }
 
   std::stringstream query2;
+  //gets the id of the keyword just added (if needed). Am sure this can be combined with the below
   query2 << "SELECT keyword.id from keyword WHERE keyword.name = '" << kw << "';";
   int keyword_id = 0;
   rc = sqlite3_exec(db, query2.str().c_str(), keyword_id_callback, &keyword_id, &err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
+    sqlite3_close(db);
+    return;
   }
 
   std::stringstream query3;
@@ -1111,11 +1116,22 @@ void add_task_keyword_sqlite(const std::string &kw) {
 
   rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
+    sqlite3_close(db);
+    return;
+  }
+  std::stringstream query4;
+  // updates task modified column so know that something changed with the task
+  query4 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+    return;
   }
   sqlite3_close(db);
-
 }
 
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
@@ -1145,6 +1161,31 @@ void delete_task_keywords(void) {
     sqlite3_free(err_msg);
   }
 }
+void get_task_keywords_pg(void) {
+
+  std::stringstream query;
+  task_keywords.clear();
+
+  //query << "SELECT task_keyword.task_id, task_keyword.keyword_id, keyword.id, keyword.name "
+  query << "SELECT keyword.name "
+           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
+           "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineSetMessage("Problem retrieving the task's keywords");
+    PQclear(res);
+    //do_exit(conn);
+  }
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+    task_keywords.push_back(PQgetvalue(res, i, 0));
+  }
+  PQclear(res);
+  // PQfinish(conn);
+}
+
 
 void get_items_sqlite(int max) {
   std::stringstream query;
@@ -3373,9 +3414,10 @@ void outlineProcessKeypress(void) {
             case C_addkeyword:
             {
               std::string keyword = O.command_line.substr(pos+1);
+              outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               add_task_keyword_sqlite(keyword);
               O.mode = O.last_mode;
-              outlineSetMessage("keyword \'%s\' was added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
+              //outlineSetMessage("keyword \'%s\' was added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               return;
             }
 
@@ -3742,10 +3784,7 @@ void outlineProcessKeypress(void) {
           return;
 
         case 'd':
-          if (O.view == TASK || which_db == POSTGRES)
-            toggle_deleted();
-          else
-            outlineSetMessage("At the moment you can only delete contexts/folders on server");
+          toggle_deleted();
           return;
 
         case 't': //touch
@@ -4062,6 +4101,29 @@ void display_item_info_pg(int id) {
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
+  //ab.append("\x1b[0m", 4);
+
+  ///////////////////////////
+
+  get_task_keywords_pg();
+  std::string delim = "";
+  std::string s;
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
+  }
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+
+  ///////////////////////////
+
+
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -4166,7 +4228,7 @@ void display_item_info_sqlite(int id) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4174,7 +4236,7 @@ void display_item_info_sqlite(int id) {
   rc = sqlite3_exec(db, query.str().c_str(), display_item_info_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } 
   sqlite3_close(db);
@@ -4209,8 +4271,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   */
 
   char lf_ret[10];
-  // note really have to take into account length of
-  // EDITOR_LEFT_MARGIN and don't need to move things in the y direction
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   std::string ab;
@@ -4296,8 +4356,6 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
 
   ab.append("\x1b[0m", 4);
-
-
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
@@ -4706,6 +4764,8 @@ void toggle_deleted_sqlite(void) {
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
 
+  // ? whether should move all tasks out here or in sync
+  // UPDATE task SET folder_tid = 1 WHERE folder_tid = 4;
   sqlite3 *db;
   char *err_msg = 0;
     
