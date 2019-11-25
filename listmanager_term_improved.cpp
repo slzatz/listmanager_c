@@ -42,7 +42,8 @@
 //static std::map<int, pfunc> outline_normal_map;
 
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-static const std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
+//static const std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
+static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
 static int which_db;
 static int EDITOR_LEFT_MARGIN;
@@ -545,6 +546,7 @@ void get_conn(void) {
   
   sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
           c.user.c_str(), c.password.c_str(), c.dbname.c_str(), c.hostaddr.c_str(), c.port);
+
   conn = PQconnectdb(conninfo);
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -565,11 +567,13 @@ void map_context_titles_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineSetMessage("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
 
-    printf("No data retrieved\n");
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    //printf("No data retrieved\n");
+    //printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
-    do_exit(conn);
+    //do_exit(conn);
+    return;
   }
 
   context_map.clear();
@@ -1168,34 +1172,35 @@ void add_task_keyword_sqlite(const std::string &kw) {
   }
 
 
-    /**************fts virtual table update**********************/
+  /**************fts virtual table update**********************/
+  // tag update
 
-
-  /* if include tag in fts virtual table will have to update tag here
   task_keywords.clear();
-  get_task_keywords_pg();
+  get_task_keywords_sqlite();
   std::string delim = "";
   std::string s;
   for (const auto &kw : task_keywords) {
     s += delim += kw;
     delim = ",";
   }
-  std::stringstream query2;
-  query2 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
 
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  std::stringstream query4;
+  query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+
+  rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL fts error: %s\n", err_msg);
+    outlineSetMessage("SQL fts error: %s", err_msg);
     sqlite3_free(err_msg);
-  } else {
-    outlineSetMessage("Updated note and fts entry for item %d", id);
-    outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded");
   }
-  */
-
-
   sqlite3_close(db);
 }
 
@@ -1225,10 +1230,16 @@ void delete_task_keywords_sqlite(void) {
     outlineSetMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
   }
-    /**************fts virtual table update**********************/
 
+  /**************fts virtual table update**********************/
 
-  /* if include tag in fts virtual table will have to update tag here
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
   std::stringstream query2;
   query2 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
 
@@ -1237,12 +1248,7 @@ void delete_task_keywords_sqlite(void) {
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL fts error: %s\n", err_msg);
     sqlite3_free(err_msg);
-  } else {
-    outlineSetMessage("Updated note and fts entry for item %d", id);
-    outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded");
   }
-  */
   sqlite3_close(db);
 }
 
@@ -1294,7 +1300,7 @@ void get_items_sqlite(int max) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -1329,7 +1335,7 @@ void get_items_sqlite(int max) {
     rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
+      outlineSetMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     }
   sqlite3_close(db);
@@ -1413,7 +1419,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
 
@@ -1421,7 +1427,7 @@ void get_items_by_id_sqlite(std::stringstream& query) {
     rc = sqlite3_exec(db, query.str().c_str(), by_id_data_callback, &no_rows, &err_msg);
     
     if (rc != SQLITE_OK ) {
-        outlineSetMessage("SQL error: %s\n", err_msg);
+        outlineSetMessage("SQL error: %s", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
         return; // can't close db twice
@@ -1561,7 +1567,7 @@ void get_note_sqlite(int id) {
   }
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     }
 
@@ -1569,7 +1575,7 @@ void get_note_sqlite(int id) {
   rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SAL error: %s\n", FTS_DB.c_str(), err_msg);
+    outlineSetMessage("In get_note_sqlite: %s SAL error: %s", FTS_DB.c_str(), err_msg);
     sqlite3_free(err_msg);
     sqlite3_close(db);
   } 
@@ -3512,14 +3518,13 @@ void outlineProcessKeypress(void) {
               outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               add_task_keyword(keyword);
               O.mode = O.last_mode;
-              //outlineSetMessage("keyword \'%s\' was added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               return;
             }
 
             case C_deletekeywords:
+              outlineSetMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
               delete_task_keywords();
               O.mode = O.last_mode;
-              outlineSetMessage("Keyword(s) for task %d were deleted", O.rows.at(O.fr).id);
               return;
 
             case C_open: //by context
@@ -4247,7 +4252,7 @@ void fts5_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4260,7 +4265,7 @@ void fts5_sqlite(void) {
   rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } 
   sqlite3_close(db);
@@ -4525,7 +4530,7 @@ void update_note_sqlite(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4533,7 +4538,7 @@ void update_note_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note for item %d", id);
@@ -4547,7 +4552,7 @@ void update_note_sqlite(void) {
   rc = sqlite3_open(FTS_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4559,7 +4564,7 @@ void update_note_sqlite(void) {
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL fts error: %s\n", err_msg);
+    outlineSetMessage("SQL fts error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Updated note and fts entry for item %d", id);
@@ -4612,7 +4617,7 @@ void update_task_context_sqlite(std::string& new_context) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4620,7 +4625,7 @@ void update_task_context_sqlite(std::string& new_context) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Setting context to %s succeeded", new_context.c_str());
@@ -4669,7 +4674,7 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4677,7 +4682,7 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Setting folder to %s succeeded", new_folder.c_str());
@@ -4693,7 +4698,7 @@ void toggle_completed_pg(void) {
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
-        fprintf(stderr, "Connection to database failed: %s\n",
+        fprintf(stderr, "Connection to database failed: %s",
             PQerrorMessage(conn));
         do_exit(conn);
     }
@@ -4735,7 +4740,7 @@ void toggle_completed_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -4743,7 +4748,7 @@ void toggle_completed_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle completed succeeded");
@@ -4761,7 +4766,7 @@ void toggle_deleted_pg(void) {
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
-        fprintf(stderr, "Connection to database failed: %s\n",
+        fprintf(stderr, "Connection to database failed: %s",
             PQerrorMessage(conn));
         do_exit(conn);
     }
@@ -4830,7 +4835,7 @@ void touch_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -4838,7 +4843,7 @@ void touch_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("'Touch' succeeded");
@@ -4868,7 +4873,7 @@ void toggle_deleted_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -4876,7 +4881,7 @@ void toggle_deleted_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle deleted succeeded");
@@ -4941,7 +4946,7 @@ void toggle_star_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4949,7 +4954,7 @@ void toggle_star_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineSetMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
     outlineSetMessage("Toggle star succeeded");
@@ -4972,7 +4977,7 @@ void update_row_pg(void) {
     if (PQstatus(conn) != CONNECTION_OK){
       if (PQstatus(conn) == CONNECTION_BAD) {
           
-          fprintf(stderr, "Connection to database failed: %s\n",
+          fprintf(stderr, "Connection to database failed: %s",
               PQerrorMessage(conn));
           do_exit(conn);
       }
@@ -5081,7 +5086,7 @@ void update_row_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
       
     if (rc != SQLITE_OK) {
-      outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5089,7 +5094,7 @@ void update_row_sqlite(void) {
     rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
+      outlineSetMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     } else {
       row.dirty = false;
@@ -5103,7 +5108,7 @@ void update_row_sqlite(void) {
     rc = sqlite3_open(FTS_DB.c_str(), &db);
     if (rc != SQLITE_OK) {
           
-      outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
+      outlineSetMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5113,7 +5118,7 @@ void update_row_sqlite(void) {
     rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
       
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
+      outlineSetMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
       } else {
         outlineSetMessage("Updated title and fts entry for item %d", row.id);
@@ -5155,7 +5160,7 @@ void update_container_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
     if (rc != SQLITE_OK) {
-      outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5163,7 +5168,7 @@ void update_container_sqlite(void) {
     rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
+      outlineSetMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     } else {
       row.dirty = false;
@@ -5359,7 +5364,7 @@ int insert_row_sqlite(orow& row) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return -1;
     }
@@ -5367,7 +5372,7 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
+    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -5385,7 +5390,7 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_open(FTS_DB.c_str(), &db);
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open FTS database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return row.id;
   }
@@ -5393,7 +5398,7 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing FTS insert: %s\n", err_msg);
+    outlineSetMessage("SQL error doing FTS insert: %s", err_msg);
     sqlite3_free(err_msg);
     return row.id; // would mean regular insert succeeded and fts failed - need to fix this
   }
@@ -5451,7 +5456,7 @@ int insert_container_sqlite(orow& row) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return -1;
     }
@@ -5459,7 +5464,7 @@ int insert_container_sqlite(orow& row) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s\n", err_msg);
+    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -5568,7 +5573,7 @@ void update_rows_sqlite(void) {
         
       if (rc != SQLITE_OK) {
             
-        outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+        outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
         sqlite3_close(db);
         return;
         }
@@ -5576,7 +5581,7 @@ void update_rows_sqlite(void) {
       rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
       if (rc != SQLITE_OK ) {
-        outlineSetMessage("SQL error: %s\n", err_msg);
+        outlineSetMessage("SQL error: %s", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
         return; // ? should we abort all other rows
