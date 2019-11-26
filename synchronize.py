@@ -541,7 +541,7 @@ def synchronize(report_only=True):
         # deal with server folder and its related tasks    
         folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
         if folder:
-            log+=f"Folder deleted on Client will be marked as deleted on Server - id: {context.id}; title: {context.title}\n"
+            log+=f"Folder deleted on Client will be marked as deleted on Server - id: {folder.id}; title: {folder.title}\n"
 
             remote_session.query(p.Task).filter(p.Task.folder_tid==cf.tid).update({p.Task.folder_tid : 1}) #? synchronize_session =   False
             remote_session.commit()
