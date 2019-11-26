@@ -6667,7 +6667,9 @@ void editorProcessKeypress(void) {
           end = E.fc;
           E.fc = start; 
           for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
+          //E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
+          // below 11-26-2019
+          E.fc = (start < E.rows.at(E.fr).size()) ? start : E.rows.at(E.fr).size() -1;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -6727,12 +6729,13 @@ void editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
+        //indent and unindent changed to E.fr from E.cy on 11-26-2019
         case C_indent:
           editorCreateSnapshot();
           for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
             editorIndentRow();
-            E.cy++;}
-          E.cy-=i;
+            E.fr++;}
+          E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -6741,8 +6744,8 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
             editorUnIndentRow();
-            E.cy++;}
-          E.cy-=i;
+            E.fr++;}
+          E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -6932,14 +6935,15 @@ void editorProcessKeypress(void) {
           editorSetMessage("");
           return;
     
+        // changed to E.fr on 11-26-2019
         case '<':
           editorCreateSnapshot();
           E.repeat = E.highlight[1] - E.highlight[0] + 1;
-          E.cy = E.highlight[0];
+          E.fr = E.highlight[0];
           for ( i = 0; i < E.repeat; i++ ) {
             editorUnIndentRow();
-            E.cy++;}
-          E.cy-=i;
+            E.fr++;}
+          E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
