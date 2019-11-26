@@ -5925,6 +5925,9 @@ void editorScroll(void) {
     return;
   }
 
+  //initially added the below to C_dd but probably should be here:
+  if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1;
+
   // This check used to be in editorMoveCursor but there are other ways like
   // issuring 'd$' that will shorten the row but cursor will be beyond the line
   int row_size = E.rows.at(E.fr).size();
@@ -6678,6 +6681,8 @@ void editorProcessKeypress(void) {
             for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
           }
           E.fc = 0;
+          //trying this in editorScroll
+          //if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1; //11-26-2019
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -7517,7 +7522,8 @@ void editorYankLine(int n){
   line_buffer.clear();
 
   for (int i=0; i < n; i++) {
-    line_buffer.push_back(E.rows.at(E.cy+i));
+    //line_buffer.push_back(E.rows.at(E.cy+i)); 11-26-2019
+    line_buffer.push_back(E.rows.at(E.fr+i));
   }
   string_buffer.clear();
 }
