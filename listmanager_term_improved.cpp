@@ -1814,7 +1814,7 @@ void solr_find(void) {
 
               std::stringstream query;
 
-              query << "SELECT * FROM task WHERE task.deleted = False and task.id IN (";
+              query << "SELECT * FROM task WHERE task.id IN (";
 
               for (int i=0; i<len-1; i++) {
                 query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << ", ";
@@ -1822,7 +1822,7 @@ void solr_find(void) {
               query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size)
                     << ")"
                     << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-                    << ") ORDER BY ";
+                    << " ORDER BY ";
 
               for (int i = 0; i < len-1; i++) {
                 query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << " DESC, ";
@@ -1830,7 +1830,9 @@ void solr_find(void) {
               query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size) << " DESC";
 
               Py_DECREF(pValue);
-
+              //DEBUGGING
+              //outlineSetMessage(query.str().c_str());
+              //return;
               get_items_by_id_pg(query);
           } else {
               Py_DECREF(pFunc);
@@ -1846,7 +1848,7 @@ void solr_find(void) {
       Py_DECREF(pModule);
   } else {
       PyErr_Print();
-      outlineSetMessage("Was not able to find the module: view_html!");
+      outlineSetMessage("Was not able to find the module: solr_find!");
   }
 
   //if (Py_FinalizeEx() < 0) {
@@ -3779,7 +3781,7 @@ void outlineProcessKeypress(void) {
               map_context_titles();
               map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
-              O.last_mode = O.mode;
+              //O.last_mode = O.mode; // probably COMMAND_LINE, right
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Synching local db and server and displaying results");
               //outlineRefreshScreen(); ////////////////////////////////////////////
@@ -3791,7 +3793,7 @@ void outlineProcessKeypress(void) {
               synchronize(1); //1 -> report_only
 
               initial_file_row = 0; //for arrowing or displaying files
-              O.last_mode = O.mode;
+              //O.last_mode = O.mode;
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Testing synching local db and server and displaying results");
               //outlineRefreshScreen(); ///////////////////////////////////////////////////////////////
