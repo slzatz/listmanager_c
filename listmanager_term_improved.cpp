@@ -145,6 +145,7 @@ enum Command {
 
   C_open,
   C_openfolder,
+  C_openkeyword,
   C_join,
 
   C_sort,
@@ -209,6 +210,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"open", C_open},
   {"o", C_open}, //need because this is command line command with a target word
   {"of", C_openfolder}, //need because this is command line command with a target word
+  {"ok", C_openkeyword}, //need because this is command line command with a target word
   {"join", C_join}, //need because this is command line command with a target word
   {"filter", C_join}, //need because this is command line command with a target word
   {"fin", C_find},
@@ -222,6 +224,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"folder", C_folders},
   {"keywords", C_keywords},
   {"keyword", C_keywords},
+  {"kw", C_keywords},
   {"mtc", C_movetocontext}, //need because this is command line command with a target word
   {"movetocontext", C_movetocontext},
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
@@ -336,8 +339,8 @@ static void (*update_note)(void);
 static void (*toggle_star)(void);
 static void (*toggle_completed)(void);
 static void (*toggle_deleted)(void);
-static void (*update_task_context)(std::string&);
-static void (*update_task_folder)(std::string&, int);
+static void (*update_task_context)(std::string &, int);
+static void (*update_task_folder)(std::string &, int);
 static void (*update_rows)(void);
 static void (*update_row)(void);
 //static int (*insert_row)(int); //not called directly
@@ -348,9 +351,10 @@ static void (*map_context_titles)(void);
 static void (*map_folder_titles)(void);
 
 static void (*get_containers)(void);
+static void (*get_keywords)(void);
 static void (*update_container)(void);
 //static void (*insert_context)(void); //not called directly
-static void (*add_task_keyword)(const std::string&);
+static void (*add_task_keyword)(const std::string &, int);
 static void (*delete_task_keywords)(void);
 int getWindowSize(int *, int *);
 
@@ -406,18 +410,18 @@ void update_note_sqlite(void);
 void solr_find(void);
 void fts5_sqlite(void);
 
-void update_task_context_pg(const std::string&);
-void update_task_context_sqlite(const std::string&);
-void update_task_folder_pg(const std::string&, int);
-void update_task_folder_sqlite(const std::string&, int);
+void update_task_context_pg(const std::string &, int);
+void update_task_context_sqlite(const std::string &, int);
+void update_task_folder_pg(const std::string &, int);
+void update_task_folder_sqlite(const std::string &, int);
 
 void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
 void map_folder_titles_pg(void);
 void map_folder_titles_sqlite(void);
 
-void add_task_keyword_sqlite(const std::string &);
-void add_task_keyword_pg(const std::string &);
+void add_task_keyword_sqlite(const std::string &, int);
+void add_task_keyword_pg(const std::string &, int);
 void delete_task_keywords_pg(void);
 void delete_task_keywords_sqlite(void);
 
@@ -976,17 +980,16 @@ void get_keywords_sqlite(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
 
-  std::stringstream query;
-  query << "SELECT * FROM keyword;";
+  std::string query = "SELECT * FROM keyword ORDER BY name;";
 
   bool no_rows = true;
 
-  rc = sqlite3_exec(db, query.str().c_str(), keyword_callback, &no_rows, &err_msg);
+  rc = sqlite3_exec(db, query.c_str(), keyword_callback, &no_rows, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s\n", err_msg);
@@ -1083,7 +1086,46 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void add_task_keyword_pg(const std::string &kw) {
+void get_keywords_pg(void) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  std::string query = "SELECT * FROM keyword ORDER BY name;";
+
+  PGresult *res = PQexec(conn, query.c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineSetMessage("Problem retrieving the task's keywords");
+    PQclear(res);
+    return;
+  }
+  int rows = PQntuples(res);
+  for(int i=0; i<rows; i++) {
+
+    orow row;
+
+    row.title = std::string(PQgetvalue(res, i, 1));
+    row.id = atoi(PQgetvalue(res, i, 0)); //right now pulling sqlite id not tid
+    row.star = false; //private
+    row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
+    row.completed = false;
+    row.dirty = false;
+    row.mark = false;
+    strncpy(row.modified, BASE_DATE, 16);
+    O.rows.push_back(row);
+  }
+
+  if (O.rows.empty()) {
+    outlineSetMessage("No results were returned");
+    O.mode = NO_ROWS;
+  } else
+    O.mode = NORMAL;
+
+  O.context = O.folder = "";
+
+}
+void add_task_keyword_pg(const std::string &kw, int id) {
 
   std::stringstream query;
   // adds keyword user wants to add to task to list of keywords if it doesn't exist
@@ -1099,7 +1141,8 @@ void add_task_keyword_pg(const std::string &kw) {
   }
 
   std::stringstream query2;
-  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+  //query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
 
   res = PQexec(conn, query2.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -1110,7 +1153,8 @@ void add_task_keyword_pg(const std::string &kw) {
 
   std::stringstream query3;
   // updates task modified column so know that something changed with the task
-  query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
+  //query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
+  query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << id << ";";
 
   res = PQexec(conn, query3.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
@@ -1121,7 +1165,7 @@ void add_task_keyword_pg(const std::string &kw) {
   PQclear(res);
 }
 
-void add_task_keyword_sqlite(const std::string &kw) {
+void add_task_keyword_sqlite(const std::string &kw, int id) {
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1151,7 +1195,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
   }
 
   std::stringstream query2;
-  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+  //query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s", err_msg);
@@ -1162,7 +1207,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
 
   std::stringstream query3;
   // updates task modified column so know that something changed with the task
-  query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  //query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
   rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL error: %s", err_msg);
@@ -1193,7 +1239,8 @@ void add_task_keyword_sqlite(const std::string &kw) {
   }
 
   std::stringstream query4;
-  query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+  //query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+  query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
   rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
 
@@ -1231,6 +1278,16 @@ void delete_task_keywords_sqlite(void) {
     sqlite3_free(err_msg);
   }
 
+  std::stringstream query2;
+  // updates task modified column so know that something changed with the task
+  query2 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+    sqlite3_close(db);
+    return;
+  }
   /**************fts virtual table update**********************/
 
   rc = sqlite3_open(FTS_DB.c_str(), &db);
@@ -1240,10 +1297,10 @@ void delete_task_keywords_sqlite(void) {
     sqlite3_close(db);
     return;
   }
-  std::stringstream query2;
-  query2 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+  std::stringstream query3;
+  query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
 
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("SQL fts error: %s\n", err_msg);
@@ -1259,6 +1316,18 @@ void delete_task_keywords_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     outlineSetMessage("Problem deleting the task's keywords");
+    PQclear(res);
+    return;
+  }
+
+  std::stringstream query2;
+  // updates task modified column so know that something changed with the task
+  query2 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
+  res = PQexec(conn, query2.str().c_str());
+  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+    outlineSetMessage("Problem updating tasks modified date");
+    PQclear(res);
+    return;
   }
   PQclear(res);
 }
@@ -1286,7 +1355,6 @@ void get_task_keywords_pg(void) {
   PQclear(res);
   // PQfinish(conn);
 }
-
 
 void get_items_sqlite(int max) {
   std::stringstream query;
@@ -2321,15 +2389,15 @@ void editorDisplayFile(void) {
       line_num++;
       continue;
     }
-    int n = 0;
-    for(;;) {
+    //int n = 0;
+    int n = row.size()/(E.screencols - 1) + ((row.size()%(E.screencols - 1)) ? 1 : 0);
+    for(int i=0; i<n; i++) {
       line_num++;
       if (line_num > E.screenlines - 2) break;
-      line = row.substr(n*E.screencols, (n+1)*E.screencols);
+      line = row.substr(0, E.screencols - 1);
+      row.erase(0, E.screencols - 1);
       ab.append(line);
       ab.append(lf_ret);
-      if (line.size() < E.screencols) break;
-      n++;
     }
   }
   ab.append("\x1b[0m", 4);
@@ -2517,11 +2585,14 @@ void outlineDrawStatusBar(std::string& ab) {
     } else if (O.taskview == BY_FOLDER) { s = O.folder + "[f]";
     } else if (O.taskview == BY_CONTEXT) { s = O.context + "[c]";
     } else if (O.taskview == BY_RECENT) {s = "recent";
-    } else if (O.taskview == BY_JOIN) {s = O.context + "[c] + " + O.folder + "[f]";}
+    } else if (O.taskview == BY_JOIN) {s = O.context + "[c] + " + O.folder + "[f]";
+    } else if (O.taskview == BY_KEYWORD) {s = O.keyword + "[k]";}
   } else if (O.view == CONTEXT) {
     s = "Contexts";
-  } else {
+  } else if (O.view == FOLDER) {
     s = "Folders";
+  } else if (O.view == KEYWORD) {
+    s = "Keywords";
   }
 
   if (O.rows.empty()) { //********************************** or (!O.numrows)
@@ -3371,7 +3442,7 @@ void outlineProcessKeypress(void) {
               O.taskview = BY_SEARCH;
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              O.mode = O.last_mode;
+              //O.mode = O.last_mode; //want search mode
               return;
 
             case C_fts: 
@@ -3417,12 +3488,12 @@ void outlineProcessKeypress(void) {
               outlineSetMessage("Retrieved folders");
               return;
 
-            case 'y':
-            case C_keywords: //catches folder, folders and f
+            case 'k':
+            case C_keywords: //catches keyword, keywords and kw
               editorEraseScreen();
               //EraseScreenRedrawLines();
               O.view = KEYWORD;
-              get_keywords_sqlite();
+              get_keywords();
               O.mode = NORMAL;
               outlineSetMessage("Retrieved keywords");
               return;
@@ -3455,17 +3526,18 @@ void outlineProcessKeypress(void) {
               success = false;
               for (const auto& it : O.rows) {
                 if (it.mark) {
-                  update_task_context(new_context);
+                  update_task_context(new_context, it.id);
                   success = true;
                 }
               }
 
-              if (success)
+              if (success) {
                 outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
-              else
-                outlineSetMessage("No tasks were marked!");
-
-              O.mode = NORMAL;
+              } else {
+                update_task_context(new_context, O.rows.at(O.fr).id);
+                outlineSetMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
+              }
+              O.mode = O.last_mode;
               //O.command_line.clear(); //calling : in NORMAL clears command_line
               return;
               }
@@ -3503,12 +3575,13 @@ void outlineProcessKeypress(void) {
                 }
               }
 
-              if (success)
+              if (success) {
                 outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
-              else
-                outlineSetMessage("No tasks were marked!");
-              //NORMAL and DATABASE/SEARCH clear command_line and command before switching to mode COMMAND_LINE
-              O.mode = NORMAL;
+              } else {
+                update_task_folder(new_folder, O.rows.at(O.fr).id);
+                outlineSetMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
+              }
+              O.mode = O.last_mode;
               return;
               }
 
@@ -3516,7 +3589,22 @@ void outlineProcessKeypress(void) {
             {
               std::string keyword = O.command_line.substr(pos+1);
               outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
-              add_task_keyword(keyword);
+              //add_task_keyword(keyword);
+
+              bool success = false;
+              for (const auto& it : O.rows) {
+                if (it.mark) {
+                  add_task_keyword(keyword, it.id);
+                  success = true;
+                }
+              }
+
+              if (success) {
+                outlineSetMessage("Marked tasks had keyword %s added", keyword.c_str());
+              } else {
+                add_task_keyword(keyword, O.rows.at(O.fr).id);
+                outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
+              }
               O.mode = O.last_mode;
               return;
             }
@@ -3567,7 +3655,6 @@ void outlineProcessKeypress(void) {
               }
 
             case C_openfolder:
-              {
               if (pos) {
                 bool success = false;
                 for (const auto & [k,v] : folder_map) {
@@ -3591,7 +3678,25 @@ void outlineProcessKeypress(void) {
               get_items(MAX);
               //editorRefreshScreen(); //in get_note
               return;
+
+
+            case C_openkeyword:
+
+              if (!pos) {
+                outlineSetMessage("You need to provide a keyword");
+                return;
               }
+
+              O.keyword = O.command_line.substr(pos+1);
+              //EraseScreenRedrawLines(); //*****************************
+              outlineSetMessage("\'%s\' will be opened", O.keyword.c_str());
+              O.context = "No Context";
+              O.folder = "No Folder";
+              O.taskview = BY_KEYWORD;
+              get_items(MAX);
+              //editorRefreshScreen(); //in get_note
+              return;
+
 
             case C_join:
               {
@@ -3674,6 +3779,7 @@ void outlineProcessKeypress(void) {
               map_context_titles();
               map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
+              O.last_mode = O.mode;
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Synching local db and server and displaying results");
               //outlineRefreshScreen(); ////////////////////////////////////////////
@@ -3685,6 +3791,7 @@ void outlineProcessKeypress(void) {
               synchronize(1); //1 -> report_only
 
               initial_file_row = 0; //for arrowing or displaying files
+              O.last_mode = O.mode;
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Testing synching local db and server and displaying results");
               //outlineRefreshScreen(); ///////////////////////////////////////////////////////////////
@@ -3696,6 +3803,7 @@ void outlineProcessKeypress(void) {
               initial_file_row = 0; //for arrowing or displaying files
               editorReadFile("valgrind_log_file");
               editorDisplayFile();//put them in the command mode case synch
+              O.last_mode = O.mode;
               O.mode = FILE_DISPLAY;
               return;
 
@@ -3763,6 +3871,7 @@ void outlineProcessKeypress(void) {
             case 'h':
             case C_help:
               initial_file_row = 0;
+              O.last_mode = O.mode;
               O.mode = FILE_DISPLAY;
               outlineSetMessage("Displaying help file");
               //outlineRefreshScreen();///////////////////////////////////////////////////////////////////////
@@ -3859,6 +3968,7 @@ void outlineProcessKeypress(void) {
           if (O.view == TASK) toggle_completed();
           return;
 
+        /*
         case 'c': // show contexts
           editorEraseScreen(); //erase note if there is one
           O.view = CONTEXT;
@@ -3878,10 +3988,11 @@ void outlineProcessKeypress(void) {
         case 'y':
           editorEraseScreen(); //erase note if there is one
           O.view = KEYWORD;
-          get_keywords_sqlite();
+          get_keywords();
           O.mode = NORMAL;
           outlineSetMessage("Retrieved keywords");
           return;
+        */
 
         case 'd':
           toggle_deleted();
@@ -4047,13 +4158,12 @@ void outlineProcessKeypress(void) {
           outlineSetMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
-          O.last_mode = O.mode;
+          //O.last_mode was set when entering file mode
           O.mode = COMMAND_LINE;
-
           return;
 
         case '\x1b':
-          O.mode = NORMAL;
+          O.mode = O.last_mode;
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("");
@@ -4577,7 +4687,7 @@ void update_note_sqlite(void) {
   E.dirty = 0;
 }
 
-void update_task_context_pg(std::string& new_context) {
+void update_task_context_pg(std::string &new_context, int id) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
@@ -4586,7 +4696,7 @@ void update_task_context_pg(std::string& new_context) {
   }
 
   std::stringstream query;
-  int id = get_id();
+  //int id = get_id();
   int context_tid = context_map.at(new_context);
 
   query << "UPDATE task SET context_tid=" << context_tid << ", "
@@ -4603,10 +4713,10 @@ void update_task_context_pg(std::string& new_context) {
   PQclear(res);
 }
 
-void update_task_context_sqlite(std::string& new_context) {
+void update_task_context_sqlite(std::string &new_context, int id) {
 
   std::stringstream query;
-  int id = get_id();
+  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int context_tid = context_map.at(new_context);
   query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
@@ -4643,7 +4753,7 @@ void update_task_folder_pg(std::string& new_folder, int id) {
   }
 
   std::stringstream query;
-  id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
+  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int folder_tid = folder_map.at(new_folder);
 
   query << "UPDATE task SET folder_tid=" << folder_tid << ", "
@@ -4663,7 +4773,7 @@ void update_task_folder_pg(std::string& new_folder, int id) {
 void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   std::stringstream query;
-  id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
+  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int folder_tid = folder_map.at(new_folder);
   query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
@@ -7924,6 +8034,7 @@ int main(int argc, char** argv) {
     map_folder_titles =  map_folder_titles_sqlite;
     add_task_keyword = add_task_keyword_sqlite;
     delete_task_keywords = delete_task_keywords_sqlite;
+    get_keywords = get_keywords_sqlite;
 
     which_db = SQLITE;
 
@@ -7950,6 +8061,7 @@ int main(int argc, char** argv) {
     map_folder_titles = map_folder_titles_pg;
     add_task_keyword = add_task_keyword_pg;
     delete_task_keywords = delete_task_keywords_pg;
+    get_keywords = get_keywords_pg;
 
     which_db = POSTGRES;
   }
