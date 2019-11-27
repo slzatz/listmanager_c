@@ -1617,7 +1617,7 @@ void get_note_sqlite(int id) {
   }
 
   E.rows.clear();
-  //E.fr = E.fc = E.cy = E.cx = 0; // 11-18-2019 because in C_edit
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   sqlite3 *db;
   char *err_msg = nullptr;
@@ -1684,7 +1684,7 @@ void get_note_pg(int id) {
   }
 
   E.rows.clear();
-  //E.fr = E.fc = E.cy = E.cx = 0;
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -2867,6 +2867,7 @@ void outlineProcessKeypress(void) {
         case '\r': //also does escape into NORMAL mode
           if (O.view == TASK) update_row();
           else update_container();
+          O.command[0] = '\0'; //11-26-2019
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
           //outlineSetMessage("");
@@ -3327,6 +3328,7 @@ void outlineProcessKeypress(void) {
             editor_mode = true;
             get_note(id); //if id == -1 does not try to retrieve note
             E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
+            //editor_mode = true;
             E.mode = NORMAL;
             E.command[0] = '\0';
           } else {
@@ -3589,6 +3591,7 @@ void outlineProcessKeypress(void) {
 
             case C_addkeyword:
             {
+              if (O.last_mode == NO_ROWS) return;
               std::string keyword = O.command_line.substr(pos+1);
               outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
               //add_task_keyword(keyword);
@@ -3608,6 +3611,7 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
               }
               O.mode = O.last_mode;
+              get_note(O.rows.at(O.fr).id); // 11-26-2019
               return;
             }
 
@@ -6849,15 +6853,16 @@ void editorProcessKeypress(void) {
                   E.command[0] = '\0';
                   editor_mode = false;
                 } else {
-                  E.mode = 0;
+                  E.mode = NORMAL;
                   E.command[0] = '\0';
                   editorSetMessage("No write since last change");
                 }
               } else {
                 editorSetMessage("");
+                E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
                 editor_mode = false;
               }
-              editorRefreshScreen();
+              editorRefreshScreen(); //if not quiting I am guessing puts cursor in right place
               return;
 
           } // end of case '\r' switch
