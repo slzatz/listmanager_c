@@ -765,9 +765,10 @@ void get_items_pg(int max) {
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
-    //O.mode = NORMAL;
     O.mode = O.last_mode;
-    get_note(O.rows.at(0).id);
+    //get_note(O.rows.at(0).id);
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1415,9 +1416,10 @@ void get_items_sqlite(int max) {
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
-    //O.mode = NORMAL;
     O.mode = O.last_mode;
-    get_note(O.rows.at(0).id);
+    //get_note(O.rows.at(0).id);
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1511,7 +1513,9 @@ void get_items_by_id_sqlite(std::stringstream& query) {
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
-    get_note(O.rows.at(0).id);
+    //get_note(O.rows.at(0).id);
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1604,17 +1608,21 @@ void get_items_by_id_pg(std::stringstream& query) {
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = DATABASE;
-    get_note(O.rows.at(0).id);
+    //get_note(O.rows.at(0).id);
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
 void get_note_sqlite(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
+  /*
   if (!editor_mode && O.mode == DATABASE) {
     display_item_info(O.rows.at(O.fr).id);
     return;
   }
+  */
 
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
@@ -1678,10 +1686,12 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 void get_note_pg(int id) {
   if (id ==-1) return;
 
+  /*
   if (!editor_mode && O.mode == DATABASE) {
     display_item_info(O.rows.at(O.fr).id);
     return;
   }
+  */
 
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //11-18-2019 commented out because in C_edit but a problem if you leave editor mode
@@ -1977,6 +1987,7 @@ void enableRawMode() {
 }
 /*** vim-like functions***/
 
+/*
 void move_up(void)
 {
   int id;
@@ -1986,6 +1997,8 @@ void move_up(void)
   O.fc = O.coloff = 0;
   get_note(id); //if id == -1 does not try to retrieve note
 }
+*/
+
 /*** end vim-like functions***/
 
 /*
@@ -2753,18 +2766,20 @@ void outlineMoveCursor(int key) {
       if (O.fr > 0) O.fr--; 
       O.fc = O.coloff = 0; 
 
-      //id = O.rows.at(O.fr).id;
-      if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      //editorRefreshScreen(); //in get_note
+      if (O.view == TASK) {
+        if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+        else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+      }
       break;
 
     case ARROW_DOWN:
     case 'j':
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
-      //id = O.rows.at(O.fr).id;
-      if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      //editorRefreshScreen(); //in get_note
+      if (O.view == TASK) {
+        if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+        else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+      }
       break;
   }
 
@@ -2772,7 +2787,7 @@ void outlineMoveCursor(int key) {
   if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
 }
 
-// higher level outline function depends on readKey()
+// depends on readKey()
 void outlineProcessKeypress(void) {
   int start, end, command;
 
@@ -2781,7 +2796,7 @@ void outlineProcessKeypress(void) {
 
   //int c = readKey();
   size_t n;
-  switch (int c = readKey(); O.mode) { //init statement for if/switch - may want to try it
+  switch (int c = readKey(); O.mode) { //init statement for if/switch
 
     case NO_ROWS:
 
@@ -2813,8 +2828,6 @@ void outlineProcessKeypress(void) {
         case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
-          //outlineScroll(); ////////////////////////////////////////////////////////////////////////////
-          //outlineRefreshScreen();  //? necessary //////////////////////////////////////////
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -3098,15 +3111,15 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
 
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-
+          if (O.view == TASK) { //{get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+            if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+            else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          }
           return;
       
         case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
           O.fc = O.fr = O.rowoff = 0;
-          //outlineScroll();//////////////////////////////////////////////////////////////////////////////////////
-          //outlineRefreshScreen();  //? necessary ///////////////////////////////////////////////////////////////
           O.command[0] = '\0';
           O.repeat = 0;
           outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -3274,8 +3287,11 @@ void outlineProcessKeypress(void) {
           O.fr = O.repeat-1; //this needs to take into account O.rowoff
           O.command[0] = '\0';
           O.repeat = 0;
-          //get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (O.view == TASK) {
+            if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+            else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          }
+          //if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
           return;
 
         case C_gt:
@@ -3311,7 +3327,7 @@ void outlineProcessKeypress(void) {
           return;
           }
 
-        case C_edit:
+        case C_edit: //CTRL-W,CTRL-W
           // can't edit note if rows_are_contexts
           if (!O.view == TASK) {
             O.command[0] = '\0';
@@ -3327,8 +3343,6 @@ void outlineProcessKeypress(void) {
             //editor_mode needs go before get_note in case we retrieved item via a search
             editor_mode = true;
             get_note(id); //if id == -1 does not try to retrieve note
-            E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
-            //editor_mode = true;
             E.mode = NORMAL;
             E.command[0] = '\0';
           } else {
@@ -3446,7 +3460,6 @@ void outlineProcessKeypress(void) {
               O.taskview = BY_SEARCH;
               search_terms = O.command_line.substr(pos+1);
               search_db();
-              //O.mode = O.last_mode; //want search mode
               return;
 
             case C_fts: 
@@ -3475,7 +3488,6 @@ void outlineProcessKeypress(void) {
             case 'c':
             case C_contexts: //catches context, contexts and c
               editorEraseScreen();
-              //EraseScreenRedrawLines(); //while it does a lot more, it does erase the note is there just an erasenote
               O.view = CONTEXT;
               get_containers();
               O.mode = NORMAL;
@@ -3485,7 +3497,6 @@ void outlineProcessKeypress(void) {
             case 'f':
             case C_folders: //catches folder, folders and f
               editorEraseScreen();
-              //EraseScreenRedrawLines();
               O.view = FOLDER;
               get_containers();
               O.mode = NORMAL;
@@ -3495,7 +3506,6 @@ void outlineProcessKeypress(void) {
             case 'k':
             case C_keywords: //catches keyword, keywords and kw
               editorEraseScreen();
-              //EraseScreenRedrawLines();
               O.view = KEYWORD;
               get_keywords();
               O.mode = NORMAL;
@@ -3542,7 +3552,8 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
               }
               O.mode = O.last_mode;
-              //O.command_line.clear(); //calling : in NORMAL clears command_line
+              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+              //O.command_line.clear(); //calling : in all modes should clear command_line
               return;
               }
 
@@ -3586,6 +3597,7 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
               }
               O.mode = O.last_mode;
+              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
               }
 
@@ -3594,7 +3606,6 @@ void outlineProcessKeypress(void) {
               if (O.last_mode == NO_ROWS) return;
               std::string keyword = O.command_line.substr(pos+1);
               outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
-              //add_task_keyword(keyword);
 
               bool success = false;
               for (const auto& it : O.rows) {
@@ -3611,7 +3622,8 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
               }
               O.mode = O.last_mode;
-              get_note(O.rows.at(O.fr).id); // 11-26-2019
+              //get_note(O.rows.at(O.fr).id); // 11-26-2019
+              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
             }
 
