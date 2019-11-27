@@ -135,6 +135,7 @@ enum Command {
   C_de,
   C_d$,
   C_dd,//could just toggle deleted
+  C_dG,
   C_indent,
   C_unindent,
   C_c$,
@@ -199,6 +200,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"dw", C_dw},
   {"de", C_de},
   {"dd", C_dd},
+  {"dG", C_dG},
   {">>", C_indent},
   {"<<", C_unindent},
   {"gg", C_gg},
@@ -2187,9 +2189,9 @@ void editorDelRow(int r) {
   E.rows.erase(E.rows.begin() + r);
   //E.numrows--;
   if (E.rows.size() == 0) {
-    E.rows.clear();
-    E.fr = 0;
-    E.fc = 0;
+    //E.rows.clear();
+    E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
+    E.mode = NO_ROWS;
     return;
   }
 
@@ -3622,7 +3624,6 @@ void outlineProcessKeypress(void) {
                 outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
               }
               O.mode = O.last_mode;
-              //get_note(O.rows.at(O.fr).id); // 11-26-2019
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
             }
@@ -3638,13 +3639,6 @@ void outlineProcessKeypress(void) {
               std::string new_context;
               if (pos) {
                 bool success = false;
-                /*
-                for (auto i : context_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], i.first.c_str(), 3) == 0) {
-                    new_context = i.first;
-                    success = true;
-                    break;
-                  }*/
                 //structured bindings
                 for (const auto & [k,v] : context_map) {
                   if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
@@ -3667,7 +3661,6 @@ void outlineProcessKeypress(void) {
               O.folder = "";
               O.taskview = BY_CONTEXT;
               get_items(MAX);
-              //editorRefreshScreen(); //in get_note
               O.mode = O.last_mode;
               return;
               }
@@ -3689,12 +3682,10 @@ void outlineProcessKeypress(void) {
                 O.command_line.resize(1);
                 return;
               }
-              //EraseScreenRedrawLines(); //*****************************
               outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
               O.context = "";
               O.taskview = BY_FOLDER;
               get_items(MAX);
-              //editorRefreshScreen(); //in get_note
               return;
 
 
@@ -3706,7 +3697,6 @@ void outlineProcessKeypress(void) {
               }
 
               O.keyword = O.command_line.substr(pos+1);
-              //EraseScreenRedrawLines(); //*****************************
               outlineSetMessage("\'%s\' will be opened", O.keyword.c_str());
               O.context = "No Context";
               O.folder = "No Folder";
@@ -3720,9 +3710,8 @@ void outlineProcessKeypress(void) {
               {
               if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
                 outlineSetMessage("You are either in a view where you can't join or provided no join container");
-                //O.command_line.clear();
-                //O.command[0] = '\0';
                 O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+                O.mode = O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
                 return;
               }
               bool success = false;
@@ -3751,7 +3740,6 @@ void outlineProcessKeypress(void) {
                 return;
               }
 
-               //EraseScreenRedrawLines(); //needed to erase sort (time) column*****************************
                outlineSetMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
                O.taskview = BY_JOIN;
                get_items(MAX);
@@ -3760,7 +3748,6 @@ void outlineProcessKeypress(void) {
 
             case C_sort:
               if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
-                //EraseScreenRedrawLines(); //*****************************
                 O.sort = O.command_line.substr(pos + 1);
                 get_items(MAX);
                 outlineSetMessage("sorted by \'%s\'", O.sort.c_str());
@@ -3770,7 +3757,6 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_recent:
-              //EraseScreenRedrawLines(); //*****************************
               outlineSetMessage("Will retrieve recent items");
               O.context = "recent";
               O.taskview = BY_RECENT;
@@ -3797,10 +3783,8 @@ void outlineProcessKeypress(void) {
               map_context_titles();
               map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
-              //O.last_mode = O.mode; // probably COMMAND_LINE, right
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Synching local db and server and displaying results");
-              //outlineRefreshScreen(); ////////////////////////////////////////////
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3809,10 +3793,8 @@ void outlineProcessKeypress(void) {
               synchronize(1); //1 -> report_only
 
               initial_file_row = 0; //for arrowing or displaying files
-              //O.last_mode = O.mode;
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
               outlineSetMessage("Testing synching local db and server and displaying results");
-              //outlineRefreshScreen(); ///////////////////////////////////////////////////////////////
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -3892,7 +3874,6 @@ void outlineProcessKeypress(void) {
               O.last_mode = O.mode;
               O.mode = FILE_DISPLAY;
               outlineSetMessage("Displaying help file");
-              //outlineRefreshScreen();///////////////////////////////////////////////////////////////////////
               editorReadFile("listmanager_commands");
               editorDisplayFile();
               return;
@@ -6269,9 +6250,41 @@ void editorProcessKeypress(void) {
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  int c = readKey();
+  //int c = readKey();
 
-  switch (E.mode) {
+  switch (int c = readKey(); E.mode) {
+
+    case NO_ROWS:
+
+      switch(c) {
+        case ':':
+          E.mode = COMMAND_LINE;
+          E.command[0] = ':';
+          E.command[1] = '\0';
+          editorSetMessage(":");
+          return;
+
+        case '\x1b':
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
+
+        case 'i':
+        case 'I':
+        case 'a':
+        case 'A':
+        case 's':
+        case 'O':
+        case 'o':
+          editorInsertRow(0, std::string());
+          E.mode = INSERT;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          return;
+      }
+
+      return;
 
     case INSERT:
 
@@ -6717,6 +6730,17 @@ void editorProcessKeypress(void) {
           }
           E.command[0] = '\0';
           E.repeat = 0;
+          return;
+
+        case C_dG:
+          editorCreateSnapshot();
+          E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
+          if (E.rows.empty()) {
+              E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
+              E.mode = NO_ROWS;
+          } else {
+              E.fr--;
+          }
           return;
     
         //tested with repeat on one line
