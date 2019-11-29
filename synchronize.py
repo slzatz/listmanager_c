@@ -77,6 +77,26 @@ def synchronize(report_only=True):
     else:
         log+="There were no server Folders deleted since the last sync.\n" 
 
+    #server_updated_keywords: new and modified
+    server_updated_keywords = remote_session.query(p.Keyword).filter(and_(
+      p.Keyword.modified > last_server_sync, p.Keyword.deleted==False)).all()
+
+    if server_updated_keywords:
+        nn+=len(server_updated_keywords)
+        log+=f"Updated (new and modified) server Keywords since the last sync: {len(server_updated_keywords)}.\n"
+    else:
+        log+="There were no updated (new and modified) server Keywords since the last sync.\n" 
+
+    #server_deleted_keywords
+    server_deleted_keywords = remote_session.query(p.Keyword).filter(and_(
+      p.Keyword.modified > last_server_sync, p.Keyword.deleted==True)).all()
+      
+    if server_deleted_keywords:
+        nn+=len(server_deleted_keywords)
+        log+=f"Deleted server Keywords since the last sync: {len(server_deleted_folders)}.\n"
+    else:
+        log+="There were no server Keywords deleted since the last sync.\n" 
+
     #server_updated_tasks: new and modified
     server_updated_tasks = remote_session.query(p.Task).filter(and_(
       p.Task.modified > last_server_sync, p.Task.deleted==False, p.Task.id > 1)).all()
@@ -140,6 +160,26 @@ def synchronize(report_only=True):
     else:
         log+="There were no client Folders deleted since the last sync.\n" 
 
+    #client_updated_keywords: new and modified
+    client_updated_keywords = local_session.query(Keyword).filter(and_(
+      Keyword.modified > last_client_sync, Keyword.deleted==False)).all()
+
+    if client_updated_keywords:
+        nn+=len(client_updated_keywords)
+        log+=f"Updated (new and modified) client Keywords since the last sync: {len(client_updated_keywords)}.\n"
+    else:
+        log+="There were no updated (new and modified) client Keywords since the last sync.\n" 
+
+    #client_deleted_keywords
+    client_deleted_keywords = local_session.query(Keyword).filter(and_(
+      Keyword.modified > last_client_sync, Keyword.deleted==True)).all()
+      
+    if client_deleted_keywords:
+        nn+=len(client_deleted_keywords)
+        log+=f"Deleted client Keyword since the last sync: {len(client_deleted_keywords)}.\n"
+    else:
+        log+="There were no client Keyword deleted since the last sync.\n" 
+
     #client_updated_tasks: new and modified 
     client_updated_tasks = local_session.query(Task).filter(and_(
     Task.modified > last_client_sync, Task.deleted==False)).all()
@@ -174,18 +214,21 @@ def synchronize(report_only=True):
 
         if not context:
             action = "created"
-            context = Context()
+            z = ''.join(random.choices(string.ascii_uppercase + string.digits, k = 10))
+            # Context(tid, title)
+            context = Context(sc.id, sc.title)
             local_session.add(context)
             # next line important: local db task.tid is the unique key that 
             # links to the foreign key in context and folder tables
-            context.tid = sc.id
+            #context.tid = sc.id
         else:
             action = "updated"
+            context.title = sc.title
             
         # Note that the foreign key that the server uses task.context_tid points to context.id is different
         # between postgres and sqlite postgres points to context.id and local
         # sqlite db points to context.tid but the actual values are identical
-        context.title = sc.title
+        #context.title = sc.title
         context.default = sc.default # -> row.star; sqla knows this is "default"
         context.textcolor = sc.textcolor
 
@@ -202,7 +245,8 @@ def synchronize(report_only=True):
 
         if not context:
             action = "created"
-            context = p.Context(1000, "temp") # needs a title but will be changed below
+            z = ''.join(random.choices(string.ascii_uppercase + string.digits, k = 10))
+            context = p.Context(cc.title) # needs a title but will be changed below
             remote_session.add(context)
             remote_session.commit()
             cc.tid = context.id 
@@ -213,7 +257,8 @@ def synchronize(report_only=True):
                 action += "-server won"
                 continue
             
-        context.title = cc.title
+            context.title = cc.title
+
         context.default = cc.default # -> row.star; sqla knows this is "default"
         context.textcolor = cc.textcolor
 
@@ -230,18 +275,20 @@ def synchronize(report_only=True):
 
         if not folder:
             action = "created"
-            folder = Folder()
+            #Folder(tid, title)
+            folder = Folder(sf.id, sf.title)
             local_session.add(folder)
             # next line important: local db task.tid is the unique key that 
             # links to the foreign key in context and folder tables
-            folder.tid = sf.id
+            #folder.tid = sf.id
         else:
             action = "updated"
+            folder.title = sf.title
             
         # Note that the foreign key that the server uses task.context_tid points to context.id is different
         # between postgres and sqlite postgres points to context.id and local
         # sqlite db points to context.tid but the actual values are identical
-        folder.title = sf.title
+        #folder.title = sf.title
         folder.private = sf.private # -> row.star
         folder.textcolor = sf.textcolor
 
@@ -258,7 +305,7 @@ def synchronize(report_only=True):
 
         if not folder:
             action = "created"
-            folder = p.Folder(1000, "temp") # needs a title but will be changed below
+            folder = p.Folder(cf.title) # needs a title but will be changed below
             remote_session.add(folder)
             remote_session.commit()
             cf.tid = folder.id 
@@ -269,13 +316,68 @@ def synchronize(report_only=True):
                 action += "-server won"
                 continue
             
-        folder.title = cf.title
+            folder.title = cf.title
+
         folder.private = cf.private # -> row.star
         folder.textcolor = cf.textcolor
 
         remote_session.commit()
 
         log += f"{action} - id: {folder.id} title: {folder.title} \n"
+    #######################################################################################
+    #updated server keywords -> client
+    if server_updated_keywords:
+        log += "\nKeywords that were updated/created on the Server that need to be updatd/dreated on the Client:\n"
+    for sk in server_updated_keywords:
+
+        keyword = local_session.query(Keyword).filter_by(tid=sk.id).first()
+
+        if not keyword:
+            action = "created"
+            #Keyword(tid, name)
+            keyword = Keyword(sk.id, sk.name)
+            local_session.add(keyword)
+            #keyword.tid = sk.id
+        else:
+            action = "updated"
+            keyword.name = sk.name
+
+        keyword.star = sk.star
+        # modified should be handled by db
+
+        local_session.commit()
+
+        log += f"{action} - id: {keyword.id} tid: {keyword.tid} title: {keyword.name} \n"
+
+    # updated client keywords -> server
+    if client_updated_keywords:
+        log += "\nKeywords that were updated/created on Client that need to be updated/created on Server:\n"
+    for ck in client_updated_keywords:
+
+        keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
+
+        if not keyword:
+            action = "created"
+            keyword = p.Keyword(ck.name)
+            remote_session.add(keyword)
+            remote_session.commit()
+            ck.tid = keyword.id
+            local_session.commit()
+        else:
+            action = "updated"
+            if keyword in server_updated_keywords:
+                action += "-server won"
+                continue
+
+            keyword.name = ck.name
+
+        keyword.star = ck.star
+        #modified should be handled by db
+
+        remote_session.commit()
+
+        log += f"{action} - id: {keyword.id} title: {keyword.name} \n"
+    #######################################################################################
 
     # updated server tasks -> client
     if server_updated_tasks:
@@ -529,7 +631,7 @@ def synchronize(report_only=True):
             local_session.delete(folder)
             local_session.commit() 
         else:
-            log+="Folder deleted on Server unsuccessful trying to delete on Client - could not find Client context with tid = {sf.id}\n"
+            log+="Folder deleted on Server unsuccessful trying to delete on Client - could not find Client folder with tid = {sf.id}\n"
 
     # Delete from server folders deleted on client
     for cf in client_deleted_folders:
@@ -552,7 +654,46 @@ def synchronize(report_only=True):
 
         local_session.delete(cf)
         local_session.commit()
+    ###############################################################################################################################
 
+    # Delete from client keywords deleted on server
+    for sk in server_deleted_keywords:
+        # deal with server keywords's related task_keywords    
+        remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword_id==sk.id).delete(synchronize_session=False)
+        remote_session.commit()
+
+        # deal with client keyword and its related task_keywords    
+        keyword = local_session.query(Keyword).filter_by(tid=sk.id).first()
+        if keyword:
+            log+=f"Keyword deleted on Server deleted on Client - id: {keyword.id}; tid: {keyword.tid}; title: {keyword.name}\n"
+
+            local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==sk.id).delete(synchronize_session=False)
+            local_session.commit()
+            local_session.delete(keyword)
+            local_session.commit() 
+        else:
+            log+="Keyword deleted on Server unsuccessful trying to delete on Client - could not find Client keyword with tid = {sk.id}\n"
+
+    # Delete from server keywords deleted on client
+    for ck in client_deleted_keywords:
+        local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==ck.id).delete(synchronize_session=False)
+        local_session.commit()
+
+        # deal with server folder and its related tasks    
+        keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
+        if keyword:
+            log+=f"Keyword deleted on Client will be marked as deleted on Server - id: {keyword.id}; title: {keyword.title}\n"
+
+            remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword.id==ck.tid).delete(synchronize_session=False) 
+            remote_session.commit()
+            keyword.deleted = True
+            remote_session.commit() 
+        else:
+            log+="Folder deleted on Client unsuccessful trying to delete on Server - could not find Server folder with id = {cf.tid}\n"
+
+        local_session.delete(ck)
+        local_session.commit()
+    ###############################################################################################################################
     # note that if we want to find unused keywords, this query does it:  SELECT name from keyword WHERE keyword.id NOT IN (SELECT keyword_id from task_keyword)
 
 

@@ -88,6 +88,9 @@ folder_table = Table('folder', metadata,
 keyword_table = Table('keyword', metadata,
                  Column('id',Integer, primary_key=True),
                  Column('name', String(25), unique=True, nullable=False), #note tag is <=65
+                 Column('star', Boolean, default=False),
+                 Column('deleted', Boolean, default=False),
+                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
 )
 taskkeyword_table = Table('task_keyword', metadata,
                       Column('task_id', Integer, ForeignKey('task.id'), primary_key=True), 
@@ -116,13 +119,11 @@ class Task(object):
         return "<Task(%d - '%s')>" % (self.id, self.title)
 
 class Context(object):
-    def __init__(self, tid=None, title=None):
-        self.tid = tid
+    def __init__(self, title=None):
         self.title = title
 
 class Folder(object):
     def __init__(self, tid=None, title=None):
-        self.tid = tid
         self.title = title
         
 class Keyword(object):

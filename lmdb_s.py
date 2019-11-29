@@ -100,8 +100,12 @@ folder_table = Table('folder', metadata,
 
 
 keyword_table = Table('keyword', metadata,
-                 Column('id',Integer, primary_key=True),
+                 Column('id', Integer, primary_key=True),
                  Column('name', String(25), unique=True, nullable=False), #note tag is <=65
+                 Column('tid', Integer, unique=True, nullable=False),
+                 Column('star', Boolean, default=False),
+                 Column('deleted', Boolean, default=False),
+                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
                  )
 
 taskkeyword_table = Table('task_keyword', metadata,
@@ -140,7 +144,8 @@ class Folder(object):
         self.title = title
         
 class Keyword(object):
-    def __init__(self, name=None):
+    def __init__(self, tid=None, name=None):
+        self.tid = tid   
         self.name = name
 
     @property # allows some methods to deal with keywords like context, folders
