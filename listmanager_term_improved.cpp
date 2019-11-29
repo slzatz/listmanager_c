@@ -42,7 +42,6 @@
 //static std::map<int, pfunc> outline_normal_map;
 
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-//static const std::string FTS_DB = "/home/slzatz/c_stuff/listmanager/fts5.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
 static int which_db;
@@ -222,11 +221,14 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"new", C_new}, //don't need "n" because there is no target
   {"contexts", C_contexts},
   {"context", C_contexts},
+  {"c", C_contexts},
   {"folders", C_folders},
   {"folder", C_folders},
+  {"f", C_folders},
   {"keywords", C_keywords},
   {"keyword", C_keywords},
   {"kw", C_keywords},
+  {"k", C_keywords},
   {"mtc", C_movetocontext}, //need because this is command line command with a target word
   {"movetocontext", C_movetocontext},
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
@@ -355,6 +357,7 @@ static void (*map_folder_titles)(void);
 static void (*get_containers)(void);
 static void (*get_keywords)(void);
 static void (*update_container)(void);
+static void (*update_keyword)(void);
 //static void (*insert_context)(void); //not called directly
 static void (*add_task_keyword)(const std::string &, int);
 static void (*delete_task_keywords)(void);
@@ -401,12 +404,18 @@ int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
 int insert_container_pg(orow&);
 int insert_container_sqlite(orow&);
+int insert_keyword_sqlite(orow &);
+int insert_keyword_pg(orow &);
 void update_container_sqlite(void);
 void update_container_pg(void);
+void update_keyword_sqlite(void);
+void update_keyword_pg(void);
 void get_items_sqlite(int); //////////
 void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
+void get_keywords_sqlite(void);
+void get_keywords_pg(void);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
@@ -1110,12 +1119,12 @@ void get_keywords_pg(void) {
 
     row.title = std::string(PQgetvalue(res, i, 1));
     row.id = atoi(PQgetvalue(res, i, 0)); //right now pulling sqlite id not tid
-    row.star = false; //private
+    row.star = (*PQgetvalue(res, i, 2) == 't') ? true: false;
     row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
     row.completed = false;
     row.dirty = false;
     row.mark = false;
-    strncpy(row.modified, BASE_DATE, 16);
+    strncpy(row.modified, PQgetvalue(res, i, 3), 16);
     O.rows.push_back(row);
   }
 
@@ -1948,7 +1957,11 @@ int keyfromstringcpp(const std::string& key) {
 
 int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
 
-  if (key.size() == 1) return key[0];  //need this
+  // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
+  if (key.size() == 1) {
+    found = 0;
+    return key[0];
+  }
 
   found = key.find(' ');
   if (found != std::string::npos) {
@@ -2184,7 +2197,7 @@ void editorInsertRow(int fr, std::string s) {
 // untested
 void editorDelRow(int r) {
   //editorSetMessage("Row to delete = %d; E.numrows = %d", fr, E.numrows); 
-  if (E.rows.size() == 0) return; // some calls may duplicate this guard
+  if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
 
   E.rows.erase(E.rows.begin() + r);
   //E.numrows--;
@@ -2207,7 +2220,7 @@ void editorRowAppendString(std::string& row, std::string& s) {
 
 /*** editor operations ***/
 void editorInsertChar(int chr) {
-  if (E.rows.empty()) {
+  if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
   }
   std::string& row = E.rows.at(E.fr);
@@ -2217,7 +2230,7 @@ void editorInsertChar(int chr) {
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
-  if (E.rows.empty()) {
+  if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
     editorInsertRow(0, std::string());
     E.fc = 0;
@@ -2243,7 +2256,7 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 //'o' -> direction == 1 and 'O' direction == 0
 void editorInsertNewline(int direction) {
   /* note this func does position E.fc and E.fr*/
-  if (E.rows.empty()) {
+  if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
     return;
   }
@@ -2267,7 +2280,7 @@ void editorInsertNewline(int direction) {
 }
 
 void editorDelChar(void) {
-  if (E.rows.empty()) return;
+  if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
   std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
   row.erase(row.begin() + E.fc);
@@ -2881,7 +2894,8 @@ void outlineProcessKeypress(void) {
 
         case '\r': //also does escape into NORMAL mode
           if (O.view == TASK) update_row();
-          else update_container();
+          else if (O.view == CONTEXT || O.view == FOLDER) update_container();
+          else if (O.view == KEYWORD) update_keyword();
           O.command[0] = '\0'; //11-26-2019
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
@@ -2975,18 +2989,17 @@ void outlineProcessKeypress(void) {
           {
           orow& row = O.rows.at(O.fr);
 
-          if (O.view == TASK) {
-            update_row();
-            O.command[0] = '\0';
+          if(row.dirty){
+            if (O.view == TASK) update_row();
+            else if (O.view == CONTEXT || O.view == FOLDER) update_container();
+            else if (O.view == KEYWORD) update_keyword();
+            O.command[0] = '\0'; //11-26-2019
+            O.mode = NORMAL;
+            if (O.fc > 0) O.fc--;
+            //outlineSetMessage("");
             return;
           }
-          // because of first if above - this is in effect:
-          //if (O.view != TASK && row.dirty)
-          if (row.dirty) { // means context or folder title has changed
-            update_container();
-            O.command[0] = '\0';
-            return;
-          }
+
           // return means retrieve items by context or folder
           if (O.view == CONTEXT) {
             O.context = row.title;
@@ -3489,30 +3502,144 @@ void outlineProcessKeypress(void) {
 
             case 'c':
             case C_contexts: //catches context, contexts and c
-              editorEraseScreen();
-              O.view = CONTEXT;
-              get_containers();
-              O.mode = NORMAL;
-              outlineSetMessage("Retrieved contexts");
-              return;
+              if (!pos) {
+                editorEraseScreen();
+                O.view = CONTEXT;
+                get_containers();
+                O.mode = NORMAL;
+                outlineSetMessage("Retrieved contexts");
+                return;
+              } else {
+
+                std::string new_context;
+                bool success = false;
+                if (O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
+                  // structured bindings
+                  for (const auto & [k,v] : context_map) {
+                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                      new_context = k;
+                      success = true;
+                      break;
+                    }
+                  }
+                  if (!success) {
+                    outlineSetMessage("What you typed did not match any context");
+                    return;
+                  }
+
+                } else {
+                  outlineSetMessage("You need to provide at least 3 characters "
+                                    "that match a context!");
+
+                  O.command_line.clear();
+                  return;
+                }
+                success = false;
+                for (const auto& it : O.rows) {
+                  if (it.mark) {
+                    update_task_context(new_context, it.id);
+                    success = true;
+                  }
+                }
+
+                if (success) {
+                  outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
+                } else {
+                  update_task_context(new_context, O.rows.at(O.fr).id);
+                  outlineSetMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
+                }
+                O.mode = O.last_mode;
+                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+                //O.command_line.clear(); //calling : in all modes should clear command_line
+                return;
+                }
 
             case 'f':
             case C_folders: //catches folder, folders and f
-              editorEraseScreen();
-              O.view = FOLDER;
-              get_containers();
-              O.mode = NORMAL;
-              outlineSetMessage("Retrieved folders");
-              return;
+              if (!pos) {
+                editorEraseScreen();
+                O.view = FOLDER;
+                get_containers();
+                O.mode = NORMAL;
+                outlineSetMessage("Retrieved folders");
+                return;
+              } else {
+
+                std::string new_folder;
+                bool success = false;
+                if (O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
+                  // structured bindings
+                  for (const auto & [k,v] : folder_map) {
+                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                      new_folder = k;
+                      success = true;
+                      break;
+                    }
+                  }
+                  if (!success) {
+                    outlineSetMessage("What you typed did not match any folder");
+                    return;
+                  }
+
+                } else {
+                  outlineSetMessage("You need to provide at least 3 characters "
+                                    "that match a folder!");
+
+                  O.command_line.clear();
+                  return;
+                }
+                success = false;
+                for (const auto& it : O.rows) {
+                  if (it.mark) {
+                    update_task_folder(new_folder, it.id);
+                    success = true;
+                  }
+                }
+
+                if (success) {
+                  outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
+                } else {
+                  update_task_folder(new_folder, O.rows.at(O.fr).id);
+                  outlineSetMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
+                }
+                O.mode = O.last_mode;
+                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+                return;
+               }
 
             case 'k':
-            case C_keywords: //catches keyword, keywords and kw
-              editorEraseScreen();
-              O.view = KEYWORD;
-              get_keywords();
-              O.mode = NORMAL;
-              outlineSetMessage("Retrieved keywords");
-              return;
+            case C_keywords: //catches keyword, keywords, kw and k
+              if (!pos) {
+                editorEraseScreen();
+                O.view = KEYWORD;
+                get_keywords();
+                O.mode = NORMAL;
+                outlineSetMessage("Retrieved keywords");
+                return;
+              } else {
+
+                if (O.last_mode == NO_ROWS) return;
+                std::string keyword = O.command_line.substr(pos+1);
+                outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
+
+                bool success = false;
+                for (const auto& it : O.rows) {
+                  if (it.mark) {
+                    add_task_keyword(keyword, it.id);
+                    success = true;
+                  }
+                }
+
+                if (success) {
+                  outlineSetMessage("Marked tasks had keyword %s added", keyword.c_str());
+                } else {
+                  add_task_keyword(keyword, O.rows.at(O.fr).id);
+                  outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
+                }
+                O.mode = O.last_mode;
+                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+                return;
+              }
 
             case C_movetocontext:
               {
@@ -4929,7 +5056,6 @@ void touch_pg(void) {
   return;
 }
 
-
 void touch_sqlite(void) {
 
   std::stringstream query;
@@ -5016,9 +5142,36 @@ void toggle_star_pg(void) {
 
   std::stringstream query;
   int id = get_id();
-  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
-  std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
 
+  std::string table;
+  std::string column;
+
+  switch(O.view) {
+
+    case TASK:
+      table = "task";
+      column = "star";
+      break;
+
+    case CONTEXT:
+      table = "context";
+      column = "\"default\"";
+      break;
+
+    case FOLDER:
+      table = "folder";
+      column = "private";
+      break;
+
+    case KEYWORD:
+      table = "keyword";
+      column = "star";
+      break;
+
+    default:
+      outlineSetMessage("Not sure what you're trying to toggle");
+      return;
+  }
 
   query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "FALSE" : "TRUE") << ", "
         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
@@ -5042,8 +5195,35 @@ void toggle_star_sqlite(void) {
 
   std::stringstream query;
   int id = get_id();
-  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
-  std::string column= (O.view == TASK) ? "star" : ((O.view == CONTEXT) ? "\"default\"" : "private");
+  std::string table;
+  std::string column;
+
+  switch(O.view) {
+
+    case TASK:
+      table = "task";
+      column = "star";
+      break;
+
+    case CONTEXT:
+      table = "context";
+      column = "\"default\"";
+      break;
+
+    case FOLDER:
+      table = "folder";
+      column = "private";
+      break;
+
+    case KEYWORD:
+      table = "keyword";
+      column = "star";
+      break;
+
+    default:
+      outlineSetMessage("Not sure what you're trying to toggle");
+      return;
+  }
 
   query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
         << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
@@ -5291,6 +5471,205 @@ void update_container_sqlite(void) {
   }
 }
 
+void update_keyword_sqlite(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineSetMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+    std::string title = row.title;
+    size_t pos = title.find("'");
+    while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
+
+    std::stringstream query;
+    query << "UPDATE "
+          << "keyword "
+          << "SET name='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
+
+    sqlite3 *db;
+    char *err_msg = 0;
+
+    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+    if (rc != SQLITE_OK) {
+      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("SQL error: %s", err_msg);
+      sqlite3_free(err_msg);
+    } else {
+      row.dirty = false;
+      outlineSetMessage("Successfully updated row %d", row.id);
+    }
+
+    sqlite3_close(db);
+
+  } else { //row.id == -1
+    insert_keyword_sqlite(row);
+  }
+}
+void update_keyword_pg(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineSetMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+
+    if (PQstatus(conn) != CONNECTION_OK){
+      if (PQstatus(conn) == CONNECTION_BAD) {
+
+          fprintf(stderr, "Connection to database failed: %s\n",
+              PQerrorMessage(conn));
+          do_exit(conn);
+      }
+    }
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+    std::stringstream query;
+    query << "UPDATE "
+          << "keyword "
+          << "SET name='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id; //I think id is correct
+
+    PGresult *res = PQexec(conn, query.str().c_str());
+
+    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
+      outlineSetMessage(PQerrorMessage(conn));
+    } else {
+      row.dirty = false;
+      outlineSetMessage("Successfully update row %d", row.id);
+    }
+
+    PQclear(res);
+
+  } else {
+    insert_keyword_pg(row);
+  }
+}
+
+int insert_keyword_sqlite(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO "
+        << "keyword "
+        << "("
+        << "name, "
+        << "star, "
+        << "deleted, "
+        << "modified, "
+        << "tid"
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " " << row.star << ","
+        << " False," //default for context and private for folder
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
+        << " 100);"; //tid
+
+  sqlite3 *db;
+  char *err_msg = nullptr; //0
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  outlineSetMessage("Successfully inserted new context with id %d and indexed it", row.id);
+
+  return row.id;
+}
+
+int insert_keyword_pg(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO "
+        << "keyword "
+        << "("
+        << "name, "
+        << "star, "
+        << "deleted, "
+        << "modified"
+        //<< "tid, " //no tid on pg
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " " << row.star << ","
+        << " False," //default for context and private for folder
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
+        << ") RETURNING id;";
+        //<< " 100);"; //tid
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
+    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    PQclear(res);
+    return -1;
+  }
+
+  row.id = atoi(PQgetvalue(res, 0, 0));
+  row.dirty = false;
+
+  PQclear(res);
+  outlineSetMessage("Successfully inserted new context with id %d", row.id);
+
+  return row.id;
+}
+
 int insert_row_pg(orow& row) {
 
   std::string title = row.title;
@@ -5384,8 +5763,8 @@ int insert_container_pg(orow& row) {
         << ") VALUES ("
         << "'" << title << "'," //title
         << " False," //deleted
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //created
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
+        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
         << " 100," //tid
         << " False," //default for context and private for folder
         << " 10" //textcolor
@@ -8083,6 +8462,7 @@ int main(int argc, char** argv) {
     search_db = fts5_sqlite;
     get_containers = get_containers_sqlite;
     update_container = update_container_sqlite;
+    update_keyword = update_keyword_sqlite;
     map_context_titles =  map_context_titles_sqlite;
     map_folder_titles =  map_folder_titles_sqlite;
     add_task_keyword = add_task_keyword_sqlite;
@@ -8110,6 +8490,7 @@ int main(int argc, char** argv) {
     search_db = solr_find;
     get_containers = get_containers_pg;
     update_container = update_container_pg;
+    update_keyword = update_keyword_pg;
     map_context_titles = map_context_titles_pg;
     map_folder_titles = map_folder_titles_pg;
     add_task_keyword = add_task_keyword_pg;
