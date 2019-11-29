@@ -325,6 +325,9 @@ struct editorConfig {
   int mode;
   // probably OK that command is a char[] and not a std::string
   char command[10]; // right now includes normal mode commands and command line commands
+  int last_command; //will use the number equivalent of the command
+  int last_repeat;
+  std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
   int repeat;
   int indent;
   int smartindent;
@@ -355,7 +358,7 @@ static void (*map_context_titles)(void);
 static void (*map_folder_titles)(void);
 
 static void (*get_containers)(void);
-static void (*get_keywords)(void);
+//static void (*get_keywords)(void);
 static void (*update_container)(void);
 static void (*update_keyword)(void);
 //static void (*insert_context)(void); //not called directly
@@ -414,8 +417,8 @@ void get_items_sqlite(int); //////////
 void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
-void get_keywords_sqlite(void);
-void get_keywords_pg(void);
+//void get_keywords_sqlite(void);
+//void get_keywords_pg(void);
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
@@ -788,11 +791,31 @@ void get_containers_pg(void) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  //std::string query("SELECT * FROM context;");
+  std::string table;
+  int (*callback)(void *, int, char **, char **);
+  switch (O.view){
+    case CONTEXT:
+      table = "context";
+      break;
+    case FOLDER:
+      table = "folder";
+      break;
+    case KEYWORD:
+      table = "keyword";
+      break;
+    default:
+      outlineSetMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+
+
   std::stringstream query;
+  /*
   query << "SELECT * FROM "
         << ((O.view == CONTEXT) ? "context;" : "folder;");
+ */
 
+  query << "SELECT * FROM " << table << ";";
 
   PGresult *res = PQexec(conn, query.str().c_str());
 
@@ -847,7 +870,7 @@ void get_containers_pg(void) {
       strncpy(row.modified, PQgetvalue(res, i, 9), 16);
       O.rows.push_back(row);
     }
-  } else {
+  } else if (O.view == FOLDER) {
     for(int i=0; i<rows; i++) {
       orow row;
       row.title = std::string(PQgetvalue(res, i, 2));
@@ -860,6 +883,19 @@ void get_containers_pg(void) {
       strncpy(row.modified, PQgetvalue(res, i, 11), 16);
       O.rows.push_back(row);
     }
+  } else {
+    for(int i=0; i<rows; i++) {
+      orow row;
+      row.title = std::string(PQgetvalue(res, i, 1));
+      row.id = atoi(PQgetvalue(res, i, 0)); //right now pulling sqlite id not tid
+      row.star = (*PQgetvalue(res, i, 2) == 't') ? true: false;
+      row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
+      row.completed = false;
+      row.dirty = false;
+      row.mark = false;
+      strncpy(row.modified, PQgetvalue(res, i, 3), 16);
+      O.rows.push_back(row);
+    }
   }
   // PQfinish(conn);
   PQclear(res);
@@ -870,7 +906,7 @@ void get_containers_pg(void) {
   } else
     O.mode = NORMAL;
 
-  O.context = O.folder = "";
+  O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
 }
 
 void get_containers_sqlite(void) {
@@ -889,14 +925,44 @@ void get_containers_sqlite(void) {
     return;
     }
 
+  std::string table;
+  int (*callback)(void *, int, char **, char **);
+  switch (O.view){
+    case CONTEXT:
+      table = "context";
+      callback = context_callback;
+      break;
+    case FOLDER:
+      table = "folder";
+      callback = folder_callback;
+      break;
+    case KEYWORD:
+      table = "keyword";
+      callback = keyword_callback;
+      break;
+    default:
+      outlineSetMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+
   std::stringstream query;
+  /*
   query << "SELECT * FROM "
         << ((O.view == CONTEXT) ? "context;" : "folder;");
+ */
+
+  query << "SELECT * FROM " << table << ";";
+
 
     bool no_rows = true;
 
+    /*
     if (O.view == CONTEXT) rc = sqlite3_exec(db, query.str().c_str(), context_callback, &no_rows, &err_msg);
     else rc = sqlite3_exec(db, query.str().c_str(), folder_callback, &no_rows, &err_msg);
+    */
+
+
+    rc = sqlite3_exec(db, query.str().c_str(), callback, &no_rows, &err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineSetMessage("SQL error: %s\n", err_msg);
@@ -910,7 +976,7 @@ void get_containers_sqlite(void) {
   } else
     O.mode = NORMAL;
 
-  O.context = O.folder = "";
+  O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
 
 }
 
@@ -981,6 +1047,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+/*
 void get_keywords_sqlite(void) {
 
   O.rows.clear();
@@ -1019,6 +1086,7 @@ void get_keywords_sqlite(void) {
   O.context = O.folder = "";
 
 }
+*/
 
 void get_task_keywords_sqlite(void) {
 
@@ -1098,6 +1166,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+/*
 void get_keywords_pg(void) {
 
   O.rows.clear();
@@ -1137,6 +1206,8 @@ void get_keywords_pg(void) {
   O.context = O.folder = "";
 
 }
+*/
+
 void add_task_keyword_pg(const std::string &kw, int id) {
 
   std::stringstream query;
@@ -1960,7 +2031,7 @@ int commandfromstringcpp(const std::string& key, std::size_t& found) { //for com
   // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
   if (key.size() == 1) {
     found = 0;
-    return key[0];
+    return key[0]; //? return keyfromstring[key] or just drop this if entirely
   }
 
   found = key.find(' ');
@@ -2870,7 +2941,7 @@ void outlineProcessKeypress(void) {
           O.folder = it->first;
           outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
         } else {
-          if (O.context.empty() || O.context == "search") {
+          if (O.context.empty() || O.taskview == BY_SEARCH) {
             it = context_map.begin();
           } else {
             it = context_map.find(O.context);
@@ -3612,7 +3683,8 @@ void outlineProcessKeypress(void) {
               if (!pos) {
                 editorEraseScreen();
                 O.view = KEYWORD;
-                get_keywords();
+                //get_keywords();
+                get_containers();
                 O.mode = NORMAL;
                 outlineSetMessage("Retrieved keywords");
                 return;
@@ -3885,9 +3957,9 @@ void outlineProcessKeypress(void) {
 
             case C_recent:
               outlineSetMessage("Will retrieve recent items");
-              O.context = "recent";
+              O.context = "No Context";
               O.taskview = BY_RECENT;
-              O.folder = "";
+              O.folder = "No Folder";
               get_items(MAX);
               //editorRefreshScreen(); //in get_note
               return;
@@ -5699,7 +5771,8 @@ int insert_row_pg(orow& row) {
         //<< " 1," //folder_tid
         << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
         //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "CURRENT_DATE," //added
         << "'<This is a new note from sqlite>'," //note
@@ -5824,7 +5897,8 @@ int insert_row_sqlite(orow& row) {
         //<< " 1," //folder_tid
         << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
         //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         << "'<This is a new note from sqlite>'," //note
@@ -6739,6 +6813,7 @@ void editorProcessKeypress(void) {
         default:
           editorCreateSnapshot();
           editorInsertChar(c);
+          E.last_typed += c;
           return;
      
       } //end inner switch for outer case INSERT
@@ -6787,6 +6862,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'i':
+          E.last_typed.clear();
           E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
@@ -6798,7 +6874,8 @@ void editorProcessKeypress(void) {
           for (int i = 0; i < E.repeat; i++) editorDelChar();
           E.command[0] = '\0';
           E.repeat = 0;
-          E.mode = 1;
+          E.last_typed.clear();
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           return;
     
@@ -6806,11 +6883,11 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorDelChar();
           E.command[0] = '\0';
-          E.repeat = 0;
+          E.repeat = INSERT;
           return;
         
         case 'r':
-          E.mode = 5;
+          E.mode = REPLACE;
           E.command[0] = '\0';
           return;
     
@@ -6822,6 +6899,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
+          E.last_typed.clear();
           E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
           editorMoveCursor(ARROW_RIGHT);
           E.command[0] = '\0';
@@ -6831,6 +6909,7 @@ void editorProcessKeypress(void) {
     
         case 'A':
           editorMoveCursorEOL();
+          E.last_typed.clear();
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorMoveCursor(ARROW_RIGHT);
           E.command[0] = '\0';
@@ -8407,7 +8486,7 @@ void initOutline() {
   O.view = TASK; // not necessary here since set when searching database
   O.taskview = BY_FOLDER;
   O.folder = "todo";
-  O.context = "";
+  O.context = "No Context";
   O.keyword = "";
 
   // ? whether the screen-related stuff should be in one place
@@ -8467,7 +8546,7 @@ int main(int argc, char** argv) {
     map_folder_titles =  map_folder_titles_sqlite;
     add_task_keyword = add_task_keyword_sqlite;
     delete_task_keywords = delete_task_keywords_sqlite;
-    get_keywords = get_keywords_sqlite;
+    //get_keywords = get_keywords_sqlite;
 
     which_db = SQLITE;
 
@@ -8495,7 +8574,7 @@ int main(int argc, char** argv) {
     map_folder_titles = map_folder_titles_pg;
     add_task_keyword = add_task_keyword_pg;
     delete_task_keywords = delete_task_keywords_pg;
-    get_keywords = get_keywords_pg;
+    //get_keywords = get_keywords_pg;
 
     which_db = POSTGRES;
   }
