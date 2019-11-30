@@ -2283,26 +2283,41 @@ inline void f_caw(int repeat) {
 }
 
 inline void f_s(int repeat) {
-  editorCreateSnapshot();
+  //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
 inline void f_x(int repeat) {
-  editorCreateSnapshot();
+  //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
 inline void f_dd(int repeat) {
-  editorCreateSnapshot();
+  //editorCreateSnapshot();
   int r = E.rows.size() - E.fr;
   repeat = (r >= repeat) ? repeat : r ;
   editorYankLine(repeat);
   for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
 }
 
+inline void f_change_case(int repeat) {
+  //editorCreateSnapshot();
+  for (int i = 0; i < E.repeat; i++) editorChangeCase();
+}
+
+inline void f_i(int repeat) {}
+
+inline void f_a(int repeat) {
+  editorMoveCursor(ARROW_RIGHT);
+}
+
+inline void f_A(int repeat) {
+  editorMoveCursorEOL();
+  editorMoveCursor(ARROW_RIGHT); //works even though not in INSERT mode
+}
+
 void editorDoRepeat(void) {
-    //E.last_repeat;
-    //E.last_command;
+    /*
     if (E.last_command == C_caw)
       f_caw(E.last_repeat);
     else if (E.last_command == 's')
@@ -2313,9 +2328,44 @@ void editorDoRepeat(void) {
       f_dd(E.last_repeat);
     else if (E.last_command == C_cw)
       f_cw(E.last_repeat);
+    */
+  editorCreateSnapshot();
 
-    for (char const &c : E.last_typed) {
-      editorInsertChar(c);
+  switch (E.last_command) {
+
+    case C_caw:
+      f_caw(E.last_repeat);
+      break;
+    case 's':
+      f_s(E.last_repeat);
+      break;
+    case 'x':
+      f_x(E.last_repeat);
+      break;
+    case C_dd:
+      f_dd(E.last_repeat);
+      break;
+    case C_cw:
+      f_cw(E.last_repeat);
+      break;
+    case '~':
+      f_change_case(E.last_repeat);
+      break;
+    case 'i':
+      f_i(E.last_repeat);
+      break;
+    case 'a':
+      f_a(E.last_repeat);
+      break;
+    case 'A':
+      f_A(E.last_repeat);
+      break;
+    default:
+      editorSetMessage("You tried to repeat a command that doesn't repeat");
+      return;
+  }
+  for (char const &c : E.last_typed) {
+    editorInsertChar(c);
   }
 }
 
@@ -6889,6 +6939,7 @@ void editorProcessKeypress(void) {
 
     case NORMAL: 
  
+      // could be fixed but as code is now all escapes would not fall through
       if (c == '\x1b') {
         E.command[0] = '\0';
         E.repeat = 0;
@@ -6928,14 +6979,17 @@ void editorProcessKeypress(void) {
     
         case SHIFT_TAB:
           editor_mode = false;
-          E.fc = E.fr = 0;
+          E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
           return;
-    
+
         case 'i':
-          E.last_typed.clear();
+          // can be dotted in vim and does repeat
+          E.last_typed.clear(); //means it can be dotted
           E.mode = INSERT;
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
           E.repeat = 0;
+          E.last_command = command; //means it dotted
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
@@ -6956,12 +7010,15 @@ void editorProcessKeypress(void) {
         case 'x':
           //editorCreateSnapshot();
           //for (int i = 0; i < E.repeat; i++) editorDelChar();
+
           f_x(E.repeat);
+
           E.last_repeat = E.repeat;
           E.repeat = 0;
-          E.last_command = 'x';
+          E.last_command = command;
+          E.last_typed.clear();
           E.command[0] = '\0';
-          //E.repeat = 0; //11-29-2019
+
           return;
         
         case 'r':
@@ -6970,18 +7027,28 @@ void editorProcessKeypress(void) {
           return;
     
         case '~':
+          /*
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorChangeCase();
+          */
+
+          E.last_repeat = E.repeat;
+          E.repeat = 0;
+          E.last_command = command;
+          E.last_typed.clear();
           E.command[0] = '\0';
-          //E.repeat = 0; //11-29-2019
+
           return;
     
         case 'a':
-          E.last_typed.clear();
-          E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+          //can be dotted in vim and does repeat
           editorMoveCursor(ARROW_RIGHT);
+          E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+          E.last_typed.clear(); //means it can be dotted
           E.command[0] = '\0';
+          E.last_repeat = E.repeat; //only in repeatable (which may be everything)
           E.repeat = 0;
+          E.last_command = command; //only in dot-able
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
@@ -6991,8 +7058,9 @@ void editorProcessKeypress(void) {
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorMoveCursor(ARROW_RIGHT);
           E.command[0] = '\0';
+          E.last_repeat = E.repeat; //only in repeatable (which may be everything)
           E.repeat = 0;
-          E.mode = 1;
+          E.last_command = command; //only in dot-able
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
@@ -7056,6 +7124,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'G':
+          // does not clear dot
           E.fc = 0;
           E.fr = E.rows.size() - 1;
           E.command[0] = '\0';
@@ -7094,12 +7163,14 @@ void editorProcessKeypress(void) {
           return;
     
         case '*':  
+          // does not clear dot
           getWordUnderCursor();
           editorFindNextWord();
           E.command[0] = '\0';
           return;
     
         case 'n':
+          // n does not clear dot
           editorFindNextWord();
           E.command[0] = '\0';
           return;
@@ -7110,12 +7181,6 @@ void editorProcessKeypress(void) {
     
         case '^':
           view_html(O.rows.at(O.fr).id);
-          return;
-
-        case '.':
-          editorDoRepeat();
-          return;
-
           /*
           not getting error messages with qutebrowser
           so below not necessary (for the moment)
@@ -7125,7 +7190,11 @@ void editorProcessKeypress(void) {
           */
 
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
-          O.command[0] = '\0';//}
+          O.command[0] = '\0';
+          return;
+
+        case '.':
+          editorDoRepeat();
           return;
 
         case CTRL_KEY('z'):
@@ -7259,11 +7328,13 @@ void editorProcessKeypress(void) {
           //trying this in editorScroll
           //if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1; //11-26-2019
           f_dd(E.repeat);
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
-          E.last_command = C_dd;
+
+          E.command[0] = '\0'; //every command should do this
+          E.last_repeat = E.repeat; //only if the command can be dotted
+          E.repeat = 0; //every command should do this
+          E.last_typed.clear(); //only if the command can be dotted
+          E.last_command = command;
+
           return;
     
         case C_d$:
@@ -7307,8 +7378,8 @@ void editorProcessKeypress(void) {
           ///////////////////////////
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
+          E.repeat = 0; // always necessary
+          E.last_typed.clear(); // as currently written always necessary
           ////////////////////////////
           E.last_command = C_cw;
           E.mode = INSERT;
@@ -7357,11 +7428,12 @@ void editorProcessKeypress(void) {
           return;
     
         case C_gg:
-         E.fc = E.line_offset = 0;
-         E.fr = E.repeat-1;
-         E.command[0] = '\0';
-         E.repeat = 0;
-         return;
+          // does not clear dot
+          E.fc = E.line_offset = 0;
+          E.fr = E.repeat-1;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          return;
     
        case C_yy:  
          editorYankLine(E.repeat);
