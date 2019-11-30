@@ -2307,6 +2307,11 @@ inline void f_change_case(int repeat) {
 
 inline void f_i(int repeat) {}
 
+inline void f_I(int repeat) {
+  editorMoveCursorBOL();
+  E.fc = editorIndentAmount(E.fr);
+}
+
 inline void f_a(int repeat) {
   editorMoveCursor(ARROW_RIGHT);
 }
@@ -2353,6 +2358,9 @@ void editorDoRepeat(void) {
       break;
     case 'i':
       f_i(E.last_repeat);
+      break;
+    case 'I':
+      f_I(E.last_repeat);
       break;
     case 'a':
       f_a(E.last_repeat);
@@ -6907,6 +6915,13 @@ void editorProcessKeypress(void) {
         case '\x1b':
           //if (E.mode == NORMAL) return; // commented out 11-29-2019
           //E.last_typed --> should contain whatever text was entered.
+
+          //Note that for repeatable text entry commands like i, I, a and A
+          //this is where you would repeat the text
+          for (int n=0; n<E.last_repeat-1; n++) {
+              for (char const &c : E.last_typed) {editorInsertChar(c);}
+          }
+
           E.mode = NORMAL;
           E.repeat = 0;
           E.continuation = 0; // right now used by backspace in multi-line filerow
@@ -7041,7 +7056,8 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
-          //can be dotted in vim and does repeat
+          //can be dotted in vim and does repeat sets of characters
+          // repeat unhandled - will insert repeat applies to characters
           editorMoveCursor(ARROW_RIGHT);
           E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
           E.last_typed.clear(); //means it can be dotted
@@ -7053,6 +7069,8 @@ void editorProcessKeypress(void) {
           return;
     
         case 'A':
+         // can be dotted in vim and does repeat sets of characters
+          // repeat unhandled - will insert repeat applies to characters
           editorMoveCursorEOL();
           E.last_typed.clear();
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
@@ -7095,12 +7113,14 @@ void editorProcessKeypress(void) {
           return;
     
         case 'I':
+          // repeat unhandled - will insert chars x n
           editorMoveCursorBOL();
           E.fc = editorIndentAmount(E.fr);
           E.last_typed.clear();
           E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
+          E.last_command = command;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
