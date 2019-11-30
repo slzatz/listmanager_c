@@ -480,6 +480,7 @@ void editorInsertReturn(void);
 void editorDecorateWord(int c);
 void editorDecorateVisual(int c);
 void editorDelWord(void);
+void editorDelRow(int);
 void editorIndentRow(void);
 void editorUnIndentRow(void);
 int editorIndentAmount(int y);
@@ -504,6 +505,7 @@ void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
 void editorInsertRow(int fr, std::string);
+void editorInsertChar(int);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
@@ -2255,6 +2257,67 @@ void outlineSave(const std::string& fname) {
 }
 
 /*** editor row operations ***/
+//#include "editor_functions.h"
+
+inline void f_cw(int repeat) {
+  editorCreateSnapshot();
+  for (int j = 0; j < repeat; j++) {
+    int start = E.fc;
+    editorMoveEndWord();
+    int end = E.fc;
+    E.fc = start;
+    for (int j = 0; j < end - start + 1; j++) editorDelChar();
+  }
+}
+inline void f_caw(int repeat) {
+   editorCreateSnapshot();
+   //editorMoveBeginningWord();
+   for (int i=0; i < E.repeat; i++) {
+   editorMoveBeginningWord();
+   editorDelWord();
+   }
+   /*
+   for (char const &c : E.last_typed) {
+     editorInsertChar(c);
+   }*/
+}
+
+inline void f_s(int repeat) {
+  editorCreateSnapshot();
+  for (int i = 0; i < repeat; i++) editorDelChar();
+}
+
+inline void f_x(int repeat) {
+  editorCreateSnapshot();
+  for (int i = 0; i < repeat; i++) editorDelChar();
+}
+
+inline void f_dd(int repeat) {
+  editorCreateSnapshot();
+  int r = E.rows.size() - E.fr;
+  repeat = (r >= repeat) ? repeat : r ;
+  editorYankLine(repeat);
+  for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
+}
+
+void editorDoRepeat(void) {
+    //E.last_repeat;
+    //E.last_command;
+    if (E.last_command == C_caw)
+      f_caw(E.last_repeat);
+    else if (E.last_command == 's')
+      f_s(E.last_repeat);
+    else if (E.last_command == 'x')
+      f_x(E.last_repeat);
+    else if (E.last_command == C_dd)
+      f_dd(E.last_repeat);
+    else if (E.last_command == C_cw)
+      f_cw(E.last_repeat);
+
+    for (char const &c : E.last_typed) {
+      editorInsertChar(c);
+  }
+}
 
 // used by numerous other functions to sometimes insert zero length rows
 // and other times rows with characters like when retrieving a note
@@ -2349,6 +2412,7 @@ void editorInsertNewline(int direction) {
   E.fr += direction;
   editorInsertRow(E.fr, spaces);
 }
+
 
 void editorDelChar(void) {
   if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
@@ -6771,7 +6835,6 @@ void editorProcessKeypress(void) {
           editorDelChar();
           break;
     
-    
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
@@ -6792,8 +6855,10 @@ void editorProcessKeypress(void) {
           break;
     
         case '\x1b':
-          if (E.mode == NORMAL) return;
+          //if (E.mode == NORMAL) return; // commented out 11-29-2019
+          //E.last_typed --> should contain whatever text was entered.
           E.mode = NORMAL;
+          E.repeat = 0;
           E.continuation = 0; // right now used by backspace in multi-line filerow
           if (E.fc > 0) E.fc--;
           // below - if the indent amount == size of line then it's all blanks
@@ -6807,13 +6872,15 @@ void editorProcessKeypress(void) {
               }
             }
           }
-          editorSetMessage("");
+          //editorSetMessage("");
+          editorSetMessage(E.last_typed.c_str());
           return;
     
         default:
           editorCreateSnapshot();
           editorInsertChar(c);
           E.last_typed += c;
+          editorSetMessage(E.last_typed.c_str());
           return;
      
       } //end inner switch for outer case INSERT
@@ -6822,25 +6889,28 @@ void editorProcessKeypress(void) {
 
     case NORMAL: 
  
-        if (c == '\x1b') {
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-        }  
+      if (c == '\x1b') {
+        E.command[0] = '\0';
+        E.repeat = 0;
+        return;
+      }
+
       /*leading digit is a multiplier*/
-      if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
-        if ( E.repeat == 0 ){
+      if (isdigit(c) && strlen(E.command) == 0) {
+      //if (isdigit(c)) { //equiv to if (c > 47 && c < 58)
+        if (E.repeat == 0){
     
           //if c=48=>0 then it falls through to move to beginning of line
-          if ( c != 48 ) { 
-            E.repeat = c - 48;
+          if ( c == 48 ) {
             return;
+           } else {
+            E.repeat = c - 48;
           }  
     
         } else { 
           E.repeat = E.repeat*10 + c - 48;
-          return;
         }
+        return;
       }
     
       if ( E.repeat == 0 ) E.repeat = 1;
@@ -6870,20 +6940,28 @@ void editorProcessKeypress(void) {
           return;
     
         case 's':
-          editorCreateSnapshot();
-          for (int i = 0; i < E.repeat; i++) editorDelChar();
+          //editorCreateSnapshot();
+          //for (int i = 0; i < E.repeat; i++) editorDelChar();
+          f_s(E.repeat);
+          E.last_command = 's';
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
           E.repeat = 0;
+          //E.repeat = 0; //11-29-2019
           E.last_typed.clear();
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           return;
     
         case 'x':
-          editorCreateSnapshot();
-          for (int i = 0; i < E.repeat; i++) editorDelChar();
+          //editorCreateSnapshot();
+          //for (int i = 0; i < E.repeat; i++) editorDelChar();
+          f_x(E.repeat);
+          E.last_repeat = E.repeat;
+          E.repeat = 0;
+          E.last_command = 'x';
           E.command[0] = '\0';
-          E.repeat = INSERT;
+          //E.repeat = 0; //11-29-2019
           return;
         
         case 'r':
@@ -6895,7 +6973,7 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorChangeCase();
           E.command[0] = '\0';
-          E.repeat = 0;
+          //E.repeat = 0; //11-29-2019
           return;
     
         case 'a':
@@ -6951,7 +7029,8 @@ void editorProcessKeypress(void) {
         case 'I':
           editorMoveCursorBOL();
           E.fc = editorIndentAmount(E.fr);
-          E.mode = 1;
+          E.last_typed.clear();
+          E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -6960,7 +7039,8 @@ void editorProcessKeypress(void) {
         case 'o':
           editorCreateSnapshot();
           editorInsertNewline(1);
-          E.mode = 1;
+          E.last_typed.clear();
+          E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -7030,6 +7110,11 @@ void editorProcessKeypress(void) {
     
         case '^':
           view_html(O.rows.at(O.fr).id);
+          return;
+
+        case '.':
+          editorDoRepeat();
+          return;
 
           /*
           not getting error messages with qutebrowser
@@ -7162,6 +7247,7 @@ void editorProcessKeypress(void) {
           return;
     
         case C_dd:
+          /*
           if (!E.rows.empty()) {
             int r = E.rows.size() - E.fr;
             E.repeat = (r >= E.repeat) ? E.repeat : r ;
@@ -7169,11 +7255,15 @@ void editorProcessKeypress(void) {
             editorYankLine(E.repeat);
             for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
           }
-          E.fc = 0;
+          */
           //trying this in editorScroll
           //if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1; //11-26-2019
+          f_dd(E.repeat);
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
           E.repeat = 0;
+          E.last_typed.clear();
+          E.last_command = C_dd;
           return;
     
         case C_d$:
@@ -7203,6 +7293,7 @@ void editorProcessKeypress(void) {
     
         //tested with repeat on one line
         case C_cw:
+          /*
           editorCreateSnapshot();
           for (int j = 0; j < E.repeat; j++) {
             start = E.fc;
@@ -7211,19 +7302,36 @@ void editorProcessKeypress(void) {
             E.fc = start;
             for (int j = 0; j < end - start + 1; j++) editorDelChar();
           }
+          */
+          f_cw(E.repeat);
+          ///////////////////////////
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
           E.repeat = 0;
-          E.mode = 1;
+          E.last_typed.clear();
+          ////////////////////////////
+          E.last_command = C_cw;
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
         //tested with repeat on one line
         case C_caw:
+          /*
           editorCreateSnapshot();
+          editorMoveBeginningWord();
           for (int i = 0; i < E.repeat; i++) editorDelWord();
+          */
+          f_caw(E.repeat);
+
+          ///////////////////////////
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
           E.repeat = 0;
-          E.mode = 1;
+          E.last_typed.clear();
+          ////////////////////////////
+          E.last_command = C_caw;
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
@@ -8422,6 +8530,7 @@ void editorMarkupLink(void) {
   E.dirty++;
   E.fc = E.fr = E.line_offset = 0;
 }
+
 
 void EraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
