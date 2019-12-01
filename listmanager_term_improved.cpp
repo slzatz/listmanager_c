@@ -1324,7 +1324,6 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   }
 
   std::stringstream query4;
-  //query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
   rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
@@ -2270,12 +2269,10 @@ inline void f_cw(int repeat) {
   }
 }
 inline void f_caw(int repeat) {
-   editorCreateSnapshot();
-   //editorMoveBeginningWord();
    for (int i=0; i < E.repeat; i++) {
-   editorMoveBeginningWord();
-   editorDelWord();
-   }
+     editorMoveBeginningWord();
+     editorDelWord();
+     }
    /*
    for (char const &c : E.last_typed) {
      editorInsertChar(c);
@@ -3982,7 +3979,8 @@ void outlineProcessKeypress(void) {
               O.folder = "";
               O.taskview = BY_CONTEXT;
               get_items(MAX);
-              O.mode = O.last_mode;
+              //O.mode = O.last_mode;
+              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               return;
               }
 
@@ -4673,7 +4671,9 @@ void fts5_sqlite(void) {
   */
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
             //<< search_terms << "' ORDER BY rank";
-            << search_terms << "' ORDER BY rank LIMIT " << 50;
+            //<< search_terms << "' ORDER BY rank LIMIT " << 50;
+            //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
+            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
 
   sqlite3 *db;
   char *err_msg = nullptr;
@@ -5604,7 +5604,7 @@ void update_row_sqlite(void) {
       outlineSetMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
       } else {
-        outlineSetMessage("Updated title and fts entry for item %d", row.id);
+        outlineSetMessage("Updated title and fts title entry for item %d", row.id);
       }
   
       sqlite3_close(db);
@@ -5715,6 +5715,7 @@ void update_keyword_sqlite(void) {
     insert_keyword_sqlite(row);
   }
 }
+
 void update_keyword_pg(void) {
 
   orow& row = O.rows.at(O.fr);
@@ -6067,6 +6068,10 @@ int insert_row_sqlite(orow& row) {
   sqlite3_close(db);
 
   /***************fts virtual table update*********************/
+
+  //should probably create a separate function that is a klugy
+  //way of making up for fact that pg created tasks don't appear in fts db
+  //"INSERT OR IGNORE INTO fts (title, lm_id) VALUES ('" << title << row.id << ");";
 
   std::stringstream query2;
   query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
@@ -7144,11 +7149,13 @@ void editorProcessKeypress(void) {
           return;
     
         case 'G':
-          // does not clear dot
+          // navigation should not clear dot
           E.fc = 0;
           E.fr = E.rows.size() - 1;
+          /////////////////////////
           E.command[0] = '\0';
           E.repeat = 0;
+          /////////////////////////
           return;
       
         case ':':
@@ -7187,12 +7194,16 @@ void editorProcessKeypress(void) {
           getWordUnderCursor();
           editorFindNextWord();
           E.command[0] = '\0';
+          E.repeat = 0; // prob not necessary but doesn't hurt
           return;
     
         case 'n':
           // n does not clear dot
           editorFindNextWord();
+          // in vim the repeat does work with n - it skips that many words
+          // not a dot command so should leave E.last_repeat alone
           E.command[0] = '\0';
+          E.repeat = 0; // prob not necessary but doesn't hurt
           return;
     
         case 'u':
@@ -7305,7 +7316,10 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           for (int i = 0; i < E.repeat; i++) editorDelWord();
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
           E.repeat = 0;
+          E.last_command = command;
           return;
     
         case C_dw:
@@ -7318,7 +7332,10 @@ void editorProcessKeypress(void) {
             for (int j = 0; j < end - start + 2; j++) editorDelChar();
           }
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
           E.repeat = 0;
+          E.last_command = command;
           return;
     
         case C_de:
@@ -7367,8 +7384,11 @@ void editorProcessKeypress(void) {
             //editorYankLine(E.repeat); //b/o 2 step won't really work right
             for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
           }
-          E.command[0] = '\0';
-          E.repeat = 0;
+          E.command[0] = '\0'; //every command should do this
+          E.last_repeat = E.repeat; //only if the command can be dotted
+          E.repeat = 0; //every command should do this
+          E.last_typed.clear(); //only if the command can be dotted
+          E.last_command = command;
           return;
 
         case C_dG:
@@ -7380,6 +7400,11 @@ void editorProcessKeypress(void) {
           } else {
               E.fr--;
           }
+          E.command[0] = '\0'; //every command should do this
+          E.last_repeat = E.repeat; //only if the command can be dotted
+          E.repeat = 0; //every command should do this
+          E.last_typed.clear(); //only if the command can be dotted
+          E.last_command = command;
           return;
     
         //tested with repeat on one line
@@ -7395,13 +7420,15 @@ void editorProcessKeypress(void) {
           }
           */
           f_cw(E.repeat);
+
           ///////////////////////////
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
           E.repeat = 0; // always necessary
           E.last_typed.clear(); // as currently written always necessary
+          E.last_command = command;
           ////////////////////////////
-          E.last_command = C_cw;
+
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
@@ -7420,8 +7447,9 @@ void editorProcessKeypress(void) {
           E.last_repeat = E.repeat;
           E.repeat = 0;
           E.last_typed.clear();
+          E.last_command = command;
           ////////////////////////////
-          E.last_command = C_caw;
+
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
@@ -7448,7 +7476,7 @@ void editorProcessKeypress(void) {
           return;
     
         case C_gg:
-          // does not clear dot
+          // navigation: should not clear dot
           E.fc = E.line_offset = 0;
           E.fr = E.repeat-1;
           E.command[0] = '\0';
