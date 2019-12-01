@@ -7,13 +7,14 @@ module to sync remote sql-based server (currently postgreSQL) database with a lo
 import datetime
 from lmdb_s import * 
 import lmdb_p as p
+import sqlite3
 
 def synchronize(report_only=True):
     nn = 0
     log = "****************************** BEGIN SYNC *******************************************\n\n"
 
-    #remote_conn = p.remote_engine.connect()
-    #local_conn = local_engine.connect()
+    # below for updating fts db: see server updated tasks
+    fts = sqlite3.connect("fts5.db")
 
     remote_session = p.remote_session
     try:
@@ -442,6 +443,22 @@ def synchronize(report_only=True):
 
         local_session.commit()
             
+        if action == "created":
+            title = task.title
+            note = task.note
+            if not note:
+                note = ""
+            # not sure escaping the single quotes is necessary here since probably already escaped but not sure
+            title = title.replace("'", "''")
+            note = note.replace("'", "''")
+            tag = ",".join(kw.name for kw in task.keywords)
+            #result = fts.execute(f"INSERT INTO fts (title, note, tag, lm_id) VALUES ({task.title}, {task.note}, {tag}, {task.id});")
+            result = fts.execute(f"INSERT INTO fts (title, note, tag, lm_id) VALUES (\'{title}\', \'{note}\', \'{tag}\' ,{task.id});")
+            fts.commit() # this is needed!!!!!
+            if result.rowcount != 1:
+                log+= f"Somethere went wrong adding to fts db: {task.title}, id: {task.id} tid: {task.tid}"
+                  
+
     if client_updated_tasks:
         log += "\nTasks that were updated/created on the Client that need to be updated/created on the Server:\n"
 
