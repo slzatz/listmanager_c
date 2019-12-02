@@ -2264,7 +2264,7 @@ inline void f_cw(int repeat) {
 }
 inline void f_caw(int repeat) {
    for (int i=0; i < E.repeat; i++) {
-     editorMoveBeginningWord();
+     //editorMoveBeginningWord();
      editorDelWord();
      }
    /*
@@ -8368,33 +8368,38 @@ int editorIndentAmount(int r) {
   int i;
   std::string& row = E.rows.at(r);
 
-  for (i = 0; i<row.size(); i++) {
+  for (i=0; i<row.size(); i++) {
     if (row[i] != ' ') break;}
 
   return i;
 }
 
 // called by caw and daw
+// doesn't handle punctuation correctly
+// but vim pretty wierd for punctuation
 void editorDelWord(void) {
 
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
   if (row[E.fc] < 48) return;
 
-  int i,j,x;
-  for (i = E.fc; i > -1; i--){
-    if (row[i] < 48) break;
-    }
-  for (j = E.fc; j < row.size() ; j++) {
-    if (row[j] < 48) break;
-  }
+//below is finding beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
 
-  for (x = 0 ; x < j-i; x++) {
-      editorDelChar();
-  }
+//below is finding end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+// below is deleting between beginning and end
+  row.erase(beg, end-beg+1);
+  E.fc = beg;
+
   E.dirty++;
-  //editorSetMessage("i = %d, j = %d", i, j ); 
+  editorSetMessage("beg = %d, end = %d", beg, end);
 }
+
 
 void editorDeleteToEndOfLine(void) {
   std::string& row = E.rows.at(E.fr);
@@ -8429,129 +8434,55 @@ void editorMoveEndWord2() {
 
 }
 
-// used by 'w'
+// used by 'w' -> goes to beginning of work left to right
 void editorMoveNextWord(void) {
-// doesn't handle multiple white space characters at EOL
-  int i,j;
 
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
 
-  if (row[E.fc] < 48) j = E.fc;
-  else {
-    for (j = E.fc + 1; j < row.size(); j++) {
-      if (row[j] < 48) break;
-    }
-  } 
+  auto beg = (row.at(E.fc) != ' ') ? row.find_first_of(' ', E.fc) : E.fc;
 
-  if (j >= row.size() - 1) { // at end of line was ==
+  auto end = row.find_first_not_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
 
-    if (E.fr == E.rows.size() - 1) return; // no more rows
-    
-    for (;;) {
-      E.fr++;
-      std::string& row = E.rows.at(E.fr);
-      //row = E.row[E.fr];
-      if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
-      if (row.size()) break;
-      }
-  
-    if (row[0] > 47) {
-      E.fc = 0;
-      return;
-    } else {
-      for (j = E.fc + 1; j < row.size(); j++) {
-        if (row[j] < 48) break;
-      }
-    }
-  }
-
-  for (i = j + 1; j < row.size() ; i++) { //+1
-    if (row[i] > 48) {
-      E.fc = i;
-      break;
-    }
-  }
+  E.fc = end;
 }
 
 // normal mode 'b'
+// does not go to previous line line Vim
+// but cycles through current line
 void editorMoveBeginningWord(void) {
-
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
-  int j = E.fc;
 
-  if (E.fc == 0 || (E.fc == 1 && row[0] < 48)) {
-    if (E.fr == 0) return;
-    for (;;) {
-      E.fr--;
-      std::string& row = E.rows.at(E.fr);
-      if (E.fr == 0 && row.size() == 0) return;
-      if (row.size() == 0) continue;
-      if (row.size()) {
-        j = row.size() - 1;
-        break;
-      }
-    } 
-  }
+  auto end = row.find_last_not_of(' ', E.fc-1);
 
-  for (;;) {
-    if (j > 1 && row[j - 1] < 48) j--;
-    else break;
-  }
+  auto beg = row.find_last_of(' ', end);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
 
-  int i;
-  for (i = j - 1; i > -1; i--){
-    if (i == 0) { 
-      if (row[0] > 47) {
-        E.fc = 0;
-        break;
-      } else return;
-    }
-    if (row[i] < 48) {
-      E.fc = i + 1;
-      break;
-    }
-  }
+  E.fc = beg;
 }
 
-// normal mode 'e' - seems to handle all corner cases
+// normal mode 'e'
+// not correct for punctuation but not sure I care enough
+// And vim goes to next line and currently this stops
 void editorMoveEndWord(void) {
 
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
 
-  int j = (row[E.fc + 1] < 48) ? E.fc + 1 : E.fc;
+  // below is finding end of word but if already at end
+  // of a word need to move cursor forward until hit a letter
+  // whole thing doesn't blow up if sitting on last char
+  auto beg = row.find_first_not_of(' ', E.fc+1);
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
 
-  for(;;) {
-
-    j++;
-
-    if (j > row.size() - 1) { //>=
-
-      for (;;) {
-        if (E.fr == E.rows.size() - 1) return; // no more rows
-        E.fr++;
-        std::string& row = E.rows.at(E.fr);
-        if (row.size() == 0 && E.fr == E.rows.size() - 1) return;
-        if (row.size()) {
-          j = 0;
-          break;
-        }
-      }
-    }
-    if (j == row.size() - 1) {
-      E.fc = j;
-      break;
-    }
-    if (row[j] < 48 && (j < row.size() - 1) && row[j - 1] > 48) {
-      E.fc = j-1;
-      break;
-    }
- 
-  }
+  E.fc = end - 1;
 }
 
+// needs to be re-written in c++
 void editorDecorateWord(int c) {
 
   if (E.rows.empty()) return;
@@ -8616,54 +8547,65 @@ void editorDecorateVisual(int c) {
   }
 }
 
+// doesn't handle punctuation correctly
 void getWordUnderCursor(void){
 
   search_string.clear();
- 
+
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
   if (row[E.fc] < 48) return;
 
-  int i,j,x;
+  // find beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
 
-  for (i = E.fc - 1; i > -1; i--){
-    if (row[i] < 48) break;
-  }
+  // find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
 
-  for (j = E.fc + 1; j < row.size() ; j++) {
-    if (row[j] < 48) break;
-  }
+  search_string = row.substr(beg, end-beg+1);
 
-  for (x=i+1; x<j; x++) {
-      search_string.push_back(row.at(x));
-  }
-
+  //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
 }
 
-// needs a little work and needs to wrap back on itself something odd about wrapping matches
 void editorFindNextWord(void) {
   if (E.rows.empty()) return;
-  int y, x;
-  char *z;
+  std::string& row = E.rows.at(E.fr);
 
-  y = E.fr;
-  x = E.fc + 10;
-  std::string row;
- 
-  /*n counter so we can exit for loop if there are  no matches for command 'n'*/
-  for (;;) {
-    row = E.rows[y];
-    z = strstr(&(row[x]), search_string.c_str());
-    if (z != NULL) break;
+  int y = E.fr;
+  int x = E.fc;
+  size_t found;
+
+  // make sure you're not sitting on search word to start
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  // find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (search_string == row.substr(beg, end-beg+1)) x++;
+  int passes = 0;
+  for(;;) {
+    std::string& row = E.rows.at(y);
+    found = row.find(search_string, x);
+    if (found != std::string::npos)
+       break;
     y++;
+    if (y == E.rows.size()) {
+      passes++;
+      if (passes > 1) break;
+      y = 0;
+    }
     x = 0;
-    if (y == E.rows.size()) y = 0;
   }
-
-  E.fc = z - &row[0];
-  E.fr = y;
-
-  editorSetMessage("x = %d; y = %d", x, y); 
+  if (passes <= 1) {
+    E.fc = found;
+    E.fr = y;
+  }
 }
 
 void editorMarkupLink(void) {
