@@ -36,6 +36,7 @@
 #include <algorithm>
 #include <sstream>
 #include <fstream>
+#include <set>
 
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
@@ -62,6 +63,8 @@ static std::map<std::string, int> context_map; //filled in by map_context_titles
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 static std::vector<std::string> task_keywords;
+static const std::set<int> repeatable_text_commands = {'I', 'i', 'A', 'a'};
+
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -1213,37 +1216,31 @@ void get_keywords_pg(void) {
 void add_task_keyword_pg(const std::string &kw, int id) {
 
   std::stringstream query;
-  // adds keyword user wants to add to task to list of keywords if it doesn't exist
-  // for some reason right now can't alter pg keyword table to add star or modified!!
   query <<  "INSERT INTO keyword (name) VALUES ('" << kw << "') ON CONFLICT DO NOTHING;";  //<- works for postgres
   PGresult *res = PQexec(conn, query.str().c_str());
-  //if (PQresultStatus(res) != PGRES_TUPLES_OK) { //for selects returning data
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem inserting into keyword table (whether kw present or not");
-    //outlineSetMessage("Problem: %s", PQerrorMessage(conn));
+    outlineSetMessage("Problem inserting into keyword table: %s ", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
 
   std::stringstream query2;
-  //query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
   query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
 
   res = PQexec(conn, query2.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem inserting into task_keyword");
+    outlineSetMessage("Problem inserting into task_keyword table: %s", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
 
   std::stringstream query3;
-  // updates task modified column so know that something changed with the task
-  //query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
+  // updates task modified column so we know that something changed with the task
   query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << id << ";";
 
   res = PQexec(conn, query3.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem updating tasks modified date");
+    outlineSetMessage("Problem updating task modified date: %s", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
@@ -1265,7 +1262,6 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
 
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
   std::stringstream query;
-  // adds keyword user wants to add to task to list of keywords if it doesn't exist
   // note you don't have to do INSERT OR IGNORE but could just do INSERT since there is a unique constraint on keyword.name
   // but you don't want to trigger an error either so probably best to retain INSERT OR IGNORE
   query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
@@ -1280,7 +1276,6 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   }
 
   std::stringstream query2;
-  //query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << O.rows.at(O.fr).id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
   query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
@@ -1291,8 +1286,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   }
 
   std::stringstream query3;
-  // updates task modified column so know that something changed with the task
-  //query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  // updates task modified column so we know that something changed with the task
   query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
   rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
   if (rc != SQLITE_OK ) {
@@ -2305,6 +2299,7 @@ inline void f_change_case(int repeat) {
 inline void f_i(int repeat) {}
 
 inline void f_I(int repeat) {
+  // repeat applies to characters that were typed
   editorMoveCursorBOL();
   E.fc = editorIndentAmount(E.fr);
 }
@@ -2369,8 +2364,12 @@ void editorDoRepeat(void) {
       editorSetMessage("You tried to repeat a command that doesn't repeat");
       return;
   }
-  for (char const &c : E.last_typed) {
-    editorInsertChar(c);
+
+  //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
+  if(repeatable_text_commands.contains(E.last_command)) {
+    for (int n=0; n<E.last_repeat; n++) {
+      for (char const &c : E.last_typed) {editorInsertChar(c);}
+    }
   }
 }
 
@@ -6923,14 +6922,19 @@ void editorProcessKeypress(void) {
 
           //Note that for repeatable text entry commands like i, I, a and A
           //this is where you would repeat the text
-          for (int n=0; n<E.last_repeat-1; n++) {
+          //if(E.last_repeat > 1 && repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
+          //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
+          if(repeatable_text_commands.contains(E.last_command)) {
+            for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
+            }
           }
 
           E.mode = NORMAL;
           E.repeat = 0;
           E.continuation = 0; // right now used by backspace in multi-line filerow
           if (E.fc > 0) E.fc--;
+
           // below - if the indent amount == size of line then it's all blanks
           // can hit escape with E.row == NULL or E.row[E.fr].size == 0
           if (!E.rows.empty() && E.rows[E.fr].size()) {
@@ -6959,7 +6963,8 @@ void editorProcessKeypress(void) {
 
     case NORMAL: 
  
-      // could be fixed but as code is now all escapes would not fall through
+      // could be fixed but as code is now all escapes if E.command already
+      // had characters would not fall through
       if (c == '\x1b') {
         E.command[0] = '\0';
         E.repeat = 0;
@@ -6968,7 +6973,6 @@ void editorProcessKeypress(void) {
 
       /*leading digit is a multiplier*/
       if (isdigit(c) && strlen(E.command) == 0) {
-      //if (isdigit(c)) { //equiv to if (c > 47 && c < 58)
         if (E.repeat == 0){
     
           //if c=48=>0 then it falls through to move to beginning of line
@@ -7003,32 +7007,35 @@ void editorProcessKeypress(void) {
           return;
 
         case 'i':
-          // can be dotted in vim and does repeat
-          E.last_typed.clear(); //means it can be dotted
+          // editing cmd: can be dotted and does repeat
           E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
+          E.last_typed.clear(); //means it can be dotted
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
           E.repeat = 0;
           E.last_command = command; //means it dotted
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
           return;
     
         case 's':
-          //editorCreateSnapshot();
+          // editing cmd: can be dotted and does repeat
           //for (int i = 0; i < E.repeat; i++) editorDelChar();
           f_s(E.repeat);
-          E.last_command = 's';
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+
+          E.last_command = command;
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
           E.repeat = 0;
-          //E.repeat = 0; //11-29-2019
           E.last_typed.clear();
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+
           return;
     
         case 'x':
-          //editorCreateSnapshot();
+          // editing cmd: can be dotted and does repeat
           //for (int i = 0; i < E.repeat; i++) editorDelChar();
 
           f_x(E.repeat);
@@ -7042,15 +7049,22 @@ void editorProcessKeypress(void) {
           return;
         
         case 'r':
+          // editing cmd: can be dotted and does repeat
+          //f_r would basically be a no op
           E.mode = REPLACE;
+
           E.command[0] = '\0';
+          E.last_repeat = E.repeat;
+          E.repeat = 0;
+          E.last_command = command;
+          E.last_typed.clear();
+
           return;
     
         case '~':
-          /*
-          editorCreateSnapshot();
-          for (int i = 0; i < E.repeat; i++) editorChangeCase();
-          */
+          // editing cmd: can be dotted and does repeat
+          //for (int i = 0; i < E.repeat; i++) editorChangeCase();
+          f_change_case(E.repeat);
 
           E.last_repeat = E.repeat;
           E.repeat = 0;
@@ -7061,85 +7075,121 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
-          //can be dotted in vim and does repeat sets of characters
+          // editing cmd: can be dotted and does repeat sets of characters
           // repeat unhandled - will insert repeat applies to characters
-          editorMoveCursor(ARROW_RIGHT);
+          //editorMoveCursor(ARROW_RIGHT);
+          f_a(E.repeat);
           E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
           E.last_typed.clear(); //means it can be dotted
           E.command[0] = '\0';
           E.last_repeat = E.repeat; //only in repeatable (which may be everything)
           E.repeat = 0;
           E.last_command = command; //only in dot-able
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
           return;
     
         case 'A':
-         // can be dotted in vim and does repeat sets of characters
+          // editing cmd: can be dotted and does repeat sets of characters
+
           // repeat unhandled - will insert repeat applies to characters
-          editorMoveCursorEOL();
-          E.last_typed.clear();
+          //editorMoveCursorEOL();
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
-          editorMoveCursor(ARROW_RIGHT);
+          //editorMoveCursor(ARROW_RIGHT);
+          f_A(E.repeat);
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
+          E.last_typed.clear();
           E.command[0] = '\0';
           E.last_repeat = E.repeat; //only in repeatable (which may be everything)
           E.repeat = 0;
           E.last_command = command; //only in dot-able
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
         case 'w':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
           editorMoveNextWord();
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case 'b':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
           editorMoveBeginningWord();
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case 'e':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
           editorMoveEndWord();
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case '0':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
           editorMoveCursorBOL();
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case '$':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
           editorMoveCursorEOL();
           E.command[0] = '\0';
           E.repeat = 0;
           return;
     
         case 'I':
-          // repeat unhandled - will insert chars x n
-          editorMoveCursorBOL();
-          E.fc = editorIndentAmount(E.fr);
+          // editing cmd: can be dotted and does repeat sets of characters
+
+          /*
+           repeat applies to characters that were typed
+           repeat unhandled - will insert chars 'xyz' n-1 addition times for total of n times
+           easier to handle in dot since you know what was typed
+           would be something in insert escape code that checked if text repeatable
+           something like: if (E.text_repeatable) ...
+           or if (repeatable_text_commands.find(E.last_command) ...
+          std::vector<int> repeatable_text_commands = {'I', 'i', 'A', 'a'}
+          */
+
+          //editorMoveCursorBOL();
+          //E.fc = editorIndentAmount(E.fr);
+          f_I(E.repeat);
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
           E.last_typed.clear();
           E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
           E.last_command = command;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
     
         case 'o':
+          // editing cmd: can be dotted and does repeat
+          // in wierd way it does n-1 returns + text
           editorCreateSnapshot();
           editorInsertNewline(1);
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+
           E.last_typed.clear();
           E.mode = INSERT;
           E.command[0] = '\0';
           E.repeat = 0;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          E.last_command = command;
+
           return;
     
         case 'O':
+          // editing cmd: can be dotted and does repeat
+          // in wierd way it does n-1 returns + text
           editorCreateSnapshot();
           editorInsertNewline(0);
           E.mode = 1;
@@ -7149,7 +7199,8 @@ void editorProcessKeypress(void) {
           return;
     
         case 'G':
-          // navigation should not clear dot
+          // navigation: can't be dotted and doesn't repeat
+          // navigation doesn't clear last dotted command
           E.fc = 0;
           E.fr = E.rows.size() - 1;
           /////////////////////////
