@@ -7259,6 +7259,7 @@ void editorProcessKeypress(void) {
     
         case 'u':
           editorRestoreSnapshot();
+          E.command[0] = '\0';
           return;
     
         case '^':
@@ -8487,108 +8488,64 @@ void editorMoveEndWord(void) {
   E.fc = end - 1;
 }
 
+// decorates, undecorates, redecorates
 void editorDecorateWord(int c) {
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
-  if (row.at(E.fc) < 48) return;
+  if (row.at(E.fc) == ' ') return;
 
-//below is finding beginning of word
+  //find beginning of word
   auto beg = row.find_last_of(' ', E.fc);
   if (beg == std::string::npos ) beg = 0;
   else beg++;
 
-//below is finding end of word
+  //find end of word
   auto end = row.find_first_of(' ', beg);
   if (end == std::string::npos) {end = row.size();}
-  end--;
 
   if (row.substr(beg, 2) == "**") {
     row.erase(beg, 2);
-    row.erase(end-3, 2);
-  } else if (row.at(beg) == '*' or row.at(beg) == '`') {
+    end -= 4;
+    row.erase(end, 2);
+    E.fc -=2;
+    if (c == CTRL_KEY('b')) return;
+  } else if (row.at(beg) == '*') {
     row.erase(beg, 1);
-    row.erase(end-1, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+    if (c == CTRL_KEY('i')) return;
+  } else if (row.at(beg) == '`') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+    if (c == CTRL_KEY('e')) return;
   }
 
-//below is finding beginning of word
-  beg = row.find_last_of(' ', E.fc);
-  if (beg == std::string::npos ) beg = 0;
-  else beg++;
-
-//below is finding end of word
-  end = row.find_first_of(' ', beg);
-  if (end == std::string::npos) {end = row.size();}
+  // needed if word at end of line
+  if (end == row.size()) row.push_back(' ');
 
   switch(c) {
     case CTRL_KEY('b'):
       row.insert(beg, "**");
-      row.insert(end + 2, "**");
+      row.insert(end+2, "**"); //
       E.fc +=2;
-      break;
+      return;
     case CTRL_KEY('i'):
       row.insert(beg, "*");
-      row.insert(end + 1, "*");
+      row.insert(end+1 , "*");
       E.fc++;
-      break;
+      return;
     case CTRL_KEY('e'):
       row.insert(beg, "`");
-      row.insert(end + 1, "`");
+      row.insert(end+1 , "`");
       E.fc++;
-      break;
-    default:
-      editorSetMessage("Trying to decorate word somehow entered an unsupported key: %c", c);
       return;
   }
 }
 
-// needs to be re-written in c++
-void editorDecorateWordOld(int c) {
-
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-  char cc;
-  if (row[E.fc] < 48) return;
-
-  int i, j;
-
-  /*Note to catch ` would have to be row->chars[i] < 48 || row-chars[i] == 96 - may not be worth it*/
-
-  for (i = E.fc - 1; i > -1; i--){
-    if (row[i] < 48) break;
-  }
-
-  for (j = E.fc + 1; j < row.size() ; j++) {
-    if (row[j] < 48) break;
-  }
-  
-  if (row[i] != '*' && row[i] != '`'){
-    cc = (c == CTRL_KEY('b') || c ==CTRL_KEY('i')) ? '*' : '`';
-    E.fc = i + 1;
-    editorInsertChar(cc);
-    E.fc = j + 1;
-    editorInsertChar(cc);
-
-    if (c == CTRL_KEY('b')) {
-      E.fc = i + 1;
-      editorInsertChar('*');
-      E.fc = j + 2;
-      editorInsertChar('*');
-    }
-  } else {
-    E.fc = i;
-    editorDelChar();
-    E.fc = j - 1;
-    editorDelChar();
-
-    if (c == CTRL_KEY('b')) {
-      E.fc = i - 1;
-      editorDelChar();
-      E.fc = j - 2;
-      editorDelChar();
-    }
-  }
-}
-
+// needs to be rewritten
 void editorDecorateVisual(int c) {
   if (E.rows.empty()) return;
   E.fc = E.highlight[0];
