@@ -8,20 +8,10 @@
 #define TZ_OFFSET 5 // time zone offset - either 4 or 5
 
 #include <Python.h>
-//#include <ctype.h>
-//#include <errno.h>
-#include <fcntl.h>
-//#include <stdio.h>
-//#include <stdarg.h>
-//#include <stdlib.h>
-//#include <string.h>
+//#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <csignal>
-//#include <sys/types.h>
 #include <termios.h>
-//#include <time.h>
-//#include <stdbool.h>
-//#include <unistd.h>
 #include <libpq-fe.h>
 #include "inipp.h" //https://github.com/mcmtroffaes/inipp
 #include <sqlite3.h>
@@ -268,6 +258,13 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"so", C_saveoutline},
   {"valgrind", C_valgrind}
 };
+
+struct sqlite_db {
+  sqlite3 *db;
+  char *err_msg;
+};
+
+static struct sqlite_db S;
 
 typedef struct orow {
   std::string title;
@@ -545,11 +542,24 @@ void signalHandler(int signum) {
     E.screencols = -2 + screencols/2;
     EDITOR_LEFT_MARGIN = screencols/2 + 1;
 
+    /*
+    the order of everything below
+    seems to preserve cursor
+    editorRefreshScreen may be called
+    twice since called by get_note but that's OK
+    */
+
     if (O.view == TASK && O.mode != NO_ROWS)
       get_note(O.rows.at(O.fr).id);
 
-    // note this order puts cursor in outline regardless of where it was before resize
-    outlineRefreshScreen();
+    if (editor_mode) {
+      outlineRefreshScreen();
+      editorRefreshScreen();
+    } else {
+      editorRefreshScreen();
+      outlineRefreshScreen();
+    }
+
 }
 
 void parse_ini_file(std::string ini_name)
@@ -632,6 +642,15 @@ void map_folder_titles_pg(void) {
 
   PQclear(res);
   // PQfinish(conn);
+}
+
+void sqlite_open(void) {
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
+  if (rc != SQLITE_OK) {
+    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(S.db);
+    return;
+    }
 }
 
 void map_context_titles_sqlite(void) {
@@ -8523,7 +8542,7 @@ void editorDecorateWord(int c) {
     if (c == CTRL_KEY('e')) return;
   }
 
-  // needed if word at end of line
+  // needed if word at end of row
   if (end == row.size()) row.push_back(' ');
 
   switch(c) {
@@ -8545,21 +8564,33 @@ void editorDecorateWord(int c) {
   }
 }
 
-// needs to be rewritten
+// only decorates which I think makes sense
 void editorDecorateVisual(int c) {
   if (E.rows.empty()) return;
-  E.fc = E.highlight[0];
-  if (c == CTRL_KEY('b')) {
-    editorInsertChar('*');
-    editorInsertChar('*');
-    E.fc = E.highlight[1]+3;
-    editorInsertChar('*');
-    editorInsertChar('*');
-  } else {
-    char cc = (c ==CTRL_KEY('i')) ? '*' : '`';
-    editorInsertChar(cc);
-    E.fc = E.highlight[1]+2;
-    editorInsertChar(cc);
+  std::string& row = E.rows.at(E.fr);
+
+  int beg = E.highlight[0];
+  int end = E.highlight[1] + 1;
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  switch(c) {
+    case CTRL_KEY('b'):
+      row.insert(beg, "**");
+      row.insert(end+2, "**"); //
+      E.fc += 2;
+      return;
+    case CTRL_KEY('i'):
+      row.insert(beg, "*");
+      row.insert(end+1 , "*");
+      E.fc++;
+      return;
+    case CTRL_KEY('e'):
+      row.insert(beg, "`");
+      row.insert(end+1 , "`");
+      E.fc++;
+      return;
   }
 }
 
