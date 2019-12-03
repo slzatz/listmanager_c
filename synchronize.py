@@ -452,7 +452,9 @@ def synchronize(report_only=True):
             title = title.replace("'", "''")
             note = note.replace("'", "''")
             tag = ",".join(kw.name for kw in task.keywords)
-            #result = fts.execute(f"INSERT INTO fts (title, note, tag, lm_id) VALUES ({task.title}, {task.note}, {tag}, {task.id});")
+            # I don't think you can do INSERT OR IGNORE on a table without a unique contraint so could do a select if
+            # want to avoid duplicate entries. Would have to be two separate statements since sqlite doesn't support
+            # IF NOT EXISTS (SELECT 1 from fts WHERE lm_id = whatever)) INSERT INTO ...
             result = fts.execute(f"INSERT INTO fts (title, note, tag, lm_id) VALUES (\'{title}\', \'{note}\', \'{tag}\' ,{task.id});")
             fts.commit() # this is needed!!!!!
             if result.rowcount != 1:
