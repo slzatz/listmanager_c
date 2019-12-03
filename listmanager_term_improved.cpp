@@ -7290,6 +7290,11 @@ void editorProcessKeypress(void) {
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
+          E.command[0] = '\0';
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
+          E.repeat = 0;
+          E.last_command = command;
           return;
 
 
@@ -8482,8 +8487,62 @@ void editorMoveEndWord(void) {
   E.fc = end - 1;
 }
 
-// needs to be re-written in c++
 void editorDecorateWord(int c) {
+  if (E.rows.empty()) return;
+  std::string& row = E.rows.at(E.fr);
+  if (row.at(E.fc) < 48) return;
+
+//below is finding beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+//below is finding end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+  end--;
+
+  if (row.substr(beg, 2) == "**") {
+    row.erase(beg, 2);
+    row.erase(end-3, 2);
+  } else if (row.at(beg) == '*' or row.at(beg) == '`') {
+    row.erase(beg, 1);
+    row.erase(end-1, 1);
+  }
+
+//below is finding beginning of word
+  beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+//below is finding end of word
+  end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  switch(c) {
+    case CTRL_KEY('b'):
+      row.insert(beg, "**");
+      row.insert(end + 2, "**");
+      E.fc +=2;
+      break;
+    case CTRL_KEY('i'):
+      row.insert(beg, "*");
+      row.insert(end + 1, "*");
+      E.fc++;
+      break;
+    case CTRL_KEY('e'):
+      row.insert(beg, "`");
+      row.insert(end + 1, "`");
+      E.fc++;
+      break;
+    default:
+      editorSetMessage("Trying to decorate word somehow entered an unsupported key: %c", c);
+      return;
+  }
+}
+
+// needs to be re-written in c++
+void editorDecorateWordOld(int c) {
 
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
