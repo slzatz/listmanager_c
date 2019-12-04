@@ -573,6 +573,7 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
   inipp::extract(ini.sections["ini"]["port"], c.port);
 }
+//pg ini stuff
 void get_conn(void) {
   char conninfo[250];
   parse_ini_file(DB_INI);
@@ -591,6 +592,17 @@ void get_conn(void) {
     }
   } 
 }
+
+void sqlite_open(void) {
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
+  if (rc != SQLITE_OK) {
+    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
+    sqlite3_close(S.db);
+    return;
+    //should really exit unless only doing pg could check for that
+    }
+}
+
 
 void map_context_titles_pg(void) {
 
@@ -644,14 +656,6 @@ void map_folder_titles_pg(void) {
   // PQfinish(conn);
 }
 
-void sqlite_open(void) {
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
-  if (rc != SQLITE_OK) {
-    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(S.db);
-    return;
-    }
-}
 
 void map_context_titles_sqlite(void) {
 
@@ -1459,16 +1463,18 @@ void get_items_sqlite(int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  sqlite3 *db;
-  char *err_msg = nullptr;
+  //sqlite3 *db;
+  //char *err_msg = nullptr;
 
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+  //int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
 
+  /*
   if (rc != SQLITE_OK) {
     outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
+*/
 
   if (O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
@@ -1497,13 +1503,13 @@ void get_items_sqlite(int max) {
         << " DESC LIMIT " << max;
 
     int sortcolnum = sort_map[O.sort];
-    rc = sqlite3_exec(db, query.str().c_str(), data_callback, &sortcolnum, &err_msg);
+    int rc = sqlite3_exec(S.db, query.str().c_str(), data_callback, &sortcolnum, &S.err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
+      outlineSetMessage("SQL error: %s", S.err_msg);
+      sqlite3_free(S.err_msg);
     }
-  sqlite3_close(db);
+  //sqlite3_close(db);
 
   O.view = TASK;
 
@@ -4194,6 +4200,8 @@ void outlineProcessKeypress(void) {
                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
                 write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
                 Py_FinalizeEx();
+                if (which_db == SQLITE) sqlite3_close(S.db);
+                else PQfinish(conn);
                 exit(0);
               }
               return;
@@ -8793,6 +8801,7 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   if (argc > 1 && argv[1][0] == 's') {
+    sqlite_open();
     get_items = get_items_sqlite;
     //get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
