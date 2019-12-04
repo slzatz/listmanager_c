@@ -262,6 +262,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
 struct sqlite_db {
   sqlite3 *db;
   char *err_msg;
+  sqlite3 *fts_db;
+  char *fts_err_msg;
 };
 
 static struct sqlite_db S;
@@ -526,7 +528,6 @@ struct config c;
 PGconn *conn = nullptr;
 
 void do_exit(PGconn *conn) {
-    
     PQfinish(conn);
     exit(1);
 }
@@ -593,16 +594,20 @@ void get_conn(void) {
   } 
 }
 
+// only calling sqlite_open if which_db == SQLITE
 void sqlite_open(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
   if (rc != SQLITE_OK) {
-    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
     sqlite3_close(S.db);
-    return;
-    //should really exit unless only doing pg could check for that
-    }
-}
+    exit(1);
+  }
 
+  rc = sqlite3_open(FTS_DB.c_str(), &S.fts_db);
+  if (rc != SQLITE_OK) {
+    sqlite3_close(S.fts_db);
+    exit(1);
+  }
+}
 
 void map_context_titles_pg(void) {
 
@@ -612,12 +617,8 @@ void map_context_titles_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
-
-    //printf("No data retrieved\n");
-    //printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("in map_context_titles_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
-    //do_exit(conn);
     return;
   }
 
@@ -628,7 +629,6 @@ void map_context_titles_pg(void) {
   }
 
   PQclear(res);
-  // PQfinish(conn);
 }
 
 void map_folder_titles_pg(void) {
@@ -639,11 +639,9 @@ void map_folder_titles_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("in map_folder_titles_pg: PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
-    do_exit(conn);
+    return;
   }
 
   folder_map.clear();
@@ -653,34 +651,22 @@ void map_folder_titles_pg(void) {
   }
 
   PQclear(res);
-  // PQfinish(conn);
 }
 
 
 void map_context_titles_sqlite(void) {
 
-  sqlite3 *db;
-  char *err_msg = nullptr;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
   // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM context;");
 
-    bool no_rows = true;
-    rc = sqlite3_exec(db, query.c_str(), context_titles_callback, &no_rows, &err_msg);
+  bool no_rows = true;
+  int rc = sqlite3_exec(S.db, query.c_str(), context_titles_callback, &no_rows, &S.err_msg);
 
-    if (rc != SQLITE_OK ) {
-      //outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("map_context_titles: SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    return;
     }
-  sqlite3_close(db);
 
   if (no_rows)
     outlineSetMessage("There were no context titles to map!");
@@ -701,28 +687,17 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
 
 void map_folder_titles_sqlite(void) {
 
-  sqlite3 *db;
-  char *err_msg = nullptr;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    //outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
   // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM folder;");
 
-    bool no_rows = true;
-    rc = sqlite3_exec(db, query.c_str(), folder_titles_callback, &no_rows, &err_msg);
+  bool no_rows = true;
+  int rc = sqlite3_exec(S.db, query.c_str(), folder_titles_callback, &no_rows, &S.err_msg);
 
-    if (rc != SQLITE_OK ) {
-      //outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
-    }
-  sqlite3_close(db);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("map_folder_titles: SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    return;
+  }
 
   if (no_rows)
     outlineSetMessage("There were no folder titles to map!");
@@ -776,10 +751,9 @@ void get_items_pg(int max) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    printf("No data retrieved\n");        
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("in get_items_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
-    do_exit(conn);
+    return;
   }    
 
   int rows = PQntuples(res);
@@ -798,7 +772,6 @@ void get_items_pg(int max) {
   }
 
   PQclear(res);
-  // PQfinish(conn);
 
   O.view = TASK;
 
@@ -820,7 +793,6 @@ void get_containers_pg(void) {
   O.fc = O.fr = O.rowoff = 0;
 
   std::string table;
-  int (*callback)(void *, int, char **, char **);
   switch (O.view){
     case CONTEXT:
       table = "context";
@@ -836,23 +808,14 @@ void get_containers_pg(void) {
       return;
   }
 
-
   std::stringstream query;
-  /*
-  query << "SELECT * FROM "
-        << ((O.view == CONTEXT) ? "context;" : "folder;");
- */
-
   query << "SELECT * FROM " << table << ";";
 
   PGresult *res = PQexec(conn, query.str().c_str());
-
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("in get_containers_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
-    do_exit(conn);
+    return;
   }
 
   /* CONTEXT columns
@@ -925,7 +888,7 @@ void get_containers_pg(void) {
       O.rows.push_back(row);
     }
   }
-  // PQfinish(conn);
+
   PQclear(res);
 
   if (O.rows.empty()) {
@@ -941,17 +904,6 @@ void get_containers_sqlite(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
 
   std::string table;
   int (*callback)(void *, int, char **, char **);
@@ -974,30 +926,16 @@ void get_containers_sqlite(void) {
   }
 
   std::stringstream query;
-  /*
-  query << "SELECT * FROM "
-        << ((O.view == CONTEXT) ? "context;" : "folder;");
- */
-
   query << "SELECT * FROM " << table << ";";
 
+  bool no_rows = true;
 
-    bool no_rows = true;
-
-    /*
-    if (O.view == CONTEXT) rc = sqlite3_exec(db, query.str().c_str(), context_callback, &no_rows, &err_msg);
-    else rc = sqlite3_exec(db, query.str().c_str(), folder_callback, &no_rows, &err_msg);
-    */
-
-
-    rc = sqlite3_exec(db, query.str().c_str(), callback, &no_rows, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
-    }
-  sqlite3_close(db);
-
+  int rc = sqlite3_exec(S.db, query.str().c_str(), callback, &no_rows, &S.err_msg);
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("get_containers: SQL error: %s\n", S.err_msg);
+    sqlite3_free(S.err_msg);
+    return;
+  }
   if (no_rows) {
     outlineSetMessage("No results were returned");
     O.mode = NO_ROWS;
@@ -1005,7 +943,6 @@ void get_containers_sqlite(void) {
     O.mode = NORMAL;
 
   O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
-
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -1075,7 +1012,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-/*
+/* Now handled by get_containers but leaving around for a while
 void get_keywords_sqlite(void) {
 
   O.rows.clear();
@@ -1120,33 +1057,19 @@ void get_task_keywords_sqlite(void) {
 
   task_keywords.clear();
 
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
   std::stringstream query;
-  //query << "SELECT task_keyword.task_id, task_keyword.keyword_id, keyword.id, keyword.name "
   query << "SELECT keyword.name "
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
 
     bool no_rows = true;
 
-    rc = sqlite3_exec(db, query.str().c_str(), task_keywords_callback, &no_rows, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s\n", err_msg);
-      sqlite3_free(err_msg);
+   int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, &no_rows, &S.err_msg);
+   if (rc != SQLITE_OK ) {
+     outlineSetMessage("SQL error: %s", S.err_msg);
+     sqlite3_free(S.err_msg);
+     return;
     }
-  sqlite3_close(db);
-
 }
 
 int task_keywords_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -1194,7 +1117,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-/*
+/* Now handled by get_containers
 void get_keywords_pg(void) {
 
   O.rows.clear();
@@ -1272,17 +1195,6 @@ void add_task_keyword_pg(const std::string &kw, int id) {
 
 void add_task_keyword_sqlite(const std::string &kw, int id) {
 
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
   std::stringstream query;
   // note you don't have to do INSERT OR IGNORE but could just do INSERT since there is a unique constraint on keyword.name
@@ -1290,35 +1202,31 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
         <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
 
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+  int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
+    outlineSetMessage("In %s (query). SQLITE error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
     return;
   }
 
   std::stringstream query2;
   query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
+    outlineSetMessage("In %s (query2). SQLITE error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
     return;
   }
 
   std::stringstream query3;
   // updates task modified column so we know that something changed with the task
   query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
-  rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_exec(S.db, query3.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
+    outlineSetMessage("In %s (query3). SQLITE error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
     return;
   }
-
 
   /**************fts virtual table update**********************/
   // tag update
@@ -1332,24 +1240,15 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
     delim = ",";
   }
 
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
   std::stringstream query4;
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
-  rc = sqlite3_exec(db, query4.str().c_str(), 0, 0, &err_msg);
-
+  rc = sqlite3_exec(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL fts error: %s", err_msg);
-    sqlite3_free(err_msg);
+    outlineSetMessage("add_task_keyword: SQLITE fts error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    return;
   }
-  sqlite3_close(db);
 }
 
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
@@ -1360,54 +1259,35 @@ int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColNam
 
 void delete_task_keywords_sqlite(void) {
 
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+  int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
-    sqlite3_free(err_msg);
+    outlineSetMessage("In %s (query). SQL error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
   }
 
   std::stringstream query2;
   // updates task modified column so know that something changed with the task
   query2 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+  rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    sqlite3_close(db);
+    outlineSetMessage("In %s (query2). SQL error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
     return;
   }
   /**************fts virtual table update**********************/
 
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open fts database: %s\n", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
   std::stringstream query3;
   query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
 
-  rc = sqlite3_exec(db, query3.str().c_str(), 0, 0, &err_msg);
-
+  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL fts error: %s\n", err_msg);
-    sqlite3_free(err_msg);
+    outlineSetMessage("In %s (query3): SQL fts error: %s", __func__, S.err_msg);
+    sqlite3_free(S.err_msg);
+    return;
   }
-  sqlite3_close(db);
 }
 
 void delete_task_keywords_pg(void) {
@@ -1463,19 +1343,6 @@ void get_items_sqlite(int max) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
-  //sqlite3 *db;
-  //char *err_msg = nullptr;
-
-  //int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
-
-  /*
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-*/
-
   if (O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
           << " WHERE context.title = '" << O.context << "' ";
@@ -1506,10 +1373,9 @@ void get_items_sqlite(int max) {
     int rc = sqlite3_exec(S.db, query.str().c_str(), data_callback, &sortcolnum, &S.err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", S.err_msg);
+      outlineSetMessage("In %s: SQL error: %s", __func__, S.err_msg);
       sqlite3_free(S.err_msg);
     }
-  //sqlite3_close(db);
 
   O.view = TASK;
 
@@ -1519,7 +1385,6 @@ void get_items_sqlite(int max) {
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = O.last_mode;
-    //get_note(O.rows.at(0).id);
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
     else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
@@ -1581,31 +1446,14 @@ void get_items_by_id_sqlite(std::stringstream& query) {
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
 
-  // in fts5_sqlite
-  //O.rows.clear();
-  //O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    }
-
     bool no_rows = true;
-    rc = sqlite3_exec(db, query.str().c_str(), by_id_data_callback, &no_rows, &err_msg);
+    int rc = sqlite3_exec(S.db, query.str().c_str(), by_id_data_callback, &no_rows, &S.err_msg);
     
     if (rc != SQLITE_OK ) {
-        outlineSetMessage("SQL error: %s", err_msg);
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        return; // can't close db twice
+        outlineSetMessage("In %s. SQL error: %s", S.err_msg);
+        sqlite3_free(S.err_msg);
+        return;
     } 
-
-  sqlite3_close(db);
 
   O.view = TASK;
 
@@ -1678,11 +1526,8 @@ void get_items_by_id_pg(std::stringstream& query) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    printf("No data retrieved\n");        
-    printf("PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineSetMessage("In %s. PQresultErrorMessage: %s", __func__, PQresultErrorMessage(res));
     PQclear(res);
-    do_exit(conn);
   }    
   
   O.rows.clear();
@@ -1730,35 +1575,27 @@ void get_note_sqlite(int id) {
   E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   sqlite3 *db;
-  char *err_msg = nullptr;
     
   std::stringstream query;
-  int rc;
 
   if (editor_mode || O.mode != SEARCH) {
     query << "SELECT note FROM task WHERE id = " << id;
-    rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    db = S.db;
+
   } else {
     //17m = blue; 31m = red
     query << "SELECT highlight(fts, 1, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
-    rc = sqlite3_open(FTS_DB.c_str(), &db);
+    db = S.fts_db;
   }
 
-  if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    }
-
   // callback is *not* called if result (argv) is null
-  rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &err_msg);
+  int rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SAL error: %s", FTS_DB.c_str(), err_msg);
-    sqlite3_free(err_msg);
+    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
     sqlite3_close(db);
   } 
-
-  sqlite3_close(db);
 
   editorRefreshScreen();
 }
