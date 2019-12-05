@@ -17,7 +17,7 @@
 #include <sqlite3.h>
 
 #include <string>
-//#include <string_view> //not in use yet
+#include <string_view> //not in use yet
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -464,10 +464,12 @@ int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not curre
 int *editorGetRowLineCharWW(void); //do not delete but not currently in use
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
+int editorGetLinesInRowWWNew(int);
 
 int editorGetFileRowByLineWW(int);
 int editorGetLineInRowWW(int, int);
-int editorGetCharInRowWW(int, int); 
+int editorGetLineInRowWWNew(int r, int c);
+int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
@@ -1574,7 +1576,7 @@ void get_note_sqlite(int id) {
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
-  sqlite3 *db;
+  sqlite3 *db; // need this - see below
     
   std::stringstream query;
 
@@ -6557,12 +6559,16 @@ void editorDrawStatusBar(std::string& ab) {
 
   if (!E.rows.empty()){
     int line = editorGetLineInRowWW(E.fr, E.fc);
+    int new_line = editorGetLineInRowWWNew(E.fr, E.fc);
     int line_char_count = editorGetLineCharCountWW(E.fr, line);
+    int lines = editorGetLinesInRowWW(E.fr);
+    int new_lines = editorGetLinesInRowWWNew(E.fr);
+
 
     len = snprintf(status,
-                   sizeof(status), "E.fr(0)=%d line(1)=%d E.fc(0)=%d line chrs(1)="
+                   sizeof(status), "E.fr(0)=%d lines(1)=%d new_lines=%d line(1)=%d new_line=%d E.fc(0)=%d line chrs(1)="
                                    "%d E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
+                                   E.fr, lines, new_lines, line, new_line,E.fc, line_char_count, E.cx, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
@@ -7722,7 +7728,7 @@ int editorGetFileRowByLineWW(int y){
 int editorGetLinesInRowWW(int r) {
   //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
   //if (E.rows.empty()) return 0; ////////////////
-  std::string& row = E.rows.at(r);
+  std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
@@ -7745,7 +7751,7 @@ int editorGetLinesInRowWW(int r) {
       right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
       while(!isspace(*right_margin)) { 
         right_margin--;
-        if(right_margin == start) { // situation in which there were no spaces to break the link
+        if(right_margin == start) { // situation in which there were no spaces to break the line
           right_margin += width - 1;
           break; 
         }    
@@ -7758,54 +7764,45 @@ int editorGetLinesInRowWW(int r) {
   return num;
 }
 
-// new  called by editorGetScreenYFromRowColWW that is in editScroll
-// this doesn't seem right to me
-// should be a self-contained version that
-// may look almost identical to editorGetLineCharCount
-// also right now only looks like it works for first row
-// not sure if problem is here or elsewhere
-int editorGetLineInRowWW__old(int r, int c) {
+int editorGetLinesInRowWWNew(int r) {
+  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
+  //if (E.rows.empty()) return 0; ////////////////
+  std::string &row = E.rows.at(r);
 
-  //erow *row = &E.row[r];
-  std::string& row = E.rows.at(r);
-  if (row.empty()) return 1;
+  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
-  char *start,*right_margin;
-  int left, width, num;  //, len;
-  bool more_lines = true;
-
-  left = c + 1; //row->size; //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  num = 0;
-  while(more_lines) { 
-
-    // not sure which of the two following are more correct
-    // or practically they may be equivalent
-    //if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
-    //if (left <= (editorGetLineCharCountWW(r, num + 1) + (E.mode == INSERT))) { 
-    if (left <= ((E.mode == INSERT && c >= row.size()) ? E.screencols  + 1 : editorGetLineCharCountWW(r, num + 1))) {
-      more_lines = false;
-      num++; 
-          
-    } else {
-      right_margin = start + width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-      if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02252019 ? kluge
-      while(!isspace(*right_margin)) { 
-        right_margin--;
-        if(right_margin == start) { // situation in which there were no spaces to break the link
-          right_margin += width - 1;
-          break; 
-        }    
-      } 
-      left -= right_margin - start + 1;      /* +1 for the space */
-      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-      num++;
-    }
+  int lines = 2;
+  size_t pos = 0;
+  std::string remainder;
+  for (;;) {
+    pos = row.find_last_of(' ', pos+E.screencols-1);
+    if (pos == std::string::npos) pos += E.screencols; //no spaces - I think there is still a corner case
+    remainder = row.substr(pos+1);
+    if (remainder.size() <= E.screencols) break;
+    lines++;
   }
-  return num;
+  return lines;
 }
+
+int editorGetLineInRowWWNew(int r, int c) {
+  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
+  //if (E.rows.empty()) return 0; ////////////////
+  std::string &row = E.rows.at(r);
+
+  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
+
+  int lines = 1;
+  size_t pos = 0;
+  std::string remainder;
+  for (;;) {
+    pos = row.find_last_of(' ', pos+E.screencols-1);
+    if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
+    if (c < pos + 1) break;
+    lines++;
+  }
+  return lines;
+}
+
 
 // ESSENTIAL*********************************************
 // used by editorGetScreenXFromRowCol and by editorGetLineInRow
