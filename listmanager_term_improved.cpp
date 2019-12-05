@@ -460,19 +460,21 @@ int keyword_id_callback(void *, int, char **, char **);
 void synchronize(int);
 
 //Editor Prototypes
-int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not currently in use
-int *editorGetRowLineCharWW(void); //do not delete but not currently in use
+//int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not currently in use
+//int *editorGetRowLineCharWW(void); //do not delete but not currently in use
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
+int editorGetScreenYFromRowColWWNew(int, int); //used by editorScroll
 int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
 int editorGetLinesInRowWWNew(int);
 
 int editorGetFileRowByLineWW(int);
+int editorGetFileRowByLineWWNew(int);
 int editorGetLineInRowWW(int, int);
 int editorGetLineInRowWWNew(int r, int c);
 int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
-int editorGetScreenXFromRowColNew(int r, int c);
+int editorGetScreenXFromRowColWWNew(int r, int c);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 int editorGetLineCharCountWWNew(int, int);
 
@@ -6379,8 +6381,8 @@ void editorScroll(void) {
 
   if (E.fc < 0) E.fc = 0;
 
-  E.cx = editorGetScreenXFromRowCol(E.fr, E.fc);
-  int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
+  E.cx = editorGetScreenXFromRowColWWNew(E.fr, E.fc);
+  int cy = editorGetScreenYFromRowColWWNew(E.fr, E.fc); // this may be the problem with zero char rows
 
   if (cy > E.screenlines + E.line_offset - 1) {
     E.line_offset =  cy - E.screenlines + 1;
@@ -6410,7 +6412,7 @@ void editorDrawRows(std::string& ab) {
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
-  int filerow = editorGetFileRowByLineWW(0);
+  int filerow = editorGetFileRowByLineWWNew(0);
 
   for (;;){
     if (y >= E.screenlines) break; //somehow making this >= made all the difference
@@ -6429,7 +6431,7 @@ void editorDrawRows(std::string& ab) {
     // this else is the main drawing code
     } else {
 
-      int lines = editorGetLinesInRowWW(filerow); // changed from E.fr to filerow 04012019
+      int lines = editorGetLinesInRowWWNew(filerow); // changed from E.fr to filerow 04012019
 
       // below is trying to emulate what vim does when it can't show an entire row (because it generates
       // multiple screen lines that can't all be displayed at the bottom of the screen because of where
@@ -6566,7 +6568,7 @@ void editorDrawStatusBar(std::string& ab) {
     int new_line_char_count = editorGetLineCharCountWWNew(E.fr, line);
     int lines = editorGetLinesInRowWW(E.fr);
     int new_lines = editorGetLinesInRowWWNew(E.fr);
-    int new_x = editorGetScreenXFromRowColNew(E.fr, E.fc);
+    int new_x = editorGetScreenXFromRowColWWNew(E.fr, E.fc);
 
 
     len = snprintf(status,
@@ -7184,7 +7186,7 @@ void editorProcessKeypress(void) {
             int lines = 0;
             int r = E.fr - 1;
             for(;;) {
-                lines += editorGetLinesInRowWW(r);
+                lines += editorGetLinesInRowWWNew(r);
                 if (r == 0) {
                     break;
                 }
@@ -7199,7 +7201,7 @@ void editorProcessKeypress(void) {
             int lines = 0;
             int r = E.fr;
             for(;;) {
-                lines += editorGetLinesInRowWW(r);
+                lines += editorGetLinesInRowWWNew(r);
                 if (r == E.rows.size() - 1) {
                     break;
                 }
@@ -7728,6 +7730,28 @@ int editorGetFileRowByLineWW(int y){
   return n;
 }
 
+int editorGetFileRowByLineWWNew(int y){
+  /*
+  y is the actual screenline (E.cy)
+  the display may be scrolled so below add offset
+  */
+
+  int screenrow = -1;
+  int n = 0;
+  int linerows;
+
+  y+= E.line_offset;
+
+  if (y == 0) return 0;
+  for (;;) {
+    linerows = editorGetLinesInRowWWNew(n);
+    screenrow+= linerows;
+    if (screenrow >= y) break;
+    n++;
+  }
+  return n;
+}
+
 /****************************ESSENTIAL*****************************/
 int editorGetLinesInRowWW(int r) {
   //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
@@ -7768,6 +7792,8 @@ int editorGetLinesInRowWW(int r) {
   return num;
 }
 
+//used by editorGetFileRowByLineWW
+//used by editorGetScreenYFromRowColWW
 int editorGetLinesInRowWWNew(int r) {
   //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
   //if (E.rows.empty()) return 0; ////////////////
@@ -7788,9 +7814,8 @@ int editorGetLinesInRowWWNew(int r) {
   return lines;
 }
 
+// used in editorGetScreenYFromRowColWWNew
 int editorGetLineInRowWWNew(int r, int c) {
-  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
-  //if (E.rows.empty()) return 0; ////////////////
   std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
@@ -7809,8 +7834,6 @@ int editorGetLineInRowWWNew(int r, int c) {
 
 
 // ESSENTIAL*********************************************
-//Not used at all!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-// used by editorGetScreenXFromRowCol and by editorGetLineInRow (no to both!)
 int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
@@ -7849,6 +7872,7 @@ int editorGetLineCharCountWW(int r, int line) {
   return len;
 }
 
+//used in status bar because interesting but not essentia
 int editorGetLineCharCountWWNew(int r, int line) {
 
   std::string& row = E.rows.at(r);
@@ -7894,14 +7918,6 @@ int editorGetLineInRowWW(int r, int c) {
 
   int num = 1; ////// Don't see how this works for line = 1
   for (;;) {
-
-    /*
-    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
-      length += left;
-      len = left;
-      break;
-    }
-    */
 
     // each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
@@ -7952,15 +7968,6 @@ int editorGetScreenXFromRowCol(int r, int c) {
   int num = 1;
   for (;;) {
 
-    /*
-    // this is neccessary here or the alternative solution below
-    if (left <= ((E.mode == INSERT) ? width : editorGetLineCharCountWW(r, num))) { 
-      length += left;
-      len = left;
-      break;
-    }
-    */
-
 
     //each time start pointer moves you are adding the width to it and checking for spaces
     right_margin = start + width - 1; 
@@ -8002,7 +8009,7 @@ int editorGetScreenXFromRowCol(int r, int c) {
   return c - length + len;
 }
 /****************************ESSENTIAL (above) *****************************/
-int editorGetScreenXFromRowColNew(int r, int c) {
+int editorGetScreenXFromRowColWWNew(int r, int c) {
 
   std::string &row = E.rows.at(r);
   //pos should be the first character in the row
@@ -8023,19 +8030,28 @@ int editorGetScreenXFromRowColNew(int r, int c) {
 
 // ESSENTIAL - used in editScroll
 // E.line_offset is taken into account in editorScroll
-int editorGetScreenYFromRowColWW(int r, int c) {
+int editorGetScreenYFromRowColWWNew(int r, int c) {
   int screenline = 0;
 
-  for (int n = 0; n < r; n++) { 
-    //screenline+= editorGetLinesInRowWW(n);
+  for (int n = 0; n < r; n++)
     screenline+= editorGetLinesInRowWWNew(n);
-  }
 
-  //screenline = screenline + editorGetLineInRowWW(r, c) - 1;
   screenline = screenline + editorGetLineInRowWWNew(r, c) - 1;
 
   return screenline;
   
+}
+int editorGetScreenYFromRowColWW(int r, int c) {
+  int screenline = 0;
+
+  for (int n = 0; n < r; n++) {
+    screenline+= editorGetLinesInRowWW(n);
+  }
+
+  screenline = screenline + editorGetLineInRowWW(r, c) - 1;
+
+  return screenline;
+
 }
 /************************************* end of WW ************************************************/
 
