@@ -472,6 +472,7 @@ int editorGetLineInRowWWNew(int r, int c);
 int editorGetCharInRowWW(int, int);
 int editorGetLineCharCountWW(int, int);
 int editorGetScreenXFromRowCol(int, int);
+int editorGetScreenXFromRowColNew(int r, int c);
 int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
 
 void editorDrawRows(std::string&); //erases lines to right as it goes
@@ -6546,7 +6547,7 @@ void editorDrawRows(std::string& ab) {
 /*****************************************/
 void editorDrawStatusBar(std::string& ab) {
   int len;
-  char status[100];
+  char status[200];
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.screenlines + TOP_MARGIN + 1,
@@ -6563,12 +6564,13 @@ void editorDrawStatusBar(std::string& ab) {
     int line_char_count = editorGetLineCharCountWW(E.fr, line);
     int lines = editorGetLinesInRowWW(E.fr);
     int new_lines = editorGetLinesInRowWWNew(E.fr);
+    int new_x = editorGetScreenXFromRowColNew(E.fr, E.fc);
 
 
     len = snprintf(status,
                    sizeof(status), "E.fr(0)=%d lines(1)=%d new_lines=%d line(1)=%d new_line=%d E.fc(0)=%d line chrs(1)="
-                                   "%d E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, lines, new_lines, line, new_line,E.fc, line_char_count, E.cx, E.cy, E.screencols);
+                                   "%d E.cx(0)=%d new E.cs = %d E.cy(0)=%d E.scols(1)=%d",
+                                   E.fr, lines, new_lines, line, new_line,E.fc, line_char_count, E.cx, new_x, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
@@ -7805,7 +7807,8 @@ int editorGetLineInRowWWNew(int r, int c) {
 
 
 // ESSENTIAL*********************************************
-// used by editorGetScreenXFromRowCol and by editorGetLineInRow
+//Not used at all!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// used by editorGetScreenXFromRowCol and by editorGetLineInRow (no to both!)
 int editorGetLineCharCountWW(int r, int line) {
 // doesn't take into account insert mode (which seems to be OK)
 
@@ -7974,7 +7977,25 @@ int editorGetScreenXFromRowCol(int r, int c) {
   return c - length + len;
 }
 /****************************ESSENTIAL (above) *****************************/
+int editorGetScreenXFromRowColNew(int r, int c) {
 
+  std::string &row = E.rows.at(r);
+  //pos should be the first character in the row
+  if (row.size() <= E.screencols) return c; //seems obvious but not added until 03022019
+
+  int lines = 1;
+  size_t pos = 0; //end of whatever line you are one
+  size_t prev_pos = -1; //previous end
+  std::string remainder;
+  for (;;) {
+    pos = row.find_last_of(' ', pos+E.screencols-1);
+    if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
+    if (c <= pos) break;
+    prev_pos = pos;
+    if (row.substr(pos+1).size() < E.screencols) break;
+  }
+  return c - prev_pos - 1;
+}
 // returns row, line in row, and column
 // now only useful (possibly) for debugging
 int *editorGetRowLineCharWW(void) {
