@@ -459,25 +459,15 @@ int keyword_id_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
-//Editor Prototypes
-//int *editorGetScreenPosFromRowCharPosWW(int, int); //do not delete but not currently in use
-//int *editorGetRowLineCharWW(void); //do not delete but not currently in use
+//Editor Word Wrap
+int editorGetScreenXFromRowColWW(int r, int c);
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
-int editorGetScreenYFromRowColWWNew(int, int); //used by editorScroll
-int editorGetLinesInRowWW(int); //ESSENTIAL - do not delete
-int editorGetLinesInRowWWNew(int);
-
-int editorGetFileRowByLineWW(int);
-int editorGetFileRowByLineWWNew(int);
-int editorGetLineInRowWW(int, int);
-int editorGetLineInRowWWNew(int r, int c);
-int editorGetCharInRowWW(int, int);
+int editorGetLineInRowWW(int r, int c);
+int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
-int editorGetScreenXFromRowCol(int, int);
-int editorGetScreenXFromRowColWWNew(int r, int c);
-int *editorGetRowLineScreenXFromRowCharPosWW(int, int);
-int editorGetLineCharCountWWNew(int, int);
+int editorGetFileRowByLineWW(int);
 
+//Editor Prototypes
 void editorDrawRows(std::string&); //erases lines to right as it goes
 void editorDrawMessageBar(std::string&);
 void editorDrawStatusBar(std::string&);
@@ -3013,19 +3003,16 @@ void outlineProcessKeypress(void) {
       }
  
       /*leading digit is a multiplier*/
-      if (isdigit(c)) { //equiv to if (c > 47 && c < 58) 
-        if ( O.repeat == 0 ){
+      //if (isdigit(c)) { //equiv to if (c > 47 && c < 58)
 
-          //if c=48=>0 then it falls through to move to beginning of line
-          if ( c != 48 ) { 
-            O.repeat = c - 48;
-            return;
-          }  
+      if ((c > 48 && c < 58) && (strlen(O.command) == 0)) {
 
-        } else { 
+        if ( O.repeat == 0 )
+          O.repeat = c - 48;
+        else
           O.repeat = O.repeat*10 + c - 48;
-          return;
-        }
+
+      return;
       }
 
       if ( O.repeat == 0 ) O.repeat = 1;
@@ -3156,7 +3143,7 @@ void outlineProcessKeypress(void) {
           return;
 
         case '0':
-          if (!O.rows.empty()) O.fc = 0;
+          //if (!O.rows.empty()) O.fc = 0;
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -6381,8 +6368,8 @@ void editorScroll(void) {
 
   if (E.fc < 0) E.fc = 0;
 
-  E.cx = editorGetScreenXFromRowColWWNew(E.fr, E.fc);
-  int cy = editorGetScreenYFromRowColWWNew(E.fr, E.fc); // this may be the problem with zero char rows
+  E.cx = editorGetScreenXFromRowColWW(E.fr, E.fc);
+  int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
 
   if (cy > E.screenlines + E.line_offset - 1) {
     E.line_offset =  cy - E.screenlines + 1;
@@ -6412,7 +6399,7 @@ void editorDrawRows(std::string& ab) {
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
-  int filerow = editorGetFileRowByLineWWNew(0);
+  int filerow = editorGetFileRowByLineWW(0);
 
   for (;;){
     if (y >= E.screenlines) break; //somehow making this >= made all the difference
@@ -6431,7 +6418,7 @@ void editorDrawRows(std::string& ab) {
     // this else is the main drawing code
     } else {
 
-      int lines = editorGetLinesInRowWWNew(filerow); // changed from E.fr to filerow 04012019
+      int lines = editorGetLinesInRowWW(filerow); // changed from E.fr to filerow 04012019
 
       // below is trying to emulate what vim does when it can't show an entire row (because it generates
       // multiple screen lines that can't all be displayed at the bottom of the screen because of where
@@ -6563,18 +6550,14 @@ void editorDrawStatusBar(std::string& ab) {
 
   if (!E.rows.empty()){
     int line = editorGetLineInRowWW(E.fr, E.fc);
-    int new_line = editorGetLineInRowWWNew(E.fr, E.fc);
     int line_char_count = editorGetLineCharCountWW(E.fr, line);
-    int new_line_char_count = editorGetLineCharCountWWNew(E.fr, line);
     int lines = editorGetLinesInRowWW(E.fr);
-    int new_lines = editorGetLinesInRowWWNew(E.fr);
-    int new_x = editorGetScreenXFromRowColWWNew(E.fr, E.fc);
 
 
     len = snprintf(status,
-                   sizeof(status), "E.fr(0)=%d lines(1)=%d new_lines=%d line(1)=%d new_line=%d E.fc(0)=%d line chrs(1)="
-                                   "%d new line chars=%d E.cx(0)=%d new E.cs = %d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, lines, new_lines, line, new_line,E.fc, line_char_count, new_line_char_count, E.cx, new_x, E.cy, E.screencols);
+                   sizeof(status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d line chrs(1)="
+                                   "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
+                                   E.fr, lines, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
@@ -6609,7 +6592,7 @@ void editorRefreshScreen(void) {
 
   if (DEBUG) {
     if (!E.rows.empty()){
-      int screenx = editorGetScreenXFromRowCol(E.fr, E.fc);
+      int screenx = editorGetScreenXFromRowColWW(E.fr, E.fc);
       int line = editorGetLineInRowWW(E.fr, E.fc);
       int line_char_count = editorGetLineCharCountWW(E.fr, line);
 
@@ -6848,22 +6831,17 @@ void editorProcessKeypress(void) {
       }
 
       /*leading digit is a multiplier*/
-      if (isdigit(c) && strlen(E.command) == 0) {
-        if (E.repeat == 0){
-    
-          //if c=48=>0 then it falls through to move to beginning of line
-          if ( c == 48 ) {
-            return;
-           } else {
-            E.repeat = c - 48;
-          }  
-    
-        } else { 
+
+      if ((c > 48 && c < 58) && (strlen(E.command) == 0)) {
+
+        if ( E.repeat == 0 )
+          E.repeat = c - 48;
+        else
           E.repeat = E.repeat*10 + c - 48;
-        }
-        return;
+
+      return;
       }
-    
+
       if ( E.repeat == 0 ) E.repeat = 1;
     
       {
@@ -7186,7 +7164,7 @@ void editorProcessKeypress(void) {
             int lines = 0;
             int r = E.fr - 1;
             for(;;) {
-                lines += editorGetLinesInRowWWNew(r);
+                lines += editorGetLinesInRowWW(r);
                 if (r == 0) {
                     break;
                 }
@@ -7201,7 +7179,7 @@ void editorProcessKeypress(void) {
             int lines = 0;
             int r = E.fr;
             for(;;) {
-                lines += editorGetLinesInRowWWNew(r);
+                lines += editorGetLinesInRowWW(r);
                 if (r == E.rows.size() - 1) {
                     break;
                 }
@@ -7707,30 +7685,9 @@ void editorProcessKeypress(void) {
 } //end of editorProcessKeyPress
 
 /********************************************************** WW stuff *****************************************/
+
 // used by editorDrawRows to figure out the first row to draw
 int editorGetFileRowByLineWW(int y){
-  /*
-  y is the actual screenline (E.cy)
-  the display may be scrolled so below add offset
-  */
-
-  int screenrow = -1;
-  int n = 0;
-  int linerows;
-
-  y+= E.line_offset; 
-
-  if (y == 0) return 0;
-  for (;;) {
-    linerows = editorGetLinesInRowWW(n);
-    screenrow+= linerows;
-    if (screenrow >= y) break;
-    n++;
-  }
-  return n;
-}
-
-int editorGetFileRowByLineWWNew(int y){
   /*
   y is the actual screenline (E.cy)
   the display may be scrolled so below add offset
@@ -7744,7 +7701,7 @@ int editorGetFileRowByLineWWNew(int y){
 
   if (y == 0) return 0;
   for (;;) {
-    linerows = editorGetLinesInRowWWNew(n);
+    linerows = editorGetLinesInRowWW(n);
     screenrow+= linerows;
     if (screenrow >= y) break;
     n++;
@@ -7752,49 +7709,9 @@ int editorGetFileRowByLineWWNew(int y){
   return n;
 }
 
-/****************************ESSENTIAL*****************************/
-int editorGetLinesInRowWW(int r) {
-  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
-  //if (E.rows.empty()) return 0; ////////////////
-  std::string &row = E.rows.at(r);
-
-  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
-
-  char *start,*right_margin;
-  int left, width, num;  //, len;
-  bool more_lines = true;
-
-  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  num = 0;
-  while(more_lines) { 
-
-    if(left <= width) { //after creating whatever number of lines if remainer <= width: get out
-      more_lines = false;
-      num++; 
-          
-    } else {
-      right_margin = start+width - 1; //each time start pointer moves you are adding the width to it and checking for spaces
-      while(!isspace(*right_margin)) { 
-        right_margin--;
-        if(right_margin == start) { // situation in which there were no spaces to break the line
-          right_margin += width - 1;
-          break; 
-        }    
-      } 
-      left -= right_margin-start+1;      /* +1 for the space */
-      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-      num++;
-    }
-  }
-  return num;
-}
-
 //used by editorGetFileRowByLineWW
 //used by editorGetScreenYFromRowColWW
-int editorGetLinesInRowWWNew(int r) {
+int editorGetLinesInRowWW(int r) {
   //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
   //if (E.rows.empty()) return 0; ////////////////
   std::string &row = E.rows.at(r);
@@ -7814,8 +7731,8 @@ int editorGetLinesInRowWWNew(int r) {
   return lines;
 }
 
-// used in editorGetScreenYFromRowColWWNew
-int editorGetLineInRowWWNew(int r, int c) {
+// used in editorGetScreenYFromRowColWW
+int editorGetLineInRowWW(int r, int c) {
   std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
@@ -7832,48 +7749,8 @@ int editorGetLineInRowWWNew(int r, int c) {
   return lines;
 }
 
-
-// ESSENTIAL*********************************************
-int editorGetLineCharCountWW(int r, int line) {
-// doesn't take into account insert mode (which seems to be OK)
-
-  std::string& row = E.rows.at(r);
-  if (row.empty()) return 0;
-
-  char *start,*right_margin;
-  int width, num, len, left;  //length left
-
-  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  num = 1; 
-  for (;;) {
-    if (left <= width) return left; 
-
-    // each time start pointer moves you are adding the width to it and checking for spaces
-    right_margin = start + width - 1; 
-    if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02262019 ? kluge
-    while(!isspace(*right_margin)) { //#2
-      right_margin--;
-      if( right_margin == start) { // situation in which there were no spaces to break the link
-        right_margin += width - 1;
-        break; 
-      }    
-    } 
-    len = right_margin - start + 1;
-    left = left - (right_margin - start + 1); 
-    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-    //length += len;
-    if (num == line) break;
-    num++;
-    //length += len;
-  }
-  return len;
-}
-
 //used in status bar because interesting but not essentia
-int editorGetLineCharCountWWNew(int r, int line) {
+int editorGetLineCharCountWW(int r, int line) {
 
   std::string& row = E.rows.at(r);
   if (row.empty()) return 0;
@@ -7896,120 +7773,9 @@ int editorGetLineCharCountWWNew(int r, int line) {
   else return pos - prev_pos;
 }
 
-// ESSENTIAL ***************************************************
-// if it works should combine them -- not sure there is any benefit to combining
-// used by editorGetScreenYFromRowColWW
-// there is a corner case of INSERT mode when you really can't know if you
-//should be beyond the end of the line in a multiline or in the zeroth position
-// of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
-int editorGetLineInRowWW(int r, int c) {
-
-  std::string& row = E.rows.at(r);
-  if (row.empty()) return 1; //10-12-2019
-
-  char *start,*right_margin;
-  int width, len, left, length;  //num 
-
-  left = row.size(); //although maybe time to use strlen(preamble); //not fixed -- this is decremented as each line is created
-  start = &row[0]; //char * to string that is going to be wrapped ? better named remainder?
-  width = E.screencols; //wrapping width
-  
-  length = 0;
-
-  int num = 1; ////// Don't see how this works for line = 1
-  for (;;) {
-
-    // each time start pointer moves you are adding the width to it and checking for spaces
-    right_margin = start + width - 1; 
-
-    // Alternative that if it works doesn't depend on knowing the line count!!
-    //seems to work
-    if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
-      break; 
-    }
-
-    while(!isspace(*right_margin)) { //#2
-      right_margin--;
-      if( right_margin == start) { // situation in which there were no spaces to break the link
-        right_margin += width - 1;
-        break; 
-      }    
-    } 
-    len = right_margin - start + 1;
-    left -= len;
-    start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-    length += len;
-    //if (c - (E.mode == INSERT) < length) break; // this seems to work
-    if (c < length) break; // I think best solution because handles end of line/beginning of next better
-    num++;
-  }
-
-  return num;
-}
-// called in editScroll to get E.cx
-// seems to correctly take into account insert mode which means you can go beyond chars in line
-// there is a corner case of INSERT mode when you really can't know if you
-//should be beyond the end of the line in a multiline or in the zeroth position
-// of the next line, which mean cursor jumps from end to the E.cx/E.fc = 1 position
-int editorGetScreenXFromRowCol(int r, int c) {
-
-  std::string& row = E.rows.at(r);
-  if (row.empty() || (c == 0)) return 0;
-
-  char *start,*right_margin;
-  int width, len, left, length;
-
-  left = row.size();
-  start = &row[0];
-  width = E.screencols; // width we are wrapping to
-  
-  length = 0;
-
-  int num = 1;
-  for (;;) {
-
-
-    //each time start pointer moves you are adding the width to it and checking for spaces
-    right_margin = start + width - 1; 
-
-    // Alternative that doesn't depend on knowing the line count
-    if ((right_margin - &row[0]) >= (row.size() + (E.mode == INSERT))) {
-       length += left;
-       len = left;
-       break; 
-       }
-
-    while(!isspace(*right_margin)) { //#2
-      right_margin--;
-      if( right_margin == start) { // situation in which there were no spaces to break the link
-        right_margin += width - 1;
-        break; 
-      }    
-    } 
-
-    len = right_margin - start + 1; // the length of the row just analyzed
-    left -= len; // how much of the row is left to be analyzed
-    start = right_margin + 1; // The pointer to the beginning of the next line to be analyzed
-    length += len; // the total length we've analyzed
-
-    /* if the char position in the row (usually E.fc) is less than the
-       length we've already analyzed then we can break since we know we've
-       gone too far*/
-
-    //if (c - (E.mode == INSERT) < length) break; // c gets to stay on line for extra char in INSERT mode
-    if (c < length) break; // I think best solution because handles end of line/beginning of next better
-    num++;
-  }
-  
-  /* The below says to find the x position we need to know how many chars
-     make up the preceding n lines before the line that C is in and that
-     would be c - (length - len) --> c - length + len
-  */
-
-  return c - length + len;
-}
-/****************************ESSENTIAL (above) *****************************/
-int editorGetScreenXFromRowColWWNew(int r, int c) {
+//used by editorScroll to get E.cx
+// ? if this new one has issue with insert moving beyond end of line
+int editorGetScreenXFromRowColWW(int r, int c) {
 
   std::string &row = E.rows.at(r);
   //pos should be the first character in the row
@@ -8030,29 +7796,16 @@ int editorGetScreenXFromRowColWWNew(int r, int c) {
 
 // ESSENTIAL - used in editScroll
 // E.line_offset is taken into account in editorScroll
-int editorGetScreenYFromRowColWWNew(int r, int c) {
-  int screenline = 0;
-
-  for (int n = 0; n < r; n++)
-    screenline+= editorGetLinesInRowWWNew(n);
-
-  screenline = screenline + editorGetLineInRowWWNew(r, c) - 1;
-
-  return screenline;
-  
-}
 int editorGetScreenYFromRowColWW(int r, int c) {
   int screenline = 0;
 
-  for (int n = 0; n < r; n++) {
+  for (int n = 0; n < r; n++)
     screenline+= editorGetLinesInRowWW(n);
-  }
 
   screenline = screenline + editorGetLineInRowWW(r, c) - 1;
-
   return screenline;
-
 }
+
 /************************************* end of WW ************************************************/
 
 void editorCreateSnapshot(void) {
