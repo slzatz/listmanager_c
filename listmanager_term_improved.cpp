@@ -2050,6 +2050,8 @@ void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool com
   row.dirty = true;
   strncpy(row.modified, modified, 16);
 
+  row.mark = false;
+
   auto pos = O.rows.begin() + at;
   O.rows.insert(pos, row);
 }
