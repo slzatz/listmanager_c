@@ -2153,13 +2153,19 @@ inline void f_dd(int repeat) {
 
 inline void f_change_case(int repeat) {
   //editorCreateSnapshot();
-  for (int i = 0; i < E.repeat; i++) editorChangeCase();
+  for (int i = 0; i < repeat; i++) editorChangeCase();
+}
+
+inline void f_replace(int repeat) {
+  for (int i = 0; i < repeat; i++) {
+    editorDelChar();
+    editorInsertChar(E.last_typed[0]);
+  }
 }
 
 inline void f_i(int repeat) {}
 
 inline void f_I(int repeat) {
-  // repeat applies to characters that were typed
   editorMoveCursorBOL();
   E.fc = editorIndentAmount(E.fr);
 }
@@ -2220,6 +2226,9 @@ void editorDoRepeat(void) {
     case 'A':
       f_A(E.last_repeat);
       break;
+    case 'r':
+      f_replace(E.last_repeat);
+      break;
     default:
       editorSetMessage("You tried to repeat a command that doesn't repeat");
       return;
@@ -2228,7 +2237,10 @@ void editorDoRepeat(void) {
   //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
   if(repeatable_text_commands.contains(E.last_command)) {
     for (int n=0; n<E.last_repeat; n++) {
-      for (char const &c : E.last_typed) {editorInsertChar(c);}
+      for (char const &c : E.last_typed) {
+        if (c == '\r') editorInsertReturn();
+        else editorInsertChar(c);
+      }
     }
   }
 }
@@ -2272,7 +2284,7 @@ void editorInsertChar(int chr) {
     editorInsertRow(0, std::string());
   }
   std::string& row = E.rows.at(E.fr);
-  row.insert(row.begin() + E.fc, chr);
+  row.insert(row.begin() + E.fc, chr); //shouldn't just be row.insert(E.fc, chr)
   E.dirty++;
   E.fc++;
 }
@@ -6731,8 +6743,9 @@ void editorProcessKeypress(void) {
       switch (c) {
     
         case '\r':
-          editorCreateSnapshot();
+          //editorCreateSnapshot();
           editorInsertReturn();
+          E.last_typed += c;
           break;
     
         case CTRL_KEY('s'):
@@ -6807,15 +6820,15 @@ void editorProcessKeypress(void) {
               }
             }
           }
-          //editorSetMessage("");
-          editorSetMessage(E.last_typed.c_str());
+          editorSetMessage("");
+          //editorSetMessage(E.last_typed.c_str());
           return;
     
         default:
-          editorCreateSnapshot();
+          //editorCreateSnapshot();
           editorInsertChar(c);
           E.last_typed += c;
-          editorSetMessage(E.last_typed.c_str());
+          //editorSetMessage(E.last_typed.c_str());
           return;
      
       } //end inner switch for outer case INSERT
@@ -6864,6 +6877,7 @@ void editorProcessKeypress(void) {
 
         case 'i':
           // editing cmd: can be dotted and does repeat
+          editorCreateSnapshot();
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 
@@ -6876,6 +6890,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 's':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
           //for (int i = 0; i < E.repeat; i++) editorDelChar();
           f_s(E.repeat);
@@ -6891,6 +6906,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'x':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
           //for (int i = 0; i < E.repeat; i++) editorDelChar();
 
@@ -6905,19 +6921,22 @@ void editorProcessKeypress(void) {
           return;
         
         case 'r':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
           //f_r would basically be a no op
           E.mode = REPLACE;
 
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_command = command;
-          E.last_typed.clear();
+          //E.command[0] = '\0';
+          // don't change repeat here
+          //E.last_repeat = E.repeat;
+          //E.repeat = 0;
+          //E.last_command = command;
+          //E.last_typed.clear();
 
           return;
     
         case '~':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
           //for (int i = 0; i < E.repeat; i++) editorChangeCase();
           f_change_case(E.repeat);
@@ -6931,6 +6950,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat sets of characters
           // repeat unhandled - will insert repeat applies to characters
           //editorMoveCursor(ARROW_RIGHT);
@@ -6947,6 +6967,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'A':
+          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat sets of characters
 
           // repeat unhandled - will insert repeat applies to characters
@@ -7677,17 +7698,20 @@ void editorProcessKeypress(void) {
       for (int i = 0; i < E.repeat; i++) {
         editorDelChar();
         editorInsertChar(c);
+        E.last_typed.clear();
+        E.last_typed += c;
       }
+      E.last_command = 'r';
+      E.last_repeat = E.repeat;
       E.repeat = 0;
       E.command[0] = '\0';
-      E.mode = 0;
+      E.mode = NORMAL;
       return;
 
   }  //end of outer switch(E.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
 } //end of editorProcessKeyPress
 
 /********************************************************** WW stuff *****************************************/
-
 // used by editorDrawRows to figure out the first row to draw
 int editorGetFileRowByLineWW(int y){
   /*
@@ -7714,8 +7738,6 @@ int editorGetFileRowByLineWW(int y){
 //used by editorGetFileRowByLineWW
 //used by editorGetScreenYFromRowColWW
 int editorGetLinesInRowWW(int r) {
-  //if (r > E.rows.size() - 1) return 0; ////////reasonable but callers check
-  //if (E.rows.empty()) return 0; ////////////////
   std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
@@ -7737,21 +7759,26 @@ int editorGetLinesInRowWW(int r) {
 int editorGetLineInRowWW(int r, int c) {
   std::string &row = E.rows.at(r);
 
-  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
+  //E.mode == INSERT doesn't seem to matter here
+  //if (row.size() <= E.screencols + (E.mode == INSERT)) return 1; //seems obvious but not added until 03022019
+
+  if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
 
   int lines = 1;
   size_t pos = 0;
-  std::string remainder;
   for (;;) {
     pos = row.find_last_of(' ', pos+E.screencols-1);
     if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
+    //E.mode == insert doesn't seem to matter here either`
+    //if (pos == std::string::npos)  pos += E.screencols + (E.mode == INSERT); //no spaces - I think there is still a corner case
     if (c < pos + 1) break;
     lines++;
+    //The line below seems crucial
+    if (row.substr(pos+1).size() < E.screencols) break;
   }
   return lines;
 }
-
-//used in status bar because interesting but not essentia
+//used in status bar because interesting but not essential
 int editorGetLineCharCountWW(int r, int line) {
 
   std::string& row = E.rows.at(r);
@@ -7776,7 +7803,6 @@ int editorGetLineCharCountWW(int r, int line) {
 }
 
 //used by editorScroll to get E.cx
-// ? if this new one has issue with insert moving beyond end of line
 int editorGetScreenXFromRowColWW(int r, int c) {
 
   std::string &row = E.rows.at(r);
@@ -7807,7 +7833,6 @@ int editorGetScreenYFromRowColWW(int r, int c) {
   screenline = screenline + editorGetLineInRowWW(r, c) - 1;
   return screenline;
 }
-
 /************************************* end of WW ************************************************/
 
 void editorCreateSnapshot(void) {
