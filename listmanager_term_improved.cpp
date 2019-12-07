@@ -7743,13 +7743,11 @@ int editorGetLinesInRowWW(int r) {
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
   int lines = 2;
-  size_t pos = 0;
-  std::string remainder;
+  int pos = -1;
   for (;;) {
-    pos = row.find_last_of(' ', pos+E.screencols-1);
+    pos = row.find_last_of(' ', pos+E.screencols);
     if (pos == std::string::npos) pos += E.screencols; //no spaces - I think there is still a corner case
-    remainder = row.substr(pos+1);
-    if (remainder.size() <= E.screencols) break;
+    if (row.substr(pos+1).size() <= E.screencols) break;
     lines++;
   }
   return lines;
@@ -7763,21 +7761,22 @@ int editorGetLineInRowWW(int r, int c) {
   //if (row.size() <= E.screencols + (E.mode == INSERT)) return 1; //seems obvious but not added until 03022019
 
   if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
-
+  /**** pos + 1 is the position in the row of the first character of the nth row ****/
   int lines = 1;
-  size_t pos = 0;
+  int pos = -1;
   for (;;) {
-    pos = row.find_last_of(' ', pos+E.screencols-1);
+    pos = row.find_last_of(' ', pos+E.screencols);
     if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
     //E.mode == insert doesn't seem to matter here either`
     //if (pos == std::string::npos)  pos += E.screencols + (E.mode == INSERT); //no spaces - I think there is still a corner case
     if (c < pos + 1) break;
     lines++;
     //The line below seems crucial
-    if (row.substr(pos+1).size() < E.screencols) break;
+    if (row.substr(pos+1).size() <= E.screencols) break;
   }
   return lines;
 }
+
 //used in status bar because interesting but not essential
 int editorGetLineCharCountWW(int r, int line) {
 
@@ -7787,11 +7786,10 @@ int editorGetLineCharCountWW(int r, int line) {
   if (row.size() <= E.screencols) return row.size(); //seems obvious but not added until 03022019
 
   int lines = 1;
-  size_t pos = 0;
-  size_t prev_pos = -1; //previous end
-  std::string remainder;
+  int pos = -1;
+  int prev_pos = -1; //previous end
   for (;;) {
-    pos = row.find_last_of(' ', pos+E.screencols-1);
+    pos = row.find_last_of(' ', pos+E.screencols);
     if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
     if (lines == line) break;
     prev_pos = pos;
@@ -7810,14 +7808,14 @@ int editorGetScreenXFromRowColWW(int r, int c) {
   if (row.size() <= E.screencols) return c; //seems obvious but not added until 03022019
 
   int lines = 1;
-  size_t pos = 0; //end of whatever line you are one
-  size_t prev_pos = -1; //previous end
+  int pos = -1; //end of whatever line you are one
+  int prev_pos = -1; //previous end
   for (;;) {
-    pos = row.find_last_of(' ', pos+E.screencols-1);
+    pos = row.find_last_of(' ', pos+E.screencols);
     if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
     if (c <= pos) break;
     prev_pos = pos;
-    if (row.substr(pos+1).size() < E.screencols) break;
+    if (row.substr(pos+1).size() <= E.screencols) break;
   }
   return c - prev_pos - 1;
 }
