@@ -6566,66 +6566,51 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
   int filerow = editorGetFileRowByLineWW(0);
 
   for (;;){
-    //if (y >= E.screenlines) return; //somehow making this >= made all the difference
     if (filerow == E.rows.size()) return;
 
-    //std::string& row = E.rows.at(filerow);
     std::string row = E.rows.at(filerow);
-    std::string remainder;
-
-    /*
-    if (row.size() <= E.screencols) {
-      ab.append(row);
-      ab.append("\x1b[K", 3);
-      ab.append(lf_ret, nchars);
-      ab.append("\x1b[0m", 4); //return background to normal
-      filerow++;
-      y++;
-      continue;
-    }
-    */
 
     if (row.empty()) {
       ab.append("\x1b[K", 3);
       ab.append(lf_ret, nchars);
       filerow++;
+      if (y == E.screenlines - 1) return;
       y++;
       continue;
     }
-    //int lines = 1;
     int pos = -1;
     int prev_pos;
     for (;;) {
-
+      /* this is needed because it deals where th end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
         ab.append(row.substr(pos+1));
-        //ab.append(row);
         ab.append(lf_ret, nchars);
         ab.append("\x1b[0m", 4); //return background to normal
-        y++;
         if (y == E.screenlines - 1) return;
+        //if (y == E.screenlines) return;
+        y++;
         filerow++;
         break;
       }
 
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
-      if (pos == std::string::npos)  pos = prev_pos + E.screencols;
-      if (pos == prev_pos) pos = prev_pos + E.screencols;
-      //if (pos == std::string::npos)  pos = E.screencols;
+      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
+      //if (pos == prev_pos) pos = prev_pos + E.screencols;
       ab.append(row.substr(prev_pos+1, pos-prev_pos));
-      //ab.append(row.substr(pos));
       ab.append(lf_ret, nchars);
       ab.append("\x1b[0m", 4); //return background to normal
-      //row = row.substr(pos+1);
-      //lines++;
-      y++;
       if (y == E.screenlines - 1) return;
-      //if (row.substr(pos+1).empty()) {
-      if (row.substr(pos).size() == 1) {
+      //if (y == E.screenlines) return;
+      y++;
+
+      /*
+      //if (row.substr(pos).size() == 1) {
+      if (row.size() <= pos) { //+1
         filerow++;
         break;
       }
+      */
     }
   }
 }
