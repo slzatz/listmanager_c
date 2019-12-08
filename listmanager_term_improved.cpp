@@ -6373,9 +6373,8 @@ void editorScroll(void) {
   int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
 
   if (cy > E.screenlines + E.line_offset - 1) {
-    E.line_offset =  cy - E.screenlines + 1; ////
+    E.line_offset = cy - E.screenlines + 1; ////
   }
-
   if (cy < E.line_offset) {
     E.line_offset =  cy;
   }
@@ -6556,10 +6555,6 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
   if (E.rows.empty()) return;
 
   int y = 0;
-
-  // this is the first visible row on the screen given E.line_offset
-  // seems like it will always then display all top row's lines
-  //int filerow = editorGetFileRowByLineWW(0);
   int filerow = 0;
 
   for (;;){
@@ -6567,6 +6562,8 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
     std::string row = E.rows.at(filerow);
 
     if (row.empty()) {
+
+        // don't write to screen if offset puts line offscreen
         if (y < E.line_offset) {
             y++;
             filerow++;
@@ -6585,6 +6582,7 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
       /* this is needed because it deals where th end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
 
+        // don't write to screen if offset puts line offscreen
         if (y < E.line_offset) {
             y++;
             filerow++;
@@ -6604,6 +6602,7 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
       pos = row.find_last_of(' ', pos+E.screencols);
       if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
 
+        // don't write to screen if offset puts line offscreen
         if (y < E.line_offset) {
             y++;
             continue;
@@ -7797,10 +7796,13 @@ int editorGetFileRowByLineWW(int y){
   if (y == 0) return 0;
   for (;;) {
     linerows = editorGetLinesInRowWW(n);
-    screenrow+= linerows;
-    if (screenrow >= y) break;
+    screenrow += linerows;
     n++;
+    if (screenrow >= y) break;
+    //n++;
   }
+
+  //E.line_offset = screenrow; //////////////////
   return n;
 }
 
