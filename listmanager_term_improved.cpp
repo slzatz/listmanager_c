@@ -6563,12 +6563,13 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
 
     if (row.empty()) {
 
-        // don't write to screen if offset puts line offscreen
-        if (y < E.line_offset) {
-            y++;
-            filerow++;
-            continue;
-        }
+      // don't write to screen if offset puts line offscreen
+      if (y < E.line_offset) {
+        y++;
+        filerow++;
+        continue;
+      }
+
       ab.append("\x1b[K", 3);
       ab.append(lf_ret, nchars);
       filerow++;
@@ -6576,17 +6577,18 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
       y++;
       continue;
     }
+
     int pos = -1;
     int prev_pos;
     for (;;) {
-      /* this is needed because it deals where th end of the line doesn't have a space*/
+      /* this is needed because it deals where the end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
 
         // don't write to screen if offset puts line offscreen
         if (y < E.line_offset) {
-            y++;
-            filerow++;
-            break;
+          y++;
+          filerow++;
+          break;
         }
 
         ab.append(row.substr(pos+1));
@@ -6603,10 +6605,10 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
       if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
 
         // don't write to screen if offset puts line offscreen
-        if (y < E.line_offset) {
-            y++;
-            continue;
-        }
+      if (y < E.line_offset) {
+        y++;
+        continue;
+      }
 
       ab.append(row.substr(prev_pos+1, pos-prev_pos));
       ab.append(lf_ret, nchars);
