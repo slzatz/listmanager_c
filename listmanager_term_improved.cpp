@@ -6373,7 +6373,7 @@ void editorScroll(void) {
   int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
 
   if (cy > E.screenlines + E.line_offset - 1) {
-    E.line_offset =  cy - E.screenlines + 1;
+    E.line_offset =  cy - E.screenlines + 1; ////
   }
 
   if (cy < E.line_offset) {
@@ -6555,26 +6555,27 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
 
   if (E.rows.empty()) return;
 
-  //appears that it erases old text to the right of text as it goes.
   int y = 0;
-  //char lf_ret[16];
-  // \x1b[NC moves cursor forward by N columns
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
-  int filerow = editorGetFileRowByLineWW(0);
+  //int filerow = editorGetFileRowByLineWW(0);
+  int filerow = 0;
 
   for (;;){
     if (filerow == E.rows.size()) return;
-
     std::string row = E.rows.at(filerow);
 
     if (row.empty()) {
+        if (y < E.line_offset) {
+            y++;
+            filerow++;
+            continue;
+        }
       ab.append("\x1b[K", 3);
       ab.append(lf_ret, nchars);
       filerow++;
-      if (y == E.screenlines - 1) return;
+      if (y == E.screenlines + E.line_offset) return;
       y++;
       continue;
     }
@@ -6583,11 +6584,17 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
     for (;;) {
       /* this is needed because it deals where th end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
+
+        if (y < E.line_offset) {
+            y++;
+            filerow++;
+            break;
+        }
+
         ab.append(row.substr(pos+1));
         ab.append(lf_ret, nchars);
         ab.append("\x1b[0m", 4); //return background to normal
-        if (y == E.screenlines - 1) return;
-        //if (y == E.screenlines) return;
+        if (y == E.screenlines  + E.line_offset) return;
         y++;
         filerow++;
         break;
@@ -6596,21 +6603,17 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
       if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
-      //if (pos == prev_pos) pos = prev_pos + E.screencols;
+
+        if (y < E.line_offset) {
+            y++;
+            continue;
+        }
+
       ab.append(row.substr(prev_pos+1, pos-prev_pos));
       ab.append(lf_ret, nchars);
       ab.append("\x1b[0m", 4); //return background to normal
-      if (y == E.screenlines - 1) return;
-      //if (y == E.screenlines) return;
+      if (y == E.screenlines + E.line_offset) return;
       y++;
-
-      /*
-      //if (row.substr(pos).size() == 1) {
-      if (row.size() <= pos) { //+1
-        filerow++;
-        break;
-      }
-      */
     }
   }
 }
@@ -7814,7 +7817,10 @@ int editorGetLinesInRowWW(int r) {
   for (;;) {
     prev_pos = pos;
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos) pos = prev_pos + E.screencols;
+    //if (pos == std::string::npos) pos = prev_pos + E.screencols;
+    //I think the || below is necessary - definitely was in drawing rows
+    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
+    // I believe pos+1 always exists but not 100% sure
     if (row.substr(pos+1).size() <= E.screencols) break;
     lines++;
   }
@@ -7837,7 +7843,9 @@ int editorGetLineInRowWW(int r, int c) {
   for (;;) {
     prev_pos = pos;
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos = prev_pos + E.screencols;
+    //if (pos == std::string::npos)  pos = prev_pos + E.screencols;
+    //I think the || below is necessary - definitely was in drawing rows
+    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
     if (c < pos + 1) break;
     lines++;
     //The line below seems crucial
@@ -7859,7 +7867,9 @@ int editorGetLineCharCountWW(int r, int line) {
   int prev_pos = -1;
   for (;;) {
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
+    //if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
+    //I think the || below is necessary - definitely was in drawing rows
+    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
     if (lines == line) break;
     prev_pos = pos;
     lines++;
@@ -7885,7 +7895,9 @@ int editorGetScreenXFromRowColWW(int r, int c) {
   int prev_pos = -1;
   for (;;) {
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
+    //if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
+    //I think the || below is necessary - definitely was in drawing rows
+    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
     if (c <= pos) break;
     prev_pos = pos;
     if (row.substr(pos+1).size() <= E.screencols) break;
@@ -7901,7 +7913,7 @@ int editorGetScreenYFromRowColWW(int r, int c) {
   for (int n = 0; n < r; n++)
     screenline+= editorGetLinesInRowWW(n);
 
-  screenline = screenline + editorGetLineInRowWW(r, c) - 1;
+  screenline = screenline + editorGetLineInRowWW(r, c) - 1; //////////////////////////////////////////////////
   return screenline;
 }
 /************************************* end of WW ************************************************/
