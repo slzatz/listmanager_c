@@ -333,7 +333,6 @@ struct editorConfig {
   int repeat;
   int indent;
   int smartindent;
-  int continuation;
 };
 
 static struct editorConfig E;
@@ -2357,27 +2356,15 @@ void editorDelChar2(int fr, int fc) {
   E.dirty++;
 }
 
-//Really need to look at this
 void editorBackspace(void) {
 
   if (E.fc == 0 && E.fr == 0) return;
 
   std::string& row = E.rows.at(E.fr);
-
   if (E.fc > 0) {
-    if (E.cx > 0) { // We want this E.cx - don't change to E.fc!!!
-      row.erase(row.begin() + E.fc - 1);
-
-     // below seems like a complete kluge but definitely want that E.cx!!!!!
-      if (E.cx == 1 && E.fc > 1) E.continuation = 1; //right now only backspace in multi-line
-      E.fc--;
-
-    } else {  //E.fc > 0 and E.cx = 0 meaning you're in line > 1 of a multiline row
-      row.erase(row.begin() + E.fc - 1);
-      E.fc--;
-      E.continuation = 0;
-    } 
-  } else {// this means we're at fc == 0 so we're in the first filecolumn
+    row.erase(row.begin() + E.fc - 1);
+    E.fc--;
+  } else {
     editorRowAppendString(E.rows.at(E.fr - 1), row); //only use of this function
     E.fr--;
     E.fc = E.rows.at(E.fr).size();
@@ -6409,6 +6396,7 @@ void editorDrawRows(std::string& ab) {
   int len; //, n;
   int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
   char lf_ret[16];
+  // \x1b[NC moves cursor forward by N columns
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   // this is the first visible row on the screen given E.line_offset
@@ -6546,8 +6534,103 @@ void editorDrawRows(std::string& ab) {
   } // end of top for loop
 }
 
-//status bar has inverted colors
+void editorDrawRowsWithHighlighting(std::string& ab) {
 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  if (E.rows.empty()) return;
+
+  //appears that it erases old text to the right of text as it goes.
+  int y = 0;
+  //char lf_ret[16];
+  // \x1b[NC moves cursor forward by N columns
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  // this is the first visible row on the screen given E.line_offset
+  // seems like it will always then display all top row's lines
+  int filerow = editorGetFileRowByLineWW(0);
+
+  for (;;){
+    //if (y >= E.screenlines) return; //somehow making this >= made all the difference
+    if (filerow == E.rows.size()) return;
+
+    //std::string& row = E.rows.at(filerow);
+    std::string row = E.rows.at(filerow);
+    std::string remainder;
+
+    /*
+    if (row.size() <= E.screencols) {
+      ab.append(row);
+      ab.append("\x1b[K", 3);
+      ab.append(lf_ret, nchars);
+      ab.append("\x1b[0m", 4); //return background to normal
+      filerow++;
+      y++;
+      continue;
+    }
+    */
+
+    if (row.empty()) {
+      ab.append("\x1b[K", 3);
+      ab.append(lf_ret, nchars);
+      filerow++;
+      y++;
+      continue;
+    }
+    //int lines = 1;
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+
+      if (row.substr(pos+1).size() <= E.screencols) {
+        ab.append(row.substr(pos+1));
+        //ab.append(row);
+        ab.append(lf_ret, nchars);
+        ab.append("\x1b[0m", 4); //return background to normal
+        y++;
+        if (y == E.screenlines - 1) return;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+      if (pos == std::string::npos)  pos = prev_pos + E.screencols;
+      if (pos == prev_pos) pos = prev_pos + E.screencols;
+      //if (pos == std::string::npos)  pos = E.screencols;
+      ab.append(row.substr(prev_pos+1, pos-prev_pos));
+      //ab.append(row.substr(pos));
+      ab.append(lf_ret, nchars);
+      ab.append("\x1b[0m", 4); //return background to normal
+      //row = row.substr(pos+1);
+      //lines++;
+      y++;
+      if (y == E.screenlines - 1) return;
+      //if (row.substr(pos+1).empty()) {
+      if (row.substr(pos).size() == 1) {
+        filerow++;
+        break;
+      }
+    }
+  }
+}
+
+//status bar has inverted colors
 /*****************************************/
 void editorDrawStatusBar(std::string& ab) {
   int len;
@@ -6621,7 +6704,10 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  editorDrawRows(ab);
+  //if (O.mode == SEARCH) editorDrawRowsWithHighlighting(ab);
+  //else editorDrawRows(ab);
+  //editorDrawRows(ab);
+  editorDrawRowsWithHighlighting(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
@@ -6806,7 +6892,6 @@ void editorProcessKeypress(void) {
 
           E.mode = NORMAL;
           E.repeat = 0;
-          E.continuation = 0; // right now used by backspace in multi-line filerow
           if (E.fc > 0) E.fc--;
 
           // below - if the indent amount == size of line then it's all blanks
@@ -7714,10 +7799,6 @@ void editorProcessKeypress(void) {
 /********************************************************** WW stuff *****************************************/
 // used by editorDrawRows to figure out the first row to draw
 int editorGetFileRowByLineWW(int y){
-  /*
-  y is the actual screenline (E.cy)
-  the display may be scrolled so below add offset
-  */
 
   int screenrow = -1;
   int n = 0;
@@ -7743,10 +7824,12 @@ int editorGetLinesInRowWW(int r) {
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
 
   int lines = 2;
-  int pos = -1;
+  int pos = -1; //pos is the position of the last character in the line (zero-based)
+  int prev_pos;
   for (;;) {
+    prev_pos = pos;
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos) pos += E.screencols; //no spaces - I think there is still a corner case
+    if (pos == std::string::npos) pos = prev_pos + E.screencols;
     if (row.substr(pos+1).size() <= E.screencols) break;
     lines++;
   }
@@ -7757,18 +7840,19 @@ int editorGetLinesInRowWW(int r) {
 int editorGetLineInRowWW(int r, int c) {
   std::string &row = E.rows.at(r);
 
-  //E.mode == INSERT doesn't seem to matter here
-  //if (row.size() <= E.screencols + (E.mode == INSERT)) return 1; //seems obvious but not added until 03022019
-
   if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
-  /**** pos + 1 is the position in the row of the first character of the nth row ****/
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
   int lines = 1;
   int pos = -1;
+  int prev_pos;
   for (;;) {
+    prev_pos = pos;
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
-    //E.mode == insert doesn't seem to matter here either`
-    //if (pos == std::string::npos)  pos += E.screencols + (E.mode == INSERT); //no spaces - I think there is still a corner case
+    if (pos == std::string::npos)  pos = prev_pos + E.screencols;
     if (c < pos + 1) break;
     lines++;
     //The line below seems crucial
@@ -7783,14 +7867,14 @@ int editorGetLineCharCountWW(int r, int line) {
   std::string& row = E.rows.at(r);
   if (row.empty()) return 0;
 
-  if (row.size() <= E.screencols) return row.size(); //seems obvious but not added until 03022019
+  if (row.size() <= E.screencols) return row.size();
 
   int lines = 1;
   int pos = -1;
-  int prev_pos = -1; //previous end
+  int prev_pos = -1;
   for (;;) {
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
+    if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
     if (lines == line) break;
     prev_pos = pos;
     lines++;
@@ -7804,15 +7888,19 @@ int editorGetLineCharCountWW(int r, int line) {
 int editorGetScreenXFromRowColWW(int r, int c) {
 
   std::string &row = E.rows.at(r);
-  //pos should be the first character in the row
-  if (row.size() <= E.screencols) return c; //seems obvious but not added until 03022019
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  if (row.size() <= E.screencols) return c;
 
   int lines = 1;
-  int pos = -1; //end of whatever line you are one
-  int prev_pos = -1; //previous end
+  int pos = -1;
+  int prev_pos = -1;
   for (;;) {
     pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos)  pos += E.screencols; //no spaces - I think there is still a corner case
+    if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
     if (c <= pos) break;
     prev_pos = pos;
     if (row.substr(pos+1).size() <= E.screencols) break;
@@ -7820,7 +7908,7 @@ int editorGetScreenXFromRowColWW(int r, int c) {
   return c - prev_pos - 1;
 }
 
-// ESSENTIAL - used in editScroll
+// used in editScroll
 // E.line_offset is taken into account in editorScroll
 int editorGetScreenYFromRowColWW(int r, int c) {
   int screenline = 0;
@@ -8311,7 +8399,6 @@ void initEditor(void) {
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
-  E.continuation = 0; //circumstance when a line wraps
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
