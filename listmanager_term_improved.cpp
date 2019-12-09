@@ -17,7 +17,7 @@
 #include <sqlite3.h>
 
 #include <string>
-#include <string_view> //not in use yet
+//#include <string_view> //not in use yet
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -166,7 +166,7 @@ enum Command {
   C_synch, // synchronixe sqlite and postgres dbs
   C_synch_test,//show what sync would do but don't do it 
 
-  //C_highlight,
+  C_highlight,
 
   C_quit,
   C_quit0,
@@ -256,6 +256,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"search", C_search},
   {"saveoutline", C_saveoutline},
   {"so", C_saveoutline},
+  {"highlight", C_highlight},
   {"valgrind", C_valgrind}
 };
 
@@ -459,17 +460,18 @@ int keyword_id_callback(void *, int, char **, char **);
 void synchronize(int);
 
 //Editor Word Wrap
-int editorGetScreenXFromRowColWW(int r, int c);
+int editorGetScreenXFromRowColWW(int, int);
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
-int editorGetLineInRowWW(int r, int c);
+int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
 int editorGetFileRowByLineWW(int);
 
 //Editor Prototypes
-void editorDrawRows(std::string&); //erases lines to right as it goes
-void editorDrawMessageBar(std::string&);
-void editorDrawStatusBar(std::string&);
+void editorDrawRows(std::string &); //erases lines to right as it goes
+void editorDrawRowsNew(std::string &);
+void editorDrawMessageBar(std::string &);
+void editorDrawStatusBar(std::string &);
 void editorSetMessage(const char *fmt, ...);
 void editorScroll(void);
 void editorRefreshScreen(void); //(re)draws the note
@@ -506,6 +508,8 @@ void editorInsertChar(int);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+
+void editorHighlightTerms(void);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
@@ -4054,6 +4058,13 @@ void outlineProcessKeypress(void) {
               editorDisplayFile();
               return;
 
+            case C_highlight:
+              editorHighlightTerms();
+              O.mode = O.last_mode;
+              outlineSetMessage("%s highlighted", search_terms.c_str());
+              return;
+
+
             default: // default for commandfromstring
 
               //\x1b[41m => red background
@@ -6537,24 +6548,39 @@ void editorDrawRows(std::string& ab) {
    ab.append("\x1b[0m", 4); //slz return background to normal
   } // end of top for loop
 }
+
 void editorDrawRowsNew(std::string& ab) {
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  /*
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
   ab.append(buf, strlen(buf));
+  */
 
-  //need to erase the screen
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf.str());
+
+  // erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
+    ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
   }
 
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  /*
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
   ab.append(buf, strlen(buf));
+  */
 
   if (E.rows.empty()) return;
 
@@ -6565,19 +6591,11 @@ void editorDrawRowsNew(std::string& ab) {
     if (filerow == E.rows.size()) return;
     std::string row = E.rows.at(filerow);
 
-    if (E.mode ==VISUAL_LINE && filerow == E.highlight[0]) {
-       ab.append("\x1b[48;5;242m", 11);
-    }
-    if (E.mode ==VISUAL_LINE && filerow == E.highlight[1] + 1){
-       ab.append("\x1b[0m", 4); //return background to normal
-    }
+    if (E.mode ==VISUAL_LINE && filerow == E.highlight[0])
+      ab.append("\x1b[48;5;242m", 11);
 
-    /*
-    if (E.mode == VISUAL && filerow == E.fr) {
-       row.insert(E.highlight[0], "\x1b[48;5;242m");
-       row.insert(E.highlight[1] + 11, "\x1b[0m");
-    }
-    */
+    if (E.mode ==VISUAL_LINE && filerow == E.highlight[1] + 1)
+      ab.append("\x1b[0m", 4); //return background to normal
 
     if (row.empty()) {
 
@@ -6732,6 +6750,36 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
   }
 }
 
+void editorHighlightTerms(void) {
+  int len = search_terms.size();
+  if (!len) return;
+  for (int n=0; n<E.rows.size(); n++) {
+    if (editorGetScreenXFromRowColWW(n, 0) >= E.screenlines-1) return;
+    int pos = 0;
+    std::string &row = E.rows.at(n);
+    for(;;) {
+      pos = E.rows.at(n).find(search_terms, pos);
+
+      if (pos == std::string::npos) break;
+
+      int c = editorGetScreenXFromRowColWW(n, pos) + EDITOR_LEFT_MARGIN + 1;
+      int r = editorGetScreenYFromRowColWW(n, pos) + TOP_MARGIN + 1;
+
+      std::stringstream s;
+      s.str(std::string());
+      //s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;31m"
+        << row.substr(pos, len)
+        << "\x1b[0m";
+
+       write(STDOUT_FILENO, s.str().c_str(), s.str().size());
+
+       pos++;
+
+    }
+  }
+}
+
 //status bar has inverted colors
 /*****************************************/
 void editorDrawStatusBar(std::string& ab) {
@@ -6806,10 +6854,8 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  //if (O.mode == SEARCH) editorDrawRowsWithHighlighting(ab);
-  //else editorDrawRows(ab);
+  //editorDrawRows(ab);
   editorDrawRowsNew(ab);
-  //editorDrawRowsWithHighlighting(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
