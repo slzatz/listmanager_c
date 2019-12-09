@@ -6572,10 +6572,12 @@ void editorDrawRowsNew(std::string& ab) {
        ab.append("\x1b[0m", 4); //return background to normal
     }
 
+    /*
     if (E.mode == VISUAL && filerow == E.fr) {
        row.insert(E.highlight[0], "\x1b[48;5;242m");
        row.insert(E.highlight[1] + 11, "\x1b[0m");
     }
+    */
 
     if (row.empty()) {
 
@@ -6629,6 +6631,17 @@ void editorDrawRowsNew(std::string& ab) {
       //ab.append("\x1b[0m", 4); //return background to normal
       if (y == E.screenlines + E.line_offset) return;
       y++;
+    }
+    if (E.mode == VISUAL && filerow == E.fr + 1) {
+
+       int c = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
+       int r = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
+       std::stringstream s;
+       s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+         << row.substr(E.highlight[0], E.highlight[1]-E.highlight[0])
+         << "\x1b[0m";
+       ab.append(s.str());
+       ab.append(lf_ret, nchars);
     }
   }
 }
@@ -7819,9 +7832,7 @@ void editorProcessKeypress(void) {
           E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
           //editorYankString();  /// *** causing segfault
 
-          // the delete below requires positioning the cursor
           E.fc = (E.highlight[1] > E.highlight[0]) ? E.highlight[0] : E.highlight[1];
-    
           for (int i = 0; i < E.repeat; i++) {
             editorDelChar2(E.fr, E.fc);
           }
