@@ -6372,6 +6372,11 @@ void editorScroll(void) {
   E.cx = editorGetScreenXFromRowColWW(E.fr, E.fc);
   int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
 
+  //my guess is that if you wanted to adjust E.line_offset to take into account that you wanted
+  // to only have full rows at the top (easier for drawing code) you would do it here.
+  // something like E.screenlines goes from 4 to 5 so that adjusts E.cy
+  // it's complicated and may not be worth it.
+
   if (cy > E.screenlines + E.line_offset - 1) {
     E.line_offset = cy - E.screenlines + 1; ////
   }
@@ -6532,6 +6537,101 @@ void editorDrawRows(std::string& ab) {
    ab.append("\x1b[0m", 4); //slz return background to normal
   } // end of top for loop
 }
+void editorDrawRowsNew(std::string& ab) {
+
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf, strlen(buf));
+
+  if (E.rows.empty()) return;
+
+  int y = 0;
+  int filerow = 0;
+
+  for (;;){
+    if (filerow == E.rows.size()) return;
+    std::string row = E.rows.at(filerow);
+
+    if (E.mode ==VISUAL_LINE && filerow == E.highlight[0]) {
+       ab.append("\x1b[48;5;242m", 11);
+    }
+    if (E.mode ==VISUAL_LINE && filerow == E.highlight[1] + 1){
+       ab.append("\x1b[0m", 4); //return background to normal
+    }
+
+    if (E.mode == VISUAL && filerow == E.fr) {
+       row.insert(E.highlight[0], "\x1b[48;5;242m");
+       row.insert(E.highlight[1] + 11, "\x1b[0m");
+    }
+
+    if (row.empty()) {
+
+      // don't write to screen if offset puts line offscreen
+      if (y < E.line_offset) {
+        y++;
+        filerow++;
+        continue;
+      }
+
+      ab.append(lf_ret, nchars);
+      filerow++;
+      if (y == E.screenlines + E.line_offset) return;
+      y++;
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= E.screencols) {
+
+        // don't write to screen if offset puts line offscreen
+        if (y < E.line_offset) {
+          y++;
+          filerow++;
+          break;
+        }
+
+        ab.append(row.substr(pos+1));
+        ab.append(lf_ret, nchars);
+        if (y == E.screenlines  + E.line_offset) return;
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
+
+        // don't write to screen if offset puts line offscreen
+      if (y < E.line_offset) {
+        y++;
+        continue;
+      }
+
+      ab.append(row.substr(prev_pos+1, pos-prev_pos));
+      ab.append(lf_ret, nchars);
+      //ab.append("\x1b[0m", 4); //return background to normal
+      if (y == E.screenlines + E.line_offset) return;
+      y++;
+    }
+  }
+}
 
 void editorDrawRowsWithHighlighting(std::string& ab) {
 
@@ -6570,7 +6670,7 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
         continue;
       }
 
-      ab.append("\x1b[K", 3);
+      //ab.append("\x1b[K", 3);
       ab.append(lf_ret, nchars);
       filerow++;
       if (y == E.screenlines + E.line_offset) return;
@@ -6695,8 +6795,8 @@ void editorRefreshScreen(void) {
 
   //if (O.mode == SEARCH) editorDrawRowsWithHighlighting(ab);
   //else editorDrawRows(ab);
-  //editorDrawRows(ab);
-  editorDrawRowsWithHighlighting(ab);
+  editorDrawRowsNew(ab);
+  //editorDrawRowsWithHighlighting(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
