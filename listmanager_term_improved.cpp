@@ -27,6 +27,8 @@
 #include <sstream>
 #include <fstream>
 #include <set>
+#include <nuspell/dictionary.hxx>
+#include <nuspell/finder.hxx>
 
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
@@ -167,6 +169,7 @@ enum Command {
   C_synch_test,//show what sync would do but don't do it 
 
   C_highlight,
+  C_spellcheck,
 
   C_quit,
   C_quit0,
@@ -257,6 +260,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"saveoutline", C_saveoutline},
   {"so", C_saveoutline},
   {"highlight", C_highlight},
+  {"spellcheck", C_spellcheck},
   {"valgrind", C_valgrind}
 };
 
@@ -509,7 +513,9 @@ void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 
-void editorHighlightTerms(void);
+void editorHighlightSearchTerms(void);
+void editorSpellCheck(void);
+void editorSpellCheck2(void);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
@@ -1874,7 +1880,8 @@ int keyfromstringcpp(const std::string& key) {
   */
 
   // c++20 = c++2a contains on associate containers
-  if (lookuptablemap.contains(key))
+  //if (lookuptablemap.contains(key))
+  if (lookuptablemap.count(key))
     return lookuptablemap.at(key); //note can't use [] on const unordered map since it could change map
   else
     return -1;
@@ -2238,7 +2245,8 @@ void editorDoRepeat(void) {
   }
 
   //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
-  if(repeatable_text_commands.contains(E.last_command)) {
+  //if(repeatable_text_commands.contains(E.last_command)) {
+  if(repeatable_text_commands.count(E.last_command)) {
     for (int n=0; n<E.last_repeat; n++) {
       for (char const &c : E.last_typed) {
         if (c == '\r') editorInsertReturn();
@@ -4059,11 +4067,16 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_highlight:
-              editorHighlightTerms();
+              editorHighlightSearchTerms();
               O.mode = O.last_mode;
               outlineSetMessage("%s highlighted", search_terms.c_str());
               return;
 
+            case C_spellcheck:
+              editorSpellCheck2();
+              O.mode = O.last_mode;
+              outlineSetMessage("Spellcheck");
+              return;
 
             default: // default for commandfromstring
 
@@ -6750,11 +6763,11 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
   }
 }
 
-void editorHighlightTerms(void) {
+void editorHighlightSearchTerms(void) {
   int len = search_terms.size();
   if (!len) return;
   for (int n=0; n<E.rows.size(); n++) {
-    if (editorGetScreenXFromRowColWW(n, 0) >= E.screenlines-1) return;
+    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
     int pos = 0;
     std::string &row = E.rows.at(n);
     for(;;) {
@@ -6779,6 +6792,81 @@ void editorHighlightTerms(void) {
     }
   }
 }
+
+void editorHighlightWord(int r, int c, int len){
+  std::string &row = E.rows.at(r);
+  int x = editorGetScreenXFromRowColWW(r, c) + EDITOR_LEFT_MARGIN + 1;
+  int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1;
+  row.substr(c, row.find(' ', c));
+  std::stringstream s;
+  //s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << row.substr(c, len)
+    << "\x1b[0m";
+
+  write(STDOUT_FILENO, s.str().c_str(), s.str().size());
+}
+
+void editorSpellCheck(void) {
+  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
+  auto path = dict_finder.get_dictionary_path("en_US");
+
+  auto dict = nuspell::Dictionary::load_from_path(path);
+
+  std::string word;
+  //auto sugs = std::vector<std::string>();
+  int start;
+  int len;
+  for (int n=0; n<E.rows.size(); n++) {
+
+
+  if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+
+    std::string &row = E.rows.at(n);
+    word = "";
+    start = 0;
+    for (int i=0; i<row.size(); i++){
+      if (row[i] == ' ' || row[i] == ',') {
+        if (dict.spell(word)) {
+           word = "";
+           start = i + 1;
+           continue;
+         } else {
+           len = i - start;
+           editorHighlightWord(n, start, len);
+           word = "";
+           start = i + 1;
+           continue;
+         }
+       } else word += row[i];
+    }
+  }
+}
+void editorSpellCheck2(void) {
+  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
+  auto path = dict_finder.get_dictionary_path("en_US");
+  //auto sugs = std::vector<std::string>();
+  auto dict = nuspell::Dictionary::load_from_path(path);
+
+  std::string delimiters = " ,.;?:()[]{}&#";
+  for (int n=0; n<E.rows.size(); n++) {
+    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+    int end = -1;
+    int start;
+    std::string &row = E.rows.at(n);
+    for (;;) {
+      if (end == row.size() - 1) break;
+      start = end + 1;
+      end = row.find_first_of(delimiters, start);
+      if (end == std::string::npos)
+        end = row.size() - 1;
+
+      if (!dict.spell(row.substr(start, end-start)))
+        editorHighlightWord(n, start, end-start);
+    }
+  }
+}
+
 
 //status bar has inverted colors
 /*****************************************/
@@ -7032,7 +7120,8 @@ void editorProcessKeypress(void) {
           //this is where you would repeat the text
           //if(E.last_repeat > 1 && repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
           //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
-          if(repeatable_text_commands.contains(E.last_command)) {
+          //if(repeatable_text_commands.contains(E.last_command)) {
+          if(repeatable_text_commands.count(E.last_command)) {
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
