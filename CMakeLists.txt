@@ -5,17 +5,16 @@
 
 cmake_minimum_required(VERSION 3.15)
 
-project(listmanager_term_improved_cpp)
+project(listmanager_cpp)
 
 find_package(SQLite3 REQUIRED)
 find_package(PythonLibs REQUIRED)
 find_package(PostgreSQL REQUIRED)
+find_package(Nuspell)
 
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
-#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17") //this one most recently used
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++2a")
-# was c++14
 set (source_dir "${PROJECT_SOURCE_DIR}/")
 
 # the below obviously shouldn't be a GLOB since only one source file
@@ -32,7 +31,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
 # add_executable has to come before target_link_libraries
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${PROJECT_SOURCE_DIR}/libiniparser.a)
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a)
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)
