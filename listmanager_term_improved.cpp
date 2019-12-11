@@ -45,6 +45,7 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms;
+static std::vector<int> word_positions;
 static std::vector<int> fts_ids;
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
@@ -170,6 +171,7 @@ enum Command {
 
   C_highlight,
   C_spellcheck,
+  C_suggest,
 
   C_quit,
   C_quit0,
@@ -261,6 +263,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"so", C_saveoutline},
   {"highlight", C_highlight},
   {"spellcheck", C_spellcheck},
+  {"suggest", C_suggest},
   {"valgrind", C_valgrind}
 };
 
@@ -268,6 +271,7 @@ struct sqlite_db {
   sqlite3 *db;
   char *err_msg;
   sqlite3 *fts_db;
+  sqlite3 *fts_vocab_db;
   char *fts_err_msg;
 };
 
@@ -460,6 +464,8 @@ void display_item_info_sqlite(int);
 int display_item_info_callback(void *, int, char **, char **);
 int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);
+int rowid_callback(void *, int, char **, char **);
+int offset_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
@@ -503,6 +509,7 @@ void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if o
 void editorMoveNextWord(void);
 void editorMarkupLink(void);
 void getWordUnderCursor(void);
+std::string editorGetWordUnderCursor(void);
 void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
@@ -513,9 +520,10 @@ void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 
+void editorHighlightWordsByPosition(void);
 void editorHighlightSearchTerms(void);
 void editorSpellCheck(void);
-void editorSpellCheck2(void);
+void editorHighlightWord(int, int, int);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
@@ -1566,7 +1574,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   }
 }
 
-void get_note_sqlite(int id) {
+void get_note_sqlite_old(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
   /*
@@ -1603,6 +1611,85 @@ void get_note_sqlite(int id) {
   } 
 
   editorRefreshScreen();
+}
+
+void get_note_sqlite(int id) {
+  if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
+
+  /*
+  if (!editor_mode && O.mode == DATABASE) {
+    display_item_info(O.rows.at(O.fr).id);
+    return;
+  }
+  */
+
+  word_positions.clear();
+  E.rows.clear();
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+
+  std::stringstream query;
+
+  query << "SELECT note FROM task WHERE id = " << id;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  }
+
+  //editorRefreshScreen();
+
+  //if (editor_mode || O.mode != SEARCH) return;
+
+  std::stringstream query2;
+  query2 << "SELECT rowid FROM fts WHERE lm_id = " << id << ";";
+
+  int rowid = -1;
+  // callback is *not* called if result (argv) is null
+  rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.fts_db);
+  }
+
+  std::stringstream query3;
+  query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << search_terms << "' AND col = 'note';";
+  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, nullptr, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.fts_db);
+  }
+
+  int ww = (word_positions.empty()) ? -1 : word_positions.at(0);
+  editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
+
+  editorRefreshScreen();
+}
+
+int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *rwid = static_cast<int*>(rowid);
+  *rwid = atoi(argv[0]);
+  return 0;
+}
+
+int offset_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  word_positions.push_back(atoi(argv[0]));
+
+  return 0;
 }
 
 // doesn't appear to be called if row is NULL
@@ -4067,13 +4154,14 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_highlight:
-              editorHighlightSearchTerms();
+              //editorHighlightSearchTerms();
+              editorHighlightWordsByPosition();
               O.mode = O.last_mode;
               outlineSetMessage("%s highlighted", search_terms.c_str());
               return;
 
             case C_spellcheck:
-              editorSpellCheck2();
+              editorSpellCheck();
               O.mode = O.last_mode;
               outlineSetMessage("Spellcheck");
               return;
@@ -6775,19 +6863,9 @@ void editorHighlightSearchTerms(void) {
 
       if (pos == std::string::npos) break;
 
-      int c = editorGetScreenXFromRowColWW(n, pos) + EDITOR_LEFT_MARGIN + 1;
-      int r = editorGetScreenYFromRowColWW(n, pos) + TOP_MARGIN + 1;
+      editorHighlightWord(n, pos, len);
 
-      std::stringstream s;
-      s.str(std::string());
-      //s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
-      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;31m"
-        << row.substr(pos, len)
-        << "\x1b[0m";
-
-       write(STDOUT_FILENO, s.str().c_str(), s.str().size());
-
-       pos++;
+      pos++;
 
     }
   }
@@ -6808,41 +6886,6 @@ void editorHighlightWord(int r, int c, int len){
 }
 
 void editorSpellCheck(void) {
-  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
-  auto path = dict_finder.get_dictionary_path("en_US");
-
-  auto dict = nuspell::Dictionary::load_from_path(path);
-
-  std::string word;
-  //auto sugs = std::vector<std::string>();
-  int start;
-  int len;
-  for (int n=0; n<E.rows.size(); n++) {
-
-
-  if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
-
-    std::string &row = E.rows.at(n);
-    word = "";
-    start = 0;
-    for (int i=0; i<row.size(); i++){
-      if (row[i] == ' ' || row[i] == ',') {
-        if (dict.spell(word)) {
-           word = "";
-           start = i + 1;
-           continue;
-         } else {
-           len = i - start;
-           editorHighlightWord(n, start, len);
-           word = "";
-           start = i + 1;
-           continue;
-         }
-       } else word += row[i];
-    }
-  }
-}
-void editorSpellCheck2(void) {
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
   //auto sugs = std::vector<std::string>();
@@ -6866,6 +6909,56 @@ void editorSpellCheck2(void) {
     }
   }
 }
+
+void editorHighlightWordsByPosition(void) {
+
+  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—"; //removed period
+  int word_num = -1;
+  for (int n=0; n<E.rows.size(); n++) {
+    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+    int end = -1;
+    int start;
+    std::string &row = E.rows.at(n);
+    for (;;) {
+      if (end == row.size() - 1) break;
+      start = end + 1;
+      end = row.find_first_of(delimiters, start);
+      if (end == std::string::npos)
+        end = row.size() - 1;
+      if (end != start) word_num++;
+      else if (end = row.size() - 1) word_num++; //corner case when isolated single letter at the end of a line
+
+      if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
+        editorHighlightWord(n, start, end-start);
+    }
+  }
+}
+
+void editorSpellingSuggestions(void) {
+  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
+  auto path = dict_finder.get_dictionary_path("en_US");
+  auto sugs = std::vector<std::string>();
+  auto dict = nuspell::Dictionary::load_from_path(path);
+
+  std::string word;
+  std::stringstream s;
+  word = editorGetWordUnderCursor();
+  if (word.empty()) return;
+
+  if (dict.spell(word)) {
+      editorSetMessage("%s is spelled correctly", word.c_str());
+      return;
+  }
+
+  dict.suggest(word, sugs);
+  if (sugs.empty()) {
+      editorSetMessage("No suggestions");
+  } else {
+    for (auto &sug : sugs) s << sug << ' ';
+    editorSetMessage("Suggestions for %s: %s", word.c_str(), s.str().c_str());
+  }
+}
+
 
 
 //status bar has inverted colors
@@ -6944,6 +7037,7 @@ void editorRefreshScreen(void) {
 
   //editorDrawRows(ab);
   editorDrawRowsNew(ab);
+  //if (O.mode == SEARCH) editorHighlightWordsByPosition;
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
@@ -7475,6 +7569,11 @@ void editorProcessKeypress(void) {
           O.command[0] = '\0';
           return;
 
+        case 'z':
+          editorSpellingSuggestions();
+          E.command[0] = '\0';
+          return;
+
         case '.':
           editorDoRepeat();
           return;
@@ -7772,6 +7871,10 @@ void editorProcessKeypress(void) {
           // but with only single char commands except q!
           // probably not worth it
           switch (E.command[1]) {
+
+            case C_suggest:
+              editorSpellingSuggestions();
+              E.command[0] = '\0';
 
             case 'w':
               update_note();
@@ -8459,6 +8562,29 @@ void editorDecorateVisual(int c) {
       E.fc++;
       return;
   }
+}
+
+//handles punctuation
+std::string editorGetWordUnderCursor(void) {
+
+  if (E.rows.empty()) return "";
+  std::string &row = E.rows.at(E.fr);
+  if (row[E.fc] < 48) return "";
+
+  std::string delimiters = " ,.;?:()[]{}&#";
+
+  // find beginning of word
+  auto beg = row.find_last_of(delimiters, E.fc);
+  if (beg == std::string::npos) beg = 0;
+  else beg++;
+
+  // find end of word
+  auto end = row.find_first_of(delimiters, beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  return row.substr(beg, end-beg);
+
+  //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
 }
 
 // doesn't handle punctuation correctly
