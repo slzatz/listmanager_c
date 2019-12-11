@@ -3621,6 +3621,7 @@ void outlineProcessKeypress(void) {
               O.taskview = BY_SEARCH;
               //O.mode = SEARCH; //////
               search_terms = O.command_line.substr(pos+1);
+              std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
               search_db();
               return;
 
@@ -6855,6 +6856,8 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
 }
 
 // below is doing search in note ourselves and not using sqlite
+// not currently in use but works but I wanted to use sqlite's FTS
+// for titles and note
 void editorHighlightSearchTerms(void) {
   int len = search_terms.size();
   if (!len) return;
