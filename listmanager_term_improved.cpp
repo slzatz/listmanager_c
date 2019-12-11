@@ -6912,7 +6912,7 @@ void editorSpellCheck(void) {
 
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—"; //removed period
+  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$"; //removed period
   int word_num = -1;
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
@@ -6923,10 +6923,12 @@ void editorHighlightWordsByPosition(void) {
       if (end == row.size() - 1) break;
       start = end + 1;
       end = row.find_first_of(delimiters, start);
-      if (end == std::string::npos)
+      if (end == std::string::npos) {
         end = row.size() - 1;
+        //corner case when isolated single letter at the end of a line - absolutely needed
+        if (end == start) word_num++;
+      }
       if (end != start) word_num++;
-      else if (end = row.size() - 1) word_num++; //corner case when isolated single letter at the end of a line
 
       if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
         editorHighlightWord(n, start, end-start);
