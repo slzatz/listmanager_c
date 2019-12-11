@@ -6924,7 +6924,7 @@ void editorSpellCheck(void) {
 // https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@"; //removed period
+  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period
   int word_num = -1;
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
