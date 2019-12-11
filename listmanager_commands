@@ -8,7 +8,7 @@ To move from DATABASE mode to OUTLINE mode:
 
   ESC || right arrow || ":" puts in COMMAND_LINE and switches to NORMAL mode
 
-ctrl-h in NORMAL mode for editor and outline try to markup links.
+ctrl-h in NORMAL mode for editor and outline to markup links.
 
 OUTLINE and EDITOR mode support the following somewhat Vim-like modes:
 
@@ -55,8 +55,8 @@ COMMAND_LINE mode supports the following:
   x - in EDITOR mode write changes and return to NORMAL mode; in NORMAL mode write changes and quit
 
   NORMAL Mode commands:
+  Available in both Editor and Outline mode
   :
-  *
   ~
   $
   0
@@ -67,26 +67,33 @@ COMMAND_LINE mode supports the following:
   gg, G
   i, I
   o, O //o not available in outline
-  p
   r
   s
-  u
-  v, V
   x
-  yy
 
-  ctrl-b
-  ctrl-i
-  ctrle
   h
   j
   k
   l
   arrow keys
 
-  >>  //not available in OUTLINE mode
-  << // not available in OUTLINE mode
+  Also in Editor mode
+  *
+  p
+  u
+  v, V
+  yy
+  z - spelling suggestions 
 
+  ctrl-b
+  ctrl-i
+  ctrl-e
+
+
+  >>  
+  << 
+
+  Also in Outline mode:
   m - toggle mark (only available in OUTLINE mode)
 
   VISUAL LINE MODE COMMANDS

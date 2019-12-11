@@ -171,7 +171,6 @@ enum Command {
 
   C_highlight,
   C_spellcheck,
-  C_suggest,
 
   C_quit,
   C_quit0,
@@ -263,7 +262,6 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"so", C_saveoutline},
   {"highlight", C_highlight},
   {"spellcheck", C_spellcheck},
-  {"suggest", C_suggest},
   {"valgrind", C_valgrind}
 };
 
@@ -1641,6 +1639,10 @@ void get_note_sqlite(int id) {
   //editorRefreshScreen();
 
   //if (editor_mode || O.mode != SEARCH) return;
+  if (O.taskview != BY_SEARCH) {
+    editorRefreshScreen();
+    return;
+  }
 
   std::stringstream query2;
   query2 << "SELECT rowid FROM fts WHERE lm_id = " << id << ";";
@@ -3617,6 +3619,7 @@ void outlineProcessKeypress(void) {
               O.context = "";
               O.folder = "";
               O.taskview = BY_SEARCH;
+              //O.mode = SEARCH; //////
               search_terms = O.command_line.substr(pos+1);
               search_db();
               return;
@@ -6851,6 +6854,7 @@ void editorDrawRowsWithHighlighting(std::string& ab) {
   }
 }
 
+// below is doing search in note ourselves and not using sqlite
 void editorHighlightSearchTerms(void) {
   int len = search_terms.size();
   if (!len) return;
@@ -6891,7 +6895,7 @@ void editorSpellCheck(void) {
   //auto sugs = std::vector<std::string>();
   auto dict = nuspell::Dictionary::load_from_path(path);
 
-  std::string delimiters = " ,.;?:()[]{}&#";
+  std::string delimiters = " ,.;?:()[]{}&#~";
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
     int end = -1;
@@ -6910,9 +6914,14 @@ void editorSpellCheck(void) {
   }
 }
 
+// uses sqlite offsets contained in word_positions
+// I don't think this handles fact that text could be scrolled
+// except text can't be scrolled unless you enter editor_mode which doesn't highlight
+// while this works ? better to use find_if as per
+// https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$"; //removed period
+  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@"; //removed period
   int word_num = -1;
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
@@ -7039,7 +7048,6 @@ void editorRefreshScreen(void) {
 
   //editorDrawRows(ab);
   editorDrawRowsNew(ab);
-  //if (O.mode == SEARCH) editorHighlightWordsByPosition;
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
@@ -7068,6 +7076,9 @@ void editorRefreshScreen(void) {
   ab.append("\x1b[?25h", 6); //shows the cursor
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  // can't do this until ab is written or will just overwite highlights
+  if (O.mode == SEARCH) editorHighlightWordsByPosition();
 }
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
@@ -7571,6 +7582,8 @@ void editorProcessKeypress(void) {
           O.command[0] = '\0';
           return;
 
+        //I will forget that the spelling suggestion command is z
+        //note can't have command mode command because cursor not in note
         case 'z':
           editorSpellingSuggestions();
           E.command[0] = '\0';
@@ -7873,10 +7886,6 @@ void editorProcessKeypress(void) {
           // but with only single char commands except q!
           // probably not worth it
           switch (E.command[1]) {
-
-            case C_suggest:
-              editorSpellingSuggestions();
-              E.command[0] = '\0';
 
             case 'w':
               update_note();
