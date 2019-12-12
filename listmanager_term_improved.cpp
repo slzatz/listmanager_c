@@ -2217,7 +2217,17 @@ void outlineSave(const std::string& fname) {
 //#include "editor_functions.h"
 
 inline void f_cw(int repeat) {
-  editorCreateSnapshot();
+  for (int j = 0; j < repeat; j++) {
+    int start = E.fc;
+    editorMoveEndWord();
+    int end = E.fc;
+    E.fc = start;
+    for (int j = 0; j < end - start + 1; j++) editorDelChar();
+    // text repeats once
+  }
+}
+
+inline void f_dw(int repeat) {
   for (int j = 0; j < repeat; j++) {
     int start = E.fc;
     editorMoveEndWord();
@@ -2225,16 +2235,16 @@ inline void f_cw(int repeat) {
     E.fc = start;
     for (int j = 0; j < end - start + 1; j++) editorDelChar();
   }
+  E.fc--;
 }
+
 inline void f_caw(int repeat) {
-   for (int i=0; i < E.repeat; i++) {
-     //editorMoveBeginningWord();
-     editorDelWord();
-     }
-   /*
-   for (char const &c : E.last_typed) {
-     editorInsertChar(c);
-   }*/
+   for (int i=0; i < repeat; i++)  editorDelWord();
+    // text repeats once
+}
+
+inline void f_daw(int repeat) {
+   for (int i=0; i < repeat; i++) editorDelWord();
 }
 
 inline void f_s(int repeat) {
@@ -2284,40 +2294,35 @@ inline void f_A(int repeat) {
 }
 
 void editorDoRepeat(void) {
-    /*
-    if (E.last_command == C_caw)
-      f_caw(E.last_repeat);
-    else if (E.last_command == 's')
-      f_s(E.last_repeat);
-    else if (E.last_command == 'x')
-      f_x(E.last_repeat);
-    else if (E.last_command == C_dd)
-      f_dd(E.last_repeat);
-    else if (E.last_command == C_cw)
-      f_cw(E.last_repeat);
-    */
+
   editorCreateSnapshot();
 
   switch (E.last_command) {
 
-    case C_caw:
+    case C_cw: //one-time text command
+      f_cw(E.last_repeat);
+      break;
+    case C_caw: //one-time text
       f_caw(E.last_repeat);
       break;
+    case C_dw:
+      f_dw(E.last_repeat);
+      return;
+    case C_daw:
+      f_daw(E.last_repeat);
+      return;
     case 's':
-      f_s(E.last_repeat);
+      f_s(E.last_repeat); //one-time text
       break;
     case 'x':
       f_x(E.last_repeat);
-      break;
+      return;
     case C_dd:
       f_dd(E.last_repeat);
-      break;
-    case C_cw:
-      f_cw(E.last_repeat);
-      break;
+      return;
     case '~':
       f_change_case(E.last_repeat);
-      break;
+      return;
     case 'i':
       f_i(E.last_repeat);
       break;
@@ -2332,20 +2337,21 @@ void editorDoRepeat(void) {
       break;
     case 'r':
       f_replace(E.last_repeat);
-      break;
+      return;
     default:
       editorSetMessage("You tried to repeat a command that doesn't repeat");
       return;
   }
 
-  //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
+  int repeat;
   //if(repeatable_text_commands.contains(E.last_command)) {
-  if(repeatable_text_commands.count(E.last_command)) {
-    for (int n=0; n<E.last_repeat; n++) {
-      for (char const &c : E.last_typed) {
-        if (c == '\r') editorInsertReturn();
-        else editorInsertChar(c);
-      }
+  if(repeatable_text_commands.count(E.last_command)) repeat = E.last_repeat;
+  else repeat = 1;
+
+  for (int n=0; n<repeat; n++) {
+    for (char const &c : E.last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
     }
   }
 }
@@ -2466,15 +2472,19 @@ void editorBackspace(void) {
 
   if (E.fc == 0 && E.fr == 0) return;
 
-  std::string& row = E.rows.at(E.fr);
+  std::string &row = E.rows.at(E.fr);
   if (E.fc > 0) {
     row.erase(row.begin() + E.fc - 1);
     E.fc--;
-  } else {
+  } else if (row.size() > 1){
     editorRowAppendString(E.rows.at(E.fr - 1), row); //only use of this function
     E.fr--;
     E.fc = E.rows.at(E.fr).size();
-  }
+  } else {
+    editorDelRow(E.fr);
+    E.fr--;
+    E.fc = E.rows.at(E.fr).size();
+}
   E.dirty++;
 }
 
@@ -7683,29 +7693,29 @@ void editorProcessKeypress(void) {
           return;
     
         case C_daw:
-          editorCreateSnapshot();
-          for (int i = 0; i < E.repeat; i++) editorDelWord();
+          f_daw(E.repeat);
+
+          //////////////////
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
-          E.last_typed.clear();
           E.repeat = 0;
+          E.last_typed.clear();
           E.last_command = command;
+          ///////////////////////
+
           return;
     
         case C_dw:
-          editorCreateSnapshot();
-          for (int j = 0; j < E.repeat; j++) {
-            start = E.fc;
-            editorMoveEndWord2();
-            end = E.fc;
-            E.fc = start;
-            for (int j = 0; j < end - start + 2; j++) editorDelChar();
-          }
+          f_dw(E.repeat);
+
+          ///////////////////
           E.command[0] = '\0';
           E.last_repeat = E.repeat;
-          E.last_typed.clear();
           E.repeat = 0;
+          E.last_typed.clear();
           E.last_command = command;
+          //////////////////////
+
           return;
     
         case C_de:
@@ -7723,26 +7733,16 @@ void editorProcessKeypress(void) {
           return;
     
         case C_dd:
-          /*
-          if (!E.rows.empty()) {
-            int r = E.rows.size() - E.fr;
-            E.repeat = (r >= E.repeat) ? E.repeat : r ;
-            editorCreateSnapshot();
-            editorYankLine(E.repeat);
-            for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
-          }
-          */
-          //trying this in editorScroll
-          //if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1; //11-26-2019
+          editorCreateSnapshot();
           f_dd(E.repeat);
 
-          E.command[0] = '\0'; //every command should do this
-          E.last_repeat = E.repeat; //only if the command can be dotted
-          E.repeat = 0; //every command should do this
-          E.last_typed.clear(); //only if the command can be dotted
-          E.last_command = command;
+        //  E.command[0] = '\0'; //every command should do this
+        //  E.last_repeat = E.repeat; //only if the command can be dotted
+        //  E.repeat = 0; //every command should do this
+        //  E.last_typed.clear(); //only if the command can be dotted
+        //  E.last_command = command;
 
-          return;
+          break;
     
         case C_d$:
           editorCreateSnapshot();
@@ -7754,12 +7754,12 @@ void editorProcessKeypress(void) {
             //editorYankLine(E.repeat); //b/o 2 step won't really work right
             for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
           }
-          E.command[0] = '\0'; //every command should do this
-          E.last_repeat = E.repeat; //only if the command can be dotted
-          E.repeat = 0; //every command should do this
-          E.last_typed.clear(); //only if the command can be dotted
-          E.last_command = command;
-          return;
+        //  E.command[0] = '\0'; //every command should do this
+        //  E.last_repeat = E.repeat; //only if the command can be dotted
+        //  E.repeat = 0; //every command should do this
+        //  E.last_typed.clear(); //only if the command can be dotted
+        //  E.last_command = command;
+          break;
 
         case C_dG:
           editorCreateSnapshot();
@@ -7778,51 +7778,42 @@ void editorProcessKeypress(void) {
           return;
     
         //tested with repeat on one line
+        //note action is repeatable but
+        //text just written once
         case C_cw:
-          /*
           editorCreateSnapshot();
-          for (int j = 0; j < E.repeat; j++) {
-            start = E.fc;
-            editorMoveEndWord();
-            end = E.fc;
-            E.fc = start;
-            for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          }
-          */
           f_cw(E.repeat);
 
           ///////////////////////////
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0; // always necessary
-          E.last_typed.clear(); // as currently written always necessary
-          E.last_command = command;
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0; // always necessary
+        //  E.last_typed.clear(); // as currently written always necessary
+        //  E.last_command = command;
           ////////////////////////////
 
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
+          break;
     
         //tested with repeat on one line
+        //note action is repeatable but
+        //text just written once
         case C_caw:
-          /*
           editorCreateSnapshot();
-          editorMoveBeginningWord();
-          for (int i = 0; i < E.repeat; i++) editorDelWord();
-          */
           f_caw(E.repeat);
 
           ///////////////////////////
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
-          E.last_command = command;
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0;
+        //  E.last_typed.clear();
+        //  E.last_command = command;
           ////////////////////////////
 
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
+          break; //see common code below before return at end of NORMAL
     
         //indent and unindent changed to E.fr from E.cy on 11-26-2019
         case C_indent:
@@ -7865,6 +7856,14 @@ void editorProcessKeypress(void) {
           return;
     
       } // end of keyfromstring switch under case NORMAL 
+
+      ///////////////////////////
+      E.command[0] = '\0';
+      E.last_repeat = E.repeat;
+      E.repeat = 0;
+      E.last_typed.clear();
+      E.last_command = command;
+      ////////////////////////////
 
       return; // end of case NORMAL (don't think it can be reached)
 
@@ -8466,13 +8465,30 @@ void editorMoveCursorEOL(void) {
   if (row.size()) E.fc = row.size() - 1;
 }
 
+// normal mode 'e'
+// And vim goes to next line and currently this stops
+void editorMoveEndWord(void) {
+
+  if (E.rows.empty()) return;
+  std::string& row = E.rows.at(E.fr);
+
+  // below is finding end of word but if already at end
+  // of a word need to move cursor forward until hit a letter
+  // whole thing doesn't blow up if sitting on last char
+  auto beg = row.find_first_not_of(" ,.;:\"'!@", E.fc+1);
+  auto end = row.find_first_of(" ,.;:\"'!@", beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  E.fc = end - 1;
+}
 // not same as 'e' but moves to end of word or stays put if already
 //on end of word - used by dw
+//took out of use
 void editorMoveEndWord2() {
   int j;
 
   if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
+  std::string &row = E.rows.at(E.fr);
 
   for (j = E.fc + 1; j < row.size() ; j++) {
     if (row[j] < 48) break;
@@ -8512,23 +8528,6 @@ void editorMoveBeginningWord(void) {
   E.fc = beg;
 }
 
-// normal mode 'e'
-// not correct for punctuation but not sure I care enough
-// And vim goes to next line and currently this stops
-void editorMoveEndWord(void) {
-
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-
-  // below is finding end of word but if already at end
-  // of a word need to move cursor forward until hit a letter
-  // whole thing doesn't blow up if sitting on last char
-  auto beg = row.find_first_not_of(' ', E.fc+1);
-  auto end = row.find_first_of(' ', beg);
-  if (end == std::string::npos) {end = row.size();}
-
-  E.fc = end - 1;
-}
 
 // decorates, undecorates, redecorates
 void editorDecorateWord(int c) {
