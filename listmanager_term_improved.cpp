@@ -6,6 +6,8 @@
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
 #define TZ_OFFSET 5 // time zone offset - either 4 or 5
+#define SCROLL_DOWN 0
+#define SCROLL_UP 1
 
 #include <Python.h>
 //#include <fcntl.h>
@@ -340,6 +342,7 @@ struct editorConfig {
   int repeat;
   int indent;
   int smartindent;
+  int initial_drawing_row;
 };
 
 static struct editorConfig E;
@@ -473,7 +476,9 @@ int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
-int editorGetFileRowByLineWW(int);
+//int editorGetFileRowByLineWW(int);
+int editorGetInitialRow(int &);
+int editorGetInitialRow(int &, int);
 
 //Editor Prototypes
 void editorDrawRows(std::string &); //erases lines to right as it goes
@@ -1623,7 +1628,7 @@ void get_note_sqlite(int id) {
 
   word_positions.clear();
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.initial_drawing_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
 
@@ -6471,33 +6476,45 @@ void outlineFindNextWord() {
 void editorScroll(void) {
 
   if (E.rows.empty()) {
-    E.cx = E.cy = E.fr = E.fc = 0;
+    E.cx = E.cy = E.fr = E.fc = E.line_offset = 0;
     return;
   }
 
-  //initially added the below to C_dd but probably should be here:
   if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1;
 
-  // This check used to be in editorMoveCursor but there are other ways like
-  // issuring 'd$' that will shorten the row but cursor will be beyond the line
   int row_size = E.rows.at(E.fr).size();
   if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT); 
 
   if (E.fc < 0) E.fc = 0;
 
   E.cx = editorGetScreenXFromRowColWW(E.fr, E.fc);
-  int cy = editorGetScreenYFromRowColWW(E.fr, E.fc); // this may be the problem with zero char rows
+  int cy = editorGetScreenYFromRowColWW(E.fr, E.fc);
 
   //my guess is that if you wanted to adjust E.line_offset to take into account that you wanted
   // to only have full rows at the top (easier for drawing code) you would do it here.
   // something like E.screenlines goes from 4 to 5 so that adjusts E.cy
   // it's complicated and may not be worth it.
 
+  //deal with scroll insufficient to include the current line
   if (cy > E.screenlines + E.line_offset - 1) {
     E.line_offset = cy - E.screenlines + 1; ////
+    int line_offset = E.line_offset;
+    E.initial_drawing_row = editorGetInitialRow(line_offset);
+    E.line_offset = line_offset;
   }
+
+ //let's check if the current line_offset is causing there to be an incomplete row at the top
+
+  // this may further increase E.line_offset so we can start
+  // at the top with the first line of some row
+  // and not start mid-row which complicates drawing the rows
+
+  //deal with scrol where current line wouldn't be visible because we're scrolled too far
   if (cy < E.line_offset) {
     E.line_offset =  cy;
+    //E.initial_drawing_row = 0; //kluge isn't general
+    E.initial_drawing_row = editorGetInitialRow(E.line_offset, SCROLL_UP);
+    //E.line_offset =  cy;
   }
   
   E.cy = cy - E.line_offset;
@@ -6521,7 +6538,8 @@ void editorDrawRows(std::string& ab) {
 
   // this is the first visible row on the screen given E.line_offset
   // seems like it will always then display all top row's lines
-  int filerow = editorGetFileRowByLineWW(0);
+  //int filerow = editorGetFileRowByLineWW(0);
+  int filerow = 0;
 
   for (;;){
     if (y >= E.screenlines) break; //somehow making this >= made all the difference
@@ -6690,7 +6708,7 @@ void editorDrawRowsNew(std::string& ab) {
   if (E.rows.empty()) return;
 
   int y = 0;
-  int filerow = 0;
+  int filerow = E.initial_drawing_row;
 
   for (;;){
     if (filerow == E.rows.size()) return;
@@ -6703,17 +6721,9 @@ void editorDrawRowsNew(std::string& ab) {
       ab.append("\x1b[0m", 4); //return background to normal
 
     if (row.empty()) {
-
-      // don't write to screen if offset puts line offscreen
-      if (y < E.line_offset) {
-        y++;
-        filerow++;
-        continue;
-      }
-
       ab.append(lf_ret, nchars);
       filerow++;
-      if (y == E.screenlines + E.line_offset) return;
+      if (y == E.screenlines) return;
       y++;
       continue;
     }
@@ -6723,17 +6733,9 @@ void editorDrawRowsNew(std::string& ab) {
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
-
-        // don't write to screen if offset puts line offscreen
-        if (y < E.line_offset) {
-          y++;
-          filerow++;
-          break;
-        }
-
         ab.append(row.substr(pos+1));
         ab.append(lf_ret, nchars);
-        if (y == E.screenlines  + E.line_offset) return;
+        if (y == E.screenlines) return;
         y++;
         filerow++;
         break;
@@ -6741,18 +6743,12 @@ void editorDrawRowsNew(std::string& ab) {
 
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
-      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
 
-        // don't write to screen if offset puts line offscreen
-      if (y < E.line_offset) {
-        y++;
-        continue;
-      }
+      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
 
       ab.append(row.substr(prev_pos+1, pos-prev_pos));
       ab.append(lf_ret, nchars);
-      //ab.append("\x1b[0m", 4); //return background to normal
-      if (y == E.screenlines + E.line_offset) return;
+      if (y == E.screenlines) return;
       y++;
     }
     if (E.mode == VISUAL && filerow == E.fr + 1) {
@@ -6996,10 +6992,11 @@ void editorDrawStatusBar(std::string& ab) {
     int lines = editorGetLinesInRowWW(E.fr);
 
 
+
     len = snprintf(status,
-                   sizeof(status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d line chrs(1)="
+                   sizeof(status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d line chrs(1)="
                                    "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, lines, line, E.fc, line_char_count, E.cx, E.cy, E.screencols);
+                                   E.fr, lines, line, E.fc, E.line_offset, E.initial_drawing_row, line_char_count, E.cx, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
@@ -8150,28 +8147,70 @@ void editorProcessKeypress(void) {
 
 /********************************************************** WW stuff *****************************************/
 // used by editorDrawRows to figure out the first row to draw
-int editorGetFileRowByLineWW(int y){
+int editorGetInitialRow(int &line_offset) {
 
-  int screenrow = -1;
-  int n = 0;
-  int linerows;
+  if (line_offset == 0) return 0;
 
-  y+= E.line_offset;
+  int r = 0;
+  int lines = 0;
 
-  if (y == 0) return 0;
   for (;;) {
-    linerows = editorGetLinesInRowWW(n);
-    screenrow += linerows;
-    n++;
-    if (screenrow >= y) break;
-    //n++;
-  }
+    lines += editorGetLinesInRowWW(r);
+    r++;
 
-  //E.line_offset = screenrow; //////////////////
+    // there is no need to adjust line_offset
+    // if it happens that we start
+    // on the first line of row r
+    if (lines == line_offset) break;
+
+    // need to adjust line_offset
+    // so we can start on the first
+    // line of row r
+    if (lines > line_offset) {
+      line_offset = lines;
+      break;
+    }
+  }
+  return r;
+}
+
+int editorGetInitialRow(int &line_offset, int direction) {
+
+  if (line_offset == 0) return 0;
+
+  int r = 0;
+  int lines = 0;
+
+  for (;;) {
+    lines += editorGetLinesInRowWW(r);
+    r++;
+
+    // there is no need to adjust line_offset
+    // if it happens that we start
+    // on the first line of row r
+    if (lines == line_offset) {
+        line_offset = lines;
+        return r;
+    }
+
+    // need to adjust line_offset
+    // so we can start on the first
+    // line of row r
+      if (lines > line_offset) {
+        line_offset = lines;
+        break;
+    }
+  }
+  lines = 0;
+  int n = 0;
+  for (n=0; n<r-1; n++) {
+      lines += editorGetLinesInRowWW(n);
+  }
+  line_offset = lines;
   return n;
 }
 
-//used by editorGetFileRowByLineWW
+//used by editorGetInitialRow
 //used by editorGetScreenYFromRowColWW
 int editorGetLinesInRowWW(int r) {
   std::string &row = E.rows.at(r);
@@ -8786,6 +8825,7 @@ void initEditor(void) {
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
+  E.initial_drawing_row = 0;
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
