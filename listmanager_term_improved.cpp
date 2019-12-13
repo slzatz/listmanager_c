@@ -522,6 +522,7 @@ void editorInsertChar(int);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+void editorInsertNewline(int);
 
 void editorHighlightWordsByPosition(void);
 void editorHighlightSearchTerms(void);
@@ -2293,6 +2294,26 @@ inline void f_A(int repeat) {
   editorMoveCursor(ARROW_RIGHT); //works even though not in INSERT mode
 }
 
+inline void f_o(int repeat) {
+  for (int n=0; n<repeat; n++) {
+    editorInsertNewline(1);
+    for (char const &c : E.last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+  }
+}
+
+inline void f_O(int repeat) {
+  for (int n=0; n<repeat; n++) {
+    editorInsertNewline(0);
+    for (char const &c : E.last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+  }
+}
+
 void editorDoRepeat(void) {
 
   editorCreateSnapshot();
@@ -2337,6 +2358,12 @@ void editorDoRepeat(void) {
       break;
     case 'r':
       f_replace(E.last_repeat);
+      return;
+    case 'o':
+      f_o(E.last_repeat);
+      return;
+    case 'O':
+      f_O(E.last_repeat);
       return;
     default:
       editorSetMessage("You tried to repeat a command that doesn't repeat");
@@ -7243,6 +7270,8 @@ void editorProcessKeypress(void) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
           }
+          if (E.last_command == 'o') f_o(E.last_repeat-1);
+          else if (E.last_command == 'O') f_O(E.last_repeat-1);
 
           E.mode = NORMAL;
           E.repeat = 0;
@@ -7476,43 +7505,44 @@ void editorProcessKeypress(void) {
           std::vector<int> repeatable_text_commands = {'I', 'i', 'A', 'a'}
           */
 
-          //editorMoveCursorBOL();
-          //E.fc = editorIndentAmount(E.fr);
+          editorCreateSnapshot();
           f_I(E.repeat);
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 
-          E.last_typed.clear();
-          E.mode = INSERT;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.last_command = command;
-          return;
+        //  E.last_typed.clear();
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0;
+        //  E.last_command = command;
+          break;
     
         case 'o':
           // editing cmd: can be dotted and does repeat
-          // in wierd way it does n-1 returns + text
+          // see escape in INSERT mode
+          // for how repeats are handled
           editorCreateSnapshot();
           editorInsertNewline(1);
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 
-          E.last_typed.clear();
-          E.mode = INSERT;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.last_command = command;
+        //  E.last_typed.clear();
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0;
+        //  E.last_command = command;
 
-          return;
+          break;
     
         case 'O':
           // editing cmd: can be dotted and does repeat
-          // in wierd way it does n-1 returns + text
+          // see escape in INSERT mode
+          // for how repeats are handled
           editorCreateSnapshot();
           editorInsertNewline(0);
-          E.mode = 1;
-          E.command[0] = '\0';
-          E.repeat = 0;
+          E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
+          break;
     
         case 'G':
           // navigation: can't be dotted and doesn't repeat
@@ -7601,6 +7631,7 @@ void editorProcessKeypress(void) {
 
         case '.':
           editorDoRepeat();
+          E.command[0] = '\0';
           return;
 
         case CTRL_KEY('z'):
@@ -7693,30 +7724,32 @@ void editorProcessKeypress(void) {
           return;
     
         case C_daw:
+          editorCreateSnapshot();
           f_daw(E.repeat);
 
           //////////////////
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
-          E.last_command = command;
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0;
+        //  E.last_typed.clear();
+        //  E.last_command = command;
           ///////////////////////
 
-          return;
+          break;
     
         case C_dw:
+          editorCreateSnapshot();
           f_dw(E.repeat);
 
-          ///////////////////
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
-          E.last_command = command;
+        //  ///////////////////
+        //  E.command[0] = '\0';
+        //  E.last_repeat = E.repeat;
+        //  E.repeat = 0;
+        //  E.last_typed.clear();
+        //  E.last_command = command;
           //////////////////////
 
-          return;
+          break;
     
         case C_de:
           editorCreateSnapshot();
@@ -7770,12 +7803,12 @@ void editorProcessKeypress(void) {
           } else {
               E.fr--;
           }
-          E.command[0] = '\0'; //every command should do this
-          E.last_repeat = E.repeat; //only if the command can be dotted
-          E.repeat = 0; //every command should do this
-          E.last_typed.clear(); //only if the command can be dotted
-          E.last_command = command;
-          return;
+        //  E.command[0] = '\0'; //every command should do this
+        //  E.last_repeat = E.repeat; //only if the command can be dotted
+        //  E.repeat = 0; //every command should do this
+        //  E.last_typed.clear(); //only if the command can be dotted
+        //  E.last_command = command;
+          break;
     
         //tested with repeat on one line
         //note action is repeatable but
