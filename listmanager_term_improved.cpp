@@ -58,7 +58,7 @@ static std::map<std::string, int> context_map; //filled in by map_context_titles
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 static std::vector<std::string> task_keywords;
-static const std::set<int> repeatable_text_commands = {'I', 'i', 'A', 'a'};
+static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
 
 enum outlineKey {
@@ -2266,6 +2266,17 @@ inline void f_dd(int repeat) {
   for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
 }
 
+inline void f_d$(int repeat) {
+  editorDeleteToEndOfLine();
+  if (!E.rows.empty()) {
+    int r = E.rows.size() - E.fr;
+    repeat--;
+    repeat = (r >= repeat) ? repeat : r ;
+    //editorYankLine(E.repeat); //b/o 2 step won't really work right
+    for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
+    }
+}
+
 inline void f_change_case(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorChangeCase();
@@ -2371,8 +2382,8 @@ void editorDoRepeat(void) {
   }
 
   int repeat;
-  //if(repeatable_text_commands.contains(E.last_command)) {
-  if(repeatable_text_commands.count(E.last_command)) repeat = E.last_repeat;
+  //if(cmd_set1.contains(E.last_command)) {
+  if(cmd_set1.count(E.last_command)) repeat = E.last_repeat;
   else repeat = 1;
 
   for (int n=0; n<repeat; n++) {
@@ -7257,21 +7268,22 @@ void editorProcessKeypress(void) {
           break;
     
         case '\x1b':
-          //if (E.mode == NORMAL) return; // commented out 11-29-2019
-          //E.last_typed --> should contain whatever text was entered.
 
-          //Note that for repeatable text entry commands like i, I, a and A
-          //this is where you would repeat the text
-          //if(E.last_repeat > 1 && repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
-          //if(repeatable_text_commands.find(E.last_command) != repeatable_text_commands.end()) {
-          //if(repeatable_text_commands.contains(E.last_command)) {
-          if(repeatable_text_commands.count(E.last_command)) {
+          /*
+           * below deals with certain NORMAL mode commands that
+           * cause entry to INSERT mode - deals with repeats
+           */
+
+          /****************************************************/
+          if(cmd_set1.count(E.last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
           }
+
           if (E.last_command == 'o') f_o(E.last_repeat-1);
           else if (E.last_command == 'O') f_O(E.last_repeat-1);
+          /****************************************************/
 
           E.mode = NORMAL;
           E.repeat = 0;
@@ -7418,39 +7430,20 @@ void editorProcessKeypress(void) {
           return;
     
         case 'a':
-          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat sets of characters
-          // repeat unhandled - will insert repeat applies to characters
-          //editorMoveCursor(ARROW_RIGHT);
+          editorCreateSnapshot();
           f_a(E.repeat);
           E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-
-          E.last_typed.clear(); //means it can be dotted
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat; //only in repeatable (which may be everything)
-          E.repeat = 0;
-          E.last_command = command; //only in dot-able
-
-          return;
+          break;
     
         case 'A':
-          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat sets of characters
-
-          // repeat unhandled - will insert repeat applies to characters
-          //editorMoveCursorEOL();
-          E.mode = INSERT; //needs to be here for movecursor to work at EOLs
-          //editorMoveCursor(ARROW_RIGHT);
+          editorCreateSnapshot();
           f_A(E.repeat);
+          E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-
-          E.last_typed.clear();
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat; //only in repeatable (which may be everything)
-          E.repeat = 0;
-          E.last_command = command; //only in dot-able
-          return;
+          break;
     
         case 'w':
           // navigation: can't be dotted but does repeat
@@ -7501,20 +7494,14 @@ void editorProcessKeypress(void) {
            easier to handle in dot since you know what was typed
            would be something in insert escape code that checked if text repeatable
            something like: if (E.text_repeatable) ...
-           or if (repeatable_text_commands.find(E.last_command) ...
-          std::vector<int> repeatable_text_commands = {'I', 'i', 'A', 'a'}
+           or if (cmd_set1.find(E.last_command) ...
+          std::vector<int> cmd_set1 = {'I', 'i', 'A', 'a'}
           */
 
           editorCreateSnapshot();
           f_I(E.repeat);
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-
-        //  E.last_typed.clear();
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0;
-        //  E.last_command = command;
           break;
     
         case 'o':
@@ -7525,13 +7512,6 @@ void editorProcessKeypress(void) {
           editorInsertNewline(1);
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-
-        //  E.last_typed.clear();
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0;
-        //  E.last_command = command;
-
           break;
     
         case 'O':
@@ -7726,31 +7706,23 @@ void editorProcessKeypress(void) {
         case C_daw:
           editorCreateSnapshot();
           f_daw(E.repeat);
-
-          //////////////////
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0;
-        //  E.last_typed.clear();
-        //  E.last_command = command;
-          ///////////////////////
-
           break;
     
         case C_dw:
           editorCreateSnapshot();
           f_dw(E.repeat);
-
-        //  ///////////////////
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0;
-        //  E.last_typed.clear();
-        //  E.last_command = command;
-          //////////////////////
-
           break;
     
+        case C_dd:
+          editorCreateSnapshot();
+          f_dd(E.repeat);
+          break;
+
+        case C_d$:
+          editorCreateSnapshot();
+          f_d$(E.repeat);
+          break;
+
         case C_de:
           editorCreateSnapshot();
           start = E.fc;
@@ -7761,39 +7733,8 @@ void editorProcessKeypress(void) {
           //E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
           // below 11-26-2019
           E.fc = (start < E.rows.at(E.fr).size()) ? start : E.rows.at(E.fr).size() -1;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-    
-        case C_dd:
-          editorCreateSnapshot();
-          f_dd(E.repeat);
-
-        //  E.command[0] = '\0'; //every command should do this
-        //  E.last_repeat = E.repeat; //only if the command can be dotted
-        //  E.repeat = 0; //every command should do this
-        //  E.last_typed.clear(); //only if the command can be dotted
-        //  E.last_command = command;
-
           break;
     
-        case C_d$:
-          editorCreateSnapshot();
-          editorDeleteToEndOfLine();
-          if (!E.rows.empty()) {
-            int r = E.rows.size() - E.fr;
-            E.repeat--;
-            E.repeat = (r >= E.repeat) ? E.repeat : r ;
-            //editorYankLine(E.repeat); //b/o 2 step won't really work right
-            for (int i = 0; i < E.repeat ; i++) editorDelRow(E.fr);
-          }
-        //  E.command[0] = '\0'; //every command should do this
-        //  E.last_repeat = E.repeat; //only if the command can be dotted
-        //  E.repeat = 0; //every command should do this
-        //  E.last_typed.clear(); //only if the command can be dotted
-        //  E.last_command = command;
-          break;
-
         case C_dG:
           editorCreateSnapshot();
           E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
@@ -7803,11 +7744,6 @@ void editorProcessKeypress(void) {
           } else {
               E.fr--;
           }
-        //  E.command[0] = '\0'; //every command should do this
-        //  E.last_repeat = E.repeat; //only if the command can be dotted
-        //  E.repeat = 0; //every command should do this
-        //  E.last_typed.clear(); //only if the command can be dotted
-        //  E.last_command = command;
           break;
     
         //tested with repeat on one line
@@ -7816,15 +7752,6 @@ void editorProcessKeypress(void) {
         case C_cw:
           editorCreateSnapshot();
           f_cw(E.repeat);
-
-          ///////////////////////////
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0; // always necessary
-        //  E.last_typed.clear(); // as currently written always necessary
-        //  E.last_command = command;
-          ////////////////////////////
-
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
@@ -7835,15 +7762,6 @@ void editorProcessKeypress(void) {
         case C_caw:
           editorCreateSnapshot();
           f_caw(E.repeat);
-
-          ///////////////////////////
-        //  E.command[0] = '\0';
-        //  E.last_repeat = E.repeat;
-        //  E.repeat = 0;
-        //  E.last_typed.clear();
-        //  E.last_command = command;
-          ////////////////////////////
-
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break; //see common code below before return at end of NORMAL
