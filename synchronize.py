@@ -215,13 +215,8 @@ def synchronize(report_only=True):
 
         if not context:
             action = "created"
-            z = ''.join(random.choices(string.ascii_uppercase + string.digits, k = 10))
-            # Context(tid, title)
-            context = Context(sc.id, sc.title)
+            context = Context(sc.id, sc.title) # Context(tid, title)
             local_session.add(context)
-            # next line important: local db task.tid is the unique key that 
-            # links to the foreign key in context and folder tables
-            #context.tid = sc.id
         else:
             action = "updated"
             context.title = sc.title
@@ -229,7 +224,6 @@ def synchronize(report_only=True):
         # Note that the foreign key that the server uses task.context_tid points to context.id is different
         # between postgres and sqlite postgres points to context.id and local
         # sqlite db points to context.tid but the actual values are identical
-        #context.title = sc.title
         context.default = sc.default # -> row.star; sqla knows this is "default"
         context.textcolor = sc.textcolor
 
@@ -246,8 +240,7 @@ def synchronize(report_only=True):
 
         if not context:
             action = "created"
-            z = ''.join(random.choices(string.ascii_uppercase + string.digits, k = 10))
-            context = p.Context(cc.title) # needs a title but will be changed below
+            context = p.Context(cc.title)
             remote_session.add(context)
             remote_session.commit()
             cc.tid = context.id 
