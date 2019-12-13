@@ -34,7 +34,7 @@
 
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
-//static std::map<int, pfunc> outline_normal_map;
+//typedef void (*pfunc)(int);
 
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -58,7 +58,7 @@ static std::map<std::string, int> context_map; //filled in by map_context_titles
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 static std::vector<std::string> task_keywords;
-static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
+//static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
 
 enum outlineKey {
@@ -531,6 +531,22 @@ void editorHighlightWord(int, int, int);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
+
+/* experimenting with map of functions*/
+inline void f_O(int);
+inline void f_o(int);
+inline void f_dw(int);
+inline void f_daw(int);
+inline void f_dd(int);
+inline void f_cw(int);
+inline void f_caw(int);
+
+static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
+typedef void (*pfunc)(int);
+static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
+static std::map<int, pfunc> cmd_map3 = {{C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
+static std::map<int, pfunc> cmd_map4 = {{C_cw, f_dw}, {C_caw, f_daw}};
+/*************************************/
 
 // config struct for reading db.ini file
 struct config {
@@ -2329,8 +2345,31 @@ void editorDoRepeat(void) {
 
   editorCreateSnapshot();
 
+/* experimenting with map of functions*/
+  // 'o', 'O'
+  if (cmd_map2.count(E.last_command)) {
+    cmd_map2[E.last_command](E.last_repeat);
+    return;
+
+  // C_dw, C_daw, C_dd
+  } else if (cmd_map3.count(E.last_command)) {
+    cmd_map3[E.last_command](E.last_repeat);
+    return;
+
+  // C_cw, C_caw
+  } else if (cmd_map4.count(E.last_command)) {
+    cmd_map4[E.last_command](E.last_repeat);
+
+    for (char const &c : E.last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+    return;
+  }
+/*************************************/
   switch (E.last_command) {
 
+    /*
     case C_cw: //one-time text command
       f_cw(E.last_repeat);
       break;
@@ -2343,14 +2382,16 @@ void editorDoRepeat(void) {
     case C_daw:
       f_daw(E.last_repeat);
       return;
+    case C_dd:
+      f_dd(E.last_repeat);
+      return;
+     */
+
     case 's':
       f_s(E.last_repeat); //one-time text
       break;
     case 'x':
       f_x(E.last_repeat);
-      return;
-    case C_dd:
-      f_dd(E.last_repeat);
       return;
     case '~':
       f_change_case(E.last_repeat);
@@ -2370,18 +2411,21 @@ void editorDoRepeat(void) {
     case 'r':
       f_replace(E.last_repeat);
       return;
+    /*
     case 'o':
       f_o(E.last_repeat);
       return;
     case 'O':
       f_O(E.last_repeat);
       return;
+     */
     default:
       editorSetMessage("You tried to repeat a command that doesn't repeat");
       return;
   }
 
   int repeat;
+  // i, I, a, A
   //if(cmd_set1.contains(E.last_command)) {
   if(cmd_set1.count(E.last_command)) repeat = E.last_repeat;
   else repeat = 1;
@@ -7281,8 +7325,9 @@ void editorProcessKeypress(void) {
             }
           }
 
-          if (E.last_command == 'o') f_o(E.last_repeat-1);
-          else if (E.last_command == 'O') f_O(E.last_repeat-1);
+          if (cmd_map2.count(E.last_command)) cmd_map2[E.last_command](E.last_repeat - 1);
+          //if (E.last_command == 'o') f_o(E.last_repeat-1);
+          //else if (E.last_command == 'O') f_O(E.last_repeat-1);
           /****************************************************/
 
           E.mode = NORMAL;
@@ -7346,10 +7391,30 @@ void editorProcessKeypress(void) {
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
-      //if (commmand == 'x') editornormal_x();
+      /* this is where we could begin to use cmd_map or set*/
+   /* if cmd_set2.count(E.last_command) {
+    *   editorCreateSnapshot();
+    *
+        if (cmd_map2.count(E.last_command)) {
+            cmd_map2[E.last_command](E.last_repeat);
+
+        // C_dw, C_daw, C_dd
+        } else if (cmd_map3.count(E.last_command)) {
+            cmd_map3[E.last_command](E.last_repeat);
+        }
+        E.command[0] = '\0';
+        E.last_repeat = E.repeat;
+        E.repeat = 0;
+        E.last_typed.clear();
+        E.last_command = command;
+        return;
+      }
+      *
+      */
+
 
       switch (command) {
-    
+
         case SHIFT_TAB:
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
