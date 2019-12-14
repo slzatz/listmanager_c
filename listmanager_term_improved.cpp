@@ -544,13 +544,14 @@ inline void f_daw(int);
 inline void f_dd(int);
 inline void f_cw(int);
 inline void f_caw(int);
+inline void f_s(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
 static std::map<int, pfunc> cmd_map3 = {{C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
-static std::map<int, pfunc> cmd_map4 = {{C_cw, f_dw}, {C_caw, f_daw}};
+static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
 /*************************************/
 
 // config struct for reading db.ini file
@@ -2373,7 +2374,7 @@ void editorDoRepeat(void) {
     cmd_map3[E.last_command](E.last_repeat);
     return;
 
-  // C_cw, C_caw
+  // C_cw, C_caw, s
   } else if (cmd_map4.count(E.last_command)) {
     cmd_map4[E.last_command](E.last_repeat);
 
@@ -2402,7 +2403,6 @@ void editorDoRepeat(void) {
     case C_dd:
       f_dd(E.last_repeat);
       return;
-     */
 
     case 's':
       f_s(E.last_repeat); //one-time text
@@ -2411,6 +2411,9 @@ void editorDoRepeat(void) {
         else editorInsertChar(c);
       }
       return;
+
+     */
+
     case 'x':
       f_x(E.last_repeat);
       return;
@@ -7451,44 +7454,42 @@ void editorProcessKeypress(void) {
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 
-          E.last_typed.clear(); //means it can be dotted
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_command = command; //means it dotted
+       //   E.last_typed.clear(); //means it can be dotted
+       //   E.command[0] = '\0';
+       //   E.last_repeat = E.repeat;
+       //   E.repeat = 0;
+       //   E.last_command = command; //means it dotted
 
-          return;
+          break;
     
         case 's':
-          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
-          //for (int i = 0; i < E.repeat; i++) editorDelChar();
+          editorCreateSnapshot();
           f_s(E.repeat);
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
 
-          E.last_command = command;
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_typed.clear();
+       //   E.last_command = command;
+       //   E.command[0] = '\0';
+       //   E.last_repeat = E.repeat;
+       //   E.repeat = 0;
+       //   E.last_typed.clear();
 
-          return;
+          break;
     
         case 'x':
-          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
-          //for (int i = 0; i < E.repeat; i++) editorDelChar();
+          editorCreateSnapshot();
 
           f_x(E.repeat);
 
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_command = command;
-          E.last_typed.clear();
-          E.command[0] = '\0';
+       //   E.last_repeat = E.repeat;
+       //   E.repeat = 0;
+       //   E.last_command = command;
+       //   E.last_typed.clear();
+       //   E.command[0] = '\0';
 
-          return;
+          break;
         
         case 'r':
           editorCreateSnapshot();
@@ -7496,28 +7497,20 @@ void editorProcessKeypress(void) {
           //f_r would basically be a no op
           E.mode = REPLACE;
 
-          //E.command[0] = '\0';
-          // don't change repeat here
-          //E.last_repeat = E.repeat;
-          //E.repeat = 0;
-          //E.last_command = command;
-          //E.last_typed.clear();
-
           return;
     
         case '~':
-          editorCreateSnapshot();
           // editing cmd: can be dotted and does repeat
-          //for (int i = 0; i < E.repeat; i++) editorChangeCase();
+          editorCreateSnapshot();
           f_change_case(E.repeat);
 
-          E.last_repeat = E.repeat;
-          E.repeat = 0;
-          E.last_command = command;
-          E.last_typed.clear();
-          E.command[0] = '\0';
+      //    E.last_repeat = E.repeat;
+      //    E.repeat = 0;
+      //    E.last_command = command;
+      //    E.last_typed.clear();
+      //    E.command[0] = '\0';
 
-          return;
+          break;
     
         case 'a':
           // editing cmd: can be dotted and does repeat sets of characters
@@ -7577,18 +7570,10 @@ void editorProcessKeypress(void) {
     
         case 'I':
           // editing cmd: can be dotted and does repeat sets of characters
-
-          /*
-           repeat applies to characters that were typed
-           repeat unhandled - will insert chars 'xyz' n-1 addition times for total of n times
-           easier to handle in dot since you know what was typed
-           would be something in insert escape code that checked if text repeatable
-           something like: if (E.text_repeatable) ...
-           or if (cmd_set1.find(E.last_command) ...
-          std::vector<int> cmd_set1 = {'I', 'i', 'A', 'a'}
-          */
+          // repeat handled in INSERT escape
 
           editorCreateSnapshot();
+
           f_I(E.repeat);
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -7596,20 +7581,22 @@ void editorProcessKeypress(void) {
     
         case 'o':
           // editing cmd: can be dotted and does repeat
-          // see escape in INSERT mode
-          // for how repeats are handled
+          // repeat handled in INSERT escape
+
           editorCreateSnapshot();
-          editorInsertNewline(1); // can't use f_o because it generates text to perform repeat
+          editorInsertNewline(1); // can't use f_o because E.last_typed is cleared
+
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
     
         case 'O':
           // editing cmd: can be dotted and does repeat
-          // see escape in INSERT mode
-          // for how repeats are handled
+          // repeat handled in INSERT escape
+
           editorCreateSnapshot();
-          editorInsertNewline(0); // can't use f_O becaue it generates text to perform repeat
+          editorInsertNewline(0); // can use f_O because E.last_typed is cleared
+
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
@@ -7619,10 +7606,12 @@ void editorProcessKeypress(void) {
           // navigation doesn't clear last dotted command
           E.fc = 0;
           E.fr = E.rows.size() - 1;
+
           /////////////////////////
           E.command[0] = '\0';
           E.repeat = 0;
           /////////////////////////
+
           return;
       
         case ':':
@@ -7715,12 +7704,14 @@ void editorProcessKeypress(void) {
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
-          E.command[0] = '\0';
-          E.last_repeat = E.repeat;
-          E.last_typed.clear();
-          E.repeat = 0;
-          E.last_command = command;
-          return;
+
+      //    E.command[0] = '\0';
+      //    E.last_repeat = E.repeat;
+      //    E.last_typed.clear();
+      //    E.repeat = 0;
+      //    E.last_command = command;
+
+          break;
 
 
         case CTRL_KEY('s'):
