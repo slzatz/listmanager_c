@@ -533,6 +533,10 @@ int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
 
 /* experimenting with map of functions*/
+inline void f_i(int);
+inline void f_I(int);
+inline void f_a(int);
+inline void f_A(int);
 inline void f_O(int);
 inline void f_o(int);
 inline void f_dw(int);
@@ -543,6 +547,7 @@ inline void f_caw(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
+static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
 static std::map<int, pfunc> cmd_map3 = {{C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
 static std::map<int, pfunc> cmd_map4 = {{C_cw, f_dw}, {C_caw, f_daw}};
@@ -2346,8 +2351,20 @@ void editorDoRepeat(void) {
   editorCreateSnapshot();
 
 /* experimenting with map of functions*/
+  // i, I, a, A
+  if (cmd_map1.count(E.last_command)) {
+    cmd_map1[E.last_command](E.last_repeat);
+
+    for (int n=0; n<E.last_repeat; n++) {
+      for (char const &c : E.last_typed) {
+        if (c == '\r') editorInsertReturn();
+        else editorInsertChar(c);
+      }
+    }
+    return;
+
   // 'o', 'O'
-  if (cmd_map2.count(E.last_command)) {
+  } else if (cmd_map2.count(E.last_command)) {
     cmd_map2[E.last_command](E.last_repeat);
     return;
 
@@ -2389,13 +2406,19 @@ void editorDoRepeat(void) {
 
     case 's':
       f_s(E.last_repeat); //one-time text
-      break;
+      for (char const &c : E.last_typed) {
+        if (c == '\r') editorInsertReturn();
+        else editorInsertChar(c);
+      }
+      return;
     case 'x':
       f_x(E.last_repeat);
       return;
     case '~':
       f_change_case(E.last_repeat);
       return;
+
+    /*
     case 'i':
       f_i(E.last_repeat);
       break;
@@ -2408,6 +2431,8 @@ void editorDoRepeat(void) {
     case 'A':
       f_A(E.last_repeat);
       break;
+      */
+
     case 'r':
       f_replace(E.last_repeat);
       return;
@@ -2424,9 +2449,8 @@ void editorDoRepeat(void) {
       return;
   }
 
+  /*
   int repeat;
-  // i, I, a, A
-  //if(cmd_set1.contains(E.last_command)) {
   if(cmd_set1.count(E.last_command)) repeat = E.last_repeat;
   else repeat = 1;
 
@@ -2436,6 +2460,7 @@ void editorDoRepeat(void) {
       else editorInsertChar(c);
     }
   }
+  */
 }
 
 // used by numerous other functions to sometimes insert zero length rows
@@ -7574,7 +7599,7 @@ void editorProcessKeypress(void) {
           // see escape in INSERT mode
           // for how repeats are handled
           editorCreateSnapshot();
-          editorInsertNewline(1);
+          editorInsertNewline(1); // can't use f_o because it generates text to perform repeat
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
@@ -7584,7 +7609,7 @@ void editorProcessKeypress(void) {
           // see escape in INSERT mode
           // for how repeats are handled
           editorCreateSnapshot();
-          editorInsertNewline(0);
+          editorInsertNewline(0); // can't use f_O becaue it generates text to perform repeat
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
