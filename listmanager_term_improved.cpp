@@ -2564,7 +2564,7 @@ void editorInsertNewline(int direction) {
 void editorDelChar(void) {
   if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
   std::string& row = E.rows.at(E.fr);
-  if (row.empty()) return;
+  if (row.empty() || E.fc > row.size()-1) return;
   row.erase(row.begin() + E.fc);
   E.dirty++;
 }
