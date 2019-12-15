@@ -180,6 +180,7 @@ enum Command {
   C_recent,
 
   C_help,
+  C_readfile,
 
   C_edit,
 
@@ -264,6 +265,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"so", C_saveoutline},
   {"highlight", C_highlight},
   {"spellcheck", C_spellcheck},
+  {"readfile", C_readfile},
   {"valgrind", C_valgrind}
 };
 
@@ -482,7 +484,6 @@ int editorGetInitialRow(int &, int);
 
 //Editor Prototypes
 void editorDrawRows(std::string &); //erases lines to right as it goes
-void editorDrawRowsNew(std::string &);
 void editorDrawMessageBar(std::string &);
 void editorDrawStatusBar(std::string &);
 void editorSetMessage(const char *fmt, ...);
@@ -1600,45 +1601,6 @@ void get_items_by_id_pg(std::stringstream& query) {
   }
 }
 
-void get_note_sqlite_old(int id) {
-  if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
-
-  /*
-  if (!editor_mode && O.mode == DATABASE) {
-    display_item_info(O.rows.at(O.fr).id);
-    return;
-  }
-  */
-
-  E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
-
-  sqlite3 *db; // need this - see below
-    
-  std::stringstream query;
-
-  if (editor_mode || O.mode != SEARCH) {
-    query << "SELECT note FROM task WHERE id = " << id;
-    db = S.db;
-
-  } else {
-    //17m = blue; 31m = red
-    query << "SELECT highlight(fts, 1, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' AND lm_id = " << id;
-    db = S.fts_db;
-  }
-
-  // callback is *not* called if result (argv) is null
-  int rc = sqlite3_exec(db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(db);
-  } 
-
-  editorRefreshScreen();
-}
-
 void get_note_sqlite(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
@@ -1778,7 +1740,7 @@ void get_note_pg(int id) {
     editorInsertRow(E.rows.size(), s);
   }
 
-  E.dirty = 0;
+  E.dirty = false;
   editorRefreshScreen();
   PQclear(res);
   return;
@@ -2638,6 +2600,7 @@ void editorEraseScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+// currently used for help, sync log
 void editorReadFile(std::string file_name) {
 
   std::ifstream f(file_name);
@@ -2707,6 +2670,25 @@ void editorDisplayFile(void) {
   ab.append("\x1b[0m", 4);
   outlineDrawStatusBar(ab);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+void editorReadFile2(const std::string &filename) {
+
+  std::ifstream f(filename);
+  std::string line;
+
+  E.rows.clear();
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+
+  while (getline(f, line)) {
+    E.rows.push_back(line);
+  }
+  f.close();
+
+  E.dirty = true;
+  editor_mode = true;
+  editorRefreshScreen();
+  return;
 }
 
 //not used
@@ -4201,6 +4183,15 @@ void outlineProcessKeypress(void) {
               editorDisplayFile();//put them in the command mode case synch
               return;
 
+            case C_readfile:
+              {
+              const std::string filename = O.command_line.substr(pos+1);
+              editorReadFile2(filename);
+              outlineSetMessage("Read the file: %s", filename.c_str());
+              O.mode = O.last_mode;
+              return;
+             }
+
             case C_valgrind:
               initial_file_row = 0; //for arrowing or displaying files
               editorReadFile("valgrind_log_file");
@@ -4536,13 +4527,22 @@ void outlineProcessKeypress(void) {
       //return; //end of case VISUAL (return here would not be executed)
 
     case REPLACE: 
+
+      if (c == '\x1b') {
+        O.command[0] = '\0';
+        O.repeat = 0;
+        O.mode = NORMAL;
+        return;
+      }
+
       for (int i = 0; i < O.repeat; i++) {
         outlineDelChar();
         outlineInsertChar(c);
       }
+
       O.repeat = 0;
       O.command[0] = '\0';
-      O.mode = 0;
+      O.mode = NORMAL;
 
       return; //////// end of outer case REPLACE
 
@@ -6643,156 +6643,7 @@ void editorScroll(void) {
   // it's either helpful or worthit but this is a placeholder for the idea
 }
 
-void editorDrawRows(std::string& ab) {
-  if (E.rows.empty()) {
-      editorEraseScreen(); //erases the note area since E.rows is empty
-      return;
-  }
-  //appears that it erases old text to the right of text as it goes.
-  int y = 0;
-  int len; //, n;
-  int j,k; // to swap E.highlitgh[0] and E.highlight[1] if necessary
-  char lf_ret[16];
-  // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-
-  // this is the first visible row on the screen given E.line_offset
-  // seems like it will always then display all top row's lines
-  //int filerow = editorGetFileRowByLineWW(0);
-  int filerow = 0;
-
-  for (;;){
-    if (y >= E.screenlines) break; //somehow making this >= made all the difference
-
-    // if there is still screen real estate but we've run out of text rows (E.numrows)
-    //drawing '~' below: first escape is red color (31m) and K erases rest of line
-    if (filerow > E.rows.size() - 1) {
-
-      //may not be worth this if else to not draw ~ in first row
-      //and probably there is a better way to do it
-      if (y) ab.append("\x1b[31m~\x1b[K", 9);
-      else ab.append("\x1b[K", 3);
-      ab.append(lf_ret, nchars);
-      y++;
-
-    // this else is the main drawing code
-    } else {
-
-      int lines = editorGetLinesInRowWW(filerow); // changed from E.fr to filerow 04012019
-
-      // below is trying to emulate what vim does when it can't show an entire row (because it generates
-      // multiple screen lines that can't all be displayed at the bottom of the screen because of where
-      // the screen scroll is.)  It shows nothing of the row rather than show a partial row.  May not be worth it.
-      // And *may* actually be causing problems
-
-      if ((y + lines) > E.screenlines) {
-          for (int n = 0; n < (E.screenlines - y); n++) {
-            ab.append("@@", 2); //??????
-            ab.append("\x1b[K", 3);
-            ab.append(lf_ret, nchars);
-          }
-        break;
-      }
-
-    //erow *row = &E.row[filerow];
-    std::string& row = E.rows.at(filerow);
-    char *start,*right_margin;
-    int left, width;
-    bool more_lines = true;
-
-    left = row.size(); //although maybe time to use strlen(preamble);
-    start = &row[0]; //char * to string that is going to be wrapped
-    width = E.screencols; //wrapping width
-
-    while(more_lines) {
-
-        if (left <= width) {//after creating whatever number of lines if remainer <= width: get out
-          len = left;
-          more_lines = false;
-        } else {
-          // each time start pointer moves you are adding the width to it and checking for spaces
-          right_margin = start+width - 1;
-
-          if (right_margin > &row[0] + row.size() - 1) right_margin = &row[0] + row.size() - 1; //02272019
-          while(!isspace(*right_margin)) { //#2
-            right_margin--;
-            if( right_margin == start) {// situation in which there were no spaces to break the link
-              right_margin += width - 1;
-              break;
-            }
-
-          } //end #2
-
-          len = right_margin - start + 1;
-          left -= right_margin-start+1;      /* +1 for the space */
-          //start = [see below]
-        }
-        y++;
-
-        if (E.mode == VISUAL_LINE) {
-
-          // below in case E.highlight[1] < E.highlight[0]
-          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
-          j =!k;
-
-          if (filerow >= E.highlight[j] && filerow <= E.highlight[k]) {
-            ab.append("\x1b[48;5;242m", 11);
-            ab.append(start, len);
-            ab.append("\x1b[49m", 5); //return background to normal
-          } else ab.append(start, len);
-
-        } else if (E.mode == VISUAL && filerow == E.fr) {
-
-          // below in case E.highlight[1] < E.highlight[0]
-          k = (E.highlight[1] > E.highlight[0]) ? 1 : 0;
-          j =!k;
-
-          char *Ehj = &(row[E.highlight[j]]);
-          char *Ehk = &(row[E.highlight[k]]);
-
-          if ((Ehj >= start) && (Ehj < start + len)) {
-            ab.append(start, Ehj - start);
-            ab.append("\x1b[48;5;242m", 11);
-            if ((Ehk - start) > len) {
-              ab.append(Ehj, len - (Ehj - start));
-              ab.append("\x1b[49m", 5); //return background to normal
-            } else {
-              ab.append(Ehj, E.highlight[k] - E.highlight[j]);
-              ab.append("\x1b[49m", 5); //return background to normal
-              ab.append(Ehk, start + len - Ehk);
-            }
-          } else if ((Ehj < start) && (Ehk > start)) {
-              ab.append("\x1b[48;5;242m", 11);
-
-            if ((Ehk - start) > len) {
-              ab.append(start, len);
-              ab.append("\x1b[49m", 5); //return background to normal
-            } else {
-              ab.append(start, Ehk - start);
-              ab.append("\x1b[49m", 5); //return background to normal
-              ab.append(Ehk, start + len - Ehk);
-            }
-
-          } else ab.append(start, len);
-        } else ab.append(start, len);
-
-      // "\x1b[K" erases the part of the line to the right of the cursor in case the
-      // new line i shorter than the old
-      ab.append("\x1b[K", 3);
-
-      ab.append(lf_ret, nchars);
-      ab.append("\x1b[0m", 4); //slz return background to normal
-
-      start = right_margin + 1; //move the start pointer to the beginning of what will be the next line
-      }
-
-      filerow++;
-    } // end of main drawing else block
-   ab.append("\x1b[0m", 4); //slz return background to normal
-  } // end of top for loop
-}
-
-void editorDrawRowsNew(std::string& ab) {
+void editorDrawRows(std::string &ab) {
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
@@ -7166,8 +7017,7 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  //editorDrawRows(ab);
-  editorDrawRowsNew(ab);
+  editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
@@ -7244,6 +7094,42 @@ void editorMoveCursor(int key) {
   }
 }
 
+void editorPageUpDown(int key) {
+
+  if (key == PAGE_UP) {
+    if(E.fr==0) return;
+    int lines = 0;
+    int r = E.fr - 1;
+    for(;;) {
+        lines += editorGetLinesInRowWW(r);
+        if (r == 0) {
+            break;
+        }
+        if (lines > E.screenlines) {
+            r++;
+            break;
+        }
+        r--;
+    }
+    E.fr = r;
+  } else {
+    int lines = 0;
+    int r = E.fr;
+    for(;;) {
+        lines += editorGetLinesInRowWW(r);
+        if (r == E.rows.size() - 1) {
+            break;
+        }
+        if (lines > E.screenlines) {
+            r--;
+            break;
+        }
+        r++;
+    }
+    E.fr = r;
+  }
+  return;
+}
 // calls readKey()
 void editorProcessKeypress(void) {
   int i, start, end, command;
@@ -7440,6 +7326,17 @@ void editorProcessKeypress(void) {
       *
       */
 
+      if (cmd_map1.count(command)) {
+        cmd_map1[command](E.repeat);
+        E.mode = INSERT;
+        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+        E.command[0] = '\0';
+        E.last_repeat = E.repeat;
+        E.repeat = 0;
+        E.last_typed.clear();
+        E.last_command = command;
+        return;
+      }
 
       switch (command) {
 
@@ -7447,71 +7344,23 @@ void editorProcessKeypress(void) {
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
           return;
-
+        /*
         case 'i':
           // editing cmd: can be dotted and does repeat
           editorCreateSnapshot();
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-
-       //   E.last_typed.clear(); //means it can be dotted
-       //   E.command[0] = '\0';
-       //   E.last_repeat = E.repeat;
-       //   E.repeat = 0;
-       //   E.last_command = command; //means it dotted
-
           break;
     
-        case 's':
-          // editing cmd: can be dotted and does repeat
+        case 'I':
+          // editing cmd: can be dotted and does repeat sets of characters
+          // repeat handled in INSERT escape
           editorCreateSnapshot();
-          f_s(E.repeat);
+          f_I(E.repeat);
           E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-
-       //   E.last_command = command;
-       //   E.command[0] = '\0';
-       //   E.last_repeat = E.repeat;
-       //   E.repeat = 0;
-       //   E.last_typed.clear();
-
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
-    
-        case 'x':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
 
-          f_x(E.repeat);
-
-       //   E.last_repeat = E.repeat;
-       //   E.repeat = 0;
-       //   E.last_command = command;
-       //   E.last_typed.clear();
-       //   E.command[0] = '\0';
-
-          break;
-        
-        case 'r':
-          editorCreateSnapshot();
-          // editing cmd: can be dotted and does repeat
-          //f_r would basically be a no op
-          E.mode = REPLACE;
-
-          return;
-    
-        case '~':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
-          f_change_case(E.repeat);
-
-      //    E.last_repeat = E.repeat;
-      //    E.repeat = 0;
-      //    E.last_command = command;
-      //    E.last_typed.clear();
-      //    E.command[0] = '\0';
-
-          break;
-    
         case 'a':
           // editing cmd: can be dotted and does repeat sets of characters
           editorCreateSnapshot();
@@ -7519,7 +7368,7 @@ void editorProcessKeypress(void) {
           E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
-    
+
         case 'A':
           // editing cmd: can be dotted and does repeat sets of characters
           editorCreateSnapshot();
@@ -7527,7 +7376,98 @@ void editorProcessKeypress(void) {
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
+        */
+
+        case 's':
+          // editing cmd: can be dotted and does repeat
+          editorCreateSnapshot();
+          f_s(E.repeat);
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+          break;
     
+        case 'x':
+          // editing cmd: can be dotted and does repeat
+          editorCreateSnapshot();
+          f_x(E.repeat);
+          break;
+        
+        case 'r':
+          // editing cmd: can be dotted and does repeat
+          //f_r exists for dot
+          editorCreateSnapshot();
+          E.mode = REPLACE;
+          return;
+    
+        case '~':
+          // editing cmd: can be dotted and does repeat
+          editorCreateSnapshot();
+          f_change_case(E.repeat);
+          break;
+    
+        case C_daw:
+          editorCreateSnapshot();
+          f_daw(E.repeat);
+          break;
+
+        case C_dw:
+          editorCreateSnapshot();
+          f_dw(E.repeat);
+          break;
+
+        case C_dd:
+          editorCreateSnapshot();
+          f_dd(E.repeat);
+          break;
+
+        case C_d$:
+          editorCreateSnapshot();
+          f_d$(E.repeat);
+          break;
+
+        case C_de:
+          editorCreateSnapshot();
+          start = E.fc;
+          editorMoveEndWord(); //correct one to use to emulate vim
+          end = E.fc;
+          E.fc = start;
+          for (int j = 0; j < end - start + 1; j++) editorDelChar();
+          //E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
+          // below 11-26-2019
+          E.fc = (start < E.rows.at(E.fr).size()) ? start : E.rows.at(E.fr).size() -1;
+          break;
+
+        case C_dG:
+          editorCreateSnapshot();
+          E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
+          if (E.rows.empty()) {
+              E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
+              E.mode = NO_ROWS;
+          } else {
+              E.fr--;
+          }
+          break;
+
+        //tested with repeat on one line
+        //note action is repeatable but
+        //text just written once
+        case C_cw:
+          editorCreateSnapshot();
+          f_cw(E.repeat);
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          break;
+
+        //tested with repeat on one line
+        //note action is repeatable but
+        //text just written once
+        case C_caw:
+          editorCreateSnapshot();
+          f_caw(E.repeat);
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          break; //see common code below before return at end of NORMAL
+
         case 'w':
           // navigation: can't be dotted but does repeat
           // navigation doesn't clear last dotted command
@@ -7568,17 +7508,6 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           return;
     
-        case 'I':
-          // editing cmd: can be dotted and does repeat sets of characters
-          // repeat handled in INSERT escape
-
-          editorCreateSnapshot();
-
-          f_I(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-    
         case 'o':
           // editing cmd: can be dotted and does repeat
           // repeat handled in INSERT escape
@@ -7601,19 +7530,6 @@ void editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
     
-        case 'G':
-          // navigation: can't be dotted and doesn't repeat
-          // navigation doesn't clear last dotted command
-          E.fc = 0;
-          E.fr = E.rows.size() - 1;
-
-          /////////////////////////
-          E.command[0] = '\0';
-          E.repeat = 0;
-          /////////////////////////
-
-          return;
-      
         case ':':
           E.mode = COMMAND_LINE;
           E.command[0] = ':';
@@ -7650,7 +7566,7 @@ void editorProcessKeypress(void) {
           getWordUnderCursor();
           editorFindNextWord();
           E.command[0] = '\0';
-          E.repeat = 0; // prob not necessary but doesn't hurt
+          E.repeat = E.last_repeat = 0; // prob not necessary but doesn't hurt
           return;
     
         case 'n':
@@ -7705,147 +7621,15 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           editorDecorateWord(c);
 
-      //    E.command[0] = '\0';
-      //    E.last_repeat = E.repeat;
-      //    E.last_typed.clear();
-      //    E.repeat = 0;
-      //    E.last_command = command;
-
           break;
-
 
         case CTRL_KEY('s'):
           editorSave();
           return;
 
-        case PAGE_UP:
-        case PAGE_DOWN:
-          if (c == PAGE_UP) {
-            if(E.fr==0) return;
-            int lines = 0;
-            int r = E.fr - 1;
-            for(;;) {
-                lines += editorGetLinesInRowWW(r);
-                if (r == 0) {
-                    break;
-                }
-                if (lines > E.screenlines) {
-                    r++;
-                    break;
-                }
-                r--;
-            }
-            E.fr = r;
-          } else {
-            int lines = 0;
-            int r = E.fr;
-            for(;;) {
-                lines += editorGetLinesInRowWW(r);
-                if (r == E.rows.size() - 1) {
-                    break;
-                }
-                if (lines > E.screenlines) {
-                    r--;
-                    break;
-                }
-                r++;
-
-            }
-            E.fr = r;
-          }
-          return;
-        /*
-        case PAGE_UP:
-        case PAGE_DOWN:
-          if (c == PAGE_UP) {
-            E.fr -= E.screenlines;
-            if (E.fr < 0) E.fr = 0;
-          } else if (c == PAGE_DOWN) {
-            E.fr += E.screenlines;
-            if (E.fr > E.rows.size() - 1) E.fr = E.rows.size() - 1;
-          }
-          return;
-        */
-
-        case ARROW_UP:
-        case ARROW_DOWN:
-        case ARROW_LEFT:
-        case ARROW_RIGHT:
-        case 'h':
-        case 'j':
-        case 'k':
-        case 'l':
-          editorMoveCursor(c);
-          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-          E.repeat = 0;
-          return;
-    
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           return;
-    
-        case C_daw:
-          editorCreateSnapshot();
-          f_daw(E.repeat);
-          break;
-    
-        case C_dw:
-          editorCreateSnapshot();
-          f_dw(E.repeat);
-          break;
-    
-        case C_dd:
-          editorCreateSnapshot();
-          f_dd(E.repeat);
-          break;
-
-        case C_d$:
-          editorCreateSnapshot();
-          f_d$(E.repeat);
-          break;
-
-        case C_de:
-          editorCreateSnapshot();
-          start = E.fc;
-          editorMoveEndWord(); //correct one to use to emulate vim
-          end = E.fc;
-          E.fc = start; 
-          for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          //E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
-          // below 11-26-2019
-          E.fc = (start < E.rows.at(E.fr).size()) ? start : E.rows.at(E.fr).size() -1;
-          break;
-    
-        case C_dG:
-          editorCreateSnapshot();
-          E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
-          if (E.rows.empty()) {
-              E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
-              E.mode = NO_ROWS;
-          } else {
-              E.fr--;
-          }
-          break;
-    
-        //tested with repeat on one line
-        //note action is repeatable but
-        //text just written once
-        case C_cw:
-          editorCreateSnapshot();
-          f_cw(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-    
-        //tested with repeat on one line
-        //note action is repeatable but
-        //text just written once
-        case C_caw:
-          editorCreateSnapshot();
-          f_caw(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break; //see common code below before return at end of NORMAL
     
         //indent and unindent changed to E.fr from E.cy on 11-26-2019
         case C_indent:
@@ -7868,6 +7652,32 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           return;
     
+       case C_yy:  
+         editorYankLine(E.repeat);
+         E.command[0] = '\0';
+         E.repeat = 0;
+         return;
+
+        case PAGE_UP:
+        case PAGE_DOWN:
+          editorPageUpDown(c);
+          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          E.repeat = 0;
+          return;
+
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          editorMoveCursor(c);
+          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          E.repeat = 0;
+          return;
+
         case C_gg:
           // navigation: should not clear dot
           E.fc = E.line_offset = 0;
@@ -7875,13 +7685,20 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           return;
-    
-       case C_yy:  
-         editorYankLine(E.repeat);
-         E.command[0] = '\0';
-         E.repeat = 0;
-         return;
-    
+
+        case 'G':
+          // navigation: can't be dotted and doesn't repeat
+          // navigation doesn't clear last dotted command
+          E.fc = 0;
+          E.fr = E.rows.size() - 1;
+
+          /////////////////////////
+          E.command[0] = '\0';
+          E.repeat = 0;
+          /////////////////////////
+
+          return;
+
        default:
           // if a single char or sequence of chars doesn't match then
           // do nothing - the next char may generate a match
@@ -7897,7 +7714,7 @@ void editorProcessKeypress(void) {
       E.last_command = command;
       ////////////////////////////
 
-      return; // end of case NORMAL (don't think it can be reached)
+      return; // end of case NORMAL
 
     case COMMAND_LINE:
 
@@ -7905,8 +7722,9 @@ void editorProcessKeypress(void) {
 
         case '\x1b':
 
-          E.mode = 0;
+          E.mode = NORMAL;
           E.command[0] = '\0';
+          E.repeat = E.last_repeat = 0;
           editorSetMessage(""); 
 
           return;
@@ -7993,7 +7811,8 @@ void editorProcessKeypress(void) {
           return;
   
         default:
-          ;
+          //;
+        {
           int n = strlen(E.command);
           if (c == DEL_KEY || c == BACKSPACE) {
             E.command[n-1] = '\0';
@@ -8003,7 +7822,9 @@ void editorProcessKeypress(void) {
           }
 
           editorSetMessage(E.command);
-      } 
+        }
+
+      } // end of COMMAND_LINE switch
   
       return;
 
@@ -8032,10 +7853,11 @@ void editorProcessKeypress(void) {
     
             for (int i = 0; i < E.repeat; i++) editorDelRow(E.highlight[0]);
           }
+
           E.fc = 0;
           E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+          E.repeat = E.last_repeat = 0;
+          E.mode = NORMAL;
           editorSetMessage("");
           return;
     
@@ -8124,7 +7946,7 @@ void editorProcessKeypress(void) {
           return;
     
         case 'y':  
-          E.repeat = E.highlight[1] - E.highlight[0] + 1;
+          //E.repeat = E.highlight[1] - E.highlight[0] + 1; // 12-14-2019
           E.fc = E.highlight[0];
           editorYankString();
           E.command[0] = '\0';
@@ -8145,9 +7967,9 @@ void editorProcessKeypress(void) {
           return;
     
         case '\x1b':
-          E.mode = 0;
+          E.mode = NORMAL;
           E.command[0] = '\0';
-          E.repeat = 0;
+          E.repeat = E.last_repeat = 0;
           editorSetMessage("");
           return;
     
@@ -8158,6 +7980,15 @@ void editorProcessKeypress(void) {
       return;
 
     case REPLACE:
+
+      if (c == '\x1b') {
+        E.command[0] = '\0';
+        E.repeat = E.last_repeat = 0;
+        E.last_command = 0;
+        E.last_typed.clear();
+        E.mode = NORMAL;
+        return;
+      }
 
       editorCreateSnapshot();
       for (int i = 0; i < E.repeat; i++) {
