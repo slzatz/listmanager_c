@@ -6692,9 +6692,10 @@ void editorDrawRows(std::string &ab) {
       ab.append("\x1b[0m", 4); //return background to normal
 
     if (row.empty()) {
+      //ab.append(lf_ret, nchars);
+      if (y == E.screenlines - 1) return;
       ab.append(lf_ret, nchars);
       filerow++;
-      if (y == E.screenlines) return;
       y++;
       continue;
     }
@@ -6703,10 +6704,22 @@ void editorDrawRows(std::string &ab) {
     int prev_pos;
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
+      /*
+      if (pos+1 >= row.size()) {
+          //ab.append(lf_ret, nchars);
+          if (y  == E.screenlines - 1) return;
+          y++;
+          filerow++;
+          break;
+
+      }
+      */
       if (row.substr(pos+1).size() <= E.screencols) {
-        ab.append(row.substr(pos+1));
+        //ab.append(row.substr(pos+1));
+        ab.append(row, pos+1, E.screencols);
+        //ab.append(lf_ret, nchars);
+        if (y == E.screenlines - 1) return;
         ab.append(lf_ret, nchars);
-        if (y == E.screenlines) return;
         y++;
         filerow++;
         break;
@@ -6715,11 +6728,21 @@ void editorDrawRows(std::string &ab) {
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
 
-      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
+      if (pos == prev_pos) {
+          row = row.substr(pos+1);
+          prev_pos = -1;
+          pos = E.screencols - 1;
 
-      ab.append(row.substr(prev_pos+1, pos-prev_pos));
+      } else if (pos == std::string::npos) pos = prev_pos + E.screencols;
+
+      //if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
+
+      //ab.append(row.substr(prev_pos+1, pos-prev_pos));
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      //ab.append(lf_ret, nchars);
+      //perhaps these lines shouldn't
+      if (y == E.screenlines - 1) return;
       ab.append(lf_ret, nchars);
-      if (y == E.screenlines) return;
       y++;
     }
     if (E.mode == VISUAL && filerow == E.fr + 1) {
