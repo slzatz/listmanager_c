@@ -436,6 +436,7 @@ void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
 void fts5_sqlite(void);
+void get_items_by_id_sqlite(std::stringstream &);
 
 void update_task_context_pg(const std::string &, int);
 void update_task_context_sqlite(const std::string &, int);
@@ -526,7 +527,7 @@ void editorEraseScreen(void); //erases the note section; redundant if just did a
 void editorInsertNewline(int);
 
 void editorHighlightWordsByPosition(void);
-void editorHighlightSearchTerms(void);
+void editorHighlightSearchTerms(void); //not currently in use
 void editorSpellCheck(void);
 void editorHighlightWord(int, int, int);
 
@@ -1480,7 +1481,7 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
 }
 
 // called as part of :find -> fts5_sqlite(fts5_callback) -> get_items_by_id_sqlite (by_id_data_callback)
-void get_items_by_id_sqlite(std::stringstream& query) {
+void get_items_by_id_sqlite(std::stringstream &query) {
   /*
    * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
@@ -6683,6 +6684,8 @@ void editorDrawRows(std::string &ab) {
 
   for (;;){
     if (filerow == E.rows.size()) return;
+    // I think this could be a string_view
+    //std::string_view row(E.rows.at(filerow);
     std::string row = E.rows.at(filerow);
 
     if (E.mode ==VISUAL_LINE && filerow == E.highlight[0])
@@ -6691,8 +6694,10 @@ void editorDrawRows(std::string &ab) {
     if (E.mode ==VISUAL_LINE && filerow == E.highlight[1] + 1)
       ab.append("\x1b[0m", 4); //return background to normal
 
+    // think this is necessary because
+    // row.substr(0) isn't defined
+    // if row is empty
     if (row.empty()) {
-      //ab.append(lf_ret, nchars);
       if (y == E.screenlines - 1) return;
       ab.append(lf_ret, nchars);
       filerow++;
@@ -6704,20 +6709,8 @@ void editorDrawRows(std::string &ab) {
     int prev_pos;
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
-      /*
-      if (pos+1 >= row.size()) {
-          //ab.append(lf_ret, nchars);
-          if (y  == E.screenlines - 1) return;
-          y++;
-          filerow++;
-          break;
-
-      }
-      */
       if (row.substr(pos+1).size() <= E.screencols) {
-        //ab.append(row.substr(pos+1));
         ab.append(row, pos+1, E.screencols);
-        //ab.append(lf_ret, nchars);
         if (y == E.screenlines - 1) return;
         ab.append(lf_ret, nchars);
         y++;
@@ -6728,19 +6721,18 @@ void editorDrawRows(std::string &ab) {
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
 
+      // another option below (unless it's a string view)
+      // would be to just set the blank to a non-blank letter
+      // but I like idea better of using a string view with no allocation
       if (pos == prev_pos) {
           row = row.substr(pos+1);
           prev_pos = -1;
           pos = E.screencols - 1;
+      } else if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      }
 
-      } else if (pos == std::string::npos) pos = prev_pos + E.screencols;
-
-      //if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
-
-      //ab.append(row.substr(prev_pos+1, pos-prev_pos));
       ab.append(row, prev_pos+1, pos-prev_pos);
-      //ab.append(lf_ret, nchars);
-      //perhaps these lines shouldn't
       if (y == E.screenlines - 1) return;
       ab.append(lf_ret, nchars);
       y++;
@@ -6759,91 +6751,6 @@ void editorDrawRows(std::string &ab) {
   }
 }
 
-void editorDrawRowsWithHighlighting(std::string& ab) {
-
-  char lf_ret[10];
-  // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  ab.append(buf, strlen(buf));
-
-  if (E.rows.empty()) return;
-
-  int y = 0;
-  int filerow = 0;
-
-  for (;;){
-    if (filerow == E.rows.size()) return;
-    std::string row = E.rows.at(filerow);
-
-    if (row.empty()) {
-
-      // don't write to screen if offset puts line offscreen
-      if (y < E.line_offset) {
-        y++;
-        filerow++;
-        continue;
-      }
-
-      //ab.append("\x1b[K", 3);
-      ab.append(lf_ret, nchars);
-      filerow++;
-      if (y == E.screenlines + E.line_offset) return;
-      y++;
-      continue;
-    }
-
-    int pos = -1;
-    int prev_pos;
-    for (;;) {
-      /* this is needed because it deals where the end of the line doesn't have a space*/
-      if (row.substr(pos+1).size() <= E.screencols) {
-
-        // don't write to screen if offset puts line offscreen
-        if (y < E.line_offset) {
-          y++;
-          filerow++;
-          break;
-        }
-
-        ab.append(row.substr(pos+1));
-        ab.append(lf_ret, nchars);
-        ab.append("\x1b[0m", 4); //return background to normal
-        if (y == E.screenlines  + E.line_offset) return;
-        y++;
-        filerow++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-      if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
-
-        // don't write to screen if offset puts line offscreen
-      if (y < E.line_offset) {
-        y++;
-        continue;
-      }
-
-      ab.append(row.substr(prev_pos+1, pos-prev_pos));
-      ab.append(lf_ret, nchars);
-      ab.append("\x1b[0m", 4); //return background to normal
-      if (y == E.screenlines + E.line_offset) return;
-      y++;
-    }
-  }
-}
 
 // below is doing search in note ourselves and not using sqlite
 // not currently in use but works but I wanted to use sqlite's FTS
@@ -8097,7 +8004,7 @@ int editorGetInitialRow(int &line_offset, int direction) {
 
 //used by editorGetInitialRow
 //used by editorGetScreenYFromRowColWW
-int editorGetLinesInRowWW(int r) {
+int editorGetLinesInRowWWOld(int r) {
   std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
@@ -8118,8 +8025,91 @@ int editorGetLinesInRowWW(int r) {
   return lines;
 }
 
+//used by editorGetInitialRow
+//used by editorGetScreenYFromRowColWW
+int editorGetLinesInRowWW(int r) {
+  std::string_view row(E.rows.at(r));
+
+  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
+
+  int lines = 0;
+  int pos = -1; //pos is the position of the last character in the line (zero-based)
+  int prev_pos;
+  for (;;) {
+
+      //prev_pos = pos;
+      //pos = row.find_last_of(' ', pos+E.screencols);
+
+      // we know the first time around this can't be true
+      // could add if (line > 1 && row.substr(pos+1).size() ...);
+      if (row.substr(pos+1).size() <= E.screencols) {
+        lines++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      if (prev_pos != -1 && pos == prev_pos) {
+          row = row.substr(pos+1);
+          prev_pos = -1;
+          pos = E.screencols - 1;
+
+      } else if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      }
+
+      lines++;
+  }
+  return lines;
+}
+
 // used in editorGetScreenYFromRowColWW
 int editorGetLineInRowWW(int r, int c) {
+  std::string row = E.rows.at(r);
+
+  if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  int lines = 0; //1
+  int pos = -1;
+  int prev_pos;
+  for (;;) {
+
+      //prev_pos = pos;
+      //pos = row.find_last_of(' ', pos+E.screencols);
+
+      // we know the first time around this can't be true
+      // could add if (line > 1 && row.substr(pos+1).size() ...);
+      if (row.substr(pos+1).size() <= E.screencols) {
+        lines++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      if (prev_pos != -1 && pos == prev_pos) {
+          row.at(pos) = '+';
+          //row = row.substr(pos+1);
+          //prev_pos = -1;
+          //pos = E.screencols - 1;
+        pos = prev_pos + E.screencols;
+
+      } else if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      }
+
+      lines++;
+      if (pos >= c) break;
+  }
+  return lines;
+}
+
+int editorGetLineInRowWWOld(int r, int c) {
   std::string &row = E.rows.at(r);
 
   if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
@@ -8147,6 +8137,7 @@ int editorGetLineInRowWW(int r, int c) {
 
 //used in status bar because interesting but not essential
 int editorGetLineCharCountWW(int r, int line) {
+    return 10;
 
   std::string& row = E.rows.at(r);
   if (row.empty()) return 0;
@@ -8172,6 +8163,56 @@ int editorGetLineCharCountWW(int r, int line) {
 
 //used by editorScroll to get E.cx
 int editorGetScreenXFromRowColWW(int r, int c) {
+  std::string row = E.rows.at(r);
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  if (row.size() <= E.screencols ) return c; //seems obvious but not added until 03022019
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  //int lines = 0; //1
+  int pos = -1;
+  int prev_pos;
+  for (;;) {
+
+      //prev_pos = pos;
+      //pos = row.find_last_of(' ', pos+E.screencols);
+
+      // we know the first time around this can't be true
+      // could add if (line > 1 && row.substr(pos+1).size() ...);
+      if (row.substr(pos+1).size() <= E.screencols) {
+          prev_pos = pos;
+        //lines++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      if (prev_pos != -1 && pos == prev_pos) {
+          row.at(pos) = '+';
+          //row = row.substr(pos+1);
+          //prev_pos = -1;
+          //pos = E.screencols - 1;
+        pos = prev_pos + E.screencols;
+
+      } else if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      }
+
+      //lines++;
+      if (pos >= c) break;
+  }
+  return c - prev_pos - 1;
+}
+
+//used by editorScroll to get E.cx
+int editorGetScreenXFromRowColWWOld(int r, int c) {
 
   std::string &row = E.rows.at(r);
 
