@@ -7948,6 +7948,7 @@ void editorProcessKeypress(void) {
 
 /********************************************************** WW stuff *****************************************/
 // used by editorDrawRows to figure out the first row to draw
+// there should be only one of these (see below)
 int editorGetInitialRow(int &line_offset) {
 
   if (line_offset == 0) return 0;
@@ -7975,6 +7976,7 @@ int editorGetInitialRow(int &line_offset) {
   return r;
 }
 
+// used by editorDrawRows to figure out the first row to draw
 int editorGetInitialRow(int &line_offset, int direction) {
 
   if (line_offset == 0) return 0;
@@ -8013,29 +8015,6 @@ int editorGetInitialRow(int &line_offset, int direction) {
 
 //used by editorGetInitialRow
 //used by editorGetScreenYFromRowColWW
-int editorGetLinesInRowWWOld(int r) {
-  std::string &row = E.rows.at(r);
-
-  if (row.size() <= E.screencols) return 1; //seems obvious but not added until 03022019
-
-  int lines = 2;
-  int pos = -1; //pos is the position of the last character in the line (zero-based)
-  int prev_pos;
-  for (;;) {
-    prev_pos = pos;
-    pos = row.find_last_of(' ', pos+E.screencols);
-    //if (pos == std::string::npos) pos = prev_pos + E.screencols;
-    //I think the || below is necessary - definitely was in drawing rows
-    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
-    // I believe pos+1 always exists but not 100% sure
-    if (row.substr(pos+1).size() <= E.screencols) break;
-    lines++;
-  }
-  return lines;
-}
-
-//used by editorGetInitialRow
-//used by editorGetScreenYFromRowColWW
 int editorGetLinesInRowWW(int r) {
   std::string_view row(E.rows.at(r));
 
@@ -8046,30 +8025,38 @@ int editorGetLinesInRowWW(int r) {
   int prev_pos;
   for (;;) {
 
-      //prev_pos = pos;
-      //pos = row.find_last_of(' ', pos+E.screencols);
-
-      // we know the first time around this can't be true
-      // could add if (line > 1 && row.substr(pos+1).size() ...);
-      if (row.substr(pos+1).size() <= E.screencols) {
-        lines++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-
-      //note npos when signed = -1
-      if (prev_pos != -1 && pos == prev_pos) {
-          row = row.substr(pos+1);
-          prev_pos = -1;
-          pos = E.screencols - 1;
-
-      } else if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      }
-
+    // we know the first time around this can't be true
+    // could add if (line > 1 && row.substr(pos+1).size() ...);
+    if (row.substr(pos+1).size() <= E.screencols) {
       lines++;
+      break;
+    }
+
+    prev_pos = pos;
+    pos = row.find_last_of(' ', pos+E.screencols);
+
+    //note npos when signed = -1
+    //order can be reversed of if, else if and can drop prev_pos != -1: see editorDrawRows
+    if (pos == std::string::npos) {
+      pos = prev_pos + E.screencols;
+    } else if (pos == prev_pos) {
+      row = row.substr(pos+1);
+      prev_pos = -1;
+      pos = E.screencols - 1;
+    }
+
+    /*
+    if (prev_pos != -1 && pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = E.screencols - 1;
+
+    } else if (pos == std::string::npos) {
+      pos = prev_pos + E.screencols;
+    }
+    */
+
+    lines++;
   }
   return lines;
 }
@@ -8077,6 +8064,7 @@ int editorGetLinesInRowWW(int r) {
 // used in editorGetScreenYFromRowColWW
 /**************can't take substring of row because absolute position matters**************************/
 int editorGetLineInRowWW(int r, int c) {
+  // can't use reference to row because replacing blanks to handle corner case
   std::string row = E.rows.at(r);
 
   if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
@@ -8100,10 +8088,21 @@ int editorGetLineInRowWW(int r, int c) {
     prev_pos = pos;
     pos = row.find_last_of(' ', pos+E.screencols);
 
-    if (pos == std::string::npos)
+    if (pos == std::string::npos) {
         pos = prev_pos + E.screencols;
+
+   // only replace if you have enough characters without a space to trigger this
+   // need to start at the beginning each time you hit this
+   // unless you want to save the position which doesn't seem worth it
+    } else if (pos == prev_pos) {
+      replace(row.begin(), row.begin()+pos+1, ' ', '+');
+      pos = prev_pos + E.screencols;
+    }
+
+    /*
     else
         replace(row.begin()+prev_pos+1, row.begin()+pos+1, ' ', '+');
+    */
 
     lines++;
     if (pos >= c) break;
@@ -8111,77 +8110,50 @@ int editorGetLineInRowWW(int r, int c) {
   return lines;
 }
 
-int editorGetLineInRowWWOld(int r, int c) {
+//used in status bar because interesting but not essential
+int editorGetLineCharCountWW(int r, int line) {
+  //This should be a string view and use substring like lines in row
   std::string row = E.rows.at(r);
+  if (row.empty()) return 0;
 
-  if (row.size() <= E.screencols ) return 1; //seems obvious but not added until 03022019
-
-  /* pos is the position of the last char in the line
-   * and pos+1 is the position of first character of the next row
-   */
+  if (row.size() <= E.screencols) return row.size();
 
   int lines = 0; //1
   int pos = -1;
   int prev_pos;
   for (;;) {
 
-      //prev_pos = pos;
-      //pos = row.find_last_of(' ', pos+E.screencols);
-
-      // we know the first time around this can't be true
-      // could add if (line > 1 && row.substr(pos+1).size() ...);
-      if (row.substr(pos+1).size() <= E.screencols) {
-        lines++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-
-      //note npos when signed = -1
-      if (prev_pos != -1 && pos == prev_pos) {
-          //row.replace(pos, 1,1,'+');
-          row = row.substr(pos+1);
-          prev_pos = -1;
-          pos = E.screencols - 1;
-        //pos = prev_pos + E.screencols;
-
-      } else if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      }
-
-      lines++;
-      if (pos >= c) break;
+  // we know the first time around this can't be true
+  // could add if (line > 1 && row.substr(pos+1).size() ...);
+  if (row.substr(pos+1).size() <= E.screencols) {
+    return row.substr(pos+1).size();
   }
-  return lines;
-}
-//used in status bar because interesting but not essential
-int editorGetLineCharCountWW(int r, int line) {
-    return 10;
 
-  std::string& row = E.rows.at(r);
-  if (row.empty()) return 0;
+  prev_pos = pos;
+  pos = row.find_last_of(' ', pos+E.screencols);
 
-  if (row.size() <= E.screencols) return row.size();
+  if (pos == std::string::npos) {
+    pos = prev_pos + E.screencols;
 
-  int lines = 1;
-  int pos = -1;
-  int prev_pos = -1;
-  for (;;) {
-    pos = row.find_last_of(' ', pos+E.screencols);
-    //if (pos == std::string::npos)  pos = prev_pos + E.screencols; //deals with case of no spaces
-    //I think the || below is necessary - definitely was in drawing rows
-    if (pos == std::string::npos || pos == prev_pos)  pos = prev_pos + E.screencols;
-    if (lines == line) break;
-    prev_pos = pos;
-    lines++;
+  // only replace if you have enough characters without a space to trigger this
+  // need to start at the beginning each time you hit this
+  // unless you want to save the position which doesn't seem worth it
+  } else if (pos == prev_pos) {
+    replace(row.begin(), row.begin()+pos+1, ' ', '+');
+    pos = prev_pos + E.screencols;
   }
-  if (row.substr(prev_pos+1).size() < E.screencols)
-     return row.substr(prev_pos+1).size();
-  else return pos - prev_pos;
+
+  lines++;
+  if (lines == line) break;
+  }
+  return pos - prev_pos;
 }
+
+
 /**************can't take substring of row because absolute position matters**************************/
+//called by editorScroll to get E.cx
 int editorGetScreenXFromRowColWW(int r, int c) {
+  // can't use reference to row because replacing blanks to handle corner case
   std::string row = E.rows.at(r);
 
   /* pos is the position of the last char in the line
@@ -8190,87 +8162,35 @@ int editorGetScreenXFromRowColWW(int r, int c) {
 
   if (row.size() <= E.screencols ) return c; //seems obvious but not added until 03022019
 
-  /* pos is the position of the last char in the line
-   * and pos+1 is the position of first character of the next row
-   */
-
   int pos = -1;
   int prev_pos;
   for (;;) {
 
-    if (row.substr(pos+1).size() <= E.screencols) {
-      prev_pos = pos;
-      break;
-    }
-
+  if (row.substr(pos+1).size() <= E.screencols) {
     prev_pos = pos;
-    pos = row.find_last_of(' ', pos+E.screencols);
-    if (pos == std::string::npos) pos = prev_pos + E.screencols;
-    //else row.replace(pos, 1, 1,'+');
-    else replace(row.begin()+prev_pos+1, row.begin()+pos+1, ' ', '+');
+    break;
+  }
 
-    if (pos >= c) break;
+  prev_pos = pos;
+  pos = row.find_last_of(' ', pos+E.screencols);
+
+  if (pos == std::string::npos) {
+      pos = prev_pos + E.screencols;
+  } else if (pos == prev_pos) {
+      replace(row.begin(), row.begin()+pos+1, ' ', '+');
+      pos = prev_pos + E.screencols;
+  }
+    /*
+    else
+      replace(row.begin()+prev_pos+1, row.begin()+pos+1, ' ', '+');
+    */
+
+  if (pos >= c) break;
   }
   return c - prev_pos - 1;
 }
 
-//used by editorScroll to get E.cx
-int editorGetScreenXFromRowColWWOld(int r, int c) {
-  std::string row = E.rows.at(r);
-
-  /* pos is the position of the last char in the line
-   * and pos+1 is the position of first character of the next row
-   */
-
-  if (row.size() <= E.screencols ) return c; //seems obvious but not added until 03022019
-
-  /* pos is the position of the last char in the line
-   * and pos+1 is the position of first character of the next row
-   */
-
-  //int lines = 0; //1
-  int pos = -1;
-  int prev_pos;
-  for (;;) {
-
-      //prev_pos = pos;
-      //pos = row.find_last_of(' ', pos+E.screencols);
-
-      // we know the first time around this can't be true
-      // could add if (line > 1 && row.substr(pos+1).size() ...);
-      if (row.substr(pos+1).size() <= E.screencols) {
-          prev_pos = pos;
-        //lines++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-
-      //note npos when signed = -1
-      if (prev_pos != -1 && pos == prev_pos) {
-          //row.at(pos) = '+';
-
-          row.replace(pos, 1, 1,'+');
-
-          //row = row.substr(pos+1);
-          //prev_pos = -1;
-          //pos = E.screencols - 1;
-        pos = prev_pos + E.screencols;
-
-      } else if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      }
-
-      //lines++;
-      if (pos >= c) break;
-  }
-  return c - prev_pos - 1;
-}
-
-//used by editorScroll to get E.cx
-
-// used in editScroll
+// called by editorScroll to get E.cy
 // E.line_offset is taken into account in editorScroll
 int editorGetScreenYFromRowColWW(int r, int c) {
   int screenline = 0;
@@ -8278,7 +8198,7 @@ int editorGetScreenYFromRowColWW(int r, int c) {
   for (int n = 0; n < r; n++)
     screenline+= editorGetLinesInRowWW(n);
 
-  screenline = screenline + editorGetLineInRowWW(r, c) - 1; //////////////////////////////////////////////////
+  screenline = screenline + editorGetLineInRowWW(r, c) - 1;
   return screenline;
 }
 /************************************* end of WW ************************************************/
