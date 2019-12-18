@@ -6653,12 +6653,6 @@ void editorDrawRows(std::string &ab) {
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
   ab.append("\x1b[?25l"); //hides the cursor
 
-  /*
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  ab.append(buf, strlen(buf));
-  */
-
   std::stringstream buf;
   // format for positioning cursor is "\x1b[%d;%dH"
   buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
@@ -6673,11 +6667,6 @@ void editorDrawRows(std::string &ab) {
   std::stringstream buf2;
   buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
   ab.append(buf2.str()); //reposition cursor
-
-  /*
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  ab.append(buf, strlen(buf));
-  */
 
   if (E.rows.empty()) return;
 
@@ -6722,16 +6711,6 @@ void editorDrawRows(std::string &ab) {
       prev_pos = pos;
       pos = row.find_last_of(' ', pos+E.screencols);
 
-      /*
-      if (pos == prev_pos) {
-          row = row.substr(pos+1);
-          prev_pos = -1;
-          pos = E.screencols - 1;
-      } else if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      }
-      */
-
       //note npos when signed = -1 and order of if/else may matter
       if (pos == std::string::npos) {
         pos = prev_pos + E.screencols;
@@ -6747,15 +6726,14 @@ void editorDrawRows(std::string &ab) {
       y++;
     }
     if (E.mode == VISUAL && filerow == E.fr + 1) {
-
-       int c = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
-       int r = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
-       std::stringstream s;
-       s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
-         << row.substr(E.highlight[0], E.highlight[1]-E.highlight[0])
-         << "\x1b[0m";
-       ab.append(s.str());
-       ab.append(lf_ret, nchars);
+      int c = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
+      int r = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
+      std::stringstream s;
+      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+        << row.substr(E.highlight[0], E.highlight[1]-E.highlight[0])
+        << "\x1b[0m";
+      ab.append(s.str());
+      ab.append(lf_ret, nchars);
     }
   }
 }
@@ -8044,18 +8022,6 @@ int editorGetLinesInRowWW(int r) {
       prev_pos = -1;
       pos = E.screencols - 1;
     }
-
-    /*
-    if (prev_pos != -1 && pos == prev_pos) {
-        row = row.substr(pos+1);
-        prev_pos = -1;
-        pos = E.screencols - 1;
-
-    } else if (pos == std::string::npos) {
-      pos = prev_pos + E.screencols;
-    }
-    */
-
     lines++;
   }
   return lines;
@@ -8098,11 +8064,6 @@ int editorGetLineInRowWW(int r, int c) {
       replace(row.begin(), row.begin()+pos+1, ' ', '+');
       pos = prev_pos + E.screencols;
     }
-
-    /*
-    else
-        replace(row.begin()+prev_pos+1, row.begin()+pos+1, ' ', '+');
-    */
 
     lines++;
     if (pos >= c) break;
