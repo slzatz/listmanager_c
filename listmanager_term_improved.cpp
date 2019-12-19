@@ -338,6 +338,7 @@ struct editorConfig {
   int mode;
   // probably OK that command is a char[] and not a std::string
   char command[10]; // right now includes normal mode commands and command line commands
+  std::string command_line; //for commands on the command line; string doesn't include ':'
   int last_command; //will use the number equivalent of the command
   int last_repeat;
   std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
@@ -2467,8 +2468,19 @@ void editorInsertChar(int chr) {
   if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
   }
-  std::string& row = E.rows.at(E.fr);
-  row.insert(row.begin() + E.fc, chr); //shouldn't just be row.insert(E.fc, chr)
+  std::string &row = E.rows.at(E.fr);
+  row.insert(row.begin() + E.fc, chr); // this works if row empty
+  //row.at(E.fc) = chr; // this doesn't work if row is empty
+  E.dirty++;
+  E.fc++;
+}
+
+void editorIndentRow(void) {
+  if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
+    editorInsertRow(0, std::string());
+  }
+  std::string &row = E.rows.at(E.fr);
+  row.insert(0, E.indent, ' ');
   E.dirty++;
   E.fc++;
 }
@@ -7063,8 +7075,8 @@ void editorProcessKeypress(void) {
       switch(c) {
         case ':':
           E.mode = COMMAND_LINE;
-          E.command[0] = ':';
-          E.command[1] = '\0';
+          E.command_line.clear();
+          E.command[0] = '\0';
           editorSetMessage(":");
           return;
 
@@ -7448,10 +7460,10 @@ void editorProcessKeypress(void) {
           break;
     
         case ':':
+          editorSetMessage(":");
+          E.command[0] = '\0';
+          E.command_line.clear();
           E.mode = COMMAND_LINE;
-          E.command[0] = ':';
-          E.command[1] = '\0';
-          editorSetMessage(":"); 
           return;
     
         case 'V':
@@ -7553,7 +7565,9 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
             editorIndentRow();
-            E.fr++;}
+            E.fr++;
+            if (E.fr == E.rows.size() - 1) break;
+          }
           E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
@@ -7643,20 +7657,22 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           editorSetMessage(""); 
-
           return;
   
         case '\r':
-          // probably easier to maintain if this was same as case '\r'
-          // in outline mode/COMMAND_LINE mode/case '\r'
-          // but with only single char commands except q!
-          // probably not worth it
-          switch (E.command[1]) {
+
+          std::size_t pos;
+
+          // passes back position of space (if there is one) in var pos
+          command = commandfromstringcpp(E.command_line, pos); //assume pos paramter is now a reference but should check
+
+          switch (command) {
 
             case 'w':
               update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
+              E.command_line.clear();
               editorSetMessage("");
               editorRefreshScreen();
 
@@ -7682,6 +7698,7 @@ void editorProcessKeypress(void) {
               update_note();
               E.mode = NORMAL;
               E.command[0] = '\0';
+              E.command_line.clear();
               editor_mode = false;
               editorSetMessage("");
               editorRefreshScreen();
@@ -7704,17 +7721,13 @@ void editorProcessKeypress(void) {
               }
               return;
   
+            case C_quit:
             case 'q':
               if (E.dirty) {
-                if (strlen(E.command) == 3 && E.command[2] == '!') {
                   E.mode = NORMAL;
                   E.command[0] = '\0';
-                  editor_mode = false;
-                } else {
-                  E.mode = NORMAL;
-                  E.command[0] = '\0';
+                  E.command_line.clear();
                   editorSetMessage("No write since last change");
-                }
               } else {
                 editorSetMessage("");
                 E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
@@ -7723,27 +7736,41 @@ void editorProcessKeypress(void) {
               editorRefreshScreen(); //if not quiting I am guessing puts cursor in right place
               return;
 
-          } // end of case '\r' switch
+            case C_quit0:
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              E.command_line.clear();
+              editor_mode = false;
+              return;
+
+            case C_spellcheck:
+              editorSpellCheck();
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              E.command_line.clear();
+              editorSetMessage("Spellcheck");
+              return;
+
+            default: // default for switch (command)
+              editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
+              E.mode = NORMAL;
+              return;
+
+          } // end of case '\r' switch (command)
      
           return;
   
-        default:
-          //;
-        {
-          int n = strlen(E.command);
-          if (c == DEL_KEY || c == BACKSPACE) {
-            E.command[n-1] = '\0';
-          } else {
-            E.command[n] = c;
-            E.command[n+1] = '\0';
-          }
+        default: //default for switch 'c' in case COMMAND_LINE
+          if (c == DEL_KEY || c == BACKSPACE)
+            E.command_line.pop_back();
+          else
+            E.command_line.push_back(c);
 
-          editorSetMessage(E.command);
-        }
+          editorSetMessage(":%s", E.command_line.c_str());
 
-      } // end of COMMAND_LINE switch
+      } // end of COMMAND_LINE switch (c)
   
-      return;
+      return; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
 
@@ -8229,7 +8256,8 @@ void editorPasteLine(void){
   }
 }
 
-void editorIndentRow(void) {
+// replaced on 12-182019
+void editorIndentRowOld(void) {
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
   if (row.empty()) return;
@@ -8244,6 +8272,7 @@ void editorUnIndentRow(void) {
   if (row.empty()) return;
   E.fc = 0;
   for (int i = 0; i < E.indent; i++) {
+    if (row.empty()) break;
     if (row[0] == ' ') {
       editorDelChar();
     }
@@ -8636,6 +8665,7 @@ void initOutline() {
   O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   O.last_mode = NORMAL;
   O.command[0] = '\0';
+  O.command_line = "";
   O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
   O.view = TASK; // not necessary here since set when searching database
@@ -8662,6 +8692,7 @@ void initEditor(void) {
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
   E.command[0] = '\0';
+  E.command_line = "";
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
