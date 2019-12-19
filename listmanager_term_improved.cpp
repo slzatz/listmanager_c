@@ -346,6 +346,7 @@ struct editorConfig {
   int indent;
   int smartindent;
   int initial_drawing_row;
+  bool spellcheck;
 };
 
 static struct editorConfig E;
@@ -548,12 +549,13 @@ inline void f_dd(int);
 inline void f_cw(int);
 inline void f_caw(int);
 inline void f_s(int);
+inline void f_x(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
-static std::map<int, pfunc> cmd_map3 = {{C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
+static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
 static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
 /*************************************/
 
@@ -3227,14 +3229,17 @@ void outlineProcessKeypress(void) {
       /*leading digit is a multiplier*/
       //if (isdigit(c)) { //equiv to if (c > 47 && c < 58)
 
-      if ((c > 48 && c < 58) && (strlen(O.command) == 0)) {
+      if ((c > 47 && c < 58) && (strlen(O.command) == 0)) {
 
-        if ( O.repeat == 0 )
+        if (O.repeat == 0 && c == 48) {
+
+        } else if (O.repeat == 0) {
           O.repeat = c - 48;
-        else
+          return;
+        }  else {
           O.repeat = O.repeat*10 + c - 48;
-
-      return;
+          return;
+        }
       }
 
       if ( O.repeat == 0 ) O.repeat = 1;
@@ -3365,7 +3370,7 @@ void outlineProcessKeypress(void) {
           return;
 
         case '0':
-          //if (!O.rows.empty()) O.fc = 0;
+          if (!O.rows.empty()) O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
           O.command[0] = '\0';
           O.repeat = 0;
           return;
@@ -6811,6 +6816,11 @@ void editorSpellCheck(void) {
         editorHighlightWord(n, start, end-start);
     }
   }
+
+  //reposition the cursor back to where it belongs
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
+  write(STDOUT_FILENO, buf, strlen(buf));
 }
 
 // uses sqlite offsets contained in word_positions
@@ -7215,14 +7225,17 @@ void editorProcessKeypress(void) {
 
       /*leading digit is a multiplier*/
 
-      if ((c > 48 && c < 58) && (strlen(E.command) == 0)) {
+      if ((c > 47 && c < 58) && (strlen(E.command) == 0)) {
 
-        if ( E.repeat == 0 )
+        if (E.repeat == 0 && c == 48) {
+
+        } else if (E.repeat == 0) {
           E.repeat = c - 48;
-        else
+          return;
+        } else {
           E.repeat = E.repeat*10 + c - 48;
-
-      return;
+          return;
+        }
       }
 
       if ( E.repeat == 0 ) E.repeat = 1;
@@ -7234,31 +7247,25 @@ void editorProcessKeypress(void) {
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
-      /* this is where we could begin to use cmd_map or set*/
-   /* if cmd_set2.count(E.last_command) {
-    *   editorCreateSnapshot();
-    *
-        if (cmd_map2.count(E.last_command)) {
-            cmd_map2[E.last_command](E.last_repeat);
-
-        // C_dw, C_daw, C_dd
-        } else if (cmd_map3.count(E.last_command)) {
-            cmd_map3[E.last_command](E.last_repeat);
-        }
-        E.command[0] = '\0';
-        E.last_repeat = E.repeat;
-        E.repeat = 0;
-        E.last_typed.clear();
-        E.last_command = command;
-        return;
-      }
-      *
-      */
-
+      /* starting to use command maps*/
+     {
+      bool used_mapped_command = false;
+      //map1 -> i, I, a, A
       if (cmd_map1.count(command)) {
+        editorCreateSnapshot();
         cmd_map1[command](E.repeat);
         E.mode = INSERT;
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+        used_mapped_command = true;
+
+      // map3 -> x, dw, daw, dd
+      } else if (cmd_map3.count(command)) {
+        editorCreateSnapshot();
+        cmd_map3[command](E.repeat);
+        used_mapped_command = true;
+      }
+
+      if (used_mapped_command) {
         E.command[0] = '\0';
         E.last_repeat = E.repeat;
         E.repeat = 0;
@@ -7266,7 +7273,7 @@ void editorProcessKeypress(void) {
         E.last_command = command;
         return;
       }
-
+      }
       switch (command) {
 
         case SHIFT_TAB:
@@ -7315,12 +7322,14 @@ void editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           break;
     
+        /*
         case 'x':
           // editing cmd: can be dotted and does repeat
           editorCreateSnapshot();
           f_x(E.repeat);
           break;
-        
+        */
+
         case 'r':
           // editing cmd: can be dotted and does repeat
           //f_r exists for dot
@@ -7334,6 +7343,7 @@ void editorProcessKeypress(void) {
           f_change_case(E.repeat);
           break;
     
+        /*
         case C_daw:
           editorCreateSnapshot();
           f_daw(E.repeat);
@@ -7348,6 +7358,7 @@ void editorProcessKeypress(void) {
           editorCreateSnapshot();
           f_dd(E.repeat);
           break;
+         */
 
         case C_d$:
           editorCreateSnapshot();
@@ -7400,7 +7411,9 @@ void editorProcessKeypress(void) {
         case 'w':
           // navigation: can't be dotted but does repeat
           // navigation doesn't clear last dotted command
-          editorMoveNextWord();
+          for (int i=0; i<E.repeat; i++) {
+            editorMoveNextWord();
+          }
           E.command[0] = '\0';
           E.repeat = 0;
           return;
@@ -7744,11 +7757,12 @@ void editorProcessKeypress(void) {
               return;
 
             case C_spellcheck:
-              editorSpellCheck();
+              //editorSpellCheck();
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              editorSetMessage("Spellcheck");
+              E.spellcheck = !E.spellcheck;
+              editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
               return;
 
             default: // default for switch (command)
@@ -8697,6 +8711,7 @@ void initEditor(void) {
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
   E.initial_drawing_row = 0;
+  E.spellcheck = false;
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
@@ -8792,11 +8807,15 @@ int main(int argc, char** argv) {
 
   while (1) {
 
+    //need a way to just refresh command line
     if (editor_mode){
-      editorScroll();
-      editorRefreshScreen();
+      //if (E.mode != COMMAND_LINE) {
+        editorScroll();
+        editorRefreshScreen();
+        if (E.spellcheck) editorSpellCheck();
+      //}
       editorProcessKeypress();
-    } else if (O.mode != FILE_DISPLAY) { 
+    } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
       outlineScroll();
       outlineRefreshScreen();
       outlineProcessKeypress();
