@@ -550,12 +550,13 @@ inline void f_cw(int);
 inline void f_caw(int);
 inline void f_s(int);
 inline void f_x(int);
+inline void f_d$(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
-static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}};
+static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}};
 static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
 /*************************************/
 
@@ -7258,6 +7259,15 @@ void editorProcessKeypress(void) {
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
         used_mapped_command = true;
 
+      //map2 -> O, o
+      } else if (cmd_map2.count(command)) {
+        editorCreateSnapshot();
+        E.last_typed.clear();
+        cmd_map2[command](1); //note this is ! not e.repeat
+        E.mode = INSERT;
+        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+        used_mapped_command = true;
+
       // map3 -> x, dw, daw, dd
       } else if (cmd_map3.count(command)) {
         editorCreateSnapshot();
@@ -7360,10 +7370,12 @@ void editorProcessKeypress(void) {
           break;
          */
 
+        /*
         case C_d$:
           editorCreateSnapshot();
           f_d$(E.repeat);
           break;
+         */
 
         case C_de:
           editorCreateSnapshot();
@@ -7450,6 +7462,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           return;
     
+        /*
         case 'o':
           // editing cmd: can be dotted and does repeat
           // repeat handled in INSERT escape
@@ -7471,7 +7484,8 @@ void editorProcessKeypress(void) {
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
-    
+          */
+
         case ':':
           editorSetMessage(":");
           E.command[0] = '\0';
