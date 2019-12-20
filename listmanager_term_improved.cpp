@@ -347,6 +347,7 @@ struct editorConfig {
   int smartindent;
   int initial_drawing_row;
   bool spellcheck;
+  bool move_only;
 };
 
 static struct editorConfig E;
@@ -551,6 +552,11 @@ inline void f_caw(int);
 inline void f_s(int);
 inline void f_x(int);
 inline void f_d$(int);
+inline void f_w(int);
+inline void f_b(int);
+inline void f_e(int);
+inline void f_0(int);
+inline void f_$(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
@@ -558,6 +564,7 @@ static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A'
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
 static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}};
 static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
+static std::map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
 /*************************************/
 
 // config struct for reading db.ini file
@@ -2312,6 +2319,37 @@ inline void f_O(int repeat) {
       else editorInsertChar(c);
     }
   }
+}
+
+inline void f_w(int repeat) {
+  for (int i=0; i<repeat; i++) {
+     editorMoveNextWord();
+  }
+}
+
+inline void f_b(int repeat) {
+  for (int i=0; i<repeat; i++) {
+     editorMoveBeginningWord();
+  }
+}
+
+inline void f_e(int repeat) {
+  for (int i=0; i<repeat; i++) {
+     editorMoveEndWord();
+  }
+}
+
+inline void f_0(int repeat) {
+  editorMoveCursorBOL();
+}
+
+inline void f_$(int repeat) {
+  int r = E.fr;
+  for (int n=0; n<repeat; n++) {
+    if (r < E.rows.size() - 1);
+       editorMoveCursorEOL();
+       r++;
+   }
 }
 
 void editorDoRepeat(void) {
@@ -6957,9 +6995,11 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
+  if (!E.move_only) {
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
+  } else E.move_only = false;
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -7251,6 +7291,7 @@ void editorProcessKeypress(void) {
       /* starting to use command maps*/
      {
       bool used_mapped_command = false;
+      //E.move_only
       //map1 -> i, I, a, A
       if (cmd_map1.count(command)) {
         editorCreateSnapshot();
@@ -7273,17 +7314,26 @@ void editorProcessKeypress(void) {
         editorCreateSnapshot();
         cmd_map3[command](E.repeat);
         used_mapped_command = true;
+
+      // map5 -> w, e, b, 0, $
+      } else if (cmd_map5.count(command)) {
+          cmd_map5[command](E.repeat);
+          used_mapped_command = true;
+          E.move_only = true;
       }
 
       if (used_mapped_command) {
+        if(!E.move_only) {
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
+          E.last_command = command;
+        }
         E.command[0] = '\0';
-        E.last_repeat = E.repeat;
         E.repeat = 0;
-        E.last_typed.clear();
-        E.last_command = command;
         return;
       }
       }
+
       switch (command) {
 
         case SHIFT_TAB:
@@ -7420,47 +7470,6 @@ void editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break; //see common code below before return at end of NORMAL
 
-        case 'w':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          for (int i=0; i<E.repeat; i++) {
-            editorMoveNextWord();
-          }
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-    
-        case 'b':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveBeginningWord();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-    
-        case 'e':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveEndWord();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-    
-        case '0':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveCursorBOL();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
-    
-        case '$':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveCursorEOL();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return;
     
         /*
         case 'o':
@@ -7523,6 +7532,7 @@ void editorProcessKeypress(void) {
           editorFindNextWord();
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0; // prob not necessary but doesn't hurt
+          E.move_only = true;
           return;
     
         case 'n':
@@ -7532,6 +7542,7 @@ void editorProcessKeypress(void) {
           // not a dot command so should leave E.last_repeat alone
           E.command[0] = '\0';
           E.repeat = 0; // prob not necessary but doesn't hurt
+          E.move_only = true;
           return;
     
         case 'u':
@@ -7558,6 +7569,7 @@ void editorProcessKeypress(void) {
         case 'z':
           editorSpellingSuggestions();
           E.command[0] = '\0';
+          E.move_only = true;
           return;
 
         case '.':
@@ -7633,15 +7645,68 @@ void editorProcessKeypress(void) {
         case 'l':
           editorMoveCursor(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          E.move_only = true;
           E.repeat = 0;
           return;
 
+        /*
+        case 'w':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
+
+          //for (int i=0; i<E.repeat; i++) {
+          //  editorMoveNextWord();
+          //}
+          f_w(E.repeat);
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.move_only = true;
+          return;
+
+        case 'b':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
+          editorMoveBeginningWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.move_only = true;
+          return;
+
+        case 'e':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
+          editorMoveEndWord();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.move_only = true;
+          return;
+
+        case '0':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
+          editorMoveCursorBOL();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.move_only = true;
+          return;
+
+        case '$':
+          // navigation: can't be dotted but does repeat
+          // navigation doesn't clear last dotted command
+          editorMoveCursorEOL();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.move_only = true;
+          return;
+
+          */
         case C_gg:
           // navigation: should not clear dot
           E.fc = E.line_offset = 0;
           E.fr = E.repeat-1;
           E.command[0] = '\0';
           E.repeat = 0;
+          E.move_only = true;
           return;
 
         case 'G':
@@ -7649,6 +7714,7 @@ void editorProcessKeypress(void) {
           // navigation doesn't clear last dotted command
           E.fc = 0;
           E.fr = E.rows.size() - 1;
+          E.move_only = true;
 
           /////////////////////////
           E.command[0] = '\0';
@@ -8726,6 +8792,7 @@ void initEditor(void) {
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
   E.initial_drawing_row = 0;
   E.spellcheck = false;
+  E.move_only = false;
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
