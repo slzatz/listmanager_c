@@ -2321,6 +2321,7 @@ inline void f_O(int repeat) {
   }
 }
 
+//lands on punctuation, lands on blank lines ...
 inline void f_w(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveNextWord();
@@ -8463,7 +8464,7 @@ void editorMoveEndWord2() {
 }
 
 // used by 'w' -> goes to beginning of work left to right
-void editorMoveNextWord(void) {
+void editorMoveNextWordOld(void) {
 
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
@@ -8476,6 +8477,66 @@ void editorMoveNextWord(void) {
   E.fc = end;
 }
 
+// so far handles all corner cases like vim
+void editorMoveNextWord(void) {
+
+  if (E.rows.empty()) return;
+
+  if (E.rows.at(E.fr).empty() && E.fr < E.rows.size() - 1) E.fr++;
+
+  std::string delimiters = " ,.;?:()[]{}&#~'";
+  int r = E.fr;
+  int c = E.fc;
+  int pos;
+
+  if (c == 0 && E.rows.at(r).size() > 1) c = 1;
+
+  for (;;) {
+    if (r > E.rows.size() - 1) return;
+
+    std::string& row = E.rows.at(r);
+
+    if (row.empty()) {
+        E.fc = 0;
+        break;
+    }
+
+    if (c == 0 && row.at(0) != ' ') break;
+
+  // are we starting on punctuation?
+
+    pos = delimiters.find(row.at(c), 0);
+    if (pos != std::string::npos) {
+      pos = row.find_first_not_of(delimiters, c);
+      if (pos != std::string::npos) break;
+      else {
+        r++;
+        c = 0;
+      }
+    } else {
+      pos = row.find_first_of(delimiters, c);
+      if (pos == std::string::npos) {
+        r++;
+        c = 0;
+        continue;
+      }
+      if (row.at(pos) != ' ') break;
+      else {
+        pos = row.find_first_not_of(' ', pos);
+        if (pos != std::string::npos) break;
+        else {
+          r++;
+          c = 0;
+        }
+      }
+    }
+  }
+  if (0) ;//(pos == std::string::npos) return;
+  else {
+    E.fc = pos;
+    E.fr = r;
+  }
+}
 // normal mode 'b'
 // does not go to previous line line Vim
 // but cycles through current line
