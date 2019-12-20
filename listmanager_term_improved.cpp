@@ -8464,31 +8464,29 @@ void editorMoveEndWord2() {
 }
 
 // used by 'w' -> goes to beginning of work left to right
-void editorMoveNextWordOld(void) {
-
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-
-  auto beg = (row.at(E.fc) != ' ') ? row.find_first_of(' ', E.fc) : E.fc;
-
-  auto end = row.find_first_not_of(' ', beg);
-  if (end == std::string::npos) {end = row.size();}
-
-  E.fc = end;
-}
-
-// so far handles all corner cases like vim
+// lots of quirks related to punctuation, empty rows, etc.
+// seems to handle all corner cases like vim
 void editorMoveNextWord(void) {
 
   if (E.rows.empty()) return;
 
-  if (E.rows.at(E.fr).empty() && E.fr < E.rows.size() - 1) E.fr++;
+  if (E.rows.at(E.fr).empty() && E.fr < E.rows.size() - 1) {
+      if (E.rows.at(E.fr+1).at(0) != ' ' || E.rows.at(E.fr+1).empty()) {
+          E.fr++;
+          E.fc = 0;
+          return;
+      }
+  }
 
   std::string delimiters = " ,.;?:()[]{}&#~'";
   int r = E.fr;
   int c = E.fc;
   int pos;
 
+  // this wierd line is from fact that if you
+  // move to first non-space char of a row
+  // then you're done but don't want that
+  // to occur if you start there since cursor won't move then
   if (c == 0 && E.rows.at(r).size() > 1) c = 1;
 
   for (;;) {
