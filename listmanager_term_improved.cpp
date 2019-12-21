@@ -516,7 +516,7 @@ void editorMoveEndWord(void);
 void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
 void editorMoveNextWord(void);
 void editorMarkupLink(void);
-void getWordUnderCursor(void);
+//void getWordUnderCursor(void);
 std::string editorGetWordUnderCursor(void);
 void editorFindNextWord(void);
 void editorChangeCase(void);
@@ -4354,11 +4354,11 @@ void outlineProcessKeypress(void) {
           } //end of commandfromstring switch within '\r' of case COMMAND_LINE
 
         default: //default for switch 'c' in case COMMAND_LINE
-          if (c == DEL_KEY || c == BACKSPACE)
-            O.command_line.pop_back();
-          else
+          if (c == DEL_KEY || c == BACKSPACE) {
+            if (!O.command_line.empty()) O.command_line.pop_back();
+          } else {
             O.command_line.push_back(c);
-
+          }
           outlineSetMessage(":%s", O.command_line.c_str());
 
         } // end of 'c' switch within case COMMAND_LINE
@@ -6870,7 +6870,7 @@ void editorSpellCheck(void) {
 // https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period
+  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list?
   int word_num = -1;
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
@@ -7000,8 +7000,11 @@ void editorRefreshScreen(void) {
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
-  } else E.move_only = false;
-
+  } else {
+    editorDrawStatusBar(ab);
+    editorDrawMessageBar(ab);
+    E.move_only = false;
+  }
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
@@ -7320,7 +7323,7 @@ void editorProcessKeypress(void) {
       } else if (cmd_map5.count(command)) {
           cmd_map5[command](E.repeat);
           used_mapped_command = true;
-          E.move_only = true;
+          E.move_only = true;// still need to draw status line and message
       }
 
       if (used_mapped_command) {
@@ -7529,7 +7532,7 @@ void editorProcessKeypress(void) {
     
         case '*':  
           // does not clear dot
-          getWordUnderCursor();
+          editorGetWordUnderCursor();
           editorFindNextWord();
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0; // prob not necessary but doesn't hurt
@@ -7856,11 +7859,11 @@ void editorProcessKeypress(void) {
           return;
   
         default: //default for switch 'c' in case COMMAND_LINE
-          if (c == DEL_KEY || c == BACKSPACE)
-            E.command_line.pop_back();
-          else
+          if (c == DEL_KEY || c == BACKSPACE) {
+            if (!E.command_line.empty()) E.command_line.pop_back();
+          } else {
             E.command_line.push_back(c);
-
+          }
           editorSetMessage(":%s", E.command_line.c_str());
 
       } // end of COMMAND_LINE switch (c)
@@ -8538,7 +8541,7 @@ void editorMoveNextWord(void) {
 // normal mode 'b'
 // does not go to previous line line Vim
 // but cycles through current line
-void editorMoveBeginningWord(void) {
+void editorMoveBeginningWordOld(void) {
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
 
@@ -8549,6 +8552,68 @@ void editorMoveBeginningWord(void) {
   else beg++;
 
   E.fc = beg;
+}
+
+//doesn't handle runs of punctuation like vim (which just highlights left most one) but close
+//doesn't handle space as 0th char if you start on [1] char
+void editorMoveBeginningWord(void) {
+  if (E.rows.empty()) return;
+
+  if (E.fr == 0 && E.fc == 0) return;
+
+  if ((E.rows.at(E.fr).empty() || E.fc == 0) && E.fr != 0) {
+      if (E.rows.at(E.fr-1).empty()) {
+          E.fr--;
+          E.fc = 0;
+          editorSetMessage("We started on an empty row or the 0th character of the row and happened to move to an empty row");
+          return;
+      } else {
+         E.fr--;
+         E.fc = E.rows.at(E.fr).size() - 1;
+         editorSetMessage("We started on an empty row or the 0th character of the row and are at the end of the row above");
+      }
+  }
+
+  std::string delimiters = " ,.;?:()[]{}&#~'";
+  std::string delimiters_without_space =  ",.;?:()[]{}&#~'";
+
+
+  int r = E.fr;
+  int c = E.fc;
+  int pos;
+
+  char z = E.rows.at(E.fr).at(E.fc -1);
+  pos = delimiters.find(z);
+  if (pos != std::string::npos) {
+      if (z != ' ') {
+          E.fc = E.fc -1;
+          return;
+      } else c--;
+   //we're starting this at the beginning of a word
+   editorSetMessage("At the beginning of a word");
+  }
+
+  for (;;) {
+    //if (r < 0 ) return;
+
+    std::string row = E.rows.at(r);
+
+    pos = (delimiters.find(row.at(c)) != std::string::npos);
+    if (pos != std::string::npos) row.at(c) = 'X';
+    //pos = row.rfind(delimiters, c);
+    pos = row.find_last_of(delimiters, c);
+    if (pos == std::string::npos) {
+        c = 0;
+        break;
+    } else {
+            c = pos+1;
+            break;
+    }
+
+
+  }
+  E.fc =c;
+  E.fr = r;
 }
 
 
@@ -8663,6 +8728,7 @@ std::string editorGetWordUnderCursor(void) {
 }
 
 // doesn't handle punctuation correctly
+/*
 void getWordUnderCursor(void){
 
   search_string.clear();
@@ -8684,6 +8750,7 @@ void getWordUnderCursor(void){
 
   //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
 }
+*/
 
 void editorFindNextWord(void) {
   if (E.rows.empty()) return;
