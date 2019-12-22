@@ -8540,9 +8540,56 @@ void editorMoveNextWord(void) {
 }
 
 // normal mode 'b'
+// not well tested but seems identical to vim including hanlding of runs of punctuation
+void editorMoveBeginningWord(void) {
+  if (E.rows.empty()) return;
+  if (E.fr == 0 && E.fc == 0) return;
+
+   //move back one character
+
+  if (E.fc == 0) { // this should also cover an empty row
+    E.fr--;
+    E.fc = E.rows.at(E.fr).size() - 1;
+    if (E.fc == -1) {E.fc == 0; return;}
+  } else E.fc--;
+
+  int r = E.fr;
+  int c = E.fc;
+  int pos;
+  std::string delimiters = " ,.;?:()[]{}&#~'";
+  std::string delimiters_without_space =  ",.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    std::string &row = E.rows.at(r);
+
+    if (row.empty()) {E.fr = r; E.fc == 0; return;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+      pos = row.find_last_of(delimiters, c);
+      if (pos != std::string::npos) {E.fc = pos + 1; E.fr = r; return;}
+      else {E.fc = 0; E.fr = r; return;}
+    }
+
+   // If we get here we started on punctuation
+    if (row.at(c) == ' ') {
+      if (c == 0) {
+        r--;
+        c = E.rows.at(r).size() - 1;
+        if (c == -1) {E.fc = 0; E.fr = r; return;}
+      } else {c--; continue;}
+    }
+
+    if (c == 0 || row.at(c-1) == ' ' || isalnum(row.at(c-1))) {E.fc = c; E.fr = r; return;}
+
+    c--;
+   }
+}
+
+// normal mode 'b'
 // doesn't handle runs of punctuation like vim (which just highlights left most one) but close
 // if you try to rewrite this, create something new don't edit this since it works pretty well.
-void editorMoveBeginningWord(void) {
+void editorMoveBeginningWordOld(void) {
 
   // this top section should deal with simple cases and should move the cursor
   // over at least one space so in the for(;;) loop you can exit if you meet
