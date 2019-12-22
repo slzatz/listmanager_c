@@ -8538,25 +8538,17 @@ void editorMoveNextWord(void) {
     E.fr = r;
   }
 }
+
 // normal mode 'b'
-// does not go to previous line line Vim
-// but cycles through current line
-void editorMoveBeginningWordOld(void) {
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-
-  auto end = row.find_last_not_of(' ', E.fc-1);
-
-  auto beg = row.find_last_of(' ', end);
-  if (beg == std::string::npos ) beg = 0;
-  else beg++;
-
-  E.fc = beg;
-}
-
-//doesn't handle runs of punctuation like vim (which just highlights left most one) but close
-//doesn't handle space as 0th char if you start on [1] char
+// doesn't handle runs of punctuation like vim (which just highlights left most one) but close
+// if you try to rewrite this, create something new don't edit this since it works pretty well.
 void editorMoveBeginningWord(void) {
+
+  // this top section should deal with simple cases and should move the cursor
+  // over at least one space so in the for(;;) loop you can exit if you meet
+  // the criteria for a 'b'
+
+
   if (E.rows.empty()) return;
 
   if (E.fr == 0 && E.fc == 0) return;
@@ -8570,6 +8562,7 @@ void editorMoveBeginningWord(void) {
       } else {
          E.fr--;
          E.fc = E.rows.at(E.fr).size() - 1;
+         if (E.rows.at(E.fr).at(E.fc) > 32 && E.rows.at(E.fr).at(E.fc) < 48) return;
          editorSetMessage("We started on an empty row or the 0th character of the row and are at the end of the row above");
       }
   }
@@ -8593,24 +8586,46 @@ void editorMoveBeginningWord(void) {
    editorSetMessage("At the beginning of a word");
   }
 
+  if (c==0 && r > 0) {
+      r--;
+      if (E.rows.at(r).empty()) {
+          E.fr = r;
+          E.fc = 0;
+          return;
+      } else {
+   editorSetMessage("Got here");
+          c = E.rows.at(r).size() - 1;
+          if (E.rows.at(r).at(c) > 32 && E.rows.at(r).at(c) < 48) {
+              E.fr = r;
+              E.fc = c;
+              return;
+          }
+    }
+  }
+
   for (;;) {
     //if (r < 0 ) return;
 
     std::string row = E.rows.at(r);
+    if (row.empty()) return;
 
     pos = (delimiters.find(row.at(c)) != std::string::npos);
-    if (pos != std::string::npos) row.at(c) = 'X';
-    //pos = row.rfind(delimiters, c);
+    if (pos != std::string::npos)  c--; //row.at(c) = 'X';
+
     pos = row.find_last_of(delimiters, c);
     if (pos == std::string::npos) {
-        c = 0;
-        break;
+      c = 0;
+      break;
     } else {
-            c = pos+1;
-            break;
+      if (row.at(pos+1) > 32) {
+      c = pos+1;
+      break;
+      } else {
+          if (c > 0){  c--;
+          } else if (r > 0) {r--; c = E.rows.at(r).size() - 1; if (E.rows.at(r).at(c) > 32 && E.rows.at(r).at(c) < 48) break;}
+          else break;
+      }
     }
-
-
   }
   E.fc =c;
   E.fr = r;
