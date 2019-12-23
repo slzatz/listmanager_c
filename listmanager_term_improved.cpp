@@ -6996,7 +6996,7 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (!E.move_only) {
+  if (!(E.move_only || E.mode == COMMAND_LINE)) {
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
@@ -8466,10 +8466,73 @@ void editorMoveEndWord2() {
 
 }
 
+
+void editorMoveNextWord(void) {
+
+  if (E.rows.empty()) return;
+
+  // like with 'b', we are incrementing by one to start
+  if (E.fc == E.rows.at(E.fr).size() - 1) {
+      E.fr++;
+      if (E.fr > E.rows.size() - 1) {E.fr--; return;}
+      E.fc = 0;
+  } else E.fc++;
+
+  int r = E.fr;
+  int c = E.fc;
+  int pos;
+  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  std::string delimiters_without_space = "<>,.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    if (r > E.rows.size() - 1) {return;}
+
+    std::string &row = E.rows.at(r);
+
+    if (row.empty()) {E.fr = r; E.fc == 0; return;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+
+        if (c == 0) {E.fc = 0; E.fr = r; return;}
+        if (ispunct(row.at(c-1))) {E.fc =c; E.fr = r; return;}
+
+      pos = row.find_first_of(delimiters, c);
+      // found punctuation or space after starting on alphanumeric
+      if (pos != std::string::npos) {
+          if (row.at(pos) == ' ') {c = pos; continue;}
+          else {E.fc = pos; return;}
+      }
+
+      //did not find punctuation or space after starting on alphanumeric
+      r++; c = 0; continue;
+    }
+
+    // we started on punctuation or space
+    if (row.at(c) == ' ') {
+       pos = row.find_first_not_of(' ', c);
+       if (pos == std::string::npos) {r++; c = 0; continue;}
+       else {E.fc = pos; E.fr = r; return;}
+    // we started on punctuation and need to find first alpha
+    } else {
+        if (isalnum(row.at(c-1))) {E.fc = c; return;}
+        c++;
+        if (c > row.size() - 1) {r++; c=0; continue;}
+        pos = row.find_first_not_of(delimiters_without_space, c); //this is equiv of searching for space or alphanumeric
+        if (pos != std::string::npos) {
+            if (row.at(pos) == ' ') {c = pos; continue;}
+            else {E.fc = pos; return;}
+        }
+        // this just says that if you couldn't find a space or alpha (you're sitting on punctuation) go to next line
+        r++; c = 0;
+    }
+  }
+}
+
 // used by 'w' -> goes to beginning of work left to right
 // lots of quirks related to punctuation, empty rows, etc.
 // seems to handle all corner cases like vim
-void editorMoveNextWord(void) {
+void editorMoveNextWordOld(void) {
 
   if (E.rows.empty()) return;
 
@@ -8495,7 +8558,7 @@ void editorMoveNextWord(void) {
   for (;;) {
     if (r > E.rows.size() - 1) return;
 
-    std::string& row = E.rows.at(r);
+    std::string &row = E.rows.at(r);
 
     if (row.empty()) {
         E.fc = 0;
@@ -8557,7 +8620,6 @@ void editorMoveBeginningWord(void) {
   int c = E.fc;
   int pos;
   std::string delimiters = " ,.;?:()[]{}&#~'";
-  std::string delimiters_without_space =  ",.;?:()[]{}&#~'";
 
   for(;;) {
 
@@ -8571,7 +8633,7 @@ void editorMoveBeginningWord(void) {
       else {E.fc = 0; E.fr = r; return;}
     }
 
-   // If we get here we started on punctuation
+   // If we get here we started on punctuation or space
     if (row.at(c) == ' ') {
       if (c == 0) {
         r--;
@@ -8585,99 +8647,6 @@ void editorMoveBeginningWord(void) {
     c--;
    }
 }
-
-// normal mode 'b'
-// doesn't handle runs of punctuation like vim (which just highlights left most one) but close
-// if you try to rewrite this, create something new don't edit this since it works pretty well.
-void editorMoveBeginningWordOld(void) {
-
-  // this top section should deal with simple cases and should move the cursor
-  // over at least one space so in the for(;;) loop you can exit if you meet
-  // the criteria for a 'b'
-
-
-  if (E.rows.empty()) return;
-
-  if (E.fr == 0 && E.fc == 0) return;
-
-  if ((E.rows.at(E.fr).empty() || E.fc == 0) && E.fr != 0) {
-      if (E.rows.at(E.fr-1).empty()) {
-          E.fr--;
-          E.fc = 0;
-          editorSetMessage("We started on an empty row or the 0th character of the row and happened to move to an empty row");
-          return;
-      } else {
-         E.fr--;
-         E.fc = E.rows.at(E.fr).size() - 1;
-         if (E.rows.at(E.fr).at(E.fc) > 32 && E.rows.at(E.fr).at(E.fc) < 48) return;
-         editorSetMessage("We started on an empty row or the 0th character of the row and are at the end of the row above");
-      }
-  }
-
-  std::string delimiters = " ,.;?:()[]{}&#~'";
-  std::string delimiters_without_space =  ",.;?:()[]{}&#~'";
-
-
-  int r = E.fr;
-  int c = E.fc;
-  int pos;
-
-  char z = E.rows.at(E.fr).at(E.fc -1);
-  pos = delimiters.find(z);
-  if (pos != std::string::npos) {
-      if (z != ' ') {
-          E.fc = E.fc -1;
-          return;
-      } else c--;
-   //we're starting this at the beginning of a word
-   editorSetMessage("At the beginning of a word");
-  }
-
-  if (c==0 && r > 0) {
-      r--;
-      if (E.rows.at(r).empty()) {
-          E.fr = r;
-          E.fc = 0;
-          return;
-      } else {
-   editorSetMessage("Got here");
-          c = E.rows.at(r).size() - 1;
-          if (E.rows.at(r).at(c) > 32 && E.rows.at(r).at(c) < 48) {
-              E.fr = r;
-              E.fc = c;
-              return;
-          }
-    }
-  }
-
-  for (;;) {
-    //if (r < 0 ) return;
-
-    std::string row = E.rows.at(r);
-    if (row.empty()) return;
-
-    pos = (delimiters.find(row.at(c)) != std::string::npos);
-    if (pos != std::string::npos)  c--; //row.at(c) = 'X';
-
-    pos = row.find_last_of(delimiters, c);
-    if (pos == std::string::npos) {
-      c = 0;
-      break;
-    } else {
-      if (row.at(pos+1) > 32) {
-      c = pos+1;
-      break;
-      } else {
-          if (c > 0){  c--;
-          } else if (r > 0) {r--; c = E.rows.at(r).size() - 1; if (E.rows.at(r).at(c) > 32 && E.rows.at(r).at(c) < 48) break;}
-          else break;
-      }
-    }
-  }
-  E.fc =c;
-  E.fr = r;
-}
-
 
 // decorates, undecorates, redecorates
 void editorDecorateWord(int c) {
