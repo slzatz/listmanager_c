@@ -8472,21 +8472,51 @@ void editorMoveCursorEOL(void) {
 }
 
 // normal mode 'e'
-// And vim goes to next line and currently this stops
 void editorMoveEndWord(void) {
 
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
+if (E.rows.empty()) return;
 
-  // below is finding end of word but if already at end
-  // of a word need to move cursor forward until hit a letter
-  // whole thing doesn't blow up if sitting on last char
-  auto beg = row.find_first_not_of(" ,.;:\"'!@", E.fc+1);
-  auto end = row.find_first_of(" ,.;:\"'!@", beg);
-  if (end == std::string::npos) {end = row.size();}
+if (E.rows.at(E.fr).empty() || E.fc == E.rows.at(E.fr).size() - 1) {
+  if (E.fr+1 > E.rows.size() -1) {return;}
+  else {E.fr++; E.fc = 0;}
+} else E.fc++;
 
-  E.fc = end - 1;
+  int r = E.fr;
+  int c = E.fc;
+  int pos;
+  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  std::string delimiters_without_space = "<>,.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    if (r > E.rows.size() - 1) {return;}
+
+    std::string &row = E.rows.at(r);
+
+    if (row.empty()) {r++; c = 0; continue;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+      if (c == row.size()-1 || ispunct(row.at(c+1))) {E.fc = c; E.fr = r; return;}
+
+      pos = row.find_first_of(delimiters, c);
+      if (pos == std::string::npos) {E.fc = row.size() - 1; return;}
+      else {E.fr = r; E.fc = pos - 1; return;}
+
+    // we started on punct or space
+    } else {
+      if (row.at(c) == ' ') {
+        if (c == row.size() - 1) {r++; c = 0; continue;}
+        else {c++; continue;}
+
+      } else {
+        pos = row.find_first_not_of(delimiters_without_space, c);
+        if (pos != std::string::npos) {E.fc = pos - 1; return;}
+        else {E.fc = row.size() -1; return;}
+      }
+    }
+  }
 }
+
 // not same as 'e' but moves to end of word or stays put if already
 //on end of word - used by dw
 //took out of use
@@ -8504,15 +8534,14 @@ void editorMoveEndWord2() {
 
 }
 
-
 void editorMoveNextWord(void) {
 
   if (E.rows.empty()) return;
 
   // like with 'b', we are incrementing by one to start
   if (E.fc == E.rows.at(E.fr).size() - 1) {
+      if (E.fr+1 > E.rows.size() - 1) {return;}
       E.fr++;
-      if (E.fr > E.rows.size() - 1) {E.fr--; return;}
       E.fc = 0;
   } else E.fc++;
 
