@@ -9,6 +9,11 @@
 #define SCROLL_DOWN 0
 #define SCROLL_UP 1
 
+//colors
+#define color0 0;30m
+#define color1 1;31m
+//#define COLOR2 [1;32m
+
 #include <Python.h>
 //#include <fcntl.h>
 #include <sys/ioctl.h>
@@ -60,6 +65,9 @@ static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"
 static std::vector<std::string> task_keywords;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
+const std::string COLOR_1 = "\x1b[1;31m";
+const std::string COLOR_2 = "\x1b[1;32m";
+const std::string COLOR_6 = "\x1b[0;36m";
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -2810,7 +2818,8 @@ void outlineDrawRows(std::string& ab) {
     if (row.star) ab.append("\x1b[1m", 4); //bold
     if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
-    else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+    //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+    else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
     if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
     if (row.mark) ab.append("\x1b[46m", 5); //cyan background
@@ -4976,46 +4985,48 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   ab.append(buf, strlen(buf));
 
   //set background color to blue
-  ab.append("\x1b[44m", 5);
+  //ab.append("\x1b[44m"); //blue is color 12 0;44 same as plain 44.
+  //ab.append("\x1b[38;5;21m"); //this is color 17
+  ab.append(COLOR_6); // Blue depending on theme
 
   char str[300];
-  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", argv[0]);
+  sprintf(str,"id: %s", argv[0]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mtid:\x1b[0;44m %s", argv[1]);
+  sprintf(str,"tid: %s", argv[1]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", argv[3]);
+  sprintf(str,"title: %s", argv[3]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
   int context_tid = atoi(argv[6]);
   auto it = std::find_if(std::begin(context_map), std::end(context_map),
                          [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
+  sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
   int folder_tid = atoi(argv[5]);
   auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
                          [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  sprintf(str,"folder: %s", it2->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
-  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (atoi(argv[8]) == 1) ? "true": "false");
+  sprintf(str,"star: %s", (atoi(argv[8]) == 1) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (atoi(argv[14]) == 1) ? "true": "false");
+  sprintf(str,"mdeleted: %s", (atoi(argv[14]) == 1) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (argv[10]) ? "true": "false");
+  sprintf(str,"completed: %s", (argv[10]) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", argv[16]);
+  sprintf(str,"modified: %s", argv[16]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", argv[9]);
+  sprintf(str,"added: %s", argv[9]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   //ab.append("\x1b[0m", 4);
@@ -5029,11 +5040,11 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
     s += delim += kw;
     delim = ",";
   }
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
+  sprintf(str,"keywords: %s", s.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
-  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", argv[4]);
+  sprintf(str,"tag: %s", argv[4]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
@@ -6870,7 +6881,34 @@ void editorSpellCheck(void) {
 // https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " ,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list?
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list?
+  int word_num = -1;
+  for (int n=0; n<E.rows.size(); n++) {
+    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+    int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+    int start;
+    std::string &row = E.rows.at(n);
+    if (row.empty()) continue;
+    for (;;) {
+      //if (end != -1 && end >= row.size() - 1) break; //doesn't handle empty rows correctly hence the if row.empty
+      if (end >= static_cast<int>(row.size()) - 1) break; //does handle empty rows but why even check them
+      start = end + 1;
+      end = row.find_first_of(delimiters, start);
+      if (end == std::string::npos) {
+        end = row.size();
+      }
+      if (end != start) word_num++;
+
+      // can't this start the search from the last match? 12-23-2019
+      if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
+        editorHighlightWord(n, start, end-start);
+    }
+  }
+}
+
+void editorHighlightWordsByPositionOld(void) {
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list? missing open double quote
   int word_num = -1;
   for (int n=0; n<E.rows.size(); n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
@@ -6888,12 +6926,12 @@ void editorHighlightWordsByPosition(void) {
       }
       if (end != start) word_num++;
 
+      // can't this start the search from the last match? 12-23-2019
       if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
         editorHighlightWord(n, start, end-start);
     }
   }
 }
-
 void editorSpellingSuggestions(void) {
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
