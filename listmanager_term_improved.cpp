@@ -2531,8 +2531,8 @@ void editorIndentRow(void) {
   }
   std::string &row = E.rows.at(E.fr);
   row.insert(0, E.indent, ' ');
+  E.fc = E.indent;
   E.dirty++;
-  E.fc++;
 }
 
 void editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -8390,16 +8390,6 @@ void editorPasteLine(void){
     E.fr++;
     editorInsertRow(E.fr, line_buffer[i]);
   }
-}
-
-// replaced on 12-182019
-void editorIndentRowOld(void) {
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-  if (row.empty()) return;
-  E.fc = editorIndentAmount(E.fr);
-  for (int i = 0; i < E.indent; i++) editorInsertChar(' ');
-  E.dirty++;
 }
 
 void editorUnIndentRow(void) {
