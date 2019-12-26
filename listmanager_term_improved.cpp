@@ -334,6 +334,7 @@ struct editorConfig {
   int fc, fr; // file x and y position
   int rx; //index into the render field - only nec b/o tabs
   int line_offset; //row the user is currently scrolled to
+  int prev_line_offset;
   int coloff; //column user is currently scrolled to
   int screenlines; //number of lines in the display
   int screencols;  //number of columns in the display
@@ -395,7 +396,7 @@ int getWindowSize(int *, int *);
 void EraseScreenRedrawLines(void);
 
 void outlineProcessKeypress(void);
-void editorProcessKeypress(void);
+bool editorProcessKeypress(void);
 
 //Outline Prototypes
 void outlineSetMessage(const char *fmt, ...);
@@ -500,8 +501,8 @@ void editorDrawRows(std::string &); //erases lines to right as it goes
 void editorDrawMessageBar(std::string &);
 void editorDrawStatusBar(std::string &);
 void editorSetMessage(const char *fmt, ...);
-void editorScroll(void);
-void editorRefreshScreen(void); //(re)draws the note
+bool editorScroll(void);
+void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
 void editorInsertReturn(void);
 void editorDecorateWord(int);
 void editorDecorateVisual(int);
@@ -616,9 +617,9 @@ void signalHandler(int signum) {
 
     if (editor_mode) {
       outlineRefreshScreen();
-      editorRefreshScreen();
+      editorRefreshScreen(true);
     } else {
-      editorRefreshScreen();
+      editorRefreshScreen(true);
       outlineRefreshScreen();
     }
 
@@ -1634,7 +1635,7 @@ void get_note_sqlite(int id) {
 
   word_positions.clear();
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.first_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
 
@@ -1651,7 +1652,7 @@ void get_note_sqlite(int id) {
 
   //if (editor_mode || O.mode != SEARCH) return;
   if (O.taskview != BY_SEARCH) {
-    editorRefreshScreen();
+    editorRefreshScreen(true);
     return;
   }
 
@@ -1681,7 +1682,7 @@ void get_note_sqlite(int id) {
   int ww = (word_positions.empty()) ? -1 : word_positions.at(0);
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
-  editorRefreshScreen();
+  editorRefreshScreen(true);
 }
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
@@ -1738,7 +1739,7 @@ void get_note_pg(int id) {
   */
 
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -1762,7 +1763,7 @@ void get_note_pg(int id) {
   }
 
   E.dirty = false;
-  editorRefreshScreen();
+  editorRefreshScreen(true);
   PQclear(res);
   return;
 }
@@ -2496,10 +2497,9 @@ void editorDelRow(int r) {
   if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
 
   E.rows.erase(E.rows.begin() + r);
-  //E.numrows--;
   if (E.rows.size() == 0) {
-    //E.rows.clear();
-    E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
+    E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
+
     E.mode = NO_ROWS;
     return;
   }
@@ -2742,7 +2742,7 @@ void editorReadFile2(const std::string &filename) {
   std::string line;
 
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
 
   while (getline(f, line)) {
     E.rows.push_back(line);
@@ -2751,7 +2751,7 @@ void editorReadFile2(const std::string &filename) {
 
   E.dirty = true;
   editor_mode = true;
-  editorRefreshScreen();
+  editorRefreshScreen(true);
   return;
 }
 
@@ -3553,7 +3553,7 @@ void outlineProcessKeypress(void) {
         // not sure that this should be CTRL-h; maybe CTRL-m
         case CTRL_KEY('h'):
           editorMarkupLink(); 
-          editorRefreshScreen();
+          //editorRefreshScreen();
           update_note(); // write updated note to database
           O.command[0] = '\0';
           return;
@@ -3773,7 +3773,7 @@ void outlineProcessKeypress(void) {
                 //editor_mode needs go before get_note in case we retrieved item via a search
                 editor_mode = true;
                 get_note(id); //if id == -1 does not try to retrieve note
-                E.fr = E.fc = E.cx = E.cy = E.line_offset = 0;
+                //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
                 E.mode = NORMAL;
                 E.command[0] = '\0';
               } else {
@@ -4349,7 +4349,9 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_spellcheck:
-              editorSpellCheck();
+              E.spellcheck = !E.spellcheck;
+              if (E.spellcheck) editorSpellCheck();
+              else editorRefreshScreen(true);
               O.mode = O.last_mode;
               outlineSetMessage("Spellcheck");
               return;
@@ -6663,11 +6665,12 @@ void outlineFindNextWord() {
     outlineSetMessage("x = %d; y = %d", x, y); 
 }
 
-void editorScroll(void) {
+// returns true if display needs to scroll and false if it doesn't
+bool editorScroll(void) {
 
   if (E.rows.empty()) {
-    E.cx = E.cy = E.fr = E.fc = E.line_offset = 0;
-    return;
+    E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
+    return true;
   }
 
   if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1;
@@ -6713,6 +6716,10 @@ void editorScroll(void) {
 
   // vim seems to want full rows to be displayed although I am not sure
   // it's either helpful or worthit but this is a placeholder for the idea
+
+  // returns true if display needs to scroll and false if it doesn't
+  if (E.line_offset == E.prev_line_offset) return false;
+  else {E.prev_line_offset = E.line_offset; return true;}
 }
 
 void editorDrawRows(std::string &ab) {
@@ -6852,24 +6859,28 @@ void editorHighlightWord(int r, int c, int len) {
 }
 
 void editorSpellCheck(void) {
+
+  if (E.rows.empty()) return;
+
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
   //auto sugs = std::vector<std::string>();
   auto dict = nuspell::Dictionary::load_from_path(path);
 
-  std::string delimiters = " ,.;?:()[]{}&#~";
+  std::string delimiters = " -<>!$,.;?:()[]{}&#~^";
   //for (int n=0; n<E.rows.size(); n++) { //12-25-2019
   for (int n=0; n<=E.last_visible_row; n++) {
     //if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return; //12-25-2019
     int end = -1;
     int start;
     std::string &row = E.rows.at(n);
+    if (row.empty()) continue;
     for (;;) {
-      if (end == row.size() - 1) break; //signed and unsigned work because == not < or >
+      if (end >= static_cast<int>(row.size()) - 1) break;
       start = end + 1;
       end = row.find_first_of(delimiters, start);
       if (end == std::string::npos)
-        end = row.size() - 1;
+        end = row.size();
 
       if (n < E.first_visible_row) continue;
       if (!dict.spell(row.substr(start, end-start)))
@@ -6891,20 +6902,20 @@ void editorSpellCheck(void) {
 // https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
 
-  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list?
+  if (E.rows.empty()) return;
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\\"; //removed period?? since it is in list?
   int word_num = -1;
   int last_pos = 0;
   auto pos = word_positions.begin();
   auto prev_pos = pos;
   for (int n=0; n<=E.last_visible_row; n++) {
-    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
     int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
     int start;
     std::string &row = E.rows.at(n);
     if (row.empty()) continue;
     for (;;) {
-      //if (end != -1 && end >= row.size() - 1) break; //doesn't handle empty rows correctly hence the if row.empty
-      if (end >= static_cast<int>(row.size()) - 1) break; //does handle empty rows but why even check them
+      if (end >= static_cast<int>(row.size()) - 1) break;
       start = end + 1;
       end = row.find_first_of(delimiters, start);
       if (end == std::string::npos) {
@@ -7031,8 +7042,9 @@ void editorDrawMessageBar(std::string& ab) {
   ab.append(E.message, msglen);
 }
 
-// called by get_note (and others)
-void editorRefreshScreen(void) {
+// called by get_note (and others) and in main while loop
+// redraw == true means draw the rows
+void editorRefreshScreen(bool redraw) {
   char buf[32];
   std::string ab;
 
@@ -7040,19 +7052,7 @@ void editorRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  /*
-  if (!(E.move_only || E.mode == COMMAND_LINE)) {
-  editorDrawRows(ab);
-  editorDrawStatusBar(ab);
-  editorDrawMessageBar(ab);
-  } else {
-    editorDrawStatusBar(ab);
-    editorDrawMessageBar(ab);
-    E.move_only = false;
-  }
-  */
-
-  if (E.mode == COMMAND_LINE) {
+  if (E.mode == COMMAND_LINE || !redraw) {
     editorDrawStatusBar(ab);
     editorDrawMessageBar(ab);
     E.move_only = false;
@@ -7089,8 +7089,10 @@ void editorRefreshScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights
-  if (E.spellcheck) editorSpellCheck();
-  else if (O.mode == SEARCH) editorHighlightWordsByPosition();
+  if (redraw) {
+    if (E.spellcheck) editorSpellCheck();
+    else if (O.mode == SEARCH) editorHighlightWordsByPosition();
+  }
 }
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
@@ -7173,7 +7175,7 @@ void editorPageUpDown(int key) {
   return;
 }
 // calls readKey()
-void editorProcessKeypress(void) {
+bool editorProcessKeypress(void) {
   int i, start, end, command;
 
   /* readKey brings back one processed character that handles
@@ -7191,12 +7193,12 @@ void editorProcessKeypress(void) {
           E.command_line.clear();
           E.command[0] = '\0';
           editorSetMessage(":");
-          return;
+          return false;
 
         case '\x1b':
           E.command[0] = '\0';
           E.repeat = 0;
-          return;
+          return false;
 
         case 'i':
         case 'I':
@@ -7210,10 +7212,10 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
+          return true;
       }
 
-      return;
+      return false;
 
     case INSERT:
 
@@ -7303,18 +7305,18 @@ void editorProcessKeypress(void) {
           }
           editorSetMessage("");
           //editorSetMessage(E.last_typed.c_str());
-          return;
+          return true;
     
         default:
           //editorCreateSnapshot();
           editorInsertChar(c);
           E.last_typed += c;
           //editorSetMessage(E.last_typed.c_str());
-          return;
+          return true;
      
       } //end inner switch for outer case INSERT
 
-      return;
+      return false;
 
     case NORMAL: 
  
@@ -7323,7 +7325,7 @@ void editorProcessKeypress(void) {
       if (c == '\x1b') {
         E.command[0] = '\0';
         E.repeat = 0;
-        return;
+        return false;
       }
 
       /*leading digit is a multiplier*/
@@ -7335,11 +7337,11 @@ void editorProcessKeypress(void) {
         } else if (E.repeat == 0) {
           E.repeat = c - 48;
           // return false because command not complete
-          return;
+          return false;
         } else {
           E.repeat = E.repeat*10 + c - 48;
           // return false because command not complete
-          return;
+          return false;
         }
       }
 
@@ -7393,7 +7395,7 @@ void editorProcessKeypress(void) {
         }
         E.command[0] = '\0';
         E.repeat = 0;
-        return;
+        return true;
       }
       }
 
@@ -7402,7 +7404,7 @@ void editorProcessKeypress(void) {
         case SHIFT_TAB:
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
-          return;
+          return false;
         /*
         case 'i':
           // editing cmd: can be dotted and does repeat
@@ -7458,7 +7460,7 @@ void editorProcessKeypress(void) {
           //f_r exists for dot
           editorCreateSnapshot();
           E.mode = REPLACE;
-          return;
+          return false; //? true or handled in REPLACE mode
     
         case '~':
           // editing cmd: can be dotted and does repeat
@@ -7563,7 +7565,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.command_line.clear();
           E.mode = COMMAND_LINE;
-          return;
+          return false;
     
         case 'V':
           E.mode = VISUAL_LINE;
@@ -7571,7 +7573,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = E.fr;
           editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
-          return;
+          return false;
     
         case 'v':
           E.mode = VISUAL;
@@ -7579,7 +7581,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = E.fc;
           editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
-          return;
+          return false;
     
         case 'p':  
           editorCreateSnapshot();
@@ -7587,7 +7589,7 @@ void editorProcessKeypress(void) {
           else editorPasteLine();
           E.command[0] = '\0';
           E.repeat = 0;
-          return;
+          return true;
     
         case '*':  
           // does not clear dot
@@ -7596,7 +7598,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0; // prob not necessary but doesn't hurt
           E.move_only = true;
-          return;
+          return false;
     
         case 'n':
           // n does not clear dot
@@ -7606,12 +7608,12 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0; // prob not necessary but doesn't hurt
           E.move_only = true;
-          return;
+          return false;
     
         case 'u':
           editorRestoreSnapshot();
           E.command[0] = '\0';
-          return;
+          return true;
     
         case '^':
           view_html(O.rows.at(O.fr).id);
@@ -7625,7 +7627,7 @@ void editorProcessKeypress(void) {
 
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';
-          return;
+          return false;
 
         //I will forget that the spelling suggestion command is z
         //note can't have command mode command because cursor not in note
@@ -7633,18 +7635,18 @@ void editorProcessKeypress(void) {
           editorSpellingSuggestions();
           E.command[0] = '\0';
           E.move_only = true;
-          return;
+          return false;
 
         case '.':
           editorDoRepeat();
           E.command[0] = '\0';
-          return;
+          return true;
 
         case CTRL_KEY('z'):
 
           E.smartindent = (E.smartindent == 4) ? 0 : 4;
           editorSetMessage("E.smartindent = %d", E.smartindent);
-          return;
+          return false;
     
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
@@ -7656,11 +7658,11 @@ void editorProcessKeypress(void) {
 
         case CTRL_KEY('s'):
           editorSave();
-          return;
+          return false;
 
         case CTRL_KEY('h'):
           editorMarkupLink(); 
-          return;
+          return true;
     
         //indent and unindent changed to E.fr from E.cy on 11-26-2019
         case C_indent:
@@ -7673,7 +7675,7 @@ void editorProcessKeypress(void) {
           E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
-          return;
+          return true;
     
         case C_unindent:
           editorCreateSnapshot();
@@ -7683,20 +7685,20 @@ void editorProcessKeypress(void) {
           E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
-          return;
+          return true;
     
        case C_yy:  
          editorYankLine(E.repeat);
          E.command[0] = '\0';
          E.repeat = 0;
-         return;
+         return false;
 
         case PAGE_UP:
         case PAGE_DOWN:
           editorPageUpDown(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.repeat = 0;
-          return;
+          return false;
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -7710,7 +7712,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.move_only = true;
           E.repeat = 0;
-          return;
+          return false;
 
         /*
         case 'w':
@@ -7770,7 +7772,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           E.move_only = true;
-          return;
+          return false;
 
         case 'G':
           // navigation: can't be dotted and doesn't repeat
@@ -7784,11 +7786,11 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           /////////////////////////
 
-          return;
+          return false;
 
        default:
-          // latest thought is to return false when command is not matched yet
-          return;
+          // latest thought is to return false when no need to redraw rows like when command is not matched yet
+          return false;
     
       } // end of keyfromstring switch under case NORMAL 
 
@@ -7800,7 +7802,7 @@ void editorProcessKeypress(void) {
       E.last_command = command;
       ////////////////////////////
 
-      return; // end of case NORMAL - there are a few breaks that can get to code above
+      return true; // end of case NORMAL - there are a few breaks that can get to code above
 
     case COMMAND_LINE:
 
@@ -7812,7 +7814,7 @@ void editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           editorSetMessage(""); 
-          return;
+          return false;
   
         case '\r':
 
@@ -7829,7 +7831,7 @@ void editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editorSetMessage("");
-              editorRefreshScreen();
+              //editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -7847,7 +7849,7 @@ void editorProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
               write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
               }
-              return;
+              return false;
   
             case 'x':
               update_note();
@@ -7856,7 +7858,7 @@ void editorProcessKeypress(void) {
               E.command_line.clear();
               editor_mode = false;
               editorSetMessage("");
-              editorRefreshScreen();
+              //editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
               {
@@ -7874,7 +7876,7 @@ void editorProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
               write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
               }
-              return;
+              return false;
   
             case C_quit:
             case 'q':
@@ -7888,33 +7890,34 @@ void editorProcessKeypress(void) {
                 E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
                 editor_mode = false;
               }
-              editorRefreshScreen(); //if not quiting I am guessing puts cursor in right place
-              return;
+              editorRefreshScreen(false); // don't need to redraw rows
+              return false;
 
             case C_quit0:
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
               editor_mode = false;
-              return;
+              return false;
 
             case C_spellcheck:
-              //editorSpellCheck();
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
               E.spellcheck = !E.spellcheck;
+              if (E.spellcheck) editorSpellCheck();
+              else editorRefreshScreen(true);
               editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
-              return;
+              return false;
 
             default: // default for switch (command)
               editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
               E.mode = NORMAL;
-              return;
+              return false;
 
           } // end of case '\r' switch (command)
      
-          return;
+          return false;
   
         default: //default for switch 'c' in case COMMAND_LINE
           if (c == DEL_KEY || c == BACKSPACE) {
@@ -7926,7 +7929,7 @@ void editorProcessKeypress(void) {
 
       } // end of COMMAND_LINE switch (c)
   
-      return; //end of case COMMAND_LINE
+      return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
 
@@ -7942,7 +7945,7 @@ void editorProcessKeypress(void) {
         case 'l':
           editorMoveCursor(c);
           E.highlight[1] = E.fr;
-          return;
+          return true;
     
         case 'x':
           if (!E.rows.empty()) {
@@ -7959,7 +7962,7 @@ void editorProcessKeypress(void) {
           E.repeat = E.last_repeat = 0;
           E.mode = NORMAL;
           editorSetMessage("");
-          return;
+          return true;
     
         case 'y':  
           E.repeat = E.highlight[1] - E.highlight[0] + 1;
@@ -7969,7 +7972,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         case '>':
           editorCreateSnapshot();
@@ -7983,7 +7986,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         // changed to E.fr on 11-26-2019
         case '<':
@@ -7998,20 +8001,20 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         case '\x1b':
           E.mode = 0;
           E.command[0] = '\0';
           E.repeat = 0;
           editorSetMessage("");
-          return;
+          return false;
     
         default:
-          return;
+          return false;
       }
 
-      return;
+      return false;
 
     case VISUAL:
 
@@ -8027,7 +8030,7 @@ void editorProcessKeypress(void) {
         case 'l':
           editorMoveCursor(c);
           E.highlight[1] = E.fc;
-          return;
+          return true;
     
         case 'x':
           editorCreateSnapshot();
@@ -8043,7 +8046,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         case 'y':  
           //E.repeat = E.highlight[1] - E.highlight[0] + 1; // 12-14-2019
@@ -8053,7 +8056,7 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
@@ -8064,20 +8067,20 @@ void editorProcessKeypress(void) {
           E.repeat = 0;
           E.mode = 0;
           editorSetMessage("");
-          return;
+          return true;
     
         case '\x1b':
           E.mode = NORMAL;
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           editorSetMessage("");
-          return;
+          return false;
     
         default:
-          return;
+          return false;
       }
     
-      return;
+      return false;
 
     case REPLACE:
 
@@ -8087,7 +8090,7 @@ void editorProcessKeypress(void) {
         E.last_command = 0;
         E.last_typed.clear();
         E.mode = NORMAL;
-        return;
+        return true;
       }
 
       editorCreateSnapshot();
@@ -8102,7 +8105,7 @@ void editorProcessKeypress(void) {
       E.repeat = 0;
       E.command[0] = '\0';
       E.mode = NORMAL;
-      return;
+      return true;
 
   }  //end of outer switch(E.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
 } //end of editorProcessKeyPress
@@ -9013,6 +9016,7 @@ void initEditor(void) {
   E.fc = 0; //file x position
   E.fr = 0; //file y position
   E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
+  E.prev_line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
   E.dirty = 0; //has filed changed since last save
   //E.filename = NULL; //not used currently
@@ -9119,14 +9123,16 @@ int main(int argc, char** argv) {
   //Py_Initialize(); 
 
   signal(SIGWINCH, signalHandler);
+  bool text_change;
+  bool scroll;
 
   while (1) {
 
     //need a way to just refresh command line
     if (editor_mode){
-      editorScroll();
-      editorRefreshScreen();
-      editorProcessKeypress(); // ? could you do 0 => no command 1 command
+      text_change = editorProcessKeypress(); // ? could you do 0 => no command 1 command
+      scroll = editorScroll();
+      editorRefreshScreen(text_change || scroll);
     } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
       outlineScroll();
       outlineRefreshScreen();
