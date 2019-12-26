@@ -1,4 +1,4 @@
-#define CTRL_KEY(k) ((k) & 0x1f) // )x1f is 31; first ascii is 32 space anding removes all higher bits
+#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
 #define TOP_MARGIN 1
