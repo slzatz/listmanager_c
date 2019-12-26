@@ -7334,9 +7334,11 @@ void editorProcessKeypress(void) {
 
         } else if (E.repeat == 0) {
           E.repeat = c - 48;
+          // return false because command not complete
           return;
         } else {
           E.repeat = E.repeat*10 + c - 48;
+          // return false because command not complete
           return;
         }
       }
@@ -7785,8 +7787,7 @@ void editorProcessKeypress(void) {
           return;
 
        default:
-          // if a single char or sequence of chars doesn't match then
-          // do nothing - the next char may generate a match
+          // latest thought is to return false when command is not matched yet
           return;
     
       } // end of keyfromstring switch under case NORMAL 
@@ -7799,7 +7800,7 @@ void editorProcessKeypress(void) {
       E.last_command = command;
       ////////////////////////////
 
-      return; // end of case NORMAL
+      return; // end of case NORMAL - there are a few breaks that can get to code above
 
     case COMMAND_LINE:
 
@@ -9123,12 +9124,9 @@ int main(int argc, char** argv) {
 
     //need a way to just refresh command line
     if (editor_mode){
-      //if (E.mode != COMMAND_LINE) {
-        editorScroll();
-        editorRefreshScreen();
-        //if (E.spellcheck) editorSpellCheck();
-      //}
-      editorProcessKeypress();
+      editorScroll();
+      editorRefreshScreen();
+      editorProcessKeypress(); // ? could you do 0 => no command 1 command
     } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
       outlineScroll();
       outlineRefreshScreen();
