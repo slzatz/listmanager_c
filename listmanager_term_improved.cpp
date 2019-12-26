@@ -353,7 +353,8 @@ struct editorConfig {
   int repeat;
   int indent;
   int smartindent;
-  int initial_drawing_row;
+  int first_visible_row;
+  int last_visible_row;
   bool spellcheck;
   bool move_only;
 };
@@ -502,18 +503,18 @@ void editorSetMessage(const char *fmt, ...);
 void editorScroll(void);
 void editorRefreshScreen(void); //(re)draws the note
 void editorInsertReturn(void);
-void editorDecorateWord(int c);
-void editorDecorateVisual(int c);
+void editorDecorateWord(int);
+void editorDecorateVisual(int);
 void editorDelWord(void);
 void editorDelRow(int);
 void editorIndentRow(void);
 void editorUnIndentRow(void);
-int editorIndentAmount(int y);
-void editorMoveCursor(int key);
+int editorIndentAmount(int);
+void editorMoveCursor(int);
 void editorBackspace(void);
 void editorDelChar(void);
 void editorDeleteToEndOfLine(void);
-void editorYankLine(int n);
+void editorYankLine(int);
 void editorPasteLine(void);
 void editorPasteString(void);
 void editorYankString(void);
@@ -530,7 +531,7 @@ void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-void editorInsertRow(int fr, std::string);
+void editorInsertRow(int, std::string);
 void editorInsertChar(int);
 void editorReadFile(std::string);
 void editorDisplayFile(void);
@@ -1633,7 +1634,7 @@ void get_note_sqlite(int id) {
 
   word_positions.clear();
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.initial_drawing_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.first_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
 
@@ -6688,7 +6689,7 @@ void editorScroll(void) {
   if (cy > E.screenlines + E.line_offset - 1) {
     E.line_offset = cy - E.screenlines + 1; ////
     int line_offset = E.line_offset;
-    E.initial_drawing_row = editorGetInitialRow(line_offset);
+    E.first_visible_row = editorGetInitialRow(line_offset);
     E.line_offset = line_offset;
   }
 
@@ -6701,12 +6702,12 @@ void editorScroll(void) {
   //deal with scrol where current line wouldn't be visible because we're scrolled too far
   if (cy < E.line_offset) {
     E.line_offset =  cy;
-    //E.initial_drawing_row = 0; //kluge isn't general
-    E.initial_drawing_row = editorGetInitialRow(E.line_offset, SCROLL_UP);
+    //E.first_visible_row = 0; //kluge isn't general
+    E.first_visible_row = editorGetInitialRow(E.line_offset, SCROLL_UP);
     //E.line_offset =  cy;
   }
   
-  if (E.line_offset == 0) E.initial_drawing_row = 0; //////////////////////12-16-2019
+  if (E.line_offset == 0) E.first_visible_row = 0; //////////////////////12-16-2019
 
   E.cy = cy - E.line_offset;
 
@@ -6739,22 +6740,19 @@ void editorDrawRows(std::string &ab) {
   if (E.rows.empty()) return;
 
   int y = 0;
-  int filerow = E.initial_drawing_row;
+  int filerow = E.first_visible_row;
 
   for (;;){
-    if (filerow == E.rows.size()) return;
+    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return;}
     std::string row = E.rows.at(filerow);
     //std::string_view row(E.rows.at(filerow));
 
-    if (E.mode ==VISUAL_LINE && filerow == E.highlight[0])
+    if (E.mode == VISUAL_LINE && filerow == E.highlight[0])
       ab.append("\x1b[48;5;242m", 11);
 
-    if (E.mode ==VISUAL_LINE && filerow == E.highlight[1] + 1)
+    if (E.mode == VISUAL_LINE && filerow == E.highlight[1] + 1)
       ab.append("\x1b[0m", 4); //return background to normal
 
-    // think this is necessary because
-    // row.substr(0) isn't defined
-    // if row is empty
     if (row.empty()) {
       if (y == E.screenlines - 1) return;
       ab.append(lf_ret, nchars);
@@ -6769,7 +6767,7 @@ void editorDrawRows(std::string &ab) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= E.screencols) {
         ab.append(row, pos+1, E.screencols);
-        if (y == E.screenlines - 1) return;
+        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
         ab.append(lf_ret, nchars);
         y++;
         filerow++;
@@ -6789,7 +6787,7 @@ void editorDrawRows(std::string &ab) {
       }
 
       ab.append(row, prev_pos+1, pos-prev_pos);
-      if (y == E.screenlines - 1) return;
+      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
       ab.append(lf_ret, nchars);
       y++;
     }
@@ -6802,8 +6800,10 @@ void editorDrawRows(std::string &ab) {
         << "\x1b[0m";
       ab.append(s.str());
       ab.append(lf_ret, nchars);
+
     }
   }
+  E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
 }
 
 
@@ -6813,8 +6813,15 @@ void editorDrawRows(std::string &ab) {
 void editorHighlightSearchTerms(void) {
   int len = search_terms.size();
   if (!len) return;
-  for (int n=0; n<E.rows.size(); n++) {
-    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+
+  // presumably this should just be for the visible rows
+  // start with initial row E.initial_row
+  // may need a E.last_visible_row
+  //for (int n=0; n<E.rows.size(); n++) {
+  for (int n=E.first_visible_row; n<+E.last_visible_row; n++) {
+
+    //editorGetScreenYFromRowColWW(does not take into account E.screen_offset
+    //if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return; //12-25-2019
     int pos = 0;
     std::string &row = E.rows.at(n);
     for(;;) {
@@ -6830,11 +6837,11 @@ void editorHighlightSearchTerms(void) {
   }
 }
 
-void editorHighlightWord(int r, int c, int len){
+void editorHighlightWord(int r, int c, int len) {
   std::string &row = E.rows.at(r);
   int x = editorGetScreenXFromRowColWW(r, c) + EDITOR_LEFT_MARGIN + 1;
-  int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1;
-  row.substr(c, row.find(' ', c));
+  int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1 - E.line_offset; // added line offset 12-25-2019
+  //row.substr(c, row.find(' ', c)); //12-25-2019
   std::stringstream s;
   //s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
@@ -6851,21 +6858,24 @@ void editorSpellCheck(void) {
   auto dict = nuspell::Dictionary::load_from_path(path);
 
   std::string delimiters = " ,.;?:()[]{}&#~";
-  for (int n=0; n<E.rows.size(); n++) {
-    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
+  //for (int n=0; n<E.rows.size(); n++) { //12-25-2019
+  for (int n=0; n<=E.last_visible_row; n++) {
+    //if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return; //12-25-2019
     int end = -1;
     int start;
     std::string &row = E.rows.at(n);
     for (;;) {
-      if (end == row.size() - 1) break;
+      if (end == row.size() - 1) break; //signed and unsigned work because == not < or >
       start = end + 1;
       end = row.find_first_of(delimiters, start);
       if (end == std::string::npos)
         end = row.size() - 1;
 
+      if (n < E.first_visible_row) continue;
       if (!dict.spell(row.substr(start, end-start)))
         editorHighlightWord(n, start, end-start);
     }
+    // I think you need to restore cursor
   }
 
   //reposition the cursor back to where it belongs
@@ -6883,7 +6893,10 @@ void editorHighlightWordsByPosition(void) {
 
   std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list?
   int word_num = -1;
-  for (int n=0; n<E.rows.size(); n++) {
+  int last_pos = 0;
+  auto pos = word_positions.begin();
+  auto prev_pos = pos;
+  for (int n=0; n<=E.last_visible_row; n++) {
     if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
     int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
     int start;
@@ -6899,9 +6912,14 @@ void editorHighlightWordsByPosition(void) {
       }
       if (end != start) word_num++;
 
+      if (n < E.first_visible_row) continue;
       // can't this start the search from the last match? 12-23-2019
-      if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
+      pos = std::find(pos, word_positions.end(), word_num);
+      //if (std::find(word_positions.begin() + pos_in_list, word_positions.end(), word_num) !=word_positions.end())
+      if (pos != word_positions.end()) {
+        prev_pos = pos;
         editorHighlightWord(n, start, end-start);
+      } else pos = prev_pos;
     }
   }
 }
@@ -6982,9 +7000,9 @@ void editorDrawStatusBar(std::string& ab) {
 
 
     len = snprintf(status,
-                   sizeof(status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d line chrs(1)="
+                   sizeof(status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
                                    "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, lines, line, E.fc, E.line_offset, E.initial_drawing_row, line_char_count, E.cx, E.cy, E.screencols);
+                                   E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
   } else {
     len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
@@ -7016,24 +7034,13 @@ void editorDrawMessageBar(std::string& ab) {
 // called by get_note (and others)
 void editorRefreshScreen(void) {
   char buf[32];
-
-  if (DEBUG) {
-    if (!E.rows.empty()){
-      int screenx = editorGetScreenXFromRowColWW(E.fr, E.fc);
-      int line = editorGetLineInRowWW(E.fr, E.fc);
-      int line_char_count = editorGetLineCharCountWW(E.fr, line);
-
-      editorSetMessage("row(0)=%d line(1)=%d char(0)=%d line-char-count=%d screenx(0)=%d, E.screencols=%d", E.fr, line, E.fc, line_char_count, screenx, E.screencols);
-    } else
-      editorSetMessage("E.row is NULL, E.cx = %d, E.cy = %d,  E.numrows = %d, E.line_offset = %d", E.cx, E.cy, E.rows.size(), E.line_offset);
-  }
-
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
+  /*
   if (!(E.move_only || E.mode == COMMAND_LINE)) {
   editorDrawRows(ab);
   editorDrawStatusBar(ab);
@@ -7043,6 +7050,18 @@ void editorRefreshScreen(void) {
     editorDrawMessageBar(ab);
     E.move_only = false;
   }
+  */
+
+  if (E.mode == COMMAND_LINE) {
+    editorDrawStatusBar(ab);
+    editorDrawMessageBar(ab);
+    E.move_only = false;
+  } else {
+    editorDrawRows(ab);
+    editorDrawStatusBar(ab);
+    editorDrawMessageBar(ab);
+  }
+
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
@@ -7070,7 +7089,8 @@ void editorRefreshScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights
-  if (O.mode == SEARCH) editorHighlightWordsByPosition();
+  if (E.spellcheck) editorSpellCheck();
+  else if (O.mode == SEARCH) editorHighlightWordsByPosition();
 }
 
 /*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
@@ -7333,7 +7353,6 @@ void editorProcessKeypress(void) {
       /* starting to use command maps*/
      {
       bool used_mapped_command = false;
-      //E.move_only
       //map1 -> i, I, a, A
       if (cmd_map1.count(command)) {
         editorCreateSnapshot();
@@ -9004,7 +9023,7 @@ void initEditor(void) {
   E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
   E.indent = 4;
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
-  E.initial_drawing_row = 0;
+  E.first_visible_row = 0;
   E.spellcheck = false;
   E.move_only = false;
 
@@ -9107,7 +9126,7 @@ int main(int argc, char** argv) {
       //if (E.mode != COMMAND_LINE) {
         editorScroll();
         editorRefreshScreen();
-        if (E.spellcheck) editorSpellCheck();
+        //if (E.spellcheck) editorSpellCheck();
       //}
       editorProcessKeypress();
     } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
