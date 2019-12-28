@@ -2357,10 +2357,11 @@ inline void f_0(int repeat) {
 inline void f_$(int repeat) {
   int r = E.fr;
   for (int n=0; n<repeat; n++) {
-    if (r < E.rows.size() - 1);
+    if (r < E.rows.size() - 1) {
        editorMoveCursorEOL();
        r++;
-   }
+    }
+ }
 }
 
 void editorDoRepeat(void) {
@@ -3077,6 +3078,8 @@ void outlineSetMessage(const char *fmt, ...) {
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
 
+  if (O.rows.empty()) return;
+
   switch (key) {
     case ARROW_LEFT:
     case 'h':
@@ -3093,8 +3096,7 @@ void outlineMoveCursor(int key) {
     case ARROW_RIGHT:
     case 'l':
     {
-      orow& row = O.rows.at(O.fr);
-      if (!O.rows.empty()) O.fc++;
+      O.fc++;
       break;
     }
     case ARROW_UP:
@@ -3121,6 +3123,7 @@ void outlineMoveCursor(int key) {
 
   orow& row = O.rows.at(O.fr);
   if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
+  if (row.title.empty()) O.fc = 0;
 }
 
 // depends on readKey()
@@ -3665,7 +3668,7 @@ void outlineProcessKeypress(void) {
 
         case C_edit: //CTRL-W,CTRL-W
           // can't edit note if rows_are_contexts
-          if (!O.view == TASK) {
+          if (!(O.view == TASK)) {
             O.command[0] = '\0';
             O.mode = NORMAL;
             outlineSetMessage("Contexts and Folders do not have notes to edit");
@@ -3759,7 +3762,7 @@ void outlineProcessKeypress(void) {
 
             case 'e':
             case C_edit: //edit the note of the current item
-              if (!O.view == TASK) {
+              if (!(O.view == TASK)) {
                 O.command[0] = '\0';
                 O.mode = NORMAL;
                 outlineSetMessage("Only tasks have notes to edit!");
@@ -6646,7 +6649,6 @@ void outlineGetWordUnderCursor(){
 void outlineFindNextWord() {
 
   int y, x;
-  char *z;
   y = O.fr;
   x = O.fc + 1; //in case sitting on beginning of the word
    for (unsigned int n=0; n < O.rows.size(); n++) {
@@ -6830,7 +6832,6 @@ void editorHighlightSearchTerms(void) {
     //editorGetScreenYFromRowColWW(does not take into account E.screen_offset
     //if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return; //12-25-2019
     int pos = 0;
-    std::string &row = E.rows.at(n);
     for(;;) {
       pos = E.rows.at(n).find(search_terms, pos);
 
@@ -6906,7 +6907,6 @@ void editorHighlightWordsByPosition(void) {
 
   std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\\"; //removed period?? since it is in list?
   int word_num = -1;
-  int last_pos = 0;
   auto pos = word_positions.begin();
   auto prev_pos = pos;
   for (int n=0; n<=E.last_visible_row; n++) {
@@ -7052,15 +7052,9 @@ void editorRefreshScreen(bool redraw) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (E.mode == COMMAND_LINE || !redraw) {
-    editorDrawStatusBar(ab);
-    editorDrawMessageBar(ab);
-    E.move_only = false;
-  } else {
-    editorDrawRows(ab);
-    editorDrawStatusBar(ab);
-    editorDrawMessageBar(ab);
-  }
+  if (redraw) editorDrawRows(ab);
+  editorDrawStatusBar(ab);
+  editorDrawMessageBar(ab);
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -7222,52 +7216,53 @@ bool editorProcessKeypress(void) {
       switch (c) {
     
         case '\r':
-          //editorCreateSnapshot();
           editorInsertReturn();
           E.last_typed += c;
-          break;
+          return true;
     
+        // not sure this is in use
         case CTRL_KEY('s'):
           editorSave();
-          break;
+          return false;
 
         case HOME_KEY:
           editorMoveCursorBOL();
-          break;
+          return false;
     
         case END_KEY:
           editorMoveCursorEOL();
           editorMoveCursor(ARROW_RIGHT);
-          break;
+          return false;
     
         case BACKSPACE:
           editorCreateSnapshot();
           editorBackspace();
-          break;
+          return true;
     
         case DEL_KEY:
           editorCreateSnapshot();
           editorDelChar();
-          break;
+          return true;
     
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
           editorMoveCursor(c);
-          break;
+          return false;
     
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
-          break;
+          return true;
     
+        // this should be a command line command
         case CTRL_KEY('z'):
           E.smartindent = (E.smartindent == 1) ? 0 : 1;
           editorSetMessage("E.smartindent = %d", E.smartindent); 
-          break;
+          return false;
     
         case '\x1b':
 
@@ -7308,7 +7303,6 @@ bool editorProcessKeypress(void) {
           return true;
     
         default:
-          //editorCreateSnapshot();
           editorInsertChar(c);
           E.last_typed += c;
           //editorSetMessage(E.last_typed.c_str());
@@ -7316,7 +7310,7 @@ bool editorProcessKeypress(void) {
      
       } //end inner switch for outer case INSERT
 
-      return false;
+      return true; // end of case INSERT: - should not be executed
 
     case NORMAL: 
  
@@ -8205,7 +8199,7 @@ int editorGetLinesInRowWW(int r) {
       pos = prev_pos + E.screencols;
     } else if (pos == prev_pos) {
       row = row.substr(pos+1);
-      prev_pos = -1;
+      //prev_pos = -1; 12-27-2019
       pos = E.screencols - 1;
     }
     lines++;
@@ -8547,6 +8541,8 @@ void editorMoveEndWord2() {
 
 }
 
+// used by 'w' -> goes to beginning of work left to right
+// believe it matches vim in all cases
 void editorMoveNextWord(void) {
 
   if (E.rows.empty()) return;
@@ -8570,7 +8566,7 @@ void editorMoveNextWord(void) {
 
     std::string &row = E.rows.at(r);
 
-    if (row.empty()) {E.fr = r; E.fc == 0; return;}
+    if (row.empty()) {E.fr = r; E.fc = 0; return;}
 
     if (isalnum(row.at(c))) { //we are on an alphanumeric
 
@@ -8609,79 +8605,6 @@ void editorMoveNextWord(void) {
   }
 }
 
-// used by 'w' -> goes to beginning of work left to right
-// lots of quirks related to punctuation, empty rows, etc.
-// seems to handle all corner cases like vim
-void editorMoveNextWordOld(void) {
-
-  if (E.rows.empty()) return;
-
-  if (E.rows.at(E.fr).empty() && E.fr < E.rows.size() - 1) {
-      if (E.rows.at(E.fr+1).at(0) != ' ' || E.rows.at(E.fr+1).empty()) {
-          E.fr++;
-          E.fc = 0;
-          return;
-      }
-  }
-
-  std::string delimiters = " ,.;?:()[]{}&#~'";
-  int r = E.fr;
-  int c = E.fc;
-  int pos;
-
-  // this wierd line is from fact that if you
-  // move to first non-space char of a row
-  // then you're done but don't want that
-  // to occur if you start there since cursor won't move then
-  if (c == 0 && E.rows.at(r).size() > 1) c = 1;
-
-  for (;;) {
-    if (r > E.rows.size() - 1) return;
-
-    std::string &row = E.rows.at(r);
-
-    if (row.empty()) {
-        E.fc = 0;
-        break;
-    }
-
-    if (c == 0 && row.at(0) != ' ') break;
-
-  // are we starting on punctuation?
-
-    pos = delimiters.find(row.at(c), 0);
-    if (pos != std::string::npos) {
-      pos = row.find_first_not_of(delimiters, c);
-      if (pos != std::string::npos) break;
-      else {
-        r++;
-        c = 0;
-      }
-    } else {
-      pos = row.find_first_of(delimiters, c);
-      if (pos == std::string::npos) {
-        r++;
-        c = 0;
-        continue;
-      }
-      if (row.at(pos) != ' ') break;
-      else {
-        pos = row.find_first_not_of(' ', pos);
-        if (pos != std::string::npos) break;
-        else {
-          r++;
-          c = 0;
-        }
-      }
-    }
-  }
-  if (0) ;//(pos == std::string::npos) return;
-  else {
-    E.fc = pos;
-    E.fr = r;
-  }
-}
-
 // normal mode 'b'
 // not well tested but seems identical to vim including hanlding of runs of punctuation
 void editorMoveBeginningWord(void) {
@@ -8693,7 +8616,7 @@ void editorMoveBeginningWord(void) {
   if (E.fc == 0) { // this should also cover an empty row
     E.fr--;
     E.fc = E.rows.at(E.fr).size() - 1;
-    if (E.fc == -1) {E.fc == 0; return;}
+    if (E.fc == -1) {E.fc = 0; return;}
   } else E.fc--;
 
   int r = E.fr;
@@ -8705,7 +8628,7 @@ void editorMoveBeginningWord(void) {
 
     std::string &row = E.rows.at(r);
 
-    if (row.empty()) {E.fr = r; E.fc == 0; return;}
+    if (row.empty()) {E.fr = r; E.fc = 0; return;}
 
     if (isalnum(row.at(c))) { //we are on an alphanumeric
       pos = row.find_last_of(delimiters, c);
@@ -8902,7 +8825,7 @@ void editorFindNextWord(void) {
 }
 
 void editorMarkupLink(void) {
-  int y, numrows, j, n; //p;
+  int y, numrows, n;
   std::string http = "http";
   std::string bracket_http = "[http";
   numrows = E.rows.size();
@@ -9125,6 +9048,7 @@ int main(int argc, char** argv) {
   signal(SIGWINCH, signalHandler);
   bool text_change;
   bool scroll;
+  bool redraw;
 
   while (1) {
 
@@ -9132,7 +9056,8 @@ int main(int argc, char** argv) {
     if (editor_mode){
       text_change = editorProcessKeypress(); // ? could you do 0 => no command 1 command
       scroll = editorScroll();
-      editorRefreshScreen(text_change || scroll);
+      redraw = (E.mode == COMMAND_LINE) ? false : (text_change || scroll);
+      editorRefreshScreen(redraw);
     } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
       outlineScroll();
       outlineRefreshScreen();
