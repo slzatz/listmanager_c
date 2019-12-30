@@ -52,7 +52,9 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms;
+static std::vector<std::string> search_terms2;
 static std::vector<int> word_positions;
+static std::vector<std::vector<int>> word_positions2;
 static std::vector<int> fts_ids;
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
@@ -281,8 +283,6 @@ struct sqlite_db {
   sqlite3 *db;
   char *err_msg;
   sqlite3 *fts_db;
-  sqlite3 *fts_vocab_db;
-  char *fts_err_msg;
 };
 
 static struct sqlite_db S;
@@ -379,7 +379,7 @@ static void (*update_row)(void);
 //static int (*insert_row)(int); //not called directly
 static void (*display_item_info)(int);
 static void (*touch)(void);
-static void (*search_db)(void);
+static void (*search_db)(std::string);
 static void (*map_context_titles)(void);
 static void (*map_folder_titles)(void);
 
@@ -448,7 +448,7 @@ void get_containers_pg(void);  //has an if that determines which columns go into
 void update_note_pg(void);
 void update_note_sqlite(void); 
 void solr_find(void);
-void fts5_sqlite(void);
+void fts5_sqlite(std::string);
 void get_items_by_id_sqlite(std::stringstream &);
 
 void update_task_context_pg(const std::string &, int);
@@ -1526,8 +1526,9 @@ void get_items_by_id_sqlite(std::stringstream &query) {
   } else {
     O.mode = SEARCH;
     //get_note(O.rows.at(0).id);
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1633,7 +1634,7 @@ void get_note_sqlite(int id) {
   }
   */
 
-  word_positions.clear();
+  word_positions2.clear();
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
@@ -1670,16 +1671,22 @@ void get_note_sqlite(int id) {
   }
 
   std::stringstream query3;
-  query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << search_terms << "' AND col = 'note';";
-  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, nullptr, &S.err_msg);
+  int n = 0;
+  for(auto v: search_terms2) {
+  word_positions2.push_back(std::vector<int>{});
+  query3.str(std::string());
+  query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
+  editorSetMessage(query3.str().c_str());
+  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
+  n++;
 
   if (rc != SQLITE_OK ) {
     outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.fts_db);
   }
-
-  int ww = (word_positions.empty()) ? -1 : word_positions.at(0);
+ }
+  int ww = (word_positions2.at(0).empty()) ? -1 : word_positions2.at(0).at(0);
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
@@ -1695,13 +1702,14 @@ int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-int offset_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+int offset_callback (void *n, int argc, char **argv, char **azColName) {
 
-  UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
+  int *nn= static_cast<int*>(n);
 
-  word_positions.push_back(atoi(argv[0]));
+
+  word_positions2.at(*nn).push_back(atoi(argv[0]));
 
   return 0;
 }
@@ -3738,7 +3746,7 @@ void outlineProcessKeypress(void) {
               if (O.view == TASK) {
                 outlineSetMessage("Tasks will be refreshed");
                 if (O.taskview == BY_SEARCH)
-                  search_db();
+                  ;//search_db();
                 else
                   get_items(MAX);
               } else {
@@ -3789,6 +3797,7 @@ void outlineProcessKeypress(void) {
               }
 
             case C_find: //catches 'fin' and 'find' 
+              {
               if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
                 return;
@@ -3797,13 +3806,22 @@ void outlineProcessKeypress(void) {
               O.context = "";
               O.folder = "";
               O.taskview = BY_SEARCH;
+              search_terms2.clear();
               //O.mode = SEARCH; //////
               search_terms = O.command_line.substr(pos+1);
               std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-              search_db();
-              return;
+              //search_db(search_terms);
+              std::istringstream iss(search_terms);
+              for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
+              search_db(search_terms);
 
+              outlineSetMessage("You searched for %s", search_terms2.at(0).c_str());
+              
+              return;
+              }
             case C_fts: 
+              {
+              std::string s;
               if (O.command_line.size() < 6) {
                 outlineSetMessage("You need more characters");
                 return;
@@ -3811,13 +3829,16 @@ void outlineProcessKeypress(void) {
 
               //EraseScreenRedrawLines(); //*****************************
               O.context = "search";
-              search_terms = O.command_line.substr(pos+1);
-              fts5_sqlite();
+              s = O.command_line.substr(pos+1);
+              fts5_sqlite(s);
+              std::istringstream iss(s);
+              for(std::string ss; iss >> s; ) search_terms2.push_back(ss);
               if (O.mode != NO_ROWS) {
-                O.mode = DATABASE;
+                //O.mode = SEARCH;
                 get_note(get_id());
               } else {
                 outlineRefreshScreen();
+              }
               }
               return;
 
@@ -4226,7 +4247,7 @@ void outlineProcessKeypress(void) {
                 O.show_deleted = !O.show_deleted;
                 O.show_completed = !O.show_completed;
                 if (O.taskview == BY_SEARCH)
-                  search_db();
+                  ; //search_db();
                 else
                   get_items(MAX);
               }
@@ -4498,7 +4519,7 @@ void outlineProcessKeypress(void) {
             O.show_deleted = !O.show_deleted;
             O.show_completed = !O.show_completed;
             if (O.taskview == BY_SEARCH)
-              search_db();
+              ; //search_db();
             else
               get_items(MAX);
           }
@@ -4509,7 +4530,7 @@ void outlineProcessKeypress(void) {
           if (O.view == TASK) {
             outlineSetMessage("Tasks will be refreshed");
             if (O.taskview == BY_SEARCH)
-              search_db();
+              ; //search_db();
              else
               get_items(MAX);
           } else {
@@ -4830,7 +4851,7 @@ void display_item_info_pg(int id) {
   PQclear(res);
 }
 
-void fts5_sqlite(void) {
+void fts5_sqlite(std::string search_terms) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -6906,8 +6927,9 @@ void editorHighlightWordsByPosition(void) {
   if (E.rows.empty()) return;
 
   std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\\"; //removed period?? since it is in list?
+  for (auto v: word_positions2) {
   int word_num = -1;
-  auto pos = word_positions.begin();
+  auto pos = v.begin();
   auto prev_pos = pos;
   for (int n=0; n<=E.last_visible_row; n++) {
     int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
@@ -6925,14 +6947,15 @@ void editorHighlightWordsByPosition(void) {
 
       if (n < E.first_visible_row) continue;
       // can't this start the search from the last match? 12-23-2019
-      pos = std::find(pos, word_positions.end(), word_num);
-      //if (std::find(word_positions.begin() + pos_in_list, word_positions.end(), word_num) !=word_positions.end())
-      if (pos != word_positions.end()) {
+      pos = std::find(pos, v.end(), word_num);
+      //if (std::find(v.begin() + pos_in_list, v.end(), word_num) !=v.end())
+      if (pos != v.end()) {
         prev_pos = pos;
         editorHighlightWord(n, start, end-start);
       } else pos = prev_pos;
     }
   }
+}
 }
 
 void editorHighlightWordsByPositionOld(void) {
@@ -9010,7 +9033,7 @@ int main(int argc, char** argv) {
     update_task_folder = update_task_folder_pg;
     display_item_info = display_item_info_pg;
     touch = touch_pg;
-    search_db = solr_find;
+    //search_db = solr_find;
     get_containers = get_containers_pg;
     update_container = update_container_pg;
     update_keyword = update_keyword_pg;
