@@ -52,9 +52,9 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms;
-static std::vector<std::string> search_terms2;
-static std::vector<int> word_positions;
-static std::vector<std::vector<int>> word_positions2;
+//static std::vector<std::string> search_terms2;
+//static std::vector<int> word_positions;
+static std::vector<std::vector<int>> word_positions;
 static std::vector<int> fts_ids;
 static int fts_counter;
 static std::string search_string; //word under cursor works with *, n, N etc.
@@ -1627,14 +1627,7 @@ void get_items_by_id_pg(std::stringstream& query) {
 void get_note_sqlite(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
-  /*
-  if (!editor_mode && O.mode == DATABASE) {
-    display_item_info(O.rows.at(O.fr).id);
-    return;
-  }
-  */
-
-  word_positions2.clear();
+  word_positions.clear();
   E.rows.clear();
   E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
@@ -1649,9 +1642,6 @@ void get_note_sqlite(int id) {
     sqlite3_close(S.db);
   }
 
-  //editorRefreshScreen();
-
-  //if (editor_mode || O.mode != SEARCH) return;
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
     return;
@@ -1670,23 +1660,27 @@ void get_note_sqlite(int id) {
     sqlite3_close(S.fts_db);
   }
 
+  // split string into a vector of words
+  std::vector<std::string> vec;
+  std::istringstream iss(search_terms);
+  for(std::string ss; iss >> ss; ) vec.push_back(ss);
   std::stringstream query3;
   int n = 0;
-  for(auto v: search_terms2) {
-  word_positions2.push_back(std::vector<int>{});
-  query3.str(std::string());
-  query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
-  editorSetMessage(query3.str().c_str());
-  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
-  n++;
+  //for(auto v: search_terms2) {
+  for(auto v: vec) {
+    word_positions.push_back(std::vector<int>{});
+    query3.str(std::string()); // how you clear a stringstream
+    query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
+    rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
+    n++;
 
-  if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.fts_db);
+    if (rc != SQLITE_OK ) {
+      outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+      sqlite3_free(S.err_msg);
+      sqlite3_close(S.fts_db);
+    } 
   }
- }
-  int ww = (word_positions2.at(0).empty()) ? -1 : word_positions2.at(0).at(0);
+  int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
@@ -1709,7 +1703,7 @@ int offset_callback (void *n, int argc, char **argv, char **azColName) {
   int *nn= static_cast<int*>(n);
 
 
-  word_positions2.at(*nn).push_back(atoi(argv[0]));
+  word_positions.at(*nn).push_back(atoi(argv[0]));
 
   return 0;
 }
@@ -3806,16 +3800,14 @@ void outlineProcessKeypress(void) {
               O.context = "";
               O.folder = "";
               O.taskview = BY_SEARCH;
-              search_terms2.clear();
-              //O.mode = SEARCH; //////
+              //search_terms2.clear();
+              //O.mode = SEARCH; ////// it's in get_items_by_id
               search_terms = O.command_line.substr(pos+1);
               std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-              //search_db(search_terms);
-              std::istringstream iss(search_terms);
-              for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
+              //std::istringstream iss(search_terms);
+              //for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
               search_db(search_terms);
-
-              outlineSetMessage("You searched for %s", search_terms2.at(0).c_str());
+              outlineSetMessage("You searched for %s", search_terms.c_str());
               
               return;
               }
@@ -3831,8 +3823,8 @@ void outlineProcessKeypress(void) {
               O.context = "search";
               s = O.command_line.substr(pos+1);
               fts5_sqlite(s);
-              std::istringstream iss(s);
-              for(std::string ss; iss >> s; ) search_terms2.push_back(ss);
+              //std::istringstream iss(s);
+              //for(std::string ss; iss >> s; ) search_terms2.push_back(ss);
               if (O.mode != NO_ROWS) {
                 //O.mode = SEARCH;
                 get_note(get_id());
@@ -4366,7 +4358,6 @@ void outlineProcessKeypress(void) {
               return;
 
             case C_highlight:
-              //editorHighlightSearchTerms();
               editorHighlightWordsByPosition();
               O.mode = O.last_mode;
               outlineSetMessage("%s highlighted", search_terms.c_str());
@@ -6870,9 +6861,7 @@ void editorHighlightWord(int r, int c, int len) {
   std::string &row = E.rows.at(r);
   int x = editorGetScreenXFromRowColWW(r, c) + EDITOR_LEFT_MARGIN + 1;
   int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1 - E.line_offset; // added line offset 12-25-2019
-  //row.substr(c, row.find(' ', c)); //12-25-2019
   std::stringstream s;
-  //s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
     << row.substr(c, len)
     << "\x1b[0m";
@@ -6918,8 +6907,9 @@ void editorSpellCheck(void) {
 }
 
 // uses sqlite offsets contained in word_positions
-// I don't think this handles fact that text could be scrolled
-// except text can't be scrolled unless you enter editor_mode which doesn't highlight
+// currently just highlights the words in rows that are visible on the screen
+// You can't currently scroll because when you edit the search highlights disappear
+// ie text can't be scrolled unless you enter editor_mode which doesn't highlight
 // while this works ? better to use find_if as per
 // https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
 void editorHighlightWordsByPosition(void) {
@@ -6927,63 +6917,36 @@ void editorHighlightWordsByPosition(void) {
   if (E.rows.empty()) return;
 
   std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\\"; //removed period?? since it is in list?
-  for (auto v: word_positions2) {
-  int word_num = -1;
-  auto pos = v.begin();
-  auto prev_pos = pos;
-  for (int n=0; n<=E.last_visible_row; n++) {
-    int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
-    int start;
-    std::string &row = E.rows.at(n);
-    if (row.empty()) continue;
-    for (;;) {
-      if (end >= static_cast<int>(row.size()) - 1) break;
-      start = end + 1;
-      end = row.find_first_of(delimiters, start);
-      if (end == std::string::npos) {
-        end = row.size();
+  for (auto v: word_positions) {
+    int word_num = -1;
+    auto pos = v.begin();
+    auto prev_pos = pos;
+    for (int n=0; n<=E.last_visible_row; n++) {
+      int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+      int start;
+      std::string &row = E.rows.at(n);
+      if (row.empty()) continue;
+      for (;;) {
+        if (end >= static_cast<int>(row.size()) - 1) break;
+        start = end + 1;
+        end = row.find_first_of(delimiters, start);
+        if (end == std::string::npos) {
+          end = row.size();
+        }
+        if (end != start) word_num++;
+  
+        if (n < E.first_visible_row) continue;
+        // start the search from the last match? 12-23-2019
+        pos = std::find(pos, v.end(), word_num);
+        if (pos != v.end()) {
+          prev_pos = pos;
+          editorHighlightWord(n, start, end-start);
+        } else pos = prev_pos;
       }
-      if (end != start) word_num++;
-
-      if (n < E.first_visible_row) continue;
-      // can't this start the search from the last match? 12-23-2019
-      pos = std::find(pos, v.end(), word_num);
-      //if (std::find(v.begin() + pos_in_list, v.end(), word_num) !=v.end())
-      if (pos != v.end()) {
-        prev_pos = pos;
-        editorHighlightWord(n, start, end-start);
-      } else pos = prev_pos;
     }
   }
 }
-}
 
-void editorHighlightWordsByPositionOld(void) {
-
-  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t"; //removed period?? since it is in list? missing open double quote
-  int word_num = -1;
-  for (int n=0; n<E.rows.size(); n++) {
-    if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return;
-    int end = -1;
-    int start;
-    std::string &row = E.rows.at(n);
-    for (;;) {
-      if (end == row.size() - 1) break;
-      start = end + 1;
-      end = row.find_first_of(delimiters, start);
-      if (end == std::string::npos) {
-        end = row.size() - 1;
-        //corner case when isolated single letter at the end of a line - absolutely needed
-        if (end == start) word_num++;
-      }
-      if (end != start) word_num++;
-
-      // can't this start the search from the last match? 12-23-2019
-      if (std::find(word_positions.begin(), word_positions.end(), word_num) !=word_positions.end())
-        editorHighlightWord(n, start, end-start);
-    }
-  }
-}
 void editorSpellingSuggestions(void) {
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
@@ -7008,8 +6971,6 @@ void editorSpellingSuggestions(void) {
     editorSetMessage("Suggestions for %s: %s", word.c_str(), s.str().c_str());
   }
 }
-
-
 
 //status bar has inverted colors
 /*****************************************/
@@ -7038,7 +6999,7 @@ void editorDrawStatusBar(std::string& ab) {
                                    "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
                                    E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
   } else {
-    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %d E.line_offset = %d",
+    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
                                       E.cx, E.cy, E.rows.size(), E.line_offset);
   }
 
@@ -7135,7 +7096,7 @@ void editorMoveCursor(int key) {
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      if (E.fc > 0) E.fc--; 
+      if (E.fc > 0) E.fc--;
       break;
 
     case ARROW_RIGHT:
@@ -7237,12 +7198,12 @@ bool editorProcessKeypress(void) {
     case INSERT:
 
       switch (c) {
-    
+
         case '\r':
           editorInsertReturn();
           E.last_typed += c;
           return true;
-    
+
         // not sure this is in use
         case CTRL_KEY('s'):
           editorSave();
@@ -7251,12 +7212,12 @@ bool editorProcessKeypress(void) {
         case HOME_KEY:
           editorMoveCursorBOL();
           return false;
-    
+
         case END_KEY:
           editorMoveCursorEOL();
           editorMoveCursor(ARROW_RIGHT);
           return false;
-    
+
         case BACKSPACE:
           editorCreateSnapshot();
           editorBackspace();
