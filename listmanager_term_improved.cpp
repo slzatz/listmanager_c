@@ -52,8 +52,6 @@ static std::stringstream display_text;
 static int initial_file_row = 0; //for arrowing or displaying files
 static bool editor_mode;
 static std::string search_terms;
-//static std::vector<std::string> search_terms2;
-//static std::vector<int> word_positions;
 static std::vector<std::vector<int>> word_positions;
 static std::vector<int> fts_ids;
 static int fts_counter;
@@ -855,7 +853,7 @@ void get_containers_pg(void) {
   O.fc = O.fr = O.rowoff = 0;
 
   std::string table;
-  switch (O.view){
+  switch (O.view) {
     case CONTEXT:
       table = "context";
       break;
@@ -969,7 +967,7 @@ void get_containers_sqlite(void) {
 
   std::string table;
   int (*callback)(void *, int, char **, char **);
-  switch (O.view){
+  switch (O.view) {
     case CONTEXT:
       table = "context";
       callback = context_callback;
@@ -2934,6 +2932,7 @@ void outlineDrawStatusBar(std::string& ab) {
   char status[80], rstatus[80];
 
   std::string s;
+  /*
   if (O.view == TASK) {
       if (O.taskview == BY_SEARCH) { s = "search";
     } else if (O.taskview == BY_FOLDER) { s = O.folder + "[f]";
@@ -2948,17 +2947,48 @@ void outlineDrawStatusBar(std::string& ab) {
   } else if (O.view == KEYWORD) {
     s = "Keywords";
   }
+  */
 
-  if (O.rows.empty()) { //********************************** or (!O.numrows)
-    len = snprintf(status, sizeof(status),
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
-  } else {
+  switch (O.view) {
+      case TASK:
+        switch (O.taskview) {
+            case BY_SEARCH:
+              s =  "search"; 
+              break;
+            case BY_FOLDER:
+              s = O.folder + "[f]";
+              break;
+            case BY_CONTEXT:
+              s = O.context + "[c]";
+              break;
+            case BY_RECENT:
+              s = "recent";
+              break;
+            case BY_JOIN:
+              s = O.context + "[c] + " + O.folder + "[f]";
+              break;
+            case BY_KEYWORD:
+              s = O.keyword + "[k]";
+              break;
+        }    
+        break;
+      case CONTEXT:
+        s = "Contexts";
+        break;
+      case FOLDER:
+        s = "Folders";
+        break;
+      case KEYWORD:  
+        s = "Keywords";
+        break;
+  }
+
+  if (!O.rows.empty()) {
 
     orow& row = O.rows.at(O.fr);
-    std::string truncated_title = row.title.substr(0, 19);
+    // note the format is for 15 chars - 12 from substring below and "[+]" when needed
+    std::string truncated_title = row.title.substr(0, 12);
+    if (E.dirty) truncated_title.append( "[+]");
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -2968,7 +2998,16 @@ void outlineDrawStatusBar(std::string& ab) {
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
+
+  } else {
+
+    len = snprintf(status, sizeof(status),
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   }
+
   //because of escapes
   len-=22;
 
@@ -3017,6 +3056,7 @@ void outlineRefreshScreen(void) {
 
   char buf[20];
 
+  /*
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
   for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
@@ -3025,18 +3065,38 @@ void outlineRefreshScreen(void) {
     O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
     ab.append(buf, strlen(buf));
   }
+  */
 
+  /*
+  // put cursor at upper left after erasing
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
+  ab.append(buf, strlen(buf));
+ */
+
+  if (!editor_mode) {
+
+  //Below erase screen from middle to left - `1K` below is cursor to left erasing
+  //Now erases time/sort column (+ 17 in line below)
+  for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
+    //O.screencols + OUTLINE_LEFT_MARGIN);
+    O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
+    ab.append(buf, strlen(buf));
+  }
+  //
   // put cursor at upper left after erasing
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-  if (O.mode == SEARCH)
-    outlineDrawSearchRows(ab);
-  else
-    outlineDrawRows(ab); //unlike editorDrawRows, outDrawRows doesn't do any erasing
+    if (O.mode == SEARCH)
+      outlineDrawSearchRows(ab);
+    else
+      outlineDrawRows(ab); //unlike editorDrawRows, outDrawRows doesn't do any erasing
 
-  outlineDrawStatusBar(ab);
-  outlineDrawMessageBar(ab);
+    outlineDrawStatusBar(ab);
+    outlineDrawMessageBar(ab);
+
+  } else outlineDrawStatusBar(ab);
 
   //[y;xH positions cursor and [1m is bold [31m is red and here they are
   //chained (note syntax requires only trailing 'm')
@@ -5124,6 +5184,7 @@ void update_note_pg(void) {
   return;
 }
 
+// not sure this should be calling outlineRefreshScreen - 01012020
 void update_note_sqlite(void) {
 
   std::string text = editorRowsToString();
@@ -7036,9 +7097,13 @@ void editorRefreshScreen(bool redraw) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (redraw) editorDrawRows(ab);
+  if (redraw) editorDrawRows(ab); 
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
+
+  // there is certainly a better way but right now to show a file has beeni
+  // modified this needs to be called each time
+  outlineDrawStatusBar(ab);
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -7046,24 +7111,7 @@ void editorRefreshScreen(bool redraw) {
     ab.append(buf, strlen(buf));
   }
 
-  if (E.dirty == 1) {
-    //The below needs to be in a function that takes the color as a parameter
-    write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-
-    for (int k = OUTLINE_LEFT_MARGIN + O.screencols + 1; k < screencols ;k++) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-      write(STDOUT_FILENO, buf, strlen(buf));
-      write(STDOUT_FILENO, "\x1b[31mq", 6); //horizontal line
-    }
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2); // added len 03022019
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[31mw", 6); //'T' corner
-    write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-    write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-  }
-
   ab.append("\x1b[?25h", 6); //shows the cursor
-
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights
@@ -7812,6 +7860,7 @@ bool editorProcessKeypress(void) {
               //editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
+              /*
               {
               char buf[32];
               write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
@@ -7827,6 +7876,7 @@ bool editorProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
               write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
               }
+              */
               return false;
   
             case 'x':
@@ -7839,6 +7889,7 @@ bool editorProcessKeypress(void) {
               //editorRefreshScreen();
 
               //The below needs to be in a function that takes the color as a parameter
+              /*
               {
               char buf[32];
               write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
@@ -7854,6 +7905,7 @@ bool editorProcessKeypress(void) {
               write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
               write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
               }
+              */
               return false;
   
             case C_quit:
