@@ -397,7 +397,7 @@ void outlineProcessKeypress(void);
 bool editorProcessKeypress(void);
 
 //Outline Prototypes
-void outlineSetMessage(const char *fmt, ...);
+void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 //void getcharundercursor();
 void outlineDrawStatusBar(std::string&);
@@ -677,7 +677,7 @@ void map_context_titles_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("in map_context_titles_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("in map_context_titles_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return;
   }
@@ -699,7 +699,7 @@ void map_folder_titles_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("in map_folder_titles_pg: PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
+    outlineShowMessage("in map_folder_titles_pg: PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
     PQclear(res);
     return;
   }
@@ -723,13 +723,13 @@ void map_context_titles_sqlite(void) {
   int rc = sqlite3_exec(S.db, query.c_str(), context_titles_callback, &no_rows, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("map_context_titles: SQL error: %s", S.err_msg);
+    outlineShowMessage("map_context_titles: SQL error: %s", S.err_msg);
     sqlite3_free(S.err_msg);
     return;
     }
 
   if (no_rows)
-    outlineSetMessage("There were no context titles to map!");
+    outlineShowMessage("There were no context titles to map!");
 }
 
 int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -754,13 +754,13 @@ void map_folder_titles_sqlite(void) {
   int rc = sqlite3_exec(S.db, query.c_str(), folder_titles_callback, &no_rows, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("map_folder_titles: SQL error: %s", S.err_msg);
+    outlineShowMessage("map_folder_titles: SQL error: %s", S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
 
   if (no_rows)
-    outlineSetMessage("There were no folder titles to map!");
+    outlineShowMessage("There were no folder titles to map!");
 }
 
 int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -800,7 +800,7 @@ void get_items_pg(int max) {
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
   } else {
-      outlineSetMessage("You asked for an unsupported db query");
+      outlineShowMessage("You asked for an unsupported db query");
       return;
   }
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -811,7 +811,7 @@ void get_items_pg(int max) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("in get_items_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("in get_items_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return;
   }    
@@ -836,7 +836,7 @@ void get_items_pg(int max) {
   O.view = TASK;
 
   if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
@@ -864,7 +864,7 @@ void get_containers_pg(void) {
       table = "keyword";
       break;
     default:
-      outlineSetMessage("Somehow you are in a view I can't handle");
+      outlineShowMessage("Somehow you are in a view I can't handle");
       return;
   }
 
@@ -873,7 +873,7 @@ void get_containers_pg(void) {
 
   PGresult *res = PQexec(conn, query.str().c_str());
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("in get_containers_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("in get_containers_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return;
   }
@@ -952,7 +952,7 @@ void get_containers_pg(void) {
   PQclear(res);
 
   if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
   } else
     O.mode = NORMAL;
@@ -981,7 +981,7 @@ void get_containers_sqlite(void) {
       callback = keyword_callback;
       break;
     default:
-      outlineSetMessage("Somehow you are in a view I can't handle");
+      outlineShowMessage("Somehow you are in a view I can't handle");
       return;
   }
 
@@ -992,12 +992,12 @@ void get_containers_sqlite(void) {
 
   int rc = sqlite3_exec(S.db, query.str().c_str(), callback, &no_rows, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("get_containers: SQL error: %s\n", S.err_msg);
+    outlineShowMessage("get_containers: SQL error: %s\n", S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
   if (no_rows) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
   } else
     O.mode = NORMAL;
@@ -1084,7 +1084,7 @@ void get_keywords_sqlite(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -1096,14 +1096,14 @@ void get_keywords_sqlite(void) {
   rc = sqlite3_exec(db, query.c_str(), keyword_callback, &no_rows, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s\n", err_msg);
+    outlineShowMessage("SQL error: %s\n", err_msg);
     sqlite3_free(err_msg);
   }
 
   sqlite3_close(db);
 
   if (no_rows) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
   } else
     O.mode = NORMAL;
@@ -1126,7 +1126,7 @@ void get_task_keywords_sqlite(void) {
 
    int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, &no_rows, &S.err_msg);
    if (rc != SQLITE_OK ) {
-     outlineSetMessage("SQL error: %s", S.err_msg);
+     outlineShowMessage("SQL error: %s", S.err_msg);
      sqlite3_free(S.err_msg);
      return;
     }
@@ -1188,7 +1188,7 @@ void get_keywords_pg(void) {
   PGresult *res = PQexec(conn, query.c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("Problem retrieving the task's keywords");
+    outlineShowMessage("Problem retrieving the task's keywords");
     PQclear(res);
     return;
   }
@@ -1209,7 +1209,7 @@ void get_keywords_pg(void) {
   }
 
   if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
   } else
     O.mode = NORMAL;
@@ -1225,7 +1225,7 @@ void add_task_keyword_pg(const std::string &kw, int id) {
   query <<  "INSERT INTO keyword (name) VALUES ('" << kw << "') ON CONFLICT DO NOTHING;";  //<- works for postgres
   PGresult *res = PQexec(conn, query.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem inserting into keyword table: %s ", PQerrorMessage(conn));
+    outlineShowMessage("Problem inserting into keyword table: %s ", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
@@ -1235,7 +1235,7 @@ void add_task_keyword_pg(const std::string &kw, int id) {
 
   res = PQexec(conn, query2.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem inserting into task_keyword table: %s", PQerrorMessage(conn));
+    outlineShowMessage("Problem inserting into task_keyword table: %s", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
@@ -1246,7 +1246,7 @@ void add_task_keyword_pg(const std::string &kw, int id) {
 
   res = PQexec(conn, query3.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem updating task modified date: %s", PQerrorMessage(conn));
+    outlineShowMessage("Problem updating task modified date: %s", PQerrorMessage(conn));
     PQclear(res);
     return;
   }
@@ -1264,7 +1264,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
 
   int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query). SQLITE error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query). SQLITE error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1273,7 +1273,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
   rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query2). SQLITE error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query2). SQLITE error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1283,7 +1283,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
   rc = sqlite3_exec(S.db, query3.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query3). SQLITE error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query3). SQLITE error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1305,7 +1305,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
 
   rc = sqlite3_exec(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("add_task_keyword: SQLITE fts error: %s", S.err_msg);
+    outlineShowMessage("add_task_keyword: SQLITE fts error: %s", S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1324,7 +1324,7 @@ void delete_task_keywords_sqlite(void) {
   int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query). SQL error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query). SQL error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
   }
 
@@ -1333,7 +1333,7 @@ void delete_task_keywords_sqlite(void) {
   query2 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
   rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query2). SQL error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query2). SQL error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1344,7 +1344,7 @@ void delete_task_keywords_sqlite(void) {
 
   rc = sqlite3_exec(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg);
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In %s (query3): SQL fts error: %s", __func__, S.err_msg);
+    outlineShowMessage("In %s (query3): SQL fts error: %s", __func__, S.err_msg);
     sqlite3_free(S.err_msg);
     return;
   }
@@ -1356,7 +1356,7 @@ void delete_task_keywords_pg(void) {
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
   PGresult *res = PQexec(conn, query.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem deleting the task's keywords");
+    outlineShowMessage("Problem deleting the task's keywords");
     PQclear(res);
     return;
   }
@@ -1366,7 +1366,7 @@ void delete_task_keywords_pg(void) {
   query2 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
   res = PQexec(conn, query2.str().c_str());
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Problem updating tasks modified date");
+    outlineShowMessage("Problem updating tasks modified date");
     PQclear(res);
     return;
   }
@@ -1385,7 +1385,7 @@ void get_task_keywords_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("Problem retrieving the task's keywords");
+    outlineShowMessage("Problem retrieving the task's keywords");
     PQclear(res);
     return;
   }
@@ -1420,7 +1420,7 @@ void get_items_sqlite(int max) {
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
   } else {
-      outlineSetMessage("You asked for an unsupported db query");
+      outlineShowMessage("You asked for an unsupported db query");
       return;
   }
 
@@ -1433,14 +1433,14 @@ void get_items_sqlite(int max) {
     int rc = sqlite3_exec(S.db, query.str().c_str(), data_callback, &sortcolnum, &S.err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("In %s: SQL error: %s", __func__, S.err_msg);
+      outlineShowMessage("In %s: SQL error: %s", __func__, S.err_msg);
       sqlite3_free(S.err_msg);
     }
 
   O.view = TASK;
 
   if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
@@ -1510,7 +1510,7 @@ void get_items_by_id_sqlite(std::stringstream &query) {
     int rc = sqlite3_exec(S.db, query.str().c_str(), by_id_data_callback, &no_rows, &S.err_msg);
     
     if (rc != SQLITE_OK ) {
-        outlineSetMessage("In %s. SQL error: %s", S.err_msg);
+        outlineShowMessage("In %s. SQL error: %s", S.err_msg);
         sqlite3_free(S.err_msg);
         return;
     } 
@@ -1518,7 +1518,7 @@ void get_items_by_id_sqlite(std::stringstream &query) {
   O.view = TASK;
 
   if (no_rows) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
@@ -1587,7 +1587,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("In %s. PQresultErrorMessage: %s", __func__, PQresultErrorMessage(res));
+    outlineShowMessage("In %s. PQresultErrorMessage: %s", __func__, PQresultErrorMessage(res));
     PQclear(res);
   }    
   
@@ -1611,7 +1611,7 @@ void get_items_by_id_pg(std::stringstream& query) {
   O.view = TASK;
 
   if (O.rows.empty()) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
@@ -1635,7 +1635,7 @@ void get_note_sqlite(int id) {
   int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   }
@@ -1653,7 +1653,7 @@ void get_note_sqlite(int id) {
   rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.fts_db);
   }
@@ -1673,7 +1673,7 @@ void get_note_sqlite(int id) {
     n++;
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+      outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
       sqlite3_free(S.err_msg);
       sqlite3_close(S.fts_db);
     } 
@@ -1748,7 +1748,7 @@ void get_note_pg(int id) {
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
 
-    outlineSetMessage("Problem retrieving note\n");        
+    outlineShowMessage("Problem retrieving note\n");        
     PQclear(res);
     //do_exit(conn);
   }    
@@ -1795,29 +1795,29 @@ void view_html(int id) {
               if (!pValue) {
                   Py_DECREF(pArgs);
                   Py_DECREF(pModule);
-                  outlineSetMessage("Problem converting c variable for use in calling python function");
+                  outlineShowMessage("Problem converting c variable for use in calling python function");
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
-            outlineSetMessage("Successfully rendered the note in html");
+            outlineShowMessage("Successfully rendered the note in html");
           }
           else {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
               PyErr_Print();
-              outlineSetMessage("Was not able to render the note in html!");
+              outlineShowMessage("Was not able to render the note in html!");
           }
       }
       else {
           if (PyErr_Occurred()) PyErr_Print();
-          outlineSetMessage("Was not able to find the function: view_html!");
+          outlineShowMessage("Was not able to find the function: view_html!");
       }
       Py_XDECREF(pFunc);
       Py_DECREF(pModule);
   }
   else {
       PyErr_Print();
-      outlineSetMessage("Was not able to find the module: view_html!");
+      outlineShowMessage("Was not able to find the module: view_html!");
   }
 
   //if (Py_FinalizeEx() < 0) {
@@ -1848,7 +1848,7 @@ void solr_find(void) {
               if (!pValue) {
                   Py_DECREF(pArgs);
                   Py_DECREF(pModule);
-                  outlineSetMessage("Problem converting c variable for use in calling python function");
+                  outlineShowMessage("Problem converting c variable for use in calling python function");
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
@@ -1856,7 +1856,7 @@ void solr_find(void) {
               int len = PyList_Size(pValue);
 
           if (O.rows.empty()) {
-            outlineSetMessage("No results were returned");
+            outlineShowMessage("No results were returned");
             O.mode = NO_ROWS;
             return;
           }
@@ -1886,24 +1886,24 @@ void solr_find(void) {
 
               Py_DECREF(pValue);
               //DEBUGGING
-              //outlineSetMessage(query.str().c_str());
+              //outlineShowMessage(query.str().c_str());
               //return;
               get_items_by_id_pg(query);
           } else {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
               PyErr_Print();
-              outlineSetMessage("Problem retrieving ids from solr!");
+              outlineShowMessage("Problem retrieving ids from solr!");
           }
       } else {
           if (PyErr_Occurred()) PyErr_Print();
-          outlineSetMessage("Was not able to find the function: solr_find!");
+          outlineShowMessage("Was not able to find the function: solr_find!");
       }
       Py_XDECREF(pFunc);
       Py_DECREF(pModule);
   } else {
       PyErr_Print();
-      outlineSetMessage("Was not able to find the module: solr_find!");
+      outlineShowMessage("Was not able to find the module: solr_find!");
   }
 
   //if (Py_FinalizeEx() < 0) {
@@ -1938,7 +1938,7 @@ void update_solr(void) {
               if (!pValue) {
                   Py_DECREF(pArgs);
                   Py_DECREF(pModule);
-                  outlineSetMessage("Problem converting c variable for use in calling python function");
+                  outlineShowMessage("Problem converting c variable for use in calling python function");
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
@@ -1950,10 +1950,10 @@ void update_solr(void) {
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
               PyErr_Print();
-              outlineSetMessage("Problem retrieving ids from solr!");
+              outlineShowMessage("Problem retrieving ids from solr!");
           }
       } else { if (PyErr_Occurred()) PyErr_Print();
-          outlineSetMessage("Was not able to find the function: update_solr!");
+          outlineShowMessage("Was not able to find the function: update_solr!");
       }
 
       Py_XDECREF(pFunc);
@@ -1961,13 +1961,13 @@ void update_solr(void) {
 
   } else {
       PyErr_Print();
-      outlineSetMessage("Was not able to find the module: update_solr!");
+      outlineShowMessage("Was not able to find the module: update_solr!");
   }
 
   //if (Py_FinalizeEx() < 0) {
   //}
 
-  outlineSetMessage("%d items were added/updated to solr db", num);
+  outlineShowMessage("%d items were added/updated to solr db", num);
 }
 
 int keyfromstringcpp(const std::string& key) {
@@ -2081,7 +2081,7 @@ int readKey() {
 
   if (c == '\x1b') {
     char seq[3];
-    //outlineSetMessage("You pressed %d", c); //slz
+    //outlineShowMessage("You pressed %d", c); //slz
     // the reads time out after 0.1 seconds
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
     if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
@@ -2090,7 +2090,7 @@ int readKey() {
     if (seq[1] >= '0' && seq[1] <= '9') {
       if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b'; //need 4 bytes
       if (seq[2] == '~') {
-        //outlineSetMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
+        //outlineShowMessage("You pressed %c%c%c", seq[0], seq[1], seq[2]); //slz
         switch (seq[1]) {
           case '1': return HOME_KEY; //not being issued
           case '3': return DEL_KEY; //<esc>[3~
@@ -2102,7 +2102,7 @@ int readKey() {
         }
       }
     } else {
-        //outlineSetMessage("You pressed %c%c", seq[0], seq[1]); //slz
+        //outlineShowMessage("You pressed %c%c", seq[0], seq[1]); //slz
         switch (seq[1]) {
           case 'A': return ARROW_UP; //<esc>[A
           case 'B': return ARROW_DOWN; //<esc>[B
@@ -2117,7 +2117,7 @@ int readKey() {
     return '\x1b'; // if it doesn't match a known escape sequence like ] ... or O ... just return escape
   
   } else {
-      //outlineSetMessage("You pressed %d", c); //slz
+      //outlineShowMessage("You pressed %d", c); //slz
       return c;
   }
 }
@@ -2216,8 +2216,8 @@ void outlineSave(const std::string& fname) {
   f << outlineRowsToString();
   f.close();
 
-  //outlineSetMessage("Can't save! I/O error: %s", strerror(errno));
-  outlineSetMessage("saved to outline.txt");
+  //outlineShowMessage("Can't save! I/O error: %s", strerror(errno));
+  outlineShowMessage("saved to outline.txt");
 }
 
 /*** editor row operations ***/
@@ -2733,8 +2733,8 @@ void editorDisplayFile(void) {
     }
   }
   ab.append("\x1b[0m", 4);
-  outlineDrawStatusBar(ab);
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  //outlineDrawStatusBar(ab); //01012020
+  //write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
 void editorReadFile2(const std::string &filename) {
@@ -2907,7 +2907,164 @@ void outlineDrawSearchRows(std::string& ab) {
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
+void outlineDrawStatusBarNew(void) {
 
+  std::string ab;  
+  int len;
+  /*
+  so the below should 1) position the cursor on the status
+  bar row and midscreen and 2) erase previous statusbar
+  r -> l and then put the cursor back where it should be
+  at OUTLINE_LEFT_MARGIN
+  */
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
+                             O.screenlines + TOP_MARGIN + 1,
+                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             O.screenlines + TOP_MARGIN + 1,
+                             1); //status bar comes right out to left margin
+
+  ab.append(buf, strlen(buf));
+
+  ab.append("\x1b[7m", 4); //switches to inverted colors
+  char status[300], rstatus[80];
+
+  std::string s;
+
+  switch (O.view) {
+      case TASK:
+        switch (O.taskview) {
+            case BY_SEARCH:
+              s =  "search"; 
+              break;
+            case BY_FOLDER:
+              s = O.folder + "[f]";
+              break;
+            case BY_CONTEXT:
+              s = O.context + "[c]";
+              break;
+            case BY_RECENT:
+              s = "recent";
+              break;
+            case BY_JOIN:
+              s = O.context + "[c] + " + O.folder + "[f]";
+              break;
+            case BY_KEYWORD:
+              s = O.keyword + "[k]";
+              break;
+        }    
+        break;
+      case CONTEXT:
+        s = "Contexts";
+        break;
+      case FOLDER:
+        s = "Folders";
+        break;
+      case KEYWORD:  
+        s = "Keywords";
+        break;
+  }
+
+  if (!O.rows.empty()) {
+
+    orow& row = O.rows.at(O.fr);
+    // note the format is for 15 chars - 12 from substring below and "[+]" when needed
+    std::string truncated_title = row.title.substr(0, 12);
+    if (E.dirty) truncated_title.append( "[+]");
+
+    len = snprintf(status, sizeof(status),
+                              // because video is reversted [42 sets text to green and 49 undoes it
+                              // I think the [0;7m is revert to normal and reverse video
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+
+
+  } else {
+
+    len = snprintf(status, sizeof(status),
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+  }
+
+  ab.append(status, len);
+  ab.append(" ", 1);
+
+  char editor_status[200];
+  int editor_len;
+
+  if (!E.rows.empty()){
+    int line = editorGetLineInRowWW(E.fr, E.fc);
+    int line_char_count = editorGetLineCharCountWW(E.fr, line);
+    int lines = editorGetLinesInRowWW(E.fr);
+
+    editor_len = snprintf(editor_status,
+                   sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
+                                   "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
+                                   E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
+  } else {
+    editor_len =  snprintf(editor_status, sizeof(editor_status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
+                                      E.cx, E.cy, E.rows.size(), E.line_offset);
+  }
+
+  ab.append(editor_status, editor_len);
+
+  len = len + editor_len;
+  //because of escapes
+  len-=22;
+
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "c++");
+
+  if (len > screencols - 1) len = screencols - 1;
+
+  while (len < screencols - 1 ) {
+    if ((screencols - len) == rlen - 9) { //10 of chars not printable
+      ab.append(rstatus, rlen);
+      break;
+    } else {
+      ab.append(" ", 1);
+      len++;
+    }
+  }
+  ab.append("\x1b[0m"); //switches back to normal formatting
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+void return_cursor() {
+  std::string ab;
+  char buf[32];
+
+  if (editor_mode) {
+  // the lines below position the cursor where it should go
+    if (E.mode != COMMAND_LINE){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
+      ab.append(buf, strlen(buf));
+    }
+  } else {
+    if (O.mode == SEARCH || O.mode == DATABASE) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
+      ab.append(buf, strlen(buf));
+    } else if (O.mode != COMMAND_LINE) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN);
+      ab.append(buf, strlen(buf));
+      // below restores the cursor position based on O.cx and O.cy + margin
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
+      ab.append(buf, strlen(buf));
+      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+  // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
+    } else { //O.mode == COMMAND_LINE
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + OUTLINE_LEFT_MARGIN); /// ****
+      ab.append(buf, strlen(buf));
+      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+    }
+  }
+  ab.append("\x1b[0m"); //return background to normal
+  ab.append("\x1b[?25h"); //shows the cursor
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
 //status bar has inverted colors
 void outlineDrawStatusBar(std::string& ab) {
 
@@ -2932,22 +3089,6 @@ void outlineDrawStatusBar(std::string& ab) {
   char status[80], rstatus[80];
 
   std::string s;
-  /*
-  if (O.view == TASK) {
-      if (O.taskview == BY_SEARCH) { s = "search";
-    } else if (O.taskview == BY_FOLDER) { s = O.folder + "[f]";
-    } else if (O.taskview == BY_CONTEXT) { s = O.context + "[c]";
-    } else if (O.taskview == BY_RECENT) {s = "recent";
-    } else if (O.taskview == BY_JOIN) {s = O.context + "[c] + " + O.folder + "[f]";
-    } else if (O.taskview == BY_KEYWORD) {s = O.keyword + "[k]";}
-  } else if (O.view == CONTEXT) {
-    s = "Contexts";
-  } else if (O.view == FOLDER) {
-    s = "Folders";
-  } else if (O.view == KEYWORD) {
-    s = "Keywords";
-  }
-  */
 
   switch (O.view) {
       case TASK:
@@ -3047,33 +3188,12 @@ void outlineDrawMessageBar(std::string& ab) {
 
 void outlineRefreshScreen(void) {
 
-  if (0)
-    outlineSetMessage("length = %d, O.cx = %d, O.cy = %d, O.fc = %d, O.fr = %d row id = %d", O.rows.at(O.fr).title.size(), O.cx, O.cy, O.fc, O.fr, get_id());
-
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
 
   char buf[20];
 
-  /*
-  //Below erase screen from middle to left - `1K` below is cursor to left erasing
-  //Now erases time/sort column (+ 17 in line below)
-  for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-    //O.screencols + OUTLINE_LEFT_MARGIN);
-    O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
-    ab.append(buf, strlen(buf));
-  }
-  */
-
-  /*
-  // put cursor at upper left after erasing
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
-  ab.append(buf, strlen(buf));
- */
-
-  if (!editor_mode) {
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
@@ -3083,40 +3203,16 @@ void outlineRefreshScreen(void) {
     O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
     ab.append(buf, strlen(buf));
   }
-  //
+
   // put cursor at upper left after erasing
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-    if (O.mode == SEARCH)
-      outlineDrawSearchRows(ab);
-    else
-      outlineDrawRows(ab); //unlike editorDrawRows, outDrawRows doesn't do any erasing
+  if (O.mode == SEARCH)
+    outlineDrawSearchRows(ab);
+  else
+    outlineDrawRows(ab); 
 
-    outlineDrawStatusBar(ab);
-    outlineDrawMessageBar(ab);
-
-  } else outlineDrawStatusBar(ab);
-
-  //[y;xH positions cursor and [1m is bold [31m is red and here they are
-  //chained (note syntax requires only trailing 'm')
-  if (O.mode == SEARCH || O.mode == DATABASE) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
-    ab.append(buf, strlen(buf));
-  } else if (O.mode != COMMAND_LINE) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN);
-    ab.append(buf, strlen(buf));
-    // below restores the cursor position based on O.cx and O.cy + margin
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
-    ab.append(buf, strlen(buf));
-    ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
-  // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
-  } else { //O.mode == COMMAND_LINE
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + OUTLINE_LEFT_MARGIN); /// ****
-    ab.append(buf, strlen(buf));
-    ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
-  }
-  ab.append("\x1b[0m", 4); //return background to normal
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
@@ -3124,7 +3220,9 @@ void outlineRefreshScreen(void) {
 from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
 variable number of arguments and are declared with an ellipsis in place of the last parameter.*/
 
-void outlineSetMessage(const char *fmt, ...) {
+void outlineShowMessage(const char *fmt, ...) {
+  char message[100];  
+  std::string ab;
   va_list ap; //type for iterating arguments
   va_start(ap, fmt); // start iterating arguments with a va_list
 
@@ -3132,8 +3230,23 @@ void outlineSetMessage(const char *fmt, ...) {
   /* vsnprint from <stdio.h> writes to the character string str
      vsnprint(char *str,size_t size, const char *format, va_list ap)*/
 
-  std::vsnprintf(O.message, sizeof(O.message), fmt, ap);
+  std::vsnprintf(message, sizeof(message), fmt, ap);
   va_end(ap); //free a va_list
+
+  std::stringstream buf;
+
+  // Erase from mid-screen to the left and then place cursor all the way left
+  buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
+      << screencols/2 << "H" << "\x1b[1K\x1b["
+      << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+
+  ab = buf.str();
+  //ab.append("\x1b[0m"); //checking if necessary
+
+  int msglen = strlen(message);
+  if (msglen > screencols/2) msglen = screencols/2;
+  ab.append(message, msglen);
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
@@ -3205,7 +3318,7 @@ void outlineProcessKeypress(void) {
         case ':':
           O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
           O.command_line.clear();
-          outlineSetMessage(":");
+          outlineShowMessage(":");
           O.mode = COMMAND_LINE;
           return;
 
@@ -3223,7 +3336,7 @@ void outlineProcessKeypress(void) {
           O.mode = INSERT;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 'O': //Same as C_new in COMMAND_LINE mode
@@ -3231,7 +3344,7 @@ void outlineProcessKeypress(void) {
           O.fc = O.fr = O.rowoff = 0;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           editorEraseScreen(); //erases the note area
           O.mode = INSERT;
           return;
@@ -3254,7 +3367,7 @@ void outlineProcessKeypress(void) {
             it = folder_map.begin();
           }
           O.folder = it->first;
-          outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+          outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
         } else {
           if (O.context.empty() || O.taskview == BY_SEARCH) {
             it = context_map.begin();
@@ -3264,7 +3377,7 @@ void outlineProcessKeypress(void) {
             if (it == context_map.end()) it = context_map.begin();
           }
           O.context = it->first;
-          outlineSetMessage("\'%s\' will be opened", O.context.c_str());
+          outlineShowMessage("\'%s\' will be opened", O.context.c_str());
         }
         //EraseScreenRedrawLines(); //*****************************
         get_items(MAX);
@@ -3285,7 +3398,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0'; //11-26-2019
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
-          //outlineSetMessage("");
+          //outlineShowMessage("");
           return;
 
         case HOME_KEY:
@@ -3323,7 +3436,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.mode = NORMAL;
           if (O.fc > 0) O.fc--;
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
 
         default:
@@ -3336,6 +3449,7 @@ void outlineProcessKeypress(void) {
     case NORMAL:  
 
       if (c == '\x1b') {
+        outlineShowMessage("");
         O.command[0] = '\0';
         O.repeat = 0;
         return;
@@ -3382,7 +3496,7 @@ void outlineProcessKeypress(void) {
             O.command[0] = '\0'; //11-26-2019
             O.mode = NORMAL;
             if (O.fc > 0) O.fc--;
-            //outlineSetMessage("");
+            //outlineShowMessage("");
             return;
           }
 
@@ -3421,7 +3535,7 @@ void outlineProcessKeypress(void) {
           O.mode = INSERT;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 's':
@@ -3429,7 +3543,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = INSERT;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           return;
 
         case 'x':
@@ -3454,7 +3568,7 @@ void outlineProcessKeypress(void) {
           outlineMoveCursor(ARROW_RIGHT);
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 'A':
@@ -3463,7 +3577,7 @@ void outlineProcessKeypress(void) {
           outlineMoveCursor(ARROW_RIGHT);
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 'w':
@@ -3500,7 +3614,7 @@ void outlineProcessKeypress(void) {
           if (!O.rows.empty()) {
             O.fc = 0;
             O.mode = 1;
-            outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+            outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           }
           O.command[0] = '\0';
           O.repeat = 0;
@@ -3523,13 +3637,13 @@ void outlineProcessKeypress(void) {
           O.fc = O.fr = O.rowoff = 0;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           editorEraseScreen(); //erases the note area
           O.mode = INSERT;
           return;
 
         case ':':
-          outlineSetMessage(":");
+          outlineShowMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
           O.last_mode = O.mode;
@@ -3541,7 +3655,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.highlight[0] = O.highlight[1] = O.fc;
-          outlineSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- VISUAL --\x1b[0m");
           return;
 
         case 'p':  
@@ -3559,7 +3673,7 @@ void outlineProcessKeypress(void) {
         case 'm':
           if (O.view == TASK) {
             O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
-          outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+          outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
           }
           O.command[0] = '\0';
           return;
@@ -3671,7 +3785,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = INSERT;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         //tested with repeat on one line
@@ -3680,7 +3794,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = INSERT;
-          outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case C_gg:
@@ -3709,7 +3823,7 @@ void outlineProcessKeypress(void) {
               it = folder_map.begin();
             }
             O.folder = it->first;
-            outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+            outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
           } else {
             if (O.context.empty() || O.context == "search") {
               it = context_map.begin();
@@ -3719,7 +3833,7 @@ void outlineProcessKeypress(void) {
               if (it == context_map.end()) it = context_map.begin();
             }
             O.context = it->first;
-            outlineSetMessage("\'%s\' will be opened", O.context.c_str());
+            outlineShowMessage("\'%s\' will be opened", O.context.c_str());
           }
           //EraseScreenRedrawLines(); //*****************************
           get_items(MAX);
@@ -3733,13 +3847,13 @@ void outlineProcessKeypress(void) {
           if (!(O.view == TASK)) {
             O.command[0] = '\0';
             O.mode = NORMAL;
-            outlineSetMessage("Contexts and Folders do not have notes to edit");
+            outlineShowMessage("Contexts and Folders do not have notes to edit");
             return;
           }
           {
           int id = get_id();
           if (id != -1) {
-            outlineSetMessage("Edit note %d", id);
+            outlineShowMessage("Edit note %d", id);
             outlineRefreshScreen();
             //editor_mode needs go before get_note in case we retrieved item via a search
             editor_mode = true;
@@ -3747,7 +3861,7 @@ void outlineProcessKeypress(void) {
             E.mode = NORMAL;
             E.command[0] = '\0';
           } else {
-            outlineSetMessage("You need to save item before you can "
+            outlineShowMessage("You need to save item before you can "
                                    "create a note");
           }
           O.command[0] = '\0';
@@ -3770,7 +3884,7 @@ void outlineProcessKeypress(void) {
 
         case '\x1b': 
           O.mode = NORMAL;
-          outlineSetMessage(""); 
+          outlineShowMessage(""); 
           return;
 
         case '\r':
@@ -3798,13 +3912,13 @@ void outlineProcessKeypress(void) {
               //EraseScreenRedrawLines(); //doesn't seem necessary ****11162019*************************
 
               if (O.view == TASK) {
-                outlineSetMessage("Tasks will be refreshed");
+                outlineShowMessage("Tasks will be refreshed");
                 if (O.taskview == BY_SEARCH)
                   ;//search_db();
                 else
                   get_items(MAX);
               } else {
-                outlineSetMessage("contexts/folders will be refreshed");
+                outlineShowMessage("contexts/folders will be refreshed");
                 get_containers();
               }
               O.mode = O.last_mode;
@@ -3817,7 +3931,7 @@ void outlineProcessKeypress(void) {
               O.fc = O.fr = O.rowoff = 0;
               O.command[0] = '\0';
               O.repeat = 0;
-              outlineSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+              outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
               editorEraseScreen(); //erases the note area
               O.mode = INSERT;
               return;
@@ -3827,13 +3941,13 @@ void outlineProcessKeypress(void) {
               if (!(O.view == TASK)) {
                 O.command[0] = '\0';
                 O.mode = NORMAL;
-                outlineSetMessage("Only tasks have notes to edit!");
+                outlineShowMessage("Only tasks have notes to edit!");
                 return;
               }
               {
               int id = get_id();
               if (id != -1) {
-                outlineSetMessage("Edit note %d", id);
+                outlineShowMessage("Edit note %d", id);
                 outlineRefreshScreen();
                 //editor_mode needs go before get_note in case we retrieved item via a search
                 editor_mode = true;
@@ -3842,7 +3956,7 @@ void outlineProcessKeypress(void) {
                 E.mode = NORMAL;
                 E.command[0] = '\0';
               } else {
-                outlineSetMessage("You need to save item before you can "
+                outlineShowMessage("You need to save item before you can "
                                   "create a note");
               }
               O.command[0] = '\0';
@@ -3853,7 +3967,7 @@ void outlineProcessKeypress(void) {
             case C_find: //catches 'fin' and 'find' 
               {
               if (O.command_line.size() < 6) {
-                outlineSetMessage("You need more characters");
+                outlineShowMessage("You need more characters");
                 return;
               }  
 
@@ -3867,7 +3981,7 @@ void outlineProcessKeypress(void) {
               //std::istringstream iss(search_terms);
               //for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
               search_db(search_terms);
-              outlineSetMessage("You searched for %s", search_terms.c_str());
+              outlineShowMessage("You searched for %s", search_terms.c_str());
               
               return;
               }
@@ -3875,7 +3989,7 @@ void outlineProcessKeypress(void) {
               {
               std::string s;
               if (O.command_line.size() < 6) {
-                outlineSetMessage("You need more characters");
+                outlineShowMessage("You need more characters");
                 return;
               }  
 
@@ -3906,7 +4020,7 @@ void outlineProcessKeypress(void) {
                 O.view = CONTEXT;
                 get_containers();
                 O.mode = NORMAL;
-                outlineSetMessage("Retrieved contexts");
+                outlineShowMessage("Retrieved contexts");
                 return;
               } else {
 
@@ -3922,12 +4036,12 @@ void outlineProcessKeypress(void) {
                     }
                   }
                   if (!success) {
-                    outlineSetMessage("What you typed did not match any context");
+                    outlineShowMessage("What you typed did not match any context");
                     return;
                   }
 
                 } else {
-                  outlineSetMessage("You need to provide at least 3 characters "
+                  outlineShowMessage("You need to provide at least 3 characters "
                                     "that match a context!");
 
                   O.command_line.clear();
@@ -3942,10 +4056,10 @@ void outlineProcessKeypress(void) {
                 }
 
                 if (success) {
-                  outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
+                  outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
                 } else {
                   update_task_context(new_context, O.rows.at(O.fr).id);
-                  outlineSetMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
+                  outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
                 }
                 O.mode = O.last_mode;
                 if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -3960,7 +4074,7 @@ void outlineProcessKeypress(void) {
                 O.view = FOLDER;
                 get_containers();
                 O.mode = NORMAL;
-                outlineSetMessage("Retrieved folders");
+                outlineShowMessage("Retrieved folders");
                 return;
               } else {
 
@@ -3976,12 +4090,12 @@ void outlineProcessKeypress(void) {
                     }
                   }
                   if (!success) {
-                    outlineSetMessage("What you typed did not match any folder");
+                    outlineShowMessage("What you typed did not match any folder");
                     return;
                   }
 
                 } else {
-                  outlineSetMessage("You need to provide at least 3 characters "
+                  outlineShowMessage("You need to provide at least 3 characters "
                                     "that match a folder!");
 
                   O.command_line.clear();
@@ -3996,10 +4110,10 @@ void outlineProcessKeypress(void) {
                 }
 
                 if (success) {
-                  outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
+                  outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
                 } else {
                   update_task_folder(new_folder, O.rows.at(O.fr).id);
-                  outlineSetMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
+                  outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
                 }
                 O.mode = O.last_mode;
                 if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -4014,13 +4128,13 @@ void outlineProcessKeypress(void) {
                 //get_keywords();
                 get_containers();
                 O.mode = NORMAL;
-                outlineSetMessage("Retrieved keywords");
+                outlineShowMessage("Retrieved keywords");
                 return;
               } else {
 
                 if (O.last_mode == NO_ROWS) return;
                 std::string keyword = O.command_line.substr(pos+1);
-                outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
+                outlineShowMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
 
                 bool success = false;
                 for (const auto& it : O.rows) {
@@ -4031,10 +4145,10 @@ void outlineProcessKeypress(void) {
                 }
 
                 if (success) {
-                  outlineSetMessage("Marked tasks had keyword %s added", keyword.c_str());
+                  outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
                 } else {
                   add_task_keyword(keyword, O.rows.at(O.fr).id);
-                  outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
+                  outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
                 }
                 O.mode = O.last_mode;
                 if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -4055,12 +4169,12 @@ void outlineProcessKeypress(void) {
                   }
                 }
                 if (!success) {
-                  outlineSetMessage("What you typed did not match any context");
+                  outlineShowMessage("What you typed did not match any context");
                   return;
                 }
 
               } else {
-                outlineSetMessage("You need to provide at least 3 characters "
+                outlineShowMessage("You need to provide at least 3 characters "
                                   "that match a context!");
 
                 O.command_line.clear();
@@ -4075,10 +4189,10 @@ void outlineProcessKeypress(void) {
               }
 
               if (success) {
-                outlineSetMessage("Marked tasks moved into context %s", new_context.c_str());
+                outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
               } else {
                 update_task_context(new_context, O.rows.at(O.fr).id);
-                outlineSetMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
+                outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
               }
               O.mode = O.last_mode;
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -4100,12 +4214,12 @@ void outlineProcessKeypress(void) {
                   }
                 }
                 if (!success) {
-                  outlineSetMessage("What you typed did not match any folder");
+                  outlineShowMessage("What you typed did not match any folder");
                   return;
                 }
 
               } else {
-                outlineSetMessage("You need to provide at least 3 characters "
+                outlineShowMessage("You need to provide at least 3 characters "
                                   "that match a folder!");
 
                 O.command_line.clear();
@@ -4120,10 +4234,10 @@ void outlineProcessKeypress(void) {
               }
 
               if (success) {
-                outlineSetMessage("Marked tasks moved into folder %s", new_folder.c_str());
+                outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
               } else {
                 update_task_folder(new_folder, O.rows.at(O.fr).id);
-                outlineSetMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
+                outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
               }
               O.mode = O.last_mode;
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -4134,7 +4248,7 @@ void outlineProcessKeypress(void) {
             {
               if (O.last_mode == NO_ROWS) return;
               std::string keyword = O.command_line.substr(pos+1);
-              outlineSetMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
+              outlineShowMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
 
               bool success = false;
               for (const auto& it : O.rows) {
@@ -4145,10 +4259,10 @@ void outlineProcessKeypress(void) {
               }
 
               if (success) {
-                outlineSetMessage("Marked tasks had keyword %s added", keyword.c_str());
+                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
               } else {
                 add_task_keyword(keyword, O.rows.at(O.fr).id);
-                outlineSetMessage("No tasks were marked so added %s to current task", keyword.c_str());
+                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
               }
               O.mode = O.last_mode;
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -4156,7 +4270,7 @@ void outlineProcessKeypress(void) {
             }
 
             case C_deletekeywords:
-              outlineSetMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
+              outlineShowMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
               delete_task_keywords();
               O.mode = O.last_mode;
               return;
@@ -4177,13 +4291,13 @@ void outlineProcessKeypress(void) {
                 if (!success) return;
 
               } else {
-                outlineSetMessage("You did not provide a valid  context!");
+                outlineShowMessage("You did not provide a valid  context!");
                 //O.command_line[1] = '\0';
                 O.command_line.resize(1);
                 return;
               }
               //EraseScreenRedrawLines(); //*****************************
-              outlineSetMessage("\'%s\' will be opened", new_context.c_str());
+              outlineShowMessage("\'%s\' will be opened", new_context.c_str());
               O.context = new_context;
               O.folder = "";
               O.taskview = BY_CONTEXT;
@@ -4206,11 +4320,11 @@ void outlineProcessKeypress(void) {
                 if (!success) return;
 
               } else {
-                outlineSetMessage("You did not provide a valid  folder!");
+                outlineShowMessage("You did not provide a valid  folder!");
                 O.command_line.resize(1);
                 return;
               }
-              outlineSetMessage("\'%s\' will be opened", O.folder.c_str());
+              outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
               O.context = "";
               O.taskview = BY_FOLDER;
               get_items(MAX);
@@ -4220,12 +4334,12 @@ void outlineProcessKeypress(void) {
             case C_openkeyword:
 
               if (!pos) {
-                outlineSetMessage("You need to provide a keyword");
+                outlineShowMessage("You need to provide a keyword");
                 return;
               }
 
               O.keyword = O.command_line.substr(pos+1);
-              outlineSetMessage("\'%s\' will be opened", O.keyword.c_str());
+              outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
               O.context = "No Context";
               O.folder = "No Folder";
               O.taskview = BY_KEYWORD;
@@ -4237,7 +4351,7 @@ void outlineProcessKeypress(void) {
             case C_join:
               {
               if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
-                outlineSetMessage("You are either in a view where you can't join or provided no join container");
+                outlineShowMessage("You are either in a view where you can't join or provided no join container");
                 O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
                 O.mode = O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
                 return;
@@ -4263,12 +4377,12 @@ void outlineProcessKeypress(void) {
               }
 
               if (!success) {
-                outlineSetMessage("You did not provide a valid folder or context to join!");
+                outlineShowMessage("You did not provide a valid folder or context to join!");
                 O.command_line.resize(1);
                 return;
               }
 
-               outlineSetMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
+               outlineShowMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
                O.taskview = BY_JOIN;
                get_items(MAX);
                return;
@@ -4278,14 +4392,14 @@ void outlineProcessKeypress(void) {
               if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
                 O.sort = O.command_line.substr(pos + 1);
                 get_items(MAX);
-                outlineSetMessage("sorted by \'%s\'", O.sort.c_str());
+                outlineShowMessage("sorted by \'%s\'", O.sort.c_str());
               } else {
-                outlineSetMessage("Currently can't sort search, which is sorted on best match");
+                outlineShowMessage("Currently can't sort search, which is sorted on best match");
               }
               return;
 
             case C_recent:
-              outlineSetMessage("Will retrieve recent items");
+              outlineShowMessage("Will retrieve recent items");
               O.context = "No Context";
               O.taskview = BY_RECENT;
               O.folder = "No Folder";
@@ -4303,7 +4417,7 @@ void outlineProcessKeypress(void) {
                 else
                   get_items(MAX);
               }
-              outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
+              outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
               return;
 
             case C_synch:
@@ -4312,7 +4426,7 @@ void outlineProcessKeypress(void) {
               map_folder_titles();
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
-              outlineSetMessage("Synching local db and server and displaying results");
+              outlineShowMessage("Synching local db and server and displaying results");
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -4322,7 +4436,7 @@ void outlineProcessKeypress(void) {
 
               initial_file_row = 0; //for arrowing or displaying files
               O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
-              outlineSetMessage("Testing synching local db and server and displaying results");
+              outlineShowMessage("Testing synching local db and server and displaying results");
               editorReadFile("log");
               editorDisplayFile();//put them in the command mode case synch
               return;
@@ -4331,7 +4445,7 @@ void outlineProcessKeypress(void) {
               {
               const std::string filename = O.command_line.substr(pos+1);
               editorReadFile2(filename);
-              outlineSetMessage("Read the file: %s", filename.c_str());
+              outlineShowMessage("Read the file: %s", filename.c_str());
               O.mode = O.last_mode;
               return;
              }
@@ -4348,7 +4462,7 @@ void outlineProcessKeypress(void) {
               for (auto& it : O.rows) {
                 it.mark = false;}
               O.mode = O.last_mode;
-              outlineSetMessage("Marks all deleted");
+              outlineShowMessage("Marks all deleted");
               return;
 
             case C_dbase:
@@ -4370,9 +4484,9 @@ void outlineProcessKeypress(void) {
                 std::string fname = O.command_line.substr(pos + 1);
                 outlineSave(fname);
                 O.mode = NORMAL;
-                outlineSetMessage("Saved outline to %s", fname.c_str());
+                outlineShowMessage("Saved outline to %s", fname.c_str());
               } else {
-                outlineSetMessage("You didn't provide a file name!");
+                outlineShowMessage("You didn't provide a file name!");
               }
               return;
 
@@ -4388,7 +4502,7 @@ void outlineProcessKeypress(void) {
               }
               if (unsaved_changes) {
                 O.mode = NORMAL;
-                outlineSetMessage("No db write since last change");
+                outlineShowMessage("No db write since last change");
            
               } else {
                 write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
@@ -4412,7 +4526,7 @@ void outlineProcessKeypress(void) {
               initial_file_row = 0;
               O.last_mode = O.mode;
               O.mode = FILE_DISPLAY;
-              outlineSetMessage("Displaying help file");
+              outlineShowMessage("Displaying help file");
               editorReadFile("listmanager_commands");
               editorDisplayFile();
               return;
@@ -4420,7 +4534,7 @@ void outlineProcessKeypress(void) {
             case C_highlight:
               editorHighlightWordsByPosition();
               O.mode = O.last_mode;
-              outlineSetMessage("%s highlighted", search_terms.c_str());
+              outlineShowMessage("%s highlighted", search_terms.c_str());
               return;
 
             case C_spellcheck:
@@ -4428,13 +4542,13 @@ void outlineProcessKeypress(void) {
               if (E.spellcheck) editorSpellCheck();
               else editorRefreshScreen(true);
               O.mode = O.last_mode;
-              outlineSetMessage("Spellcheck");
+              outlineShowMessage("Spellcheck");
               return;
 
             default: // default for commandfromstring
 
               //\x1b[41m => red background
-              outlineSetMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
+              outlineShowMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
               O.mode = NORMAL;
               return;
 
@@ -4446,7 +4560,7 @@ void outlineProcessKeypress(void) {
           } else {
             O.command_line.push_back(c);
           }
-          outlineSetMessage(":%s", O.command_line.c_str());
+          outlineShowMessage(":%s", O.command_line.c_str());
 
         } // end of 'c' switch within case COMMAND_LINE
 
@@ -4481,18 +4595,18 @@ void outlineProcessKeypress(void) {
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
           get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
 
         case ARROW_LEFT:
           if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
             O.mode = SEARCH;
-            outlineSetMessage("You are now in SEARCH mode");
+            outlineShowMessage("You are now in SEARCH mode");
           } else if (O.mode == SEARCH) {
             O.mode = DATABASE;
-            outlineSetMessage("You are now in DATABASE mode");
+            outlineShowMessage("You are now in DATABASE mode");
           } else {
-            outlineSetMessage("There is no active search!");
+            outlineShowMessage("There is no active search!");
           }
           return;
 
@@ -4509,7 +4623,7 @@ void outlineProcessKeypress(void) {
           }
 
         case ':':
-          outlineSetMessage(":");
+          outlineShowMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
           O.last_mode = O.mode;
@@ -4526,7 +4640,7 @@ void outlineProcessKeypress(void) {
           O.view = CONTEXT;
           get_containers();
           O.mode = NORMAL;
-          outlineSetMessage("Retrieved contexts");
+          outlineShowMessage("Retrieved contexts");
           return;
 
         case 'f':
@@ -4534,7 +4648,7 @@ void outlineProcessKeypress(void) {
           O.view = FOLDER;
           get_containers();
           O.mode = NORMAL;
-          outlineSetMessage("Retrieved folders");
+          outlineShowMessage("Retrieved folders");
           return;
 
         case 'y':
@@ -4542,7 +4656,7 @@ void outlineProcessKeypress(void) {
           O.view = KEYWORD;
           get_keywords();
           O.mode = NORMAL;
-          outlineSetMessage("Retrieved keywords");
+          outlineShowMessage("Retrieved keywords");
           return;
         */
 
@@ -4561,7 +4675,7 @@ void outlineProcessKeypress(void) {
         case 'm':
           if (O.view == TASK) {
             O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
-          outlineSetMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+          outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
           }
           return;
 
@@ -4574,18 +4688,18 @@ void outlineProcessKeypress(void) {
             else
               get_items(MAX);
           }
-          outlineSetMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
+          outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
           return;
 
         case 'r':
           if (O.view == TASK) {
-            outlineSetMessage("Tasks will be refreshed");
+            outlineShowMessage("Tasks will be refreshed");
             if (O.taskview == BY_SEARCH)
               ; //search_db();
              else
               get_items(MAX);
           } else {
-            outlineSetMessage("contexts will be refreshed");
+            outlineShowMessage("contexts will be refreshed");
             get_containers();
           }
           return;
@@ -4608,8 +4722,8 @@ void outlineProcessKeypress(void) {
           return;
 
         default:
-          if (c < 33 || c > 127) outlineSetMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
-          else outlineSetMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
+          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
+          else outlineShowMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
           return;
       } // end of switch(c) in case DATABASLE
 
@@ -4645,7 +4759,7 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = 0;
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
   
         case 'y':  
@@ -4655,14 +4769,14 @@ void outlineProcessKeypress(void) {
           O.command[0] = '\0';
           O.repeat = 0;
           O.mode = 0;
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
   
         case '\x1b':
           O.mode = NORMAL;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
   
         default:
@@ -4716,7 +4830,7 @@ void outlineProcessKeypress(void) {
           break;
 
         case ':':
-          outlineSetMessage(":");
+          outlineShowMessage(":");
           O.command[0] = '\0';
           O.command_line.clear();
           //O.last_mode was set when entering file mode
@@ -4727,7 +4841,7 @@ void outlineProcessKeypress(void) {
           O.mode = O.last_mode;
           O.command[0] = '\0';
           O.repeat = 0;
-          outlineSetMessage("");
+          outlineShowMessage("");
           return;
       }
 
@@ -4764,7 +4878,7 @@ void synchronize(int report_only) { //using 1 or 0
               if (!pValue) {
                   Py_DECREF(pArgs);
                   Py_DECREF(pModule);
-                  outlineSetMessage("Problem converting c variable for use in calling python function");
+                  outlineShowMessage("Problem converting c variable for use in calling python function");
           }
           Py_DECREF(pArgs);
           if (pValue != NULL) {
@@ -4776,10 +4890,10 @@ void synchronize(int report_only) { //using 1 or 0
               Py_DECREF(pFunc);
               Py_DECREF(pModule);
               PyErr_Print();
-              outlineSetMessage("Received a NULL value from synchronize!");
+              outlineShowMessage("Received a NULL value from synchronize!");
           }
       } else { if (PyErr_Occurred()) PyErr_Print();
-          outlineSetMessage("Was not able to find the function: synchronize!");
+          outlineShowMessage("Was not able to find the function: synchronize!");
       }
 
       Py_XDECREF(pFunc);
@@ -4787,13 +4901,13 @@ void synchronize(int report_only) { //using 1 or 0
 
   } else {
       //PyErr_Print();
-      outlineSetMessage("Was not able to find the module: synchronize!");
+      outlineShowMessage("Was not able to find the module: synchronize!");
   }
 
   //if (Py_FinalizeEx() < 0) {
   //}
-  if (report_only) outlineSetMessage("Number of tasks/items that would be affected is %d", num);
-  else outlineSetMessage("Number of tasks/items that were affected is %d", num);
+  if (report_only) outlineShowMessage("Number of tasks/items that would be affected is %d", num);
+  else outlineShowMessage("Number of tasks/items that were affected is %d", num);
 }
 
 void display_item_info_pg(int id) {
@@ -4806,7 +4920,7 @@ void display_item_info_pg(int id) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn)); 
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
     PQclear(res);
     return;
   }    
@@ -4925,7 +5039,7 @@ void fts5_sqlite(std::string search_terms) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -4938,13 +5052,13 @@ void fts5_sqlite(std::string search_terms) {
   rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } 
   sqlite3_close(db);
 
   if (no_rows) {
-    outlineSetMessage("No results were returned");
+    outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
     return;
   }
@@ -4968,8 +5082,8 @@ void fts5_sqlite(std::string search_terms) {
 
   get_items_by_id_sqlite(query);
 
-  //outlineSetMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
-  //outlineSetMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
+  //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
+  //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 }
 
 int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -5001,7 +5115,7 @@ void display_item_info_sqlite(int id) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5009,7 +5123,7 @@ void display_item_info_sqlite(int id) {
   rc = sqlite3_exec(db, query.str().c_str(), display_item_info_callback, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } 
   sqlite3_close(db);
@@ -5169,7 +5283,7 @@ void update_note_pg(void) {
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
     editorSetMessage(PQerrorMessage(conn));
   } else {
-    outlineSetMessage("Updated note for item %d", id);
+    outlineShowMessage("Updated note for item %d", id);
     outlineRefreshScreen();
     //editorSetMessage("Note update succeeeded"); 
     /**************** need to update modified in orow row->strncpy (Some C function) ************************/
@@ -5179,7 +5293,7 @@ void update_note_pg(void) {
   //do_exit(conn);
   E.dirty = 0;
 
-  outlineSetMessage("Updated %d", id);
+  outlineShowMessage("Updated %d", id);
 
   return;
 }
@@ -5206,7 +5320,7 @@ void update_note_sqlite(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5214,10 +5328,10 @@ void update_note_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Updated note for item %d", id);
+    outlineShowMessage("Updated note for item %d", id);
     outlineRefreshScreen();
   }
 
@@ -5228,7 +5342,7 @@ void update_note_sqlite(void) {
   rc = sqlite3_open(FTS_DB.c_str(), &db);
     
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5240,10 +5354,10 @@ void update_note_sqlite(void) {
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL fts error: %s", err_msg);
+    outlineShowMessage("SQL fts error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Updated note and fts entry for item %d", id);
+    outlineShowMessage("Updated note and fts entry for item %d", id);
     outlineRefreshScreen();
     editorSetMessage("Note update succeeeded"); 
   }
@@ -5257,7 +5371,7 @@ void update_task_context_pg(std::string &new_context, int id) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
-      outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+      outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
     }
   }
 
@@ -5272,9 +5386,9 @@ void update_task_context_pg(std::string &new_context, int id) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
   } else {
-    outlineSetMessage("Setting context to %s succeeded", new_context.c_str());
+    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
   }
   PQclear(res);
 }
@@ -5293,7 +5407,7 @@ void update_task_context_sqlite(std::string &new_context, int id) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5301,10 +5415,10 @@ void update_task_context_sqlite(std::string &new_context, int id) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Setting context to %s succeeded", new_context.c_str());
+    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
   }
 
   sqlite3_close(db);
@@ -5314,7 +5428,7 @@ void update_task_folder_pg(std::string& new_folder, int id) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
-      outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+      outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
     }
   }
 
@@ -5329,9 +5443,9 @@ void update_task_folder_pg(std::string& new_folder, int id) {
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Postgres Error: %s", PQerrorMessage(conn));
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
   } else {
-    outlineSetMessage("Setting folder to %s succeeded", new_folder.c_str());
+    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
   }
   PQclear(res);
 }
@@ -5350,7 +5464,7 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5358,10 +5472,10 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Setting folder to %s succeeded", new_folder.c_str());
+    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
   }
 
   sqlite3_close(db);
@@ -5389,10 +5503,10 @@ void toggle_completed_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Toggle completed failed - %s", PQresultErrorMessage(res));
+    outlineShowMessage("Toggle completed failed - %s", PQresultErrorMessage(res));
   }
   else {
-    outlineSetMessage("Toggle completed succeeded");
+    outlineShowMessage("Toggle completed succeeded");
     row.completed = !row.completed;
   }
   PQclear(res);
@@ -5416,7 +5530,7 @@ void toggle_completed_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -5424,10 +5538,10 @@ void toggle_completed_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Toggle completed succeeded");
+    outlineShowMessage("Toggle completed succeeded");
     row.completed = !row.completed;
   }
 
@@ -5458,10 +5572,10 @@ void toggle_deleted_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
+    outlineShowMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
   }
   else {
-    outlineSetMessage("Toggle deleted succeeded");
+    outlineShowMessage("Toggle deleted succeeded");
     row.deleted = !row.deleted;
   }
   PQclear(res);
@@ -5487,10 +5601,10 @@ void touch_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
+    outlineShowMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
   }
   else {
-    outlineSetMessage("'Touch' succeeded");
+    outlineShowMessage("'Touch' succeeded");
   }
   PQclear(res);
   return;
@@ -5510,7 +5624,7 @@ void touch_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -5518,10 +5632,10 @@ void touch_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("'Touch' succeeded");
+    outlineShowMessage("'Touch' succeeded");
   }
 
   sqlite3_close(db);
@@ -5548,7 +5662,7 @@ void toggle_deleted_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
     }
@@ -5556,10 +5670,10 @@ void toggle_deleted_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Toggle deleted succeeded");
+    outlineShowMessage("Toggle deleted succeeded");
     row.deleted = !row.deleted;
   }
 
@@ -5609,7 +5723,7 @@ void toggle_star_pg(void) {
       break;
 
     default:
-      outlineSetMessage("Not sure what you're trying to toggle");
+      outlineShowMessage("Not sure what you're trying to toggle");
       return;
   }
 
@@ -5619,10 +5733,10 @@ void toggle_star_pg(void) {
   PGresult *res = PQexec(conn, query.str().c_str());
     
   if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineSetMessage("Toggle star failed - %s", PQresultErrorMessage(res));
+    outlineShowMessage("Toggle star failed - %s", PQresultErrorMessage(res));
   }
   else {
-    outlineSetMessage("Toggle star succeeded");
+    outlineShowMessage("Toggle star succeeded");
     row.star = !row.star;
   }
   PQclear(res);
@@ -5661,7 +5775,7 @@ void toggle_star_sqlite(void) {
       break;
 
     default:
-      outlineSetMessage("Not sure what you're trying to toggle");
+      outlineShowMessage("Not sure what you're trying to toggle");
       return;
   }
 
@@ -5675,7 +5789,7 @@ void toggle_star_sqlite(void) {
     
   if (rc != SQLITE_OK) {
         
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return;
   }
@@ -5683,10 +5797,10 @@ void toggle_star_sqlite(void) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error: %s", err_msg);
+    outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineSetMessage("Toggle star succeeded");
+    outlineShowMessage("Toggle star succeeded");
     row.star = !row.star;
   }
   sqlite3_close(db);
@@ -5697,7 +5811,7 @@ void update_row_pg(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5726,10 +5840,10 @@ void update_row_pg(void) {
     PGresult *res = PQexec(conn, query.str().c_str());
       
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineSetMessage(PQerrorMessage(conn));
+      outlineShowMessage(PQerrorMessage(conn));
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully update row %d", row.id);
+      outlineShowMessage("Successfully update row %d", row.id);
     }  
 
     PQclear(res);
@@ -5744,7 +5858,7 @@ void update_container_pg(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5775,10 +5889,10 @@ void update_container_pg(void) {
     PGresult *res = PQexec(conn, query.str().c_str());
 
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineSetMessage(PQerrorMessage(conn));
+      outlineShowMessage(PQerrorMessage(conn));
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully update row %d", row.id);
+      outlineShowMessage("Successfully update row %d", row.id);
     }
 
     PQclear(res);
@@ -5793,7 +5907,7 @@ void update_row_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5815,7 +5929,7 @@ void update_row_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
       
     if (rc != SQLITE_OK) {
-      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5823,11 +5937,11 @@ void update_row_sqlite(void) {
     rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", err_msg);
+      outlineShowMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully updated row %d", row.id);
+      outlineShowMessage("Successfully updated row %d", row.id);
     }
 
     sqlite3_close(db);
@@ -5837,7 +5951,7 @@ void update_row_sqlite(void) {
     rc = sqlite3_open(FTS_DB.c_str(), &db);
     if (rc != SQLITE_OK) {
           
-      outlineSetMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
+      outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5847,10 +5961,10 @@ void update_row_sqlite(void) {
     rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
       
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", err_msg);
+      outlineShowMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
       } else {
-        outlineSetMessage("Updated title and fts title entry for item %d", row.id);
+        outlineShowMessage("Updated title and fts title entry for item %d", row.id);
       }
   
       sqlite3_close(db);
@@ -5865,7 +5979,7 @@ void update_container_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5889,7 +6003,7 @@ void update_container_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
     if (rc != SQLITE_OK) {
-      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5897,11 +6011,11 @@ void update_container_sqlite(void) {
     rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", err_msg);
+      outlineShowMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully updated row %d", row.id);
+      outlineShowMessage("Successfully updated row %d", row.id);
     }
 
     sqlite3_close(db);
@@ -5916,7 +6030,7 @@ void update_keyword_sqlite(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5940,7 +6054,7 @@ void update_keyword_sqlite(void) {
     int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
 
     if (rc != SQLITE_OK) {
-      outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
       sqlite3_close(db);
       return;
     }
@@ -5948,11 +6062,11 @@ void update_keyword_sqlite(void) {
     rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
     if (rc != SQLITE_OK ) {
-      outlineSetMessage("SQL error: %s", err_msg);
+      outlineShowMessage("SQL error: %s", err_msg);
       sqlite3_free(err_msg);
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully updated row %d", row.id);
+      outlineShowMessage("Successfully updated row %d", row.id);
     }
 
     sqlite3_close(db);
@@ -5967,7 +6081,7 @@ void update_keyword_pg(void) {
   orow& row = O.rows.at(O.fr);
 
   if (!row.dirty) {
-    outlineSetMessage("Row has not been changed");
+    outlineShowMessage("Row has not been changed");
     return;
   }
 
@@ -5998,10 +6112,10 @@ void update_keyword_pg(void) {
     PGresult *res = PQexec(conn, query.str().c_str());
 
     if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineSetMessage(PQerrorMessage(conn));
+      outlineShowMessage(PQerrorMessage(conn));
     } else {
       row.dirty = false;
-      outlineSetMessage("Successfully update row %d", row.id);
+      outlineShowMessage("Successfully update row %d", row.id);
     }
 
     PQclear(res);
@@ -6044,7 +6158,7 @@ int insert_keyword_sqlite(orow& row) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return -1;
     }
@@ -6052,7 +6166,7 @@ int insert_keyword_sqlite(orow& row) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -6061,7 +6175,7 @@ int insert_keyword_sqlite(orow& row) {
 
   sqlite3_close(db);
 
-  outlineSetMessage("Successfully inserted new context with id %d and indexed it", row.id);
+  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
 
   return row.id;
 }
@@ -6096,8 +6210,8 @@ int insert_keyword_pg(orow& row) {
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return -1;
   }
@@ -6106,7 +6220,7 @@ int insert_keyword_pg(orow& row) {
   row.dirty = false;
 
   PQclear(res);
-  outlineSetMessage("Successfully inserted new context with id %d", row.id);
+  outlineShowMessage("Successfully inserted new context with id %d", row.id);
 
   return row.id;
 }
@@ -6165,8 +6279,8 @@ int insert_row_pg(orow& row) {
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return -1;
   }
@@ -6175,7 +6289,7 @@ int insert_row_pg(orow& row) {
   row.dirty = false;
 
   PQclear(res);
-  outlineSetMessage("Successfully inserted new row with id %d", row.id);
+  outlineShowMessage("Successfully inserted new row with id %d", row.id);
 
   return row.id;
 }
@@ -6222,8 +6336,8 @@ int insert_container_pg(orow& row) {
   PGresult *res = PQexec(conn, query.str().c_str());
 
   if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineSetMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineSetMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
+    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
+    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
     PQclear(res);
     return -1;
   }
@@ -6232,7 +6346,7 @@ int insert_container_pg(orow& row) {
   row.dirty = false;
 
   PQclear(res);
-  outlineSetMessage("Successfully inserted new context with id %d", row.id);
+  outlineShowMessage("Successfully inserted new context with id %d", row.id);
 
   return row.id;
 }
@@ -6295,7 +6409,7 @@ int insert_row_sqlite(orow& row) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return -1;
     }
@@ -6303,7 +6417,7 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -6325,7 +6439,7 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_open(FTS_DB.c_str(), &db);
 
   if (rc != SQLITE_OK) {
-    outlineSetMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return row.id;
   }
@@ -6333,12 +6447,12 @@ int insert_row_sqlite(orow& row) {
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing FTS insert: %s", err_msg);
+    outlineShowMessage("SQL error doing FTS insert: %s", err_msg);
     sqlite3_free(err_msg);
     return row.id; // would mean regular insert succeeded and fts failed - need to fix this
   }
   sqlite3_close(db);
-  outlineSetMessage("Successfully inserted new row with id %d and indexed it", row.id);
+  outlineShowMessage("Successfully inserted new row with id %d and indexed it", row.id);
 
   return row.id;
 }
@@ -6391,7 +6505,7 @@ int insert_container_sqlite(orow& row) {
 
   if (rc != SQLITE_OK) {
 
-    outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
     sqlite3_close(db);
     return -1;
     }
@@ -6399,7 +6513,7 @@ int insert_container_sqlite(orow& row) {
   rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineSetMessage("SQL error doing new item insert: %s", err_msg);
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
     sqlite3_free(err_msg);
     return -1;
   }
@@ -6408,7 +6522,7 @@ int insert_container_sqlite(orow& row) {
 
   sqlite3_close(db);
 
-  outlineSetMessage("Successfully inserted new context with id %d and indexed it", row.id);
+  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
 
   return row.id;
 }
@@ -6420,7 +6534,7 @@ void update_rows_pg(void) {
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
         
-      outlineSetMessage(PQerrorMessage(conn));
+      outlineShowMessage(PQerrorMessage(conn));
     }
   }
 
@@ -6445,7 +6559,7 @@ void update_rows_pg(void) {
       PGresult *res = PQexec(conn, query.str().c_str());
   
       if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-        outlineSetMessage(PQerrorMessage(conn));
+        outlineShowMessage(PQerrorMessage(conn));
         PQclear(res);
         return;
       } else {
@@ -6462,13 +6576,13 @@ void update_rows_pg(void) {
   }
 
   if (n == 0) {
-    outlineSetMessage("There were no rows to update");
+    outlineShowMessage("There were no rows to update");
     return;
   }
 
-  outlineSetMessage("Rows successfully updated ... %d", sizeof(updated_rows));
+  outlineShowMessage("Rows successfully updated ... %d", sizeof(updated_rows));
   
-  outlineSetMessage("Rows successfully updated ... ");
+  outlineShowMessage("Rows successfully updated ... ");
   char msg[200];
   strncpy(msg, "Rows successfully updated: ", sizeof(msg));
   char *put;
@@ -6480,7 +6594,7 @@ void update_rows_pg(void) {
 
   int slen = strlen(msg);
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  outlineSetMessage("%s",  msg);
+  outlineShowMessage("%s",  msg);
 }
 
 void update_rows_sqlite(void) {
@@ -6508,7 +6622,7 @@ void update_rows_sqlite(void) {
         
       if (rc != SQLITE_OK) {
             
-        outlineSetMessage("Cannot open database: %s", sqlite3_errmsg(db));
+        outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
         sqlite3_close(db);
         return;
         }
@@ -6516,7 +6630,7 @@ void update_rows_sqlite(void) {
       rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
 
       if (rc != SQLITE_OK ) {
-        outlineSetMessage("SQL error: %s", err_msg);
+        outlineShowMessage("SQL error: %s", err_msg);
         sqlite3_free(err_msg);
         sqlite3_close(db);
         return; // ? should we abort all other rows
@@ -6535,7 +6649,7 @@ void update_rows_sqlite(void) {
   }
 
   if (n == 0) {
-    outlineSetMessage("There were no rows to update");
+    outlineShowMessage("There were no rows to update");
     return;
   }
 
@@ -6551,7 +6665,7 @@ void update_rows_sqlite(void) {
 
   int slen = strlen(msg);
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  outlineSetMessage("%s",  msg);
+  outlineShowMessage("%s",  msg);
 }
 
 int get_id(void) { //default is in prototype but should have no default at all
@@ -6619,7 +6733,7 @@ void outlineDelWord() {
       outlineDelChar();
   }
   row.dirty = true;
-  //outlineSetMessage("i = %d, j = %d", i, j ); 
+  //outlineShowMessage("i = %d, j = %d", i, j ); 
 }
 
 void outlineDeleteToEndOfLine(void) {
@@ -6715,7 +6829,7 @@ void outlineGetWordUnderCursor(){
       search_string.push_back(title.at(x));
   }
 
-  outlineSetMessage("word under cursor: <%s>", search_string.c_str());
+  outlineShowMessage("word under cursor: <%s>", search_string.c_str());
 
 }
 
@@ -6737,7 +6851,7 @@ void outlineFindNextWord() {
      if (y == O.rows.size()) y = 0;
    }
 
-    outlineSetMessage("x = %d; y = %d", x, y); 
+    outlineShowMessage("x = %d; y = %d", x, y); 
 }
 
 // returns true if display needs to scroll and false if it doesn't
@@ -7098,12 +7212,12 @@ void editorRefreshScreen(bool redraw) {
   ab.append(buf, strlen(buf));
 
   if (redraw) editorDrawRows(ab); 
-  editorDrawStatusBar(ab);
-  editorDrawMessageBar(ab);
+  //editorDrawStatusBar(ab);
+  editorDrawMessageBar(ab); //01012020
 
   // there is certainly a better way but right now to show a file has beeni
   // modified this needs to be called each time
-  outlineDrawStatusBar(ab);
+  //outlineDrawStatusBar(ab); //01012020
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -8138,6 +8252,7 @@ bool editorProcessKeypress(void) {
       return true;
 
   }  //end of outer switch(E.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
+  return true; // this should not be reachable but was getting an error
 } //end of editorProcessKeyPress
 
 /********************************************************** WW stuff *****************************************/
@@ -9073,8 +9188,9 @@ int main(int argc, char** argv) {
   
  // PQfinish(conn); // this should happen when exiting
 
-  O.fc = O.fr = O.rowoff = 0; 
-  outlineSetMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenlines, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
+  //O.fc = O.fr = O.rowoff = 0; 
+  //outlineShowMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenlines, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
+  //return_cursor();
 
   // putting this here seems to speed up first search but still slow
   // might make sense to do the module imports here too
@@ -9086,6 +9202,11 @@ int main(int argc, char** argv) {
   bool scroll;
   bool redraw;
 
+  outlineRefreshScreen(); // now just draws rows
+  outlineDrawStatusBarNew();
+  outlineShowMessage("rows: %d  cols: %d      orow size: %d int: %d char*: %d bool: %d", screenlines, screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); 
+  return_cursor();
+
   while (1) {
 
     //need a way to just refresh command line
@@ -9095,11 +9216,14 @@ int main(int argc, char** argv) {
       redraw = (E.mode == COMMAND_LINE) ? false : (text_change || scroll);
       editorRefreshScreen(redraw);
     } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
-      outlineScroll();
-      outlineRefreshScreen();
       outlineProcessKeypress();
+      outlineScroll();
+      outlineRefreshScreen(); // now just draws rows
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
+
+    outlineDrawStatusBarNew();
+    return_cursor();
   }
   return 0;
 }
