@@ -24,7 +24,7 @@
 #include <sqlite3.h>
 
 #include <string>
-//#include <string_view> //not in use yet
+#include <string_view> 
 #include <vector>
 #include <map>
 #include <unordered_map>
@@ -400,7 +400,7 @@ bool editorProcessKeypress(void);
 void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 //void getcharundercursor();
-void outlineDrawStatusBar(std::string&);
+void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineDelWord();
 void outlineMoveCursor(int key);
@@ -437,7 +437,7 @@ void update_container_sqlite(void);
 void update_container_pg(void);
 void update_keyword_sqlite(void);
 void update_keyword_pg(void);
-void get_items_sqlite(int); //////////
+void get_items_sqlite(int); 
 void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
@@ -2733,8 +2733,7 @@ void editorDisplayFile(void) {
     }
   }
   ab.append("\x1b[0m", 4);
-  //outlineDrawStatusBar(ab); //01012020
-  //write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
+  write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
 void editorReadFile2(const std::string &filename) {
@@ -2907,7 +2906,7 @@ void outlineDrawSearchRows(std::string& ab) {
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
-void outlineDrawStatusBarNew(void) {
+void outlineDrawStatusBar(void) {
 
   std::string ab;  
   int len;
@@ -3064,111 +3063,6 @@ void return_cursor() {
   ab.append("\x1b[0m"); //return background to normal
   ab.append("\x1b[?25h"); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
-}
-//status bar has inverted colors
-void outlineDrawStatusBar(std::string& ab) {
-
-  int len;
-  /*
-  so the below should 1) position the cursor on the status
-  bar row and midscreen and 2) erase previous statusbar
-  r -> l and then put the cursor back where it should be
-  at OUTLINE_LEFT_MARGIN
-  */
-
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
-                             O.screenlines + TOP_MARGIN + 1,
-                             O.screencols + OUTLINE_LEFT_MARGIN,
-                             O.screenlines + TOP_MARGIN + 1,
-                             1); //status bar comes right out to left margin
-
-  ab.append(buf, strlen(buf));
-
-  ab.append("\x1b[7m", 4); //switches to inverted colors
-  char status[80], rstatus[80];
-
-  std::string s;
-
-  switch (O.view) {
-      case TASK:
-        switch (O.taskview) {
-            case BY_SEARCH:
-              s =  "search"; 
-              break;
-            case BY_FOLDER:
-              s = O.folder + "[f]";
-              break;
-            case BY_CONTEXT:
-              s = O.context + "[c]";
-              break;
-            case BY_RECENT:
-              s = "recent";
-              break;
-            case BY_JOIN:
-              s = O.context + "[c] + " + O.folder + "[f]";
-              break;
-            case BY_KEYWORD:
-              s = O.keyword + "[k]";
-              break;
-        }    
-        break;
-      case CONTEXT:
-        s = "Contexts";
-        break;
-      case FOLDER:
-        s = "Folders";
-        break;
-      case KEYWORD:  
-        s = "Keywords";
-        break;
-  }
-
-  if (!O.rows.empty()) {
-
-    orow& row = O.rows.at(O.fr);
-    // note the format is for 15 chars - 12 from substring below and "[+]" when needed
-    std::string truncated_title = row.title.substr(0, 12);
-    if (E.dirty) truncated_title.append( "[+]");
-
-    len = snprintf(status, sizeof(status),
-                              // because video is reversted [42 sets text to green and 49 undoes it
-                              // I think the [0;7m is revert to normal and reverse video
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
-                              truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
-
-
-  } else {
-
-    len = snprintf(status, sizeof(status),
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
-  }
-
-  //because of escapes
-  len-=22;
-
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "c++");
-
-  if (len > O.screencols + OUTLINE_LEFT_MARGIN) len = O.screencols + OUTLINE_LEFT_MARGIN;
-
-  ab.append(status, len + 22);
-
-  while (len < O.screencols + OUTLINE_LEFT_MARGIN) {
-    if ((O.screencols + OUTLINE_LEFT_MARGIN - len) == rlen - 10) { //10 of chars not printable
-      ab.append(rstatus, rlen);
-      break;
-    } else {
-      ab.append(" ", 1);
-      len++;
-    }
-  }
-
-  ab.append("\x1b[m", 3); //switches back to normal formatting
 }
 
 void outlineDrawMessageBar(std::string& ab) {
@@ -7212,12 +7106,7 @@ void editorRefreshScreen(bool redraw) {
   ab.append(buf, strlen(buf));
 
   if (redraw) editorDrawRows(ab); 
-  //editorDrawStatusBar(ab);
   editorDrawMessageBar(ab); //01012020
-
-  // there is certainly a better way but right now to show a file has beeni
-  // modified this needs to be called each time
-  //outlineDrawStatusBar(ab); //01012020
 
   // the lines below position the cursor where it should go
   if (E.mode != COMMAND_LINE){
@@ -9188,10 +9077,6 @@ int main(int argc, char** argv) {
   
  // PQfinish(conn); // this should happen when exiting
 
-  //O.fc = O.fr = O.rowoff = 0; 
-  //outlineShowMessage("rows: %d  cols: %d orow size: %d int: %d char*: %d bool: %d", O.screenlines, O.screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); //for display screen dimens
-  //return_cursor();
-
   // putting this here seems to speed up first search but still slow
   // might make sense to do the module imports here too
   // assume the reimports are essentially no-ops
@@ -9203,7 +9088,7 @@ int main(int argc, char** argv) {
   bool redraw;
 
   outlineRefreshScreen(); // now just draws rows
-  outlineDrawStatusBarNew();
+  outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d      orow size: %d int: %d char*: %d bool: %d", screenlines, screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); 
   return_cursor();
 
@@ -9222,7 +9107,7 @@ int main(int argc, char** argv) {
       // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
-    outlineDrawStatusBarNew();
+    outlineDrawStatusBar();
     return_cursor();
   }
   return 0;
