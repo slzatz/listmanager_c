@@ -338,6 +338,7 @@ struct editorConfig {
   int screencols;  //number of columns in the display
   std::vector<std::string> rows;
   std::vector<std::string> prev_rows;
+  std::vector<std::string> display_rows;
   int dirty; //file changes since last save
   //char *filename;
   char message[120]; //status msg is a character array max 80 char
@@ -2734,6 +2735,30 @@ void editorDisplayFile(void) {
   }
   ab.append("\x1b[0m", 4);
   write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
+}
+
+void editorDrawCodeRows(std::string &ab) {
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf.str());
+
+  // erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K");
+    ab.append(lf_ret, nchars);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  if (E.rows.empty()) return;
 }
 
 void editorReadFile2(const std::string &filename) {
