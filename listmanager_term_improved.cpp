@@ -20,7 +20,8 @@
 #include <csignal>
 #include <termios.h>
 #include <libpq-fe.h>
-#include "inipp.h" //https://github.com/mcmtroffaes/inipp
+#include "inipp.h" // https://github.com/mcmtroffaes/inipp
+#include "process.h" // https://github.com/skystrife/procxx
 #include <sqlite3.h>
 
 #include <string>
@@ -292,9 +293,14 @@ typedef struct orow {
   bool star;
   bool deleted;
   bool completed;
+  bool code; //new to say the note is actually code
+  char modified[16];
+
+  // note the members below are temporary editing flags
+  // and don't need to be reflected in database
   bool dirty;
   bool mark;
-  char modified[16];
+
   
 } orow;
 
@@ -321,7 +327,7 @@ struct outlineConfig {
   int repeat;
   bool show_deleted;
   bool show_completed;
-  int view; // enum TASK, CONTEXT, FOLDER
+  int view; // enum TASK, CONTEXT, FOLDER, SEARCH
   int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
 };
 
@@ -2738,6 +2744,27 @@ void editorDisplayFile(void) {
 }
 
 void editorDrawCodeRows(std::string &ab) {
+
+  //save the current file to code_file
+  //procxx::process ping( "ping", "www.google.com", "-c", "2" );
+  procxx::process bat( "bat", "code_file");
+  //ping.exec();
+  bat.exec();
+
+  std::string line;
+  while( std::getline( bat.output(), line ) )
+    {
+      std::cout << line << std::endl;
+      if( !bat.running() || !procxx::running(bat.id()) || !running(bat) )
+         {
+           std::cout << "not running any more" << std::endl;
+           break;
+         }
+      }
+
+      bat.wait();
+      std::cout << "exit code: " << bat.code() << std::endl;
+
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
