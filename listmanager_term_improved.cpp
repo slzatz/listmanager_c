@@ -293,7 +293,7 @@ typedef struct orow {
   bool star;
   bool deleted;
   bool completed;
-  bool code; //new to say the note is actually code
+  //bool code; //new to say the note is actually code
   char modified[16];
 
   // note the members below are temporary editing flags
@@ -497,6 +497,7 @@ int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
+std::string editorGenerateNoteWW(void);
 //int editorGetFileRowByLineWW(int);
 int editorGetInitialRow(int &);
 int editorGetInitialRow(int &, int);
@@ -2746,24 +2747,29 @@ void editorDisplayFile(void) {
 void editorDrawCodeRows(std::string &ab) {
 
   //save the current file to code_file
+  std::ofstream myfile;
+  myfile.open("code_file.cpp"); //filename
+  myfile << editorGenerateNoteWW();
+  editorSetMessage("wrote file");
+  myfile.close();
+
   //procxx::process ping( "ping", "www.google.com", "-c", "2" );
-  procxx::process bat( "bat", "code_file");
+  //procxx::process bat( "bat", "code_file.cpp");
+  procxx::process bat( "highlight", "code_file.cpp", "--out-format=xterm256");
   //ping.exec();
   bat.exec();
 
+  std::stringstream display;
+  //E.display_rows.clear();
   std::string line;
-  while( std::getline( bat.output(), line ) )
-    {
-      std::cout << line << std::endl;
-      if( !bat.running() || !procxx::running(bat.id()) || !running(bat) )
-         {
-           std::cout << "not running any more" << std::endl;
-           break;
-         }
-      }
+  while(getline(bat.output(), line)) {
+    //E.display_rows.push_back(line);
+    display << line << '\n';
+    //if(!bat.running() || !procxx::running(bat.id()) || !running(bat)) break;
+  }
 
-      bat.wait();
-      std::cout << "exit code: " << bat.code() << std::endl;
+   //bat.wait();
+   //std::cout << "exit code: " << bat.code() << std::endl;
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
@@ -2785,7 +2791,17 @@ void editorDrawCodeRows(std::string &ab) {
   buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
   ab.append(buf2.str()); //reposition cursor
 
-  if (E.rows.empty()) return;
+  //if (E.rows.empty()) return;
+
+  std::string row;
+  display.clear();
+  display.seekg(0, std::ios::beg);
+  while(std::getline(display, row, '\n')) {
+      ab.append(row);
+      ab.append(lf_ret);
+    }
+  ab.append("\x1b[0m", 4);
+  write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
 void editorReadFile2(const std::string &filename) {
@@ -2811,7 +2827,7 @@ void editorReadFile2(const std::string &filename) {
 void editorSave(void) {
 
   std::ofstream myfile;
-  myfile.open("test_save"); //filename
+  myfile.open("code_file"); //filename
   myfile << editorRowsToString();
   editorSetMessage("wrote file");
   myfile.close();
@@ -6857,6 +6873,62 @@ bool editorScroll(void) {
   else {E.prev_line_offset = E.line_offset; return true;}
 }
 
+std::string editorGenerateNoteWW(void) {
+  if (E.rows.empty()) return "";
+
+  std::string ab;
+  int y = 0;
+  int filerow = E.first_visible_row;
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  for (;;){
+    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
+    std::string row = E.rows.at(filerow);
+
+    if (row.empty()) {
+      if (y == E.screenlines - 1) return ab;
+      ab.append("\n");
+      filerow++;
+      y++;
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= E.screencols) {
+        ab.append(row, pos+1, E.screencols);
+        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
+        ab.append("\n");
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = E.screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
+      ab.append("\n");
+      y++;
+    }
+  }
+  E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+}
+
 void editorDrawRows(std::string &ab) {
 
   char lf_ret[10];
@@ -7157,7 +7229,7 @@ void editorRefreshScreen(bool redraw) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (redraw) editorDrawRows(ab); 
+  if (redraw) editorDrawCodeRows(ab); //just for testing 01042010 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
   editorDrawMessageBar(ab); //01012020
 
   // the lines below position the cursor where it should go
