@@ -2754,10 +2754,7 @@ void editorDrawCodeRows(std::string &ab) {
   editorSetMessage("wrote file");
   myfile.close();
 
-  //procxx::process ping( "ping", "www.google.com", "-c", "2" );
-  //procxx::process bat( "bat", "code_file.cpp");
   procxx::process bat( "highlight", "code_file.cpp", "--out-format=xterm256");
-  //ping.exec();
   bat.exec();
 
   std::stringstream display;
@@ -2803,42 +2800,41 @@ void editorDrawCodeRows(std::string &ab) {
     }
   ab.append("\x1b[0m");
 
-  /*
-  size_t pos = ab.find("<<<<");
-  if (pos != std::string::npos) {
-  ab.replace(pos, 4, "\x1b[48;5;242mXX");
-  //ab.replace(pos, 4, "XXXXXXXX");
-  pos = ab.find("<<<<<");
-  ab.replace(pos, 5, "\x1b[48;5;242mXX\x1b[0m");
-  //ab.replace(pos, 5, "YY");
-}
-*/
-
 // it may be surprising that the code below is not affected
-// by existing escape codes but it actually overwrites whatever is
-// beneath it
-  if (E.mode == VISUAL) {
-    int x = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
-    int y = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
-    std::stringstream s;
-    s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-      << E.rows.at(E.fr).substr(E.highlight[0], E.highlight[1]-E.highlight[0])
-      << "\x1b[0m";
-    ab.append(s.str());
-    ab.append(lf_ret, nchars);
-  } else if (E.mode == VISUAL_LINE) {
-    int x = EDITOR_LEFT_MARGIN + 1;
-    int y = editorGetScreenYFromRowColWW(E.highlight[0], 0) + TOP_MARGIN + 1;
-    //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
-    std::stringstream s;
-    s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-      << visual_line_snippet
-      << "\x1b[0m";
-    ab.append(s.str());
-    ab.append(lf_ret, nchars);
+// by existing escape codes but it actually overwrites whatever 
+// has already been written to the screen
+  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
+    int highlight[2];
+    if (E.highlight[1] < E.highlight[0]) {
+      highlight[1] = E.highlight[0];
+      highlight[0] = E.highlight[1];
+    } else {
+      highlight[0] = E.highlight[0];
+      highlight[1] = E.highlight[1];
+    }
 
+    if (E.mode == VISUAL) {
+      int x = editorGetScreenXFromRowColWW(E.fr, highlight[0]) + EDITOR_LEFT_MARGIN + 1;
+      int y = editorGetScreenYFromRowColWW(E.fr, highlight[0]) + TOP_MARGIN + 1;
+      std::stringstream s;
+      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
+        << E.rows.at(E.fr).substr(highlight[0], highlight[1]-highlight[0])
+        << "\x1b[0m";
+      ab.append(s.str());
+      ab.append(lf_ret, nchars);
+    } else if (E.mode == VISUAL_LINE) {
+      int x = EDITOR_LEFT_MARGIN + 1;
+      int y = editorGetScreenYFromRowColWW(highlight[0], 0) + TOP_MARGIN + 1;
+      //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
+      std::stringstream s;
+      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
+        << visual_line_snippet
+        << "\x1b[0m";
+      ab.append(s.str());
+      ab.append(lf_ret, nchars);
+
+    }
   }
-  //write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
 void editorReadFile2(const std::string &filename) {
@@ -6913,6 +6909,7 @@ bool editorScroll(void) {
 std::string editorGenerateNoteWW(void) {
   if (E.rows.empty()) return "";
 
+  int highlight[2];
   std::string ab;
   int y = 0;
   int filerow = E.first_visible_row;
@@ -6922,28 +6919,39 @@ std::string editorGenerateNoteWW(void) {
   // \x1b[NC moves cursor forward by N columns
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
-  for (;;){
+  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
+    if (E.highlight[1] < E.highlight[0]) {
+      highlight[1] = E.highlight[0];
+      highlight[0] = E.highlight[1];
+    } else {
+      highlight[0] = E.highlight[0];
+      highlight[1] = E.highlight[1];
+    }
+  }
+
+  for (;;) {
     if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
     std::string row = E.rows.at(filerow);
     
     /*************************************************/
     if (E.mode == VISUAL_LINE) {
-    if (filerow == E.highlight[0]) {
-      size_begin = ab.size();
+      if (filerow == highlight[0]) {
+        size_begin = ab.size();
+      }
+
+      if (filerow == highlight[1] + 1) {
+        size_end = ab.size();
+        //ab.append("<<<<<"); //return background to normal
+        visual_line_snippet = ab.substr(size_begin, size_end-size_begin); 
+        int pos = -2;
+        for (;;) {
+          pos += 2;
+          pos = visual_line_snippet.find('\n', pos);
+          if (pos == std::string::npos) break;
+          visual_line_snippet.replace(pos, 1, lf_ret);
+        }
+      }
     }
-    if (filerow == E.highlight[1] + 1) {
-      size_end = ab.size();
-      //ab.append("<<<<<"); //return background to normal
-      visual_line_snippet = ab.substr(size_begin, size_end-size_begin); 
-      int pos = -2;
-      for (;;) {
-        pos += 2;
-        pos = visual_line_snippet.find('\n', pos);
-        if (pos == std::string::npos) break;
-        visual_line_snippet.replace(pos, 1, lf_ret);
-  }
-  }
-  }
     /*************************************************/
 
     if (row.empty()) {
@@ -8224,7 +8232,7 @@ bool editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           editorSetMessage("");
-          return false;
+          return true;
     
         default:
           return false;
@@ -8290,7 +8298,7 @@ bool editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           editorSetMessage("");
-          return false;
+          return true;
     
         default:
           return false;
