@@ -64,6 +64,7 @@ static std::map<std::string, int> context_map; //filled in by map_context_titles
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 static std::vector<std::string> task_keywords;
+static std::string visual_line_snippet;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
 const std::string COLOR_1 = "\x1b[1;31m";
@@ -2800,8 +2801,44 @@ void editorDrawCodeRows(std::string &ab) {
       ab.append(row);
       ab.append(lf_ret);
     }
-  ab.append("\x1b[0m", 4);
-  write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
+  ab.append("\x1b[0m");
+
+  /*
+  size_t pos = ab.find("<<<<");
+  if (pos != std::string::npos) {
+  ab.replace(pos, 4, "\x1b[48;5;242mXX");
+  //ab.replace(pos, 4, "XXXXXXXX");
+  pos = ab.find("<<<<<");
+  ab.replace(pos, 5, "\x1b[48;5;242mXX\x1b[0m");
+  //ab.replace(pos, 5, "YY");
+}
+*/
+
+// it may be surprising that the code below is not affected
+// by existing escape codes but it actually overwrites whatever is
+// beneath it
+  if (E.mode == VISUAL) {
+    int x = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
+    int y = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
+    std::stringstream s;
+    s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
+      << E.rows.at(E.fr).substr(E.highlight[0], E.highlight[1]-E.highlight[0])
+      << "\x1b[0m";
+    ab.append(s.str());
+    ab.append(lf_ret, nchars);
+  } else if (E.mode == VISUAL_LINE) {
+    int x = EDITOR_LEFT_MARGIN + 1;
+    int y = editorGetScreenYFromRowColWW(E.highlight[0], 0) + TOP_MARGIN + 1;
+    //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
+    std::stringstream s;
+    s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
+      << visual_line_snippet
+      << "\x1b[0m";
+    ab.append(s.str());
+    ab.append(lf_ret, nchars);
+
+  }
+  //write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
 void editorReadFile2(const std::string &filename) {
@@ -6880,12 +6917,34 @@ std::string editorGenerateNoteWW(void) {
   int y = 0;
   int filerow = E.first_visible_row;
   char lf_ret[10];
+  size_t size_begin;
+  size_t size_end;
   // \x1b[NC moves cursor forward by N columns
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   for (;;){
     if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
     std::string row = E.rows.at(filerow);
+    
+    /*************************************************/
+    if (E.mode == VISUAL_LINE) {
+    if (filerow == E.highlight[0]) {
+      size_begin = ab.size();
+    }
+    if (filerow == E.highlight[1] + 1) {
+      size_end = ab.size();
+      //ab.append("<<<<<"); //return background to normal
+      visual_line_snippet = ab.substr(size_begin, size_end-size_begin); 
+      int pos = -2;
+      for (;;) {
+        pos += 2;
+        pos = visual_line_snippet.find('\n', pos);
+        if (pos == std::string::npos) break;
+        visual_line_snippet.replace(pos, 1, lf_ret);
+  }
+  }
+  }
+    /*************************************************/
 
     if (row.empty()) {
       if (y == E.screenlines - 1) return ab;
