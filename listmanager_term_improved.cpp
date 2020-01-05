@@ -199,6 +199,7 @@ enum Command {
 
   C_saveoutline,
 
+  C_vim,
   C_valgrind
 };
 
@@ -276,6 +277,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"highlight", C_highlight},
   {"spellcheck", C_spellcheck},
   {"readfile", C_readfile},
+  {"vim", C_vim},
   {"valgrind", C_valgrind}
 };
 
@@ -456,6 +458,7 @@ void update_note_sqlite(void);
 void solr_find(void);
 void fts5_sqlite(std::string);
 void get_items_by_id_sqlite(std::stringstream &);
+int get_folder_tid(int); 
 
 void update_task_context_pg(const std::string &, int);
 void update_task_context_sqlite(const std::string &, int);
@@ -542,7 +545,6 @@ void editorRestoreSnapshot(void);
 void editorCreateSnapshot(void); 
 void editorInsertRow(int, std::string);
 void editorInsertChar(int);
-void editorReadFile(std::string);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 void editorInsertNewline(int);
@@ -554,6 +556,10 @@ void editorHighlightWord(int, int, int);
 
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
+
+void editorSaveNoteToFile(const std::string &);
+void editorReadFile(const std::string &);
+void editorReadFileIntoNote(const std::string &); 
 
 /* experimenting with map of functions*/
 inline void f_i(int);
@@ -2676,9 +2682,9 @@ void editorEraseScreen(void) {
 }
 
 // currently used for help, sync log
-void editorReadFile(std::string file_name) {
+void editorReadFile(const std::string &filename) {
 
-  std::ifstream f(file_name);
+  std::ifstream f(filename);
   std::string line;
 
   display_text.str(std::string());
@@ -2744,6 +2750,18 @@ void editorDisplayFile(void) {
   }
   ab.append("\x1b[0m", 4);
   write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
+}
+
+void open_in_vim(void){
+  std::string filename;
+  if (get_folder_tid(O.rows.at(O.fr).id) != 18) filename = "vim_file.txt";
+  else filename = "vim_file.cpp";
+  editorSaveNoteToFile(filename);
+  std::stringstream s;
+  s << "vim " << filename << " >/dev/tty";
+  //system("vim vim_file.txt >/dev/tty");
+  system(s.str().c_str());
+  editorReadFileIntoNote(filename);
 }
 
 void editorDrawCodeRows(std::string &ab) {
@@ -2857,11 +2875,9 @@ void editorReadFileIntoNote(const std::string &filename) {
   return;
 }
 
-//not used
-void editorSave(void) {
-
+void editorSaveNoteToFile(const std::string &filename) {
   std::ofstream myfile;
-  myfile.open("code_file"); //filename
+  myfile.open(filename); //filename
   myfile << editorRowsToString();
   editorSetMessage("wrote file");
   myfile.close();
@@ -4484,6 +4500,13 @@ void outlineProcessKeypress(void) {
               } else {
                 outlineShowMessage("You didn't provide a file name!");
               }
+              return;
+
+            case C_vim:
+              open_in_vim();
+              O.command[0] = '\0';
+              O.repeat = 0;
+              O.mode = NORMAL;
               return;
 
             case C_quit:
@@ -7476,7 +7499,7 @@ bool editorProcessKeypress(void) {
 
         // not sure this is in use
         case CTRL_KEY('s'):
-          editorSave();
+          editorSaveNoteToFile("lm_temp");
           return false;
 
         case HOME_KEY:
@@ -7905,7 +7928,7 @@ bool editorProcessKeypress(void) {
           break;
 
         case CTRL_KEY('s'):
-          editorSave();
+          editorSaveNoteToFile("lm_temp");
           return false;
 
         case CTRL_KEY('h'):
