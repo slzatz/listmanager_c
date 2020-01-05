@@ -123,7 +123,7 @@ class Context(object):
         self.title = title
 
 class Folder(object):
-    def __init__(self, tid=None, title=None):
+    def __init__(self, title=None):
         self.title = title
         
 class Keyword(object):

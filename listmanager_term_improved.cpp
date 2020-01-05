@@ -489,6 +489,7 @@ int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);
 int rowid_callback(void *, int, char **, char **);
 int offset_callback(void *, int, char **, char **);
+int folder_tid_callback(void *, int, char **, char **); 
 
 void synchronize(int);
 
@@ -2837,7 +2838,7 @@ void editorDrawCodeRows(std::string &ab) {
   }
 }
 
-void editorReadFile2(const std::string &filename) {
+void editorReadFileIntoNote(const std::string &filename) {
 
   std::ifstream f(filename);
   std::string line;
@@ -4439,7 +4440,7 @@ void outlineProcessKeypress(void) {
             case C_readfile:
               {
               const std::string filename = O.command_line.substr(pos+1);
-              editorReadFile2(filename);
+              editorReadFileIntoNote(filename);
               outlineShowMessage("Read the file: %s", filename.c_str());
               O.mode = O.last_mode;
               return;
@@ -5094,6 +5095,29 @@ int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
   fts_counter++;
 
   return 0;
+}
+
+int get_folder_tid(int id) {
+
+  std::stringstream query;
+  query << "SELECT folder_tid FROM task WHERE id = " << id;
+
+  int folder_tid = -1;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  } 
+  return folder_tid;
+}
+
+int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
+  int *f_tid = static_cast<int*>(folder_tid);
+  *f_tid = atoi(argv[0]);
+  return 0;
+
 }
 
 void display_item_info_sqlite(int id) {
@@ -7296,7 +7320,11 @@ void editorRefreshScreen(bool redraw) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (redraw) editorDrawCodeRows(ab); //just for testing 01042010 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  if (redraw) {
+    //Temporary kluge tid for code folder = 18
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) editorDrawRows(ab);
+    else editorDrawCodeRows(ab);
+  }
   editorDrawMessageBar(ab); //01012020
 
   // the lines below position the cursor where it should go
