@@ -319,7 +319,6 @@ struct outlineConfig {
   std::string folder;
   std::string keyword;
   std::string sort;
-  //char *filename; // in case try to save the titles
   char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
   int highlight[2];
   int mode;
@@ -347,9 +346,7 @@ struct editorConfig {
   int screencols;  //number of columns in the display
   std::vector<std::string> rows;
   std::vector<std::string> prev_rows;
-  std::vector<std::string> display_rows;
   int dirty; //file changes since last save
-  //char *filename;
   char message[120]; //status msg is a character array max 80 char
   int highlight[2];
   int mode;
@@ -503,7 +500,6 @@ int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
 std::string editorGenerateNoteWW(void);
-//int editorGetFileRowByLineWW(int);
 int editorGetInitialRow(int &);
 int editorGetInitialRow(int &, int);
 
@@ -537,7 +533,6 @@ void editorMoveEndWord(void);
 void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
 void editorMoveNextWord(void);
 void editorMarkupLink(void);
-//void getWordUnderCursor(void);
 std::string editorGetWordUnderCursor(void);
 void editorFindNextWord(void);
 void editorChangeCase(void);
@@ -1680,7 +1675,6 @@ void get_note_sqlite(int id) {
   for(std::string ss; iss >> ss; ) vec.push_back(ss);
   std::stringstream query3;
   int n = 0;
-  //for(auto v: search_terms2) {
   for(auto v: vec) {
     word_positions.push_back(std::vector<int>{});
     query3.str(std::string()); // how you clear a stringstream
@@ -1715,7 +1709,6 @@ int offset_callback (void *n, int argc, char **argv, char **azColName) {
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
   int *nn= static_cast<int*>(n);
-
 
   word_positions.at(*nn).push_back(atoi(argv[0]));
 
@@ -1987,14 +1980,6 @@ void update_solr(void) {
 }
 
 int keyfromstringcpp(const std::string& key) {
-  /*
-  std::unordered_map<std::string,int>::const_iterator it;
-  it = lookuptablemap.find(key); // or could have been done through count(key) which returns 0 or 1
-  if (it != lookuptablemap.end())
-    return it->second;
-  else
-    return -1;
-  */
 
   // c++20 = c++2a contains on associate containers
   //if (lookuptablemap.contains(key))
@@ -2002,7 +1987,6 @@ int keyfromstringcpp(const std::string& key) {
     return lookuptablemap.at(key); //note can't use [] on const unordered map since it could change map
   else
     return -1;
-
 
 }
 
@@ -2140,16 +2124,7 @@ int readKey() {
 
 int getWindowSize(int *rows, int *cols) {
 
-//TIOCGWINSZ = fill in the winsize structure
-/*struct winsize
-{
-  unsigned short ws_row;	 rows, in characters 
-  unsigned short ws_col;	 columns, in characters 
-  unsigned short ws_xpixel;	 horizontal size, pixels 
-  unsigned short ws_ypixel;	 vertical size, pixels 
-};*/
-
-// ioctl(), TIOCGWINXZ and struct windsize come from <sys/ioctl.h>
+  // ioctl(), TIOCGWINXZ and struct windsize come from <sys/ioctl.h>
   struct winsize ws;
 
   if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
@@ -2689,7 +2664,6 @@ void editorReadFile(const std::string &filename) {
 
   display_text.str(std::string());
   display_text.clear();
-  //display_text.seekg(0, std::ios::beg); /////////////
 
   while (getline(f, line)) {
     display_text << line << '\n';
@@ -2718,7 +2692,6 @@ void editorDisplayFile(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
   ab.append(buf, strlen(buf));
 
-  //abAppend(&ab, "\x1b[44m", 5); //tried background blue - didn't love it
   ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
 
   std::string row;
@@ -2759,7 +2732,6 @@ void open_in_vim(void){
   editorSaveNoteToFile(filename);
   std::stringstream s;
   s << "vim " << filename << " >/dev/tty";
-  //system("vim vim_file.txt >/dev/tty");
   system(s.str().c_str());
   editorReadFileIntoNote(filename);
 }
@@ -2770,23 +2742,17 @@ void editorDrawCodeRows(std::string &ab) {
   std::ofstream myfile;
   myfile.open("code_file.cpp"); //filename
   myfile << editorGenerateNoteWW();
-  editorSetMessage("wrote file");
+  //editorSetMessage("wrote file"); //debugging
   myfile.close();
 
   procxx::process bat( "highlight", "code_file.cpp", "--out-format=xterm256");
   bat.exec();
 
   std::stringstream display;
-  //E.display_rows.clear();
   std::string line;
   while(getline(bat.output(), line)) {
-    //E.display_rows.push_back(line);
     display << line << '\n';
-    //if(!bat.running() || !procxx::running(bat.id()) || !running(bat)) break;
   }
-
-   //bat.wait();
-   //std::cout << "exit code: " << bat.code() << std::endl;
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
@@ -9043,31 +9009,6 @@ std::string editorGetWordUnderCursor(void) {
   //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
 }
 
-// doesn't handle punctuation correctly
-/*
-void getWordUnderCursor(void){
-
-  search_string.clear();
-
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(E.fr);
-  if (row[E.fc] < 48) return;
-
-  // find beginning of word
-  auto beg = row.find_last_of(' ', E.fc);
-  if (beg == std::string::npos ) beg = 0;
-  else beg++;
-
-  // find end of word
-  auto end = row.find_first_of(' ', beg);
-  if (end == std::string::npos) {end = row.size();}
-
-  search_string = row.substr(beg, end-beg+1);
-
-  //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
-}
-*/
-
 void editorFindNextWord(void) {
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
@@ -9224,7 +9165,6 @@ void initEditor(void) {
   E.prev_line_offset = 0;  //the number of lines of text at the top scrolled off the screen
   //E.coloff = 0;  //should always be zero because of line wrap
   E.dirty = 0; //has filed changed since last save
-  //E.filename = NULL; //not used currently
   E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
   E.highlight[0] = E.highlight[1] = -1;
   E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
@@ -9314,7 +9254,6 @@ int main(int argc, char** argv) {
   EraseScreenRedrawLines();
   initOutline();
   initEditor();
-  //O.taskview = BY_FOLDER; //set in initOutline
   get_items(MAX);
   
  // PQfinish(conn); // this should happen when exiting
@@ -9336,17 +9275,16 @@ int main(int argc, char** argv) {
 
   while (1) {
 
-    //need a way to just refresh command line
-    if (editor_mode){
-      text_change = editorProcessKeypress(); // ? could you do 0 => no command 1 command
+    // trying below to just refresh what has changed
+    if (editor_mode) {
+      text_change = editorProcessKeypress(); 
       scroll = editorScroll();
       redraw = (E.mode == COMMAND_LINE) ? false : (text_change || scroll);
       editorRefreshScreen(redraw);
-    } else if (O.mode != FILE_DISPLAY) { //(!(O.mode == FILE_DISPLAY || O.mode == COMMAND_LINE)) {
+    } else if (O.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       outlineScroll();
       outlineRefreshScreen(); // now just draws rows
-      // problem is that mode does not get updated in status bar
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
     outlineDrawStatusBar();
