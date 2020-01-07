@@ -2745,12 +2745,14 @@ void editorDrawCodeRows(std::string &ab) {
   //editorSetMessage("wrote file"); //debugging
   myfile.close();
 
-  procxx::process bat( "highlight", "code_file.cpp", "--out-format=xterm256");
-  bat.exec();
+  procxx::process highlight("highlight", "code_file.cpp", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz");
+  // when you pip bat it reverts to plain text
+  //procxx::process bat("bat", "code_file.cpp", "--style=plain", "--theme=gruvbox", "--pager=none");
+  highlight.exec();
 
   std::stringstream display;
   std::string line;
-  while(getline(bat.output(), line)) {
+  while(getline(highlight.output(), line)) {
     display << line << '\n';
   }
 
