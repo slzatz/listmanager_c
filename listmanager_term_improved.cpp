@@ -2781,10 +2781,14 @@ void editorDrawCodeRows(std::string &ab) {
   std::string row;
   display.clear();
   display.seekg(0, std::ios::beg);
+  int n = 0;
   while(std::getline(display, row, '\n')) {
+    if (n >= E.line_offset) {
       ab.append(row);
       ab.append(lf_ret);
     }
+    n++;
+  }
   ab.append("\x1b[0m");
 
 // it may be surprising that the code below is not affected
@@ -2833,6 +2837,12 @@ void editorReadFileIntoNote(const std::string &filename) {
   E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
 
   while (getline(f, line)) {
+    //replace(line.begin(), line.end(), '\t', "  ");
+    size_t pos = line.find('\t');
+    while(pos != std::string::npos) {
+      line.replace(pos, 1, "  "); // number is number of chars to replace
+      pos = line.find('\t');
+    }
     E.rows.push_back(line);
   }
   f.close();
@@ -6926,8 +6936,10 @@ std::string editorGenerateNoteWW(void) {
 
   int highlight[2];
   std::string ab;
-  int y = 0;
-  int filerow = E.first_visible_row;
+  //int y = 0;
+  int y = -E.line_offset;
+  //int filerow = E.first_visible_row;
+  int filerow = 0;
   char lf_ret[10];
   size_t size_begin;
   size_t size_end;
