@@ -198,6 +198,7 @@ enum Command {
   C_search,
 
   C_saveoutline,
+  C_rendermarkup,
 
   C_vim,
   C_valgrind
@@ -278,6 +279,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"spellcheck", C_spellcheck},
   {"readfile", C_readfile},
   {"vim", C_vim},
+  {"render", C_rendermarkup},
   {"valgrind", C_valgrind}
 };
 
@@ -363,6 +365,7 @@ struct editorConfig {
   int last_visible_row;
   bool spellcheck;
   bool move_only;
+  bool render;
 };
 
 static struct editorConfig E;
@@ -2738,23 +2741,35 @@ void open_in_vim(void){
 
 void editorDrawCodeRows(std::string &ab) {
 
-  //save the current file to code_file
+  //save the current file to code_file with correct extension
   std::ofstream myfile;
-  myfile.open("code_file.cpp"); //filename
+  myfile.open("code_file"); //filename was .cpp
   myfile << editorGenerateNoteWW();
   //editorSetMessage("wrote file"); //debugging
   myfile.close();
 
-  procxx::process highlight("highlight", "code_file.cpp", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz");
-  // when you pip bat it reverts to plain text
-  //procxx::process bat("bat", "code_file.cpp", "--style=plain", "--theme=gruvbox", "--pager=none");
-  highlight.exec();
+  //procxx::process highlight("highlight", "code_file.md", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz");
+  //procxx::process highlight("bat", "code_file.md", "--style=plain", "--theme=gruvbox", "--paging=never", "--color=always");
 
+  std::stringstream display;
+  std::string line;
+  if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  } else {
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=md");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  }
+
+  /*
   std::stringstream display;
   std::string line;
   while(getline(highlight.output(), line)) {
     display << line << '\n';
   }
+  */
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
@@ -3684,8 +3699,7 @@ void outlineProcessKeypress(void) {
           view_html(row.id);
 
           /*
-          not getting error messages with qutebrowser
-          so below not necessary (for the moment)
+          I am getting messages from qutebrowser to screen   
           write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
           outlineRefreshScreen();
           editorRefreshScreen();
@@ -6941,10 +6955,11 @@ std::string editorGenerateNoteWW(void) {
   //int filerow = E.first_visible_row;
   int filerow = 0;
   char lf_ret[10];
-  size_t size_begin;
-  size_t size_end;
+  size_t size_begin = 0;
+  size_t size_end = 0;
   // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
   if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
     if (E.highlight[1] < E.highlight[0]) {
@@ -7325,8 +7340,9 @@ void editorRefreshScreen(bool redraw) {
 
   if (redraw) {
     //Temporary kluge tid for code folder = 18
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) editorDrawRows(ab);
-    else editorDrawCodeRows(ab);
+    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) editorDrawRows(ab);
+    if (E.render == true) editorDrawCodeRows(ab);
+    else editorDrawRows(ab);
   }
   editorDrawMessageBar(ab); //01012020
 
@@ -8164,6 +8180,19 @@ bool editorProcessKeypress(void) {
               else editorRefreshScreen(true);
               editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
               return false;
+
+            case C_refresh:
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              E.command_line.clear();
+              return true;
+
+            case C_rendermarkup:
+              E.render = !E.render;
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              E.command_line.clear();
+              return true;
 
             default: // default for switch (command)
               editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
@@ -9062,17 +9091,38 @@ void editorFindNextWord(void) {
 }
 
 void editorMarkupLink(void) {
-  int y, numrows, n;
+  int y, numrows, n, nn;
   std::string http = "http";
   std::string bracket_http = "[http";
   numrows = E.rows.size();
 
-  n = 1;
-  for (n; E.rows[numrows-n][0] == '['; n++);
+  // this could strip white space and could check if second char in number range
+  // pos = E.rows.at().find_first_note_of(' ');
+  // s = E.rows.at().substring(pos)
+  n = 0;
+  nn = numrows - 1;
+  for(;;) {
+    std::string_view row(E.rows.at(nn));
+    if (row.size() < 10) { 
+      if (n == 0) {
+        nn--; continue;
+      } else break;
+    }
+    size_t pos = row.find_first_not_of(' ');
+    if (pos != std::string::npos) row = row.substr(pos); 
+    if (row[0] == '[' && isdigit(row[1])) {
+        nn--; n++;
+    } else break;
+   } 
 
+  //n = 1;
+  //for (n; E.rows[numrows-n][0] == '['; n++);
+  n++;
   for (y=0; y<numrows; y++){
     std::string& row = E.rows.at(y);
-    if (row[0] == '[') continue;
+    size_t pos = row.find_first_not_of(' ');
+    if (pos == std::string::npos) pos = 0;
+    if (row[pos] == '[' && isdigit(row[pos+1])) continue;
     if (row.find(bracket_http) != std::string::npos) continue;
 
     auto beg = row.find(http);
@@ -9093,6 +9143,7 @@ void editorMarkupLink(void) {
 
     n++;
   }
+  editorSetMessage("n = %d", n); //debug
   E.dirty++;
   E.fc = E.fr = E.line_offset = 0;
 }
@@ -9190,6 +9241,7 @@ void initEditor(void) {
   E.first_visible_row = 0;
   E.spellcheck = false;
   E.move_only = false;
+  E.render = false;
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
