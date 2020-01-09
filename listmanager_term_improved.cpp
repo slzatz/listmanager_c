@@ -198,7 +198,7 @@ enum Command {
   C_search,
 
   C_saveoutline,
-  C_rendermarkup,
+  C_highlight_syntax,
 
   C_vim,
   C_valgrind
@@ -279,7 +279,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"spellcheck", C_spellcheck},
   {"readfile", C_readfile},
   {"vim", C_vim},
-  {"render", C_rendermarkup},
+  {"hs", C_highlight_syntax},
+  {"sh", C_highlight_syntax},
   {"valgrind", C_valgrind}
 };
 
@@ -340,7 +341,6 @@ static struct outlineConfig O;
 struct editorConfig {
   int cx, cy; //cursor x and y position
   int fc, fr; // file x and y position
-  int rx; //index into the render field - only nec b/o tabs
   int line_offset; //row the user is currently scrolled to
   int prev_line_offset;
   int coloff; //column user is currently scrolled to
@@ -365,7 +365,7 @@ struct editorConfig {
   int last_visible_row;
   bool spellcheck;
   bool move_only;
-  bool render;
+  bool highlight_syntax;
 };
 
 static struct editorConfig E;
@@ -4548,6 +4548,24 @@ void outlineProcessKeypress(void) {
               outlineShowMessage("%s highlighted", search_terms.c_str());
               return;
 
+            case C_highlight_syntax:
+              if (pos) {
+                std::string action = O.command_line.substr(pos + 1);
+                if (action == "on") {
+                  E.highlight_syntax = true;
+                  outlineShowMessage("Syntax highlighting will be turned on");
+                } else if (action == "off") {
+                  E.highlight_syntax = false;
+                  outlineShowMessage("Syntax highlighting will be turned off");
+                } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
+              } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
+              editorRefreshScreen(true);
+              O.mode = O.last_mode;
+              //O.command[0] = '\0';
+              //O.command_line.clear();
+              //O.repeat = 0;
+              return;
+
             case C_spellcheck:
               E.spellcheck = !E.spellcheck;
               if (E.spellcheck) editorSpellCheck();
@@ -7341,7 +7359,7 @@ void editorRefreshScreen(bool redraw) {
   if (redraw) {
     //Temporary kluge tid for code folder = 18
     //if (get_folder_tid(O.rows.at(O.fr).id) != 18) editorDrawRows(ab);
-    if (E.render == true) editorDrawCodeRows(ab);
+    if (E.highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
   editorDrawMessageBar(ab); //01012020
@@ -8098,26 +8116,6 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editorSetMessage("");
-              //editorRefreshScreen();
-
-              //The below needs to be in a function that takes the color as a parameter
-              /*
-              {
-              char buf[32];
-              write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-          
-              for (int k=OUTLINE_LEFT_MARGIN+O.screencols+1; k < screencols ;k++) {
-                snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-                write(STDOUT_FILENO, buf, strlen(buf));
-                write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-              }
-              snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
-              write(STDOUT_FILENO, buf, strlen(buf));
-              write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-              write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-              write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-              }
-              */
               return false;
   
             case 'x':
@@ -8127,26 +8125,6 @@ bool editorProcessKeypress(void) {
               E.command_line.clear();
               editor_mode = false;
               editorSetMessage("");
-              //editorRefreshScreen();
-
-              //The below needs to be in a function that takes the color as a parameter
-              /*
-              {
-              char buf[32];
-              write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-          
-              for (int k=OUTLINE_LEFT_MARGIN+O.screencols+1; k < screencols ;k++) {
-                snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, k);
-                write(STDOUT_FILENO, buf, strlen(buf));
-                write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-              }
-              snprintf(buf, sizeof(buf), "\x1b[%d;%dH", 1, O.screencols + OUTLINE_LEFT_MARGIN + 1);
-              write(STDOUT_FILENO, buf, strlen(buf));
-              write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-              write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-              write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-              }
-              */
               return false;
   
             case C_quit:
@@ -8187,8 +8165,18 @@ bool editorProcessKeypress(void) {
               E.command_line.clear();
               return true;
 
-            case C_rendermarkup:
-              E.render = !E.render;
+            case C_highlight_syntax:
+              if (pos) {
+                std::string action = E.command_line.substr(pos + 1);
+                if (action == "on") {
+                  E.highlight_syntax = true;
+                  editorSetMessage("Syntax highlighting will be turned on");
+                } else if (action == "off") {
+                  E.highlight_syntax = false;
+                  editorSetMessage("Syntax highlighting will be turned off");
+                } else {editorSetMessage("The syntax is 'sh on' or 'sh off'"); }
+              } else {editorSetMessage("The syntax is 'sh on' or 'sh off'");}
+
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
@@ -9241,7 +9229,7 @@ void initEditor(void) {
   E.first_visible_row = 0;
   E.spellcheck = false;
   E.move_only = false;
-  E.render = false;
+  E.highlight_syntax = false;
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
