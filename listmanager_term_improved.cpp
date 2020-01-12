@@ -198,7 +198,7 @@ enum Command {
   C_search,
 
   C_saveoutline,
-  C_highlight_syntax,
+  C_syntax,
 
   C_vim,
   C_valgrind
@@ -279,8 +279,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"spellcheck", C_spellcheck},
   {"readfile", C_readfile},
   {"vim", C_vim},
-  {"hs", C_highlight_syntax},
-  {"sh", C_highlight_syntax},
+  {"syntax", C_syntax},
   {"valgrind", C_valgrind}
 };
 
@@ -2759,7 +2758,7 @@ void editorDrawCodeRows(std::string &ab) {
     highlight.exec();
     while(getline(highlight.output(), line)) { display << line << '\n';}
   } else {
-    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=md.hbs", "--italic-text=always");
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=md.hbs", "--italic-text=always","--theme=gruvbox-markdown");
     highlight.exec();
     while(getline(highlight.output(), line)) { display << line << '\n';}
   }
@@ -4549,7 +4548,7 @@ void outlineProcessKeypress(void) {
               outlineShowMessage("%s highlighted", search_terms.c_str());
               return;
 
-            case C_highlight_syntax:
+            case C_syntax:
               if (pos) {
                 std::string action = O.command_line.substr(pos + 1);
                 if (action == "on") {
@@ -8166,7 +8165,7 @@ bool editorProcessKeypress(void) {
               E.command_line.clear();
               return true;
 
-            case C_highlight_syntax:
+            case C_syntax:
               if (pos) {
                 std::string action = E.command_line.substr(pos + 1);
                 if (action == "on") {
