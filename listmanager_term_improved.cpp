@@ -1447,7 +1447,9 @@ void get_items_sqlite(int max) {
   }
 
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
+        //<< " ORDER BY task."
+        << " ORDER BY task.star DESC,"
+        << " task."
         << O.sort
         << " DESC LIMIT " << max;
 
@@ -2936,7 +2938,10 @@ void outlineDrawRows(std::string& ab) {
     unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > O.screencols) len = O.screencols;
 
-    if (row.star) ab.append("\x1b[1m", 4); //bold
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
     if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
     //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
@@ -2994,7 +2999,11 @@ void outlineDrawSearchRows(std::string& ab) {
     orow& row = O.rows[fr];
     int len;
 
-    if (row.star) ab.append("\x1b[1m", 4); //bold
+    //if (row.star) ab.append("\x1b[1m"); //bold
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
 
     if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
@@ -4341,6 +4350,7 @@ void outlineProcessKeypress(void) {
               O.context = "";
               O.taskview = BY_FOLDER;
               get_items(MAX);
+              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               return;
 
 
@@ -4358,6 +4368,7 @@ void outlineProcessKeypress(void) {
               O.taskview = BY_KEYWORD;
               get_items(MAX);
               //editorRefreshScreen(); //in get_note
+              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               return;
 
 
