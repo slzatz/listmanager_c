@@ -64,6 +64,7 @@ static std::map<std::string, int> context_map; //filled in by map_context_titles
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 static std::vector<std::string> task_keywords;
+static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 static std::string visual_line_snippet;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
@@ -183,6 +184,10 @@ enum Command {
 
   C_highlight,
   C_spellcheck,
+  C_set, // [spell/nospell]
+  C_suggestions, // [spell/nospell]
+  C_next_mispelling,
+  C_previous_mispelling,
 
   C_quit,
   C_quit0,
@@ -273,10 +278,14 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"dbase", C_dbase},
   {"database", C_dbase},
   {"search", C_search},
+  {"set", C_set},
+  {"z=", C_suggestions},
   {"saveoutline", C_saveoutline},
   {"so", C_saveoutline},
   {"highlight", C_highlight},
   {"spellcheck", C_spellcheck},
+  {"[s", C_next_mispelling},
+  {"]s", C_previous_mispelling},
   {"readfile", C_readfile},
   {"vim", C_vim},
   {"syntax", C_syntax},
@@ -4566,6 +4575,26 @@ void outlineProcessKeypress(void) {
               //O.repeat = 0;
               return;
 
+            case C_set:
+              {
+              std::string action = O.command_line.substr(pos + 1);
+              if (pos) {
+                if (action == "spell") {
+                  E.spellcheck = true;
+                  outlineShowMessage("Spellcheck active");
+                } else if (action == "nospell") {
+                  E.spellcheck = false;
+                  outlineShowMessage("Spellcheck off");
+                } else {outlineShowMessage("Unknown option: %s", action); }
+              } else {outlineShowMessage("Unknown option: %s", action);}
+              editorRefreshScreen(true);
+              O.mode = O.last_mode;
+              //O.command[0] = '\0';
+              //O.command_line.clear();
+              //O.repeat = 0;
+              }
+              return;
+
             case C_spellcheck:
               E.spellcheck = !E.spellcheck;
               if (E.spellcheck) editorSpellCheck();
@@ -7193,15 +7222,16 @@ void editorSpellCheck(void) {
 
   if (E.rows.empty()) return;
 
+  pos_mispelled_words.clear();
+
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
   //auto sugs = std::vector<std::string>();
   auto dict = nuspell::Dictionary::load_from_path(path);
 
   std::string delimiters = " -<>!$,.;?:()[]{}&#~^";
-  //for (int n=0; n<E.rows.size(); n++) { //12-25-2019
-  for (int n=0; n<=E.last_visible_row; n++) {
-    //if (editorGetScreenYFromRowColWW(n, 0) >= E.screenlines-1) return; //12-25-2019
+
+  for (int n=E.first_visible_row; n<=E.last_visible_row; n++) {
     int end = -1;
     int start;
     std::string &row = E.rows.at(n);
@@ -7213,11 +7243,11 @@ void editorSpellCheck(void) {
       if (end == std::string::npos)
         end = row.size();
 
-      if (n < E.first_visible_row) continue;
-      if (!dict.spell(row.substr(start, end-start)))
+      if (!dict.spell(row.substr(start, end-start))) {
+        pos_mispelled_words.push_back(std::make_pair(n, start)); 
         editorHighlightWord(n, start, end-start);
+      }
     }
-    // I think you need to restore cursor
   }
 
   //reposition the cursor back to where it belongs
@@ -7844,7 +7874,47 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
           */
+        case C_next_mispelling:
+              {
+          if (!E.spellcheck || pos_mispelled_words.empty()) {
+            editorSetMessage("Spellcheck is off or no words mispelled");
+          E.command[0] = '\0';
+          E.repeat = 0;
+            return false;
+          }
+          auto &z = pos_mispelled_words;
+          auto it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second > E.fc);});
+          if (it == z.end()) {
+            it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first > E.fr);});
+            if (it == z.end()) {E.fr = z[0].first; E.fc = z[0].second;
+            } else {E.fr = it->first; E.fc = it->second;} 
+          } else {E.fc = it->second;}
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
+          return true;
+          }
 
+        case C_previous_mispelling:
+              {
+          if (!E.spellcheck || pos_mispelled_words.empty()) {
+            editorSetMessage("Spellcheck is off or no words mispelled");
+          E.command[0] = '\0';
+          E.repeat = 0;
+            return false;
+          }
+          auto &z = pos_mispelled_words;
+          auto it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second < E.fc);});
+          if (it == z.rend()) {
+            it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first < E.fr);});
+            if (it == z.rend()) {E.fr = z.back().first; E.fc = z.back().second;
+            } else {E.fr = it->first; E.fc = it->second;} 
+          } else {E.fc = it->second;}
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
+          return true;
+          }
         case ':':
           editorSetMessage(":");
           E.command[0] = '\0';
@@ -7916,7 +7986,7 @@ bool editorProcessKeypress(void) {
 
         //I will forget that the spelling suggestion command is z
         //note can't have command mode command because cursor not in note
-        case 'z':
+        case C_suggestions:
           editorSpellingSuggestions();
           E.command[0] = '\0';
           E.move_only = true;
@@ -8158,6 +8228,22 @@ bool editorProcessKeypress(void) {
               else editorRefreshScreen(true);
               editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
               return false;
+
+            case C_next_mispelling:
+              {
+              if (!E.spellcheck || pos_mispelled_words.empty()) {
+                editorSetMessage("Spellcheck is off or no words mispelled");
+                return false;
+              }
+              auto &z = pos_mispelled_words;
+              auto it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second > E.fc);});
+              if (it == z.end()) {
+                it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first > E.fr);});
+                if (it == z.end()) {E.fr = z[0].first; E.fc = z[0].second;}
+              } else {E.fr = it->first; E.fc = it->second;}
+              editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
+              return true;
+              }
 
             case C_refresh:
               E.mode = NORMAL;
