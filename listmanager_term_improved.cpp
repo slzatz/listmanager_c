@@ -205,6 +205,8 @@ enum Command {
   C_saveoutline,
   C_syntax,
 
+  C_merge,
+
   C_vim,
   C_valgrind
 };
@@ -288,6 +290,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"]s", C_previous_mispelling},
   {"readfile", C_readfile},
   {"vim", C_vim},
+  {"merge", C_merge},
   {"syntax", C_syntax},
   {"valgrind", C_valgrind}
 };
@@ -1644,6 +1647,20 @@ void get_items_by_id_pg(std::stringstream& query) {
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
     else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
+}
+
+void merge_note_sqlite(int id) {
+  std::stringstream query;
+
+  query << "SELECT note FROM task WHERE id = " << id;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  }
+
 }
 
 void get_note_sqlite(int id) {
@@ -4520,6 +4537,41 @@ void outlineProcessKeypress(void) {
               O.repeat = 0;
               O.mode = NORMAL;
               return;
+
+            case C_merge:
+              {
+
+              int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
+              if (count < 2) {
+                outlineShowMessage("Number of marked items = %d", count);
+                O.mode = O.last_mode;
+                return;
+              }
+              outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
+              insert_row_sqlite(O.rows.at(0)); 
+              E.rows.clear();
+              
+              int n = 0;
+              auto it = O.rows.begin();
+              for(;;) {
+                it = find_if(it+1, O.rows.end(), [](const orow &row){return row.mark;});
+                if (it != O.rows.end()) merge_note_sqlite(it->id);
+                else break;
+                n++;
+              }
+             outlineShowMessage("Number of notes merged = %d", n);
+             }
+             //outlineRefreshScreen(); 
+             O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
+             editorRefreshScreen(true);
+             update_note();
+             //E.dirty = 1;
+             O.command[0] = '\0';
+             O.repeat = 0;
+             O.mode = NORMAL;
+             return;
+
+
 
             case C_quit:
             case 'q':
