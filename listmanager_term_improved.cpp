@@ -4648,8 +4648,8 @@ void outlineProcessKeypress(void) {
                 } else if (action == "nospell") {
                   E.spellcheck = false;
                   outlineShowMessage("Spellcheck off");
-                } else {outlineShowMessage("Unknown option: %s", action); }
-              } else {outlineShowMessage("Unknown option: %s", action);}
+                } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
+              } else {outlineShowMessage("Unknown option: %s", action.c_str());}
               editorRefreshScreen(true);
               O.mode = O.last_mode;
               //O.command[0] = '\0';
