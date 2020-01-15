@@ -38,6 +38,8 @@
 #include <nuspell/dictionary.hxx>
 #include <nuspell/finder.hxx>
 
+//#include <boost/algorithm/string/case_conv.hpp> was using boost::to_lower but now sorting in sqlite
+
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
 //typedef void (*pfunc)(int);
@@ -991,6 +993,7 @@ void get_containers_sqlite(void) {
   O.fc = O.fr = O.rowoff = 0;
 
   std::string table;
+  std::string column = "title"; //only needs to be change for keyword
   int (*callback)(void *, int, char **, char **);
   switch (O.view) {
     case CONTEXT:
@@ -1003,6 +1006,7 @@ void get_containers_sqlite(void) {
       break;
     case KEYWORD:
       table = "keyword";
+      column = "name";
       callback = keyword_callback;
       break;
     default:
@@ -1011,7 +1015,8 @@ void get_containers_sqlite(void) {
   }
 
   std::stringstream query;
-  query << "SELECT * FROM " << table << ";";
+  query << "SELECT * FROM " << table << " ORDER BY " << column  << " COLLATE NOCASE ASC;";
+ // query << "SELECT * FROM " << table << ";";
 
   bool no_rows = true;
 
@@ -1028,6 +1033,9 @@ void get_containers_sqlite(void) {
     O.mode = NORMAL;
 
   O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
+
+  //note below worked
+// std::sort(O.rows.begin(), O.rows.end(), [](orow r0, orow r1){boost::to_lower(r0.title); boost::to_lower(r1.title); return r1.title > r0.title;}); 
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -1096,47 +1104,6 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   return 0;
 }
-
-/* Now handled by get_containers but leaving around for a while
-void get_keywords_sqlite(void) {
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  std::string query = "SELECT * FROM keyword ORDER BY name;";
-
-  bool no_rows = true;
-
-  rc = sqlite3_exec(db, query.c_str(), keyword_callback, &no_rows, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s\n", err_msg);
-    sqlite3_free(err_msg);
-  }
-
-  sqlite3_close(db);
-
-  if (no_rows) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else
-    O.mode = NORMAL;
-
-  O.context = O.folder = "";
-
-}
-*/
 
 void get_task_keywords_sqlite(void) {
 
@@ -5353,7 +5320,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   sprintf(str,"star: %s", (atoi(argv[8]) == 1) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"mdeleted: %s", (atoi(argv[14]) == 1) ? "true": "false");
+  sprintf(str,"deleted: %s", (atoi(argv[14]) == 1) ? "true": "false");
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   sprintf(str,"completed: %s", (argv[10]) ? "true": "false");
@@ -5792,7 +5759,26 @@ void toggle_deleted_sqlite(void) {
 
   std::stringstream query;
   int id = get_id();
-  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
+  //std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
+  std::string table;
+
+  switch(O.view) {
+    case TASK:
+      table = "task";
+      break;
+    case CONTEXT:
+      table = "context";
+      break;
+    case FOLDER:
+      table = "folder";
+      break;
+    case KEYWORD:
+      table = "keyword";
+      break;
+    default:
+      outlineShowMessage("Somehow you are in a view I can't handle");
+      return;
+  }
 
   query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
         <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
