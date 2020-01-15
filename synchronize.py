@@ -688,20 +688,21 @@ def synchronize(report_only=True):
 
     # Delete from server keywords deleted on client
     for ck in client_deleted_keywords:
+        # deal with client keywords's related task_keywords - note that this could be done in application at time of deleting   
         local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==ck.id).delete(synchronize_session=False)
         local_session.commit()
 
-        # deal with server folder and its related tasks    
+        # deal with server keyword and its related task_keywords    
         keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
         if keyword:
             log+=f"Keyword deleted on Client will be marked as deleted on Server - id: {keyword.id}; title: {keyword.title}\n"
 
-            remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword.id==ck.tid).delete(synchronize_session=False) 
+            remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword_id==ck.tid).delete(synchronize_session=False) 
             remote_session.commit()
             keyword.deleted = True
             remote_session.commit() 
         else:
-            log+="Folder deleted on Client unsuccessful trying to delete on Server - could not find Server folder with id = {cf.tid}\n"
+            log+="Keyword deleted on Client unsuccessful trying to delete on Server - could not find Server keyword with id = {ck.tid}\n"
 
         local_session.delete(ck)
         local_session.commit()
