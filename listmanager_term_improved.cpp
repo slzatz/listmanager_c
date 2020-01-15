@@ -488,6 +488,8 @@ void add_task_keyword_pg(const std::string &, int);
 void delete_task_keywords_pg(void);
 void delete_task_keywords_sqlite(void);
 
+void display_item_info_sqlite(int);
+void display_container_info_sqlite(int);
 //sqlite callback functions
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
@@ -499,13 +501,14 @@ int folder_titles_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 void display_item_info_pg(int);
-void display_item_info_sqlite(int);
 int display_item_info_callback(void *, int, char **, char **);
 int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);
 int rowid_callback(void *, int, char **, char **);
 int offset_callback(void *, int, char **, char **);
 int folder_tid_callback(void *, int, char **, char **); 
+int context_info_callback(void *, int, char **, char **); 
+int folder_info_callback(void *, int, char **, char **); 
 
 void synchronize(int);
 
@@ -1082,7 +1085,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   2: title = string 32
   3: private = Boolean ? what this is
   4: archived = Boolean ? what this is
-  4: "order" = integer
+  5: "order" = integer
   6: created = 2016-08-05 23:05:16.256135
   7: deleted => bool
   8: icon => string 32
@@ -3289,7 +3292,7 @@ void outlineMoveCursor(int key) {
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
         else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      }
+      } else display_container_info_sqlite(O.rows.at(O.fr).id);
       break;
 
     case ARROW_DOWN:
@@ -3299,7 +3302,7 @@ void outlineMoveCursor(int key) {
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
         else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      }
+      } else display_container_info_sqlite(O.rows.at(O.fr).id);
       break;
   }
 
@@ -5219,25 +5222,13 @@ void display_item_info_sqlite(int id) {
   std::stringstream query;
   query << "SELECT * FROM task WHERE id = " << id;
 
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-  
-  rc = sqlite3_exec(db, query.str().c_str(), display_item_info_callback, 0, &err_msg);
+  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, 0, &S.err_msg);
     
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
   } 
-  sqlite3_close(db);
 }
 
 int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
@@ -5351,9 +5342,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
-
   ///////////////////////////
-
 
   ab.append("\x1b[0m", 4);
 
@@ -5362,6 +5351,204 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   return 0;
 }
 
+void display_container_info_sqlite(int id) {
+  if (id ==-1) return;
+
+  std::string table;
+  int (*callback)(void *, int, char **, char **);
+
+  switch(O.view) {
+    case CONTEXT:
+      table = "context";
+      callback = context_info_callback;
+      break;
+    case FOLDER:
+      table = "folder";
+      callback = folder_info_callback;
+      break;
+    case KEYWORD:
+      table = "keyword";
+      //callback = keyword_info_callback;
+      break;
+    default:
+      outlineShowMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+  std::stringstream query;
+  query << "SELECT * FROM " << table << " WHERE id = " << id;
+
+  int rc = sqlite3_exec(S.db, query.str().c_str(), callback, 0, &S.err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  } 
+}
+
+int context_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  9: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int tid = atoi(argv[1]);
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+  sprintf(str,"context: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/default: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[9]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
+int folder_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  5: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int tid = atoi(argv[1]);
+  auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+  sprintf(str,"folder: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/private: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[6]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[7]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[11]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
 void update_note_pg(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -5759,7 +5946,6 @@ void toggle_deleted_sqlite(void) {
 
   std::stringstream query;
   int id = get_id();
-  //std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
   std::string table;
 
   switch(O.view) {
