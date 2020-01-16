@@ -295,7 +295,10 @@ def synchronize(report_only=True):
         log += "\nFolders that were updated/created on Client that need to be updated/created on Server:\n"
     for cf in client_updated_folders:
 
+        # note for a new context/folder/keyword this cf/cc/ck.tid is the bogus one so should be high enough or ? negative
         folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
+        # the below works great for new [folder/context/keyword] but not for updating [name/title]
+        #folder = remote_session.query(p.Folder).filter_by(title=cf.title).first()
 
         if not folder:
             action = "created"
@@ -348,7 +351,11 @@ def synchronize(report_only=True):
         log += "\nKeywords that were updated/created on Client that need to be updated/created on Server:\n"
     for ck in client_updated_keywords:
 
+        # note for a new context/folder/keyword this cf/cc/ck.tid is the bogus one so should be high enough or ? negative
+        # means you can only do one new one at a time since both get same bogus tid unless you increment it each time
         keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
+        # the below works great for new [folder/context/keyword] but not for updating [name/title]
+        keyword = remote_session.query(p.Keyword).filter_by(name=ck.name).first()
 
         if not keyword:
             action = "created"
@@ -503,16 +510,17 @@ def synchronize(report_only=True):
         remote_session.commit()
 
         for kw in ct.keywords:
-        #for kwn in task.tag.split(','):
             keyword = remote_session.query(p.Keyword).filter_by(name=kw.name).first()
-            #keyword = remote_session.query(p.Keyword).filter_by(name=kwn).first()
-            if keyword is None:
-                #keyword = p.Keyword(kwn)
-                keyword = p.Keyword(kw.name)
-                remote_session.add(keyword)
-                remote_session.commit()
-            tk = p.TaskKeyword(task,keyword)
-            remote_session.add(tk)
+
+           # no longer makes sense to create keyword here since unconnected by tid to the client keyword
+           if keyword is None:
+               log += f"Error: can't find keyword {kw.name} on the server\n"
+           #     keyword = p.Keyword(kw.name)
+           #     remote_session.add(keyword)
+           #     remote_session.commit()
+           else:
+               tk = p.TaskKeyword(task,keyword)
+               remote_session.add(tk)
 
         remote_session.commit()
             
