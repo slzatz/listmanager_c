@@ -73,6 +73,7 @@ static std::string visual_line_snippet;
 const std::string COLOR_1 = "\x1b[1;31m";
 const std::string COLOR_2 = "\x1b[1;32m";
 const std::string COLOR_6 = "\x1b[0;36m";
+static int temporary_tid = 99999;
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -509,6 +510,8 @@ int offset_callback(void *, int, char **, char **);
 int folder_tid_callback(void *, int, char **, char **); 
 int context_info_callback(void *, int, char **, char **); 
 int folder_info_callback(void *, int, char **, char **); 
+int keyword_info_callback(void *, int, char **, char **);
+int count_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
@@ -1156,13 +1159,14 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   2: tid => int
   3: star = Boolean
   4: modified
+  5:deleted
   */
   orow row;
 
   row.title = std::string(argv[1]);
   row.id = atoi(argv[0]); //right now pulling sqlite id not tid
   row.star = (atoi(argv[3]) == 1) ? true: false; //private
-  row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
+  row.deleted = (atoi(argv[5]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
   row.mark = false;
@@ -5355,40 +5359,66 @@ void display_container_info_sqlite(int id) {
   if (id ==-1) return;
 
   std::string table;
+  std::string count_query;
   int (*callback)(void *, int, char **, char **);
 
   switch(O.view) {
     case CONTEXT:
       table = "context";
       callback = context_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id = ";
       break;
     case FOLDER:
       table = "folder";
       callback = folder_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id = ";
       break;
     case KEYWORD:
       table = "keyword";
-      //callback = keyword_info_callback;
+      callback = keyword_info_callback;
+      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id = ";
       break;
     default:
       outlineShowMessage("Somehow you are in a view I can't handle");
       return;
   }
   std::stringstream query;
-  query << "SELECT * FROM " << table << " WHERE id = " << id;
+  int count = 0;
 
-  int rc = sqlite3_exec(S.db, query.str().c_str(), callback, 0, &S.err_msg);
+  query << count_query << id;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), count_callback, &count, &S.err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineShowMessage("SQL error: %s", S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   } 
+
+  std::stringstream query2;
+  query2 << "SELECT * FROM " << table << " WHERE id = " << id;
+
+  // callback is *not* called if result (argv) is null
+ rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.fts_db);
+  }
 }
 
-int context_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int count_callback (void *count, int argc, char **argv, char **azColName) {
 
-  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *cnt = static_cast<int*>(count);
+  *cnt = atoi(argv[0]);
+  return 0;
+}
+
+int context_info_callback(void *count, int argc, char **argv, char **azColName) {
+
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
   /*
@@ -5458,6 +5488,10 @@ int context_info_callback(void *NotUsed, int argc, char **argv, char **azColName
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
   ///////////////////////////
 
   ab.append("\x1b[0m", 4);
@@ -5467,9 +5501,8 @@ int context_info_callback(void *NotUsed, int argc, char **argv, char **azColName
   return 0;
 }
 
-int folder_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
 
-  UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
   /*
@@ -5541,6 +5574,10 @@ int folder_info_callback(void *NotUsed, int argc, char **argv, char **azColName)
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
   ///////////////////////////
 
   ab.append("\x1b[0m", 4);
@@ -5549,6 +5586,77 @@ int folder_info_callback(void *NotUsed, int argc, char **argv, char **azColName)
 
   return 0;
 }
+
+int keyword_info_callback(void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  5: deleted
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"name: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
 void update_note_pg(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
@@ -6465,7 +6573,9 @@ int insert_keyword_sqlite(orow& row) {
         << " " << row.star << ","
         << " False," //default for context and private for folder
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
-        << " 100);"; //tid
+        << " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
+
+  temporary_tid++;
 
   sqlite3 *db;
   char *err_msg = nullptr; //0
@@ -6801,11 +6911,13 @@ int insert_container_sqlite(orow& row) {
         << " False," //deleted
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
         << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
-        << " 100," //tid
+        //<< " 99999," //tid
+        << " " << temporary_tid << "," //tid originally 100 but that is a legit client tid server id
         << " False," //default for context and private for folder
         << " 10" //textcolor
         << ");"; // RETURNING id;",
 
+  temporary_tid++;      
   /*
    * not used:
      "default" (not sure why in quotes but may be system variable
