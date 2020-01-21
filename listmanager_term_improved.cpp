@@ -9,11 +9,6 @@
 #define SCROLL_DOWN 0
 #define SCROLL_UP 1
 
-//colors
-#define color0 0;30m
-#define color1 1;31m
-//#define COLOR2 [1;32m
-
 #include <Python.h>
 //#include <fcntl.h>
 #include <sys/ioctl.h>
@@ -68,11 +63,16 @@ static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"
 static std::vector<std::string> task_keywords;
 static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 static std::string visual_line_snippet;
+static std::set<int> unique_ids; //used in unique_data_callback
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
-const std::string COLOR_1 = "\x1b[1;31m";
-const std::string COLOR_2 = "\x1b[1;32m";
+const std::string COLOR_1 = "\x1b[0;31m";
+const std::string COLOR_2 = "\x1b[0;32m";
+const std::string COLOR_3 = "\x1b[0;33m";
+const std::string COLOR_4 = "\x1b[0;34m";
+const std::string COLOR_5 = "\x1b[0;35m";
 const std::string COLOR_6 = "\x1b[0;36m";
+const std::string COLOR_7 = "\x1b[0;37m";
 static int temporary_tid = 99999;
 
 enum outlineKey {
@@ -465,6 +465,7 @@ void get_items_sqlite(int);
 void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
+std::string get_task_keywords_sqlite(void); // puts them in comma delimited string
 //void get_keywords_sqlite(void);
 //void get_keywords_pg(void);
 void update_note_pg(void);
@@ -512,6 +513,7 @@ int context_info_callback(void *, int, char **, char **);
 int folder_info_callback(void *, int, char **, char **); 
 int keyword_info_callback(void *, int, char **, char **);
 int count_callback(void *, int, char **, char **);
+int unique_data_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
@@ -1111,7 +1113,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void get_task_keywords_sqlite(void) {
+std::string get_task_keywords_sqlite(void) {
 
   task_keywords.clear();
 
@@ -1120,28 +1122,28 @@ void get_task_keywords_sqlite(void) {
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
 
-    bool no_rows = true;
-
-   int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, &no_rows, &S.err_msg);
+   int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, nullptr, &S.err_msg);
    if (rc != SQLITE_OK ) {
      outlineShowMessage("SQL error: %s", S.err_msg);
      sqlite3_free(S.err_msg);
-     return;
-    }
+     return std::string();
+   }
+   if (task_keywords.empty()) return std::string();
+
+   std::string delim = "";
+   std::string s;
+   for (const auto &kw : task_keywords) {
+     s += delim += kw;
+     delim = ",";
+   }
+   return s;
 }
 
-int task_keywords_callback(void *no_rows, int argc, char **argv, char **azColName) {
+int task_keywords_callback(void *NotUsed, int argc, char **argv, char **azColName) {
 
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: name = string 25
-  2: tid => int
-  3: star = Boolean
-  4: modified
-  */
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
 
   task_keywords.push_back(std::string(argv[0]));
 
@@ -1290,15 +1292,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   /**************fts virtual table update**********************/
   // tag update
 
-  task_keywords.clear();
-  get_task_keywords_sqlite();
-  std::string delim = "";
-  std::string s;
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
-
+  std::string s = get_task_keywords_sqlite();
   std::stringstream query4;
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
@@ -1394,6 +1388,52 @@ void get_task_keywords_pg(void) {
   }
   PQclear(res);
   // PQfinish(conn);
+}
+
+void get_linked_items(int max) {
+  get_task_keywords_sqlite();
+  if (task_keywords.empty()) return;
+
+  std::stringstream query;
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+    query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
+          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
+
+  auto it = task_keywords.begin();
+  for (it; it != task_keywords.end() - 1; ++it) {
+    query << "keyword.name = '" << *it << "' OR ";
+  }
+  query << "keyword.name = '" << *it << "')";
+
+  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        //<< " ORDER BY task."
+        << " ORDER BY task.star DESC,"
+        << " task."
+        << O.sort
+        << " DESC LIMIT " << max;
+
+    int sortcolnum = sort_map[O.sort];
+    int rc = sqlite3_exec(S.db, query.str().c_str(), unique_data_callback, &sortcolnum, &S.err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineShowMessage("In %s: SQL error: %s", __func__, S.err_msg);
+      sqlite3_free(S.err_msg);
+    }
+
+  O.view = TASK;
+
+  if (O.rows.empty()) {
+    outlineShowMessage("No results were returned");
+    O.mode = NO_ROWS;
+    editorEraseScreen(); // in case there was a note displayed in previous view
+  } else {
+    O.mode = O.last_mode;
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+  }
 }
 
 void get_items_sqlite(int max) {
@@ -1500,6 +1540,27 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  orow row;
+
+  row.title = std::string(argv[3]);
+  row.id = atoi(argv[0]);
+  row.star = (atoi(argv[8]) == 1) ? true: false;
+  row.deleted = (atoi(argv[14]) == 1) ? true: false;
+  row.completed = (argv[10]) ? true: false;
+  row.dirty = false;
+  row.mark = false;
+  (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
+                                                 : strncpy(row.modified, " ", 16);
+  auto [it, success] = unique_ids.insert(row.id);
+  if (success) O.rows.push_back(row);
+
+  return 0;
+}
 // called as part of :find -> fts5_sqlite(fts5_callback) -> get_items_by_id_sqlite (by_id_data_callback)
 void get_items_by_id_sqlite(std::stringstream &query) {
   /*
@@ -3091,14 +3152,16 @@ void outlineDrawStatusBar(void) {
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
     if (E.dirty) truncated_title.append( "[+]");
+    std::string keywords = get_task_keywords_sqlite();
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
+                              // also [0;35;7m -> because of 7m it reverses background and foreground
                               // I think the [0;7m is revert to normal and reverse video
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
-                              truncated_title.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
 
   } else {
@@ -4680,6 +4743,8 @@ void outlineProcessKeypress(void) {
 
         case ARROW_UP:
         case ARROW_DOWN:
+        case 'j':
+        case 'k':
         case 'h':
         case 'l':
           outlineMoveCursor(c);
@@ -4754,6 +4819,21 @@ void outlineProcessKeypress(void) {
           outlineShowMessage("Retrieved keywords");
           return;
         */
+
+        case 'f':
+          {
+          std::string keywords = get_task_keywords_sqlite();
+          if (keywords.empty()) {
+            outlineShowMessage("The current entry has no keywords");
+          } else {
+            O.keyword = keywords;
+            O.context = "No Context";
+            O.folder = "No Folder";
+            O.taskview = BY_KEYWORD;
+
+            get_linked_items(MAX);
+          }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+          return;
 
         case 'd':
           toggle_deleted();
@@ -5331,13 +5411,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
   ///////////////////////////
 
-  get_task_keywords_sqlite();
-  std::string delim = "";
-  std::string s;
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
+  std::string s = get_task_keywords_sqlite();
   sprintf(str,"keywords: %s", s.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
