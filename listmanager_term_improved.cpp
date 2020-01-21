@@ -64,6 +64,8 @@ static std::vector<std::string> task_keywords;
 static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 static std::string visual_line_snippet;
 static std::set<int> unique_ids; //used in unique_data_callback
+static std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
+static size_t cmd_hx_idx = 0;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 
 const std::string COLOR_1 = "\x1b[0;31m";
@@ -1545,8 +1547,12 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
-  orow row;
+  int id = atoi(argv[0]);
+  auto [it, success] = unique_ids.insert(id);
+  if (!success) return 0;
 
+  orow row;
+  row.id = id;
   row.title = std::string(argv[3]);
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
@@ -1556,11 +1562,11 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   row.mark = false;
   (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
                                                  : strncpy(row.modified, " ", 16);
-  auto [it, success] = unique_ids.insert(row.id);
-  if (success) O.rows.push_back(row);
+  O.rows.push_back(row);
 
   return 0;
 }
+
 // called as part of :find -> fts5_sqlite(fts5_callback) -> get_items_by_id_sqlite (by_id_data_callback)
 void get_items_by_id_sqlite(std::stringstream &query) {
   /*
@@ -3963,6 +3969,20 @@ void outlineProcessKeypress(void) {
           outlineShowMessage(""); 
           return;
 
+        case ARROW_UP:
+          if (command_history.empty()) return;
+          cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
+          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
+          O.command_line = command_history.at(cmd_hx_idx);
+          return;
+
+        case ARROW_DOWN:
+          if (command_history.empty()) return;
+          cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
+          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
+          O.command_line = command_history.at(cmd_hx_idx);
+          return;
+
         case '\r':
           std::size_t pos;
 
@@ -4056,9 +4076,11 @@ void outlineProcessKeypress(void) {
               std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
               //std::istringstream iss(search_terms);
               //for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               search_db(search_terms);
               outlineShowMessage("You searched for %s", search_terms.c_str());
               
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               return;
               }
             case C_fts: 
@@ -4094,6 +4116,7 @@ void outlineProcessKeypress(void) {
               if (!pos) {
                 editorEraseScreen();
                 O.view = CONTEXT;
+                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
                 get_containers();
                 O.mode = NORMAL;
                 outlineShowMessage("Retrieved contexts");
@@ -4148,6 +4171,7 @@ void outlineProcessKeypress(void) {
               if (!pos) {
                 editorEraseScreen();
                 O.view = FOLDER;
+                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
                 get_containers();
                 O.mode = NORMAL;
                 outlineShowMessage("Retrieved folders");
@@ -4201,6 +4225,7 @@ void outlineProcessKeypress(void) {
               if (!pos) {
                 editorEraseScreen();
                 O.view = KEYWORD;
+                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
                 //get_keywords();
                 get_containers();
                 O.mode = NORMAL;
@@ -4374,6 +4399,7 @@ void outlineProcessKeypress(void) {
               }
               //EraseScreenRedrawLines(); //*****************************
               outlineShowMessage("\'%s\' will be opened", new_context.c_str());
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               O.context = new_context;
               O.folder = "";
               O.taskview = BY_CONTEXT;
@@ -4401,6 +4427,7 @@ void outlineProcessKeypress(void) {
                 return;
               }
               outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               O.context = "";
               O.taskview = BY_FOLDER;
               get_items(MAX);
@@ -4417,6 +4444,7 @@ void outlineProcessKeypress(void) {
 
               O.keyword = O.command_line.substr(pos+1);
               outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               O.context = "No Context";
               O.folder = "No Folder";
               O.taskview = BY_KEYWORD;
@@ -4437,21 +4465,21 @@ void outlineProcessKeypress(void) {
               bool success = false;
 
               if (O.taskview == BY_CONTEXT) {
-              for (const auto & [k,v] : folder_map) {
-                if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                  O.folder = k;
-                  success = true;
-                  break;
+                for (const auto & [k,v] : folder_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    O.folder = k;
+                    success = true;
+                    break;
+                  }
                 }
-              }
-          } else if (O.taskview == BY_FOLDER) {
-              for (const auto & [k,v] : context_map) {
-                if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                  O.context = k;
-                  success = true;
-                  break;
+              } else if (O.taskview == BY_FOLDER) {
+                for (const auto & [k,v] : context_map) {
+                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+                    O.context = k;
+                    success = true;
+                    break;
+                  }
                 }
-              }
               }
 
               if (!success) {
@@ -4478,6 +4506,7 @@ void outlineProcessKeypress(void) {
 
             case C_recent:
               outlineShowMessage("Will retrieve recent items");
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               O.context = "No Context";
               O.taskview = BY_RECENT;
               O.folder = "No Folder";
@@ -4596,19 +4625,17 @@ void outlineProcessKeypress(void) {
                 else break;
                 n++;
               }
-             outlineShowMessage("Number of notes merged = %d", n);
-             }
-             //outlineRefreshScreen(); 
-             O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
-             editorRefreshScreen(true);
-             update_note();
-             //E.dirty = 1;
-             O.command[0] = '\0';
-             O.repeat = 0;
-             O.mode = NORMAL;
-             return;
-
-
+              outlineShowMessage("Number of notes merged = %d", n);
+              }
+              //outlineRefreshScreen(); 
+              O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
+              editorRefreshScreen(true);
+              update_note();
+              //E.dirty = 1;
+              O.command[0] = '\0';
+              O.repeat = 0;
+              O.mode = NORMAL;
+              return;
 
             case C_quit:
             case 'q':
@@ -4709,6 +4736,8 @@ void outlineProcessKeypress(void) {
               outlineShowMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
               O.mode = NORMAL;
               return;
+
+          // command_history.push_back()    
 
           } //end of commandfromstring switch within '\r' of case COMMAND_LINE
 
@@ -4833,6 +4862,7 @@ void outlineProcessKeypress(void) {
 
             get_linked_items(MAX);
           }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+          }
           return;
 
         case 'd':
