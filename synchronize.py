@@ -513,14 +513,14 @@ def synchronize(report_only=True):
             keyword = remote_session.query(p.Keyword).filter_by(name=kw.name).first()
 
            # no longer makes sense to create keyword here since unconnected by tid to the client keyword
-           if keyword is None:
-               log += f"Error: can't find keyword {kw.name} on the server\n"
+            if keyword is None:
+                log += f"Error: can't find keyword {kw.name} on the server\n"
            #     keyword = p.Keyword(kw.name)
            #     remote_session.add(keyword)
            #     remote_session.commit()
-           else:
-               tk = p.TaskKeyword(task,keyword)
-               remote_session.add(tk)
+            else:
+                tk = p.TaskKeyword(task,keyword)
+                remote_session.add(tk)
 
         remote_session.commit()
             
