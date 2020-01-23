@@ -1169,7 +1169,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   row.title = std::string(argv[1]);
   row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; //private
+  row.star = (atoi(argv[3]) == 1) ? true: false; 
   row.deleted = (atoi(argv[5]) == 1) ? true: false;
   row.completed = false;
   row.dirty = false;
@@ -3117,9 +3117,10 @@ void outlineDrawStatusBar(void) {
   char status[300], rstatus[80];
 
   std::string s;
-
+  //std::string keywords = "";
   switch (O.view) {
       case TASK:
+        //keywords = get_task_keywords_sqlite(); can't be here because O.rows.empty() might be true
         switch (O.taskview) {
             case BY_SEARCH:
               s =  "search"; 
@@ -3158,7 +3159,8 @@ void outlineDrawStatusBar(void) {
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
     if (E.dirty) truncated_title.append( "[+]");
-    std::string keywords = get_task_keywords_sqlite();
+    // needs to be here because O.rows could be empty
+    std::string keywords = (O.view == TASK) ? get_task_keywords_sqlite() : ""; // see before and in switch
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -3345,7 +3347,8 @@ void outlineMoveCursor(int key) {
       // arowing left in NORMAL puts you into DATABASE mode
       else {
         O.mode = DATABASE;
-        display_item_info(O.rows.at(O.fr).id);
+        if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
+        else display_container_info_sqlite(O.rows.at(O.fr).id);
         O.command[0] = '\0';
         O.repeat = 0;
       }
