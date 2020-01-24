@@ -1132,7 +1132,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
 std::string get_task_keywords_sqlite(void) {
 
-  task_keywords.clear();
+  //task_keywords.clear();
 
   std::stringstream query;
   query << "SELECT keyword.name "
@@ -1149,8 +1149,9 @@ std::string get_task_keywords_sqlite(void) {
      return std::string();
    }
    */
-   if (!success) return std::string();
-   if (task_keywords.empty()) return std::string();
+   if (task_keywords.empty() || !success) return std::string();
+   //if (!success) return std::string();
+   //if (task_keywords.empty()) return std::string();
 
    std::string delim = "";
    std::string s;
@@ -1562,6 +1563,7 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   store the tid in orow row
   */
 
+
   orow row;
 
   row.title = std::string(argv[3]);
@@ -1571,7 +1573,8 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
   row.mark = false;
-  (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
+  //(argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
+  (argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
                                                  : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
@@ -1596,7 +1599,8 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
   row.mark = false;
-  (argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
+  //(argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
+  (argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
                                                  : strncpy(row.modified, " ", 16);
   O.rows.push_back(row);
 
