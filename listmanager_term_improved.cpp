@@ -166,6 +166,7 @@ enum Command {
 
   C_find,
   C_fts,
+  C_linked,
 
   C_refresh,
 
@@ -240,6 +241,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"filter", C_join}, //need because this is command line command with a target word
   {"fin", C_find},
   {"find", C_find},
+  {"linked", C_linked}, // also 'l' in COMMAND_LINE
+  {"related", C_linked}, // also 'l' in COMMAND_LINE
   {"fts", C_fts},
   {"refresh", C_refresh},
   {"new", C_new}, //don't need "n" because there is no target
@@ -419,7 +422,7 @@ int getWindowSize(int *, int *);
 // I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
 void EraseScreenRedrawLines(void);
 
-void outlineProcessKeypress(void);
+void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 
 //Outline Prototypes
@@ -1458,6 +1461,12 @@ void get_items_sqlite(int max) {
           << " WHERE context.title = '" << O.context << "'"
           << " AND folder.title = '" << O.folder << "'";
   } else if (O.taskview == BY_KEYWORD) {
+
+ // if O.keyword has more than one keyword
+ // skeywords << O.keyword;
+ // while (getline(skeyword, k, ',')) {
+ // vector.pushback(k) }
+
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
   } else {
@@ -3388,15 +3397,18 @@ void outlineMoveCursor(int key) {
 }
 
 // depends on readKey()
-void outlineProcessKeypress(void) {
+//void outlineProcessKeypress(void) {
+void outlineProcessKeypress(int c) { //prototype has int = 0  
   int start, end, command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
   //int c = readKey();
+  c = (!c) ? readKey() : c;
+  switch (O.mode) {
   size_t n;
-  switch (int c = readKey(); O.mode) { //init statement for if/switch
+  //switch (int c = readKey(); O.mode) { //init statement for if/switch
 
     case NO_ROWS:
 
@@ -3791,7 +3803,21 @@ void outlineProcessKeypress(void) {
           }
 
         case PAGE_UP:
-        case PAGE_DOWN:
+        case PAGE_DOWN:  
+          if (command_history.empty()) return;
+          O.mode = COMMAND_LINE;
+          if (c == PAGE_UP) cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
+          else cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
+          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
+          O.command_line = command_history.at(cmd_hx_idx);
+          outlineProcessKeypress('\r');
+          O.mode = NORMAL;
+          O.command[0] = '\0';
+          O.command_line.clear();
+          command_history.pop_back();
+          return;
+
+          /*
           if (c == PAGE_UP) {
             O.fr -= O.screenlines; //should be screen lines although same
             if (O.fr < 0) O.fr = 0;
@@ -3800,6 +3826,7 @@ void outlineProcessKeypress(void) {
              if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
           }
           return;
+         */
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -4062,6 +4089,22 @@ void outlineProcessKeypress(void) {
               O.mode = NORMAL;
               return;
               }
+
+            case 'l':  
+            case C_linked: //linked, related, l
+              {
+              std::string keywords = get_task_keywords_sqlite();
+              if (keywords.empty()) {
+                outlineShowMessage("The current entry has no keywords");
+              } else {
+                O.keyword = keywords;
+                O.context = "No Context";
+                O.folder = "No Folder";
+                O.taskview = BY_KEYWORD;
+                get_linked_items(MAX);
+              }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+              }
+              return;
 
             case C_find: //catches 'fin' and 'find' 
               {
