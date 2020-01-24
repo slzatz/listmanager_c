@@ -38,6 +38,7 @@
 /***the following is not yet in use and would get rid of switch statements***/
 //typedef void (*pfunc)(void);
 //typedef void (*pfunc)(int);
+typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -709,6 +710,17 @@ void sqlite_open(void) {
   }
 }
 
+//bool sqlite_query(sqlite3 *db, const char *sql, sq_callback callback, void *pArg, char **errmsg) {
+bool sqlite_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
+   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
+   if (rc != SQLITE_OK) {
+     outlineShowMessage("SQL error: %s", errmsg);
+     sqlite3_free(errmsg);
+     return false;
+   }
+   return true;
+}
+
 void map_context_titles_pg(void) {
 
   // note it's id because it's pg
@@ -1127,12 +1139,17 @@ std::string get_task_keywords_sqlite(void) {
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
 
+   std::vector<std::string> task_keywords; ////////////////////////////
+   bool success =  sqlite_query(S.db, query.str(), task_keywords_callback, &task_keywords, &S.err_msg);
+   /*
    int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, nullptr, &S.err_msg);
    if (rc != SQLITE_OK ) {
      outlineShowMessage("SQL error: %s", S.err_msg);
      sqlite3_free(S.err_msg);
      return std::string();
    }
+   */
+   if (!success) return std::string();
    if (task_keywords.empty()) return std::string();
 
    std::string delim = "";
@@ -1144,7 +1161,7 @@ std::string get_task_keywords_sqlite(void) {
    return s;
 }
 
-int task_keywords_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int task_keywords_callback_old(void *NotUsed, int argc, char **argv, char **azColName) {
 
   UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
@@ -1155,6 +1172,16 @@ int task_keywords_callback(void *NotUsed, int argc, char **argv, char **azColNam
   return 0; //you need this
 }
 
+int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
+
+  std::vector<std::string>* task_keys = static_cast<std::vector<std::string> *>(ptr);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  task_keys->push_back(std::string(argv[0]));
+
+  return 0; //you need this
+}
 int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   bool *flag = static_cast<bool*>(no_rows);
