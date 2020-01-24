@@ -61,7 +61,7 @@ static std::map<int, std::string> fts_titles;
 static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
 static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
-static std::vector<std::string> task_keywords;
+//static std::vector<std::string> task_keywords;
 static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 static std::string visual_line_snippet;
 static std::set<int> unique_ids; //used in unique_data_callback
@@ -471,7 +471,8 @@ void get_items_sqlite(int);
 void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
 void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
-std::string get_task_keywords_sqlite(void); // puts them in comma delimited string
+//std::string get_task_keywords_sqlite(void); // puts them in comma delimited string
+std::pair<std::string, std::vector<std::string>> get_task_keywords_sqlite(void); // puts them in comma delimited string
 //void get_keywords_sqlite(void);
 //void get_keywords_pg(void);
 void update_note_pg(void);
@@ -1130,7 +1131,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-std::string get_task_keywords_sqlite(void) {
+std::pair<std::string, std::vector<std::string>>  get_task_keywords_sqlite(void) {
 
   //task_keywords.clear();
 
@@ -1149,7 +1150,7 @@ std::string get_task_keywords_sqlite(void) {
      return std::string();
    }
    */
-   if (task_keywords.empty() || !success) return std::string();
+   if (task_keywords.empty() || !success) return std::make_pair(std::string(), std::vector<std::string>());
    //if (!success) return std::string();
    //if (task_keywords.empty()) return std::string();
 
@@ -1159,9 +1160,9 @@ std::string get_task_keywords_sqlite(void) {
      s += delim += kw;
      delim = ",";
    }
-   return s;
+   return std::make_pair(s, task_keywords);
 }
-
+/*
 int task_keywords_callback_old(void *NotUsed, int argc, char **argv, char **azColName) {
 
   UNUSED(NotUsed);
@@ -1172,6 +1173,7 @@ int task_keywords_callback_old(void *NotUsed, int argc, char **argv, char **azCo
 
   return 0; //you need this
 }
+*/
 
 int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 
@@ -1325,7 +1327,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   /**************fts virtual table update**********************/
   // tag update
 
-  std::string s = get_task_keywords_sqlite();
+  std::string s = get_task_keywords_sqlite().first;
   std::stringstream query4;
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
@@ -1399,10 +1401,12 @@ void delete_task_keywords_pg(void) {
   PQclear(res);
 }
 
+//needs updating 01242020
 void get_task_keywords_pg(void) {
 
   std::stringstream query;
-  task_keywords.clear();
+  //task_keywords.clear();
+  std::vector<std::string> task_keywords;
 
   query << "SELECT keyword.name "
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
@@ -1424,10 +1428,11 @@ void get_task_keywords_pg(void) {
 }
 
 void get_linked_items(int max) {
-  get_task_keywords_sqlite();
+  std::vector<std::string> task_keywords = get_task_keywords_sqlite().second;
   if (task_keywords.empty()) return;
 
   std::stringstream query;
+  unique_ids.clear();
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -1471,6 +1476,9 @@ void get_linked_items(int max) {
 
 void get_items_sqlite(int max) {
   std::stringstream query;
+  std::vector<std::string> keyword_vec;
+  int (*callback)(void *, int, char **, char **);
+  callback = data_callback;
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -1491,12 +1499,25 @@ void get_items_sqlite(int max) {
   } else if (O.taskview == BY_KEYWORD) {
 
  // if O.keyword has more than one keyword
- // skeywords << O.keyword;
- // while (getline(skeyword, k, ',')) {
- // vector.pushback(k) }
+    std::string k;
+    std::stringstream skeywords;
+    skeywords << O.keyword;
+    while (getline(skeywords, k, ',')) {
+      keyword_vec.push_back(k);
+    }
 
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
-          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
+          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
+
+    auto it = keyword_vec.begin();
+    for (it; it != keyword_vec.end() - 1; ++it) {
+      query << "keyword.name = '" << *it << "' OR ";
+    }
+    query << "keyword.name = '" << *it << "')";
+
+    callback = unique_data_callback;
+    unique_ids.clear();
+
   } else {
       outlineShowMessage("You asked for an unsupported db query");
       return;
@@ -1510,7 +1531,7 @@ void get_items_sqlite(int max) {
         << " DESC LIMIT " << max;
 
     int sortcolnum = sort_map[O.sort];
-    int rc = sqlite3_exec(S.db, query.str().c_str(), data_callback, &sortcolnum, &S.err_msg);
+    int rc = sqlite3_exec(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg);
 
     if (rc != SQLITE_OK ) {
       outlineShowMessage("In %s: SQL error: %s", __func__, S.err_msg);
@@ -3200,7 +3221,7 @@ void outlineDrawStatusBar(void) {
     std::string truncated_title = row.title.substr(0, 12);
     if (E.dirty) truncated_title.append( "[+]");
     // needs to be here because O.rows could be empty
-    std::string keywords = (O.view == TASK) ? get_task_keywords_sqlite() : ""; // see before and in switch
+    std::string keywords = (O.view == TASK) ? get_task_keywords_sqlite().first : ""; // see before and in switch
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -4124,7 +4145,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             case 'l':  
             case C_linked: //linked, related, l
               {
-              std::string keywords = get_task_keywords_sqlite();
+              std::string keywords = get_task_keywords_sqlite().first;
               if (keywords.empty()) {
                 outlineShowMessage("The current entry has no keywords");
               } else {
@@ -4928,7 +4949,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case 'f':
           {
-          std::string keywords = get_task_keywords_sqlite();
+          std::string keywords = get_task_keywords_sqlite().first;
           if (keywords.empty()) {
             outlineShowMessage("The current entry has no keywords");
           } else {
@@ -5272,7 +5293,8 @@ void display_item_info_pg(int id) {
 
   ///////////////////////////
 
-  get_task_keywords_pg();
+  //get_task_keywords_pg(); ////should be pg, just did this to compile
+  std::vector<std::string> task_keywords = get_task_keywords_sqlite().second;
   std::string delim = "";
   std::string s;
   for (const auto &kw : task_keywords) {
@@ -5518,7 +5540,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
 
   ///////////////////////////
 
-  std::string s = get_task_keywords_sqlite();
+  std::string s = get_task_keywords_sqlite().first;
   sprintf(str,"keywords: %s", s.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
