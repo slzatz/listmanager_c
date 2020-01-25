@@ -2135,6 +2135,7 @@ int commandfromstringcpp(const std::string& key, std::size_t& found) { //for com
     std::string command = key.substr(0, found);
     return keyfromstringcpp(command);
   } else
+    found = 0;
     return keyfromstringcpp(key);
 }
 
@@ -4154,6 +4155,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 O.folder = "No Folder";
                 O.taskview = BY_KEYWORD;
                 get_linked_items(MAX);
+                command_history.push_back("ok " + keywords); ///////////////////////////////////////////////////////
               }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               }
               return;
@@ -4474,6 +4476,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = O.last_mode;
               return;
 
+            case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error since no context given  
             case C_open: //by context
               {
               std::string new_context;
@@ -4487,12 +4490,14 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                     break;
                   }
                 }
-                if (!success) return;
-
+                if (!success) {
+                  outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
+                  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+                  return;
+                }
               } else {
-                outlineShowMessage("You did not provide a valid  context!");
-                //O.command_line[1] = '\0';
-                O.command_line.resize(1);
+                outlineShowMessage("You did not provide a context!");
+                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
                 return;
               }
               //EraseScreenRedrawLines(); //*****************************
@@ -4517,11 +4522,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                     break;
                   }
                 }
-                if (!success) return;
+                if (!success) {
+                  outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
+                  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+                  return;
+                }
 
               } else {
-                outlineShowMessage("You did not provide a valid  folder!");
-                O.command_line.resize(1);
+                outlineShowMessage("You did not provide a folder!");
+                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
                 return;
               }
               outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
@@ -4537,6 +4546,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
               if (!pos) {
                 outlineShowMessage("You need to provide a keyword");
+                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
                 return;
               }
 
@@ -9945,6 +9955,7 @@ int main(int argc, char** argv) {
   initOutline();
   initEditor();
   get_items(MAX);
+  command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
  // PQfinish(conn); // this should happen when exiting
 
