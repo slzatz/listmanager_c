@@ -2134,9 +2134,10 @@ int commandfromstringcpp(const std::string& key, std::size_t& found) { //for com
   if (found != std::string::npos) {
     std::string command = key.substr(0, found);
     return keyfromstringcpp(command);
-  } else
+  } else {
     found = 0;
     return keyfromstringcpp(key);
+  }
 }
 
 [[ noreturn]] void die(const char *s) {
@@ -3294,6 +3295,10 @@ void return_cursor() {
     if (E.mode != COMMAND_LINE){
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
       ab.append(buf, strlen(buf));
+    } else { //O.mode == COMMAND_LINE
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", E.screenlines + 2 + TOP_MARGIN, E.command_line.size() + EDITOR_LEFT_MARGIN + 1); /// ****
+      ab.append(buf, strlen(buf));
+      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
     }
   } else {
     if (O.mode == SEARCH || O.mode == DATABASE) {
