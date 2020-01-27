@@ -610,7 +610,7 @@ inline void f_$(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
-static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
+//static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
 static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}};
@@ -8237,63 +8237,54 @@ bool editorProcessKeypress(void) {
       }
 
       /* starting to use command maps*/
-     {
-      int map_num;
-      bool used_mapped_command;
-      if (cmd_map0.count(command)) {
-        map_num = cmd_map0[command];
-        used_mapped_command = true;
-      } else {
-        map_num = 0;
-        used_mapped_command = false;
-      }
-
+      {
+      bool used_mapped_command = true;
       E.move_only = false; /////////this needs to get into master
 
-      switch (map_num) {
+      switch (command) {
 
-        case 0: // no match
+        //case 1:  //i, I, a, A
+        case 'i': case 'I': case 'a': case 'A': 
+          editorCreateSnapshot();
+          cmd_map1[command](E.repeat);
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
-        case 1:  //i, I, a, A
-      //if (cmd_map1.count(command)) {
-        editorCreateSnapshot();
-        cmd_map1[command](E.repeat);
-        E.mode = INSERT;
-        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        break;
+        //case 2: // O, o
+        case 'o': case 'O':
+          editorCreateSnapshot();
+          E.last_typed.clear();
+          cmd_map2[command](1); //note this is ! not e.repeat
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          break;
 
-        case 2: // O, o
-      //} else if (cmd_map2.count(command)) {
-        editorCreateSnapshot();
-        E.last_typed.clear();
-        cmd_map2[command](1); //note this is ! not e.repeat
-        E.mode = INSERT;
-        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        break;
+        //case 3: //x, dw, daw, dd
+        case 'x': case C_dw: case C_daw: case C_dd:
+          editorCreateSnapshot();
+          cmd_map3[command](E.repeat);
+          break;
 
-        case 3: //x, dw, daw, dd`
-      //} else if (cmd_map3.count(command)) {
-        editorCreateSnapshot();
-        cmd_map3[command](E.repeat);
-        break;
+        //case 4: //cw, caw, s
+        case C_cw: case C_caw: case 's':
+          editorCreateSnapshot();
+          E.last_typed.clear();
+          cmd_map4[command](E.repeat);
+          E.mode = INSERT; 
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          break;
 
-        case 4: //cw, caw, s
-      //} else if (cmd_map4.count(command)) {
-        editorCreateSnapshot();
-        E.last_typed.clear();
-        cmd_map4[command](E.repeat);
-        E.mode = INSERT; 
-        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        break;
-
-        case 5: //w, e, b, 0, $
-      //} else if (cmd_map5.count(command)) {
+        //case 5: //w, e, b, 0, $
+        case 'w': case 'e': case 'b': case '0': case '$':
           cmd_map5[command](E.repeat);
           E.move_only = true;// still need to draw status line, message and cursor
           break;
-      //}
-       }
+      
+        default:
+          used_mapped_command = false;
+      }
+
       if (used_mapped_command) {
         if(!E.move_only) {
           E.last_repeat = E.repeat;
@@ -8313,53 +8304,6 @@ bool editorProcessKeypress(void) {
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
           return false;
-        /*
-        case 'i':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-    
-        case 'I':
-          // editing cmd: can be dotted and does repeat sets of characters
-          // repeat handled in INSERT escape
-          editorCreateSnapshot();
-          f_I(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case 'a':
-          // editing cmd: can be dotted and does repeat sets of characters
-          editorCreateSnapshot();
-          f_a(E.repeat);
-          E.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case 'A':
-          // editing cmd: can be dotted and does repeat sets of characters
-          editorCreateSnapshot();
-          f_A(E.repeat);
-          E.mode = INSERT; //needs to be here for movecursor to work at EOLs
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case 's':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
-          f_s(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-          break;
-    
-        case 'x':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
-          f_x(E.repeat);
-          break;
-        */
 
         case 'r':
           // editing cmd: can be dotted and does repeat
@@ -8374,30 +8318,6 @@ bool editorProcessKeypress(void) {
           f_change_case(E.repeat);
           break;
     
-        /*
-        case C_daw:
-          editorCreateSnapshot();
-          f_daw(E.repeat);
-          break;
-
-        case C_dw:
-          editorCreateSnapshot();
-          f_dw(E.repeat);
-          break;
-
-        case C_dd:
-          editorCreateSnapshot();
-          f_dd(E.repeat);
-          break;
-         */
-
-        /*
-        case C_d$:
-          editorCreateSnapshot();
-          f_d$(E.repeat);
-          break;
-         */
-
         case C_de:
           editorCreateSnapshot();
           start = E.fc;
@@ -8420,50 +8340,6 @@ bool editorProcessKeypress(void) {
               E.fr--;
           }
           break;
-
-        //tested with repeat on one line
-        //note action is repeatable but
-        //text just written once
-        /*  
-        case C_cw:
-          editorCreateSnapshot();
-          f_cw(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        //tested with repeat on one line
-        //note action is repeatable but
-        //text just written once
-        case C_caw:
-          editorCreateSnapshot();
-          f_caw(E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break; //see common code below before return at end of NORMAL
-
-        case 'o':
-          // editing cmd: can be dotted and does repeat
-          // repeat handled in INSERT escape
-
-          editorCreateSnapshot();
-          editorInsertNewline(1); // can't use f_o because E.last_typed is cleared
-
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-    
-        case 'O':
-          // editing cmd: can be dotted and does repeat
-          // repeat handled in INSERT escape
-
-          editorCreateSnapshot();
-          editorInsertNewline(0); // can use f_O because E.last_typed is cleared
-
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-          */
 
         case C_next_mispelling:
               {
