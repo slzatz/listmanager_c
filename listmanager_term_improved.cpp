@@ -610,6 +610,7 @@ inline void f_$(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
+static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
 static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}};
@@ -2511,7 +2512,7 @@ void editorDoRepeat(void) {
     cmd_map2[E.last_command](E.last_repeat);
     return;
 
-  // C_dw, C_daw, C_dd
+  // C_dw, C_daw, C_dd, C_d$, x
   } else if (cmd_map3.count(E.last_command)) {
     cmd_map3[E.last_command](E.last_repeat);
     return;
@@ -2519,6 +2520,7 @@ void editorDoRepeat(void) {
   // C_cw, C_caw, s
   } else if (cmd_map4.count(E.last_command)) {
     cmd_map4[E.last_command](E.last_repeat);
+    //return;
 
     for (char const &c : E.last_typed) {
       if (c == '\r') editorInsertReturn();
@@ -2554,11 +2556,11 @@ void editorDoRepeat(void) {
       }
       return;
 
-     */
-
     case 'x':
       f_x(E.last_repeat);
       return;
+
+*/
     case '~':
       f_change_case(E.last_repeat);
       return;
@@ -2590,7 +2592,7 @@ void editorDoRepeat(void) {
       return;
      */
     default:
-      editorSetMessage("You tried to repeat a command that doesn't repeat");
+      editorSetMessage("You tried to repeat a command that doesn't repeat; Last command = %d", E.last_command);
       return;
   }
 
@@ -3270,7 +3272,7 @@ void outlineDrawStatusBar(void) {
   //because of escapes
   len-=22;
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "c++");
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "exp");
 
   if (len > screencols - 1) len = screencols - 1;
 
@@ -8236,37 +8238,62 @@ bool editorProcessKeypress(void) {
 
       /* starting to use command maps*/
      {
-      bool used_mapped_command = false;
-      //map1 -> i, I, a, A
-      if (cmd_map1.count(command)) {
+      int map_num;
+      bool used_mapped_command;
+      if (cmd_map0.count(command)) {
+        map_num = cmd_map0[command];
+        used_mapped_command = true;
+      } else {
+        map_num = 0;
+        used_mapped_command = false;
+      }
+
+      E.move_only = false; /////////this needs to get into master
+
+      switch (map_num) {
+
+        case 0: // no match
+          break;
+
+        case 1:  //i, I, a, A
+      //if (cmd_map1.count(command)) {
         editorCreateSnapshot();
         cmd_map1[command](E.repeat);
         E.mode = INSERT;
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        used_mapped_command = true;
+        break;
 
-      //map2 -> O, o
-      } else if (cmd_map2.count(command)) {
+        case 2: // O, o
+      //} else if (cmd_map2.count(command)) {
         editorCreateSnapshot();
         E.last_typed.clear();
         cmd_map2[command](1); //note this is ! not e.repeat
         E.mode = INSERT;
         editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        used_mapped_command = true;
+        break;
 
-      // map3 -> x, dw, daw, dd
-      } else if (cmd_map3.count(command)) {
+        case 3: //x, dw, daw, dd`
+      //} else if (cmd_map3.count(command)) {
         editorCreateSnapshot();
         cmd_map3[command](E.repeat);
-        used_mapped_command = true;
+        break;
 
-      // map5 -> w, e, b, 0, $
-      } else if (cmd_map5.count(command)) {
+        case 4: //cw, caw, s
+      //} else if (cmd_map4.count(command)) {
+        editorCreateSnapshot();
+        E.last_typed.clear();
+        cmd_map4[command](E.repeat);
+        E.mode = INSERT; 
+        editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+        break;
+
+        case 5: //w, e, b, 0, $
+      //} else if (cmd_map5.count(command)) {
           cmd_map5[command](E.repeat);
-          used_mapped_command = true;
-          E.move_only = true;// still need to draw status line and message
-      }
-
+          E.move_only = true;// still need to draw status line, message and cursor
+          break;
+      //}
+       }
       if (used_mapped_command) {
         if(!E.move_only) {
           E.last_repeat = E.repeat;
@@ -8275,6 +8302,7 @@ bool editorProcessKeypress(void) {
         }
         E.command[0] = '\0';
         E.repeat = 0;
+        editorSetMessage("command = %d", E.last_command);
         return true;
       }
       }
@@ -8317,7 +8345,6 @@ bool editorProcessKeypress(void) {
           E.mode = INSERT; //needs to be here for movecursor to work at EOLs
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
-        */
 
         case 's':
           // editing cmd: can be dotted and does repeat
@@ -8327,7 +8354,6 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
           break;
     
-        /*
         case 'x':
           // editing cmd: can be dotted and does repeat
           editorCreateSnapshot();
@@ -8398,6 +8424,7 @@ bool editorProcessKeypress(void) {
         //tested with repeat on one line
         //note action is repeatable but
         //text just written once
+        /*  
         case C_cw:
           editorCreateSnapshot();
           f_cw(E.repeat);
@@ -8415,8 +8442,6 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break; //see common code below before return at end of NORMAL
 
-    
-        /*
         case 'o':
           // editing cmd: can be dotted and does repeat
           // repeat handled in INSERT escape
@@ -8439,6 +8464,7 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
           */
+
         case C_next_mispelling:
               {
           if (!E.spellcheck || pos_mispelled_words.empty()) {
