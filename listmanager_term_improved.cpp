@@ -597,6 +597,8 @@ inline void f_o(int);
 inline void f_dw(int);
 inline void f_daw(int);
 inline void f_dd(int);
+inline void f_de(int);
+inline void f_dG(int);
 inline void f_cw(int);
 inline void f_caw(int);
 inline void f_s(int);
@@ -613,7 +615,7 @@ typedef void (*pfunc)(int);
 //static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
 static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
-static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}};
+static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}, {C_de, f_de}, {C_dG, f_dG}};
 static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
 static std::map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
 /*************************************/
@@ -2349,7 +2351,7 @@ void outlineSave(const std::string& fname) {
 /*** editor row operations ***/
 //#include "editor_functions.h"
 
-inline void f_cw(int repeat) {
+void f_cw(int repeat) {
   for (int j = 0; j < repeat; j++) {
     int start = E.fc;
     editorMoveEndWord();
@@ -2360,37 +2362,81 @@ inline void f_cw(int repeat) {
   }
 }
 
-inline void f_dw(int repeat) {
-  for (int j = 0; j < repeat; j++) {
-    int start = E.fc;
-    editorMoveEndWord();
-    int end = E.fc;
-    E.fc = start;
-    for (int j = 0; j < end - start + 1; j++) editorDelChar();
-  }
-  E.fc--;
-}
-
-inline void f_caw(int repeat) {
+void f_caw(int repeat) {
    for (int i=0; i < repeat; i++)  editorDelWord();
     // text repeats once
 }
 
-inline void f_daw(int repeat) {
+void f_de(int repeat) {
+  // should this use editorDelWord?
+  for (int j = 0; j < repeat; j++) {
+    if (E.fc == E.rows.at(E.fr).size() - 1) {
+      editorDelChar();
+      //start--;
+      return;
+    }
+    int start = E.fc;
+    editorMoveEndWord(); //correct one to use to emulate vim
+    int end = E.fc;
+    E.fc = start;
+    for (int j = 0; j < end - start + 1; j++) editorDelChar();
+  }
+}
+
+void f_dw(int repeat) {
+  // should this use editorDelWord?
+  for (int j = 0; j < repeat; j++) {
+    //start = E.fc;
+    if (E.fc == E.rows.at(E.fr).size() - 1) {
+      editorDelChar();
+      //start--;
+      return;
+    }
+    if (E.rows.at(E.fr).at(E.fc + 1) == ' ') {
+      //E.fc = start + 1;
+      // this is not correct - it removes all spaces
+      // woud need to use the not a find_first_not_of space and delete all of them
+      editorDelChar();
+      editorDelChar();
+      continue;
+    }
+    int start = E.fc;
+    editorMoveEndWord();
+    int end = E.fc + 1;
+    end = (E.rows.at(E.fr).size() > end) ? end : E.rows.at(E.fr).size() - 1;
+    E.fc = start;
+    for (int j = 0; j < end - start + 1; j++) editorDelChar();
+  }
+  //E.fc = start; 
+}
+
+void f_daw(int repeat) {
    for (int i=0; i < repeat; i++) editorDelWord();
 }
 
-inline void f_s(int repeat) {
+void f_dG(int repeat) {
+  if (E.rows.empty()) return;
+  E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
+  if (E.rows.empty()) {
+    E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
+    E.mode = NO_ROWS;
+  } else {
+     E.fr--;
+     E.fc = 0;
+  }
+}
+
+void f_s(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
-inline void f_x(int repeat) {
+void f_x(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
-inline void f_dd(int repeat) {
+void f_dd(int repeat) {
   //editorCreateSnapshot();
   int r = E.rows.size() - E.fr;
   repeat = (r >= repeat) ? repeat : r ;
@@ -2398,7 +2444,7 @@ inline void f_dd(int repeat) {
   for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
 }
 
-inline void f_d$(int repeat) {
+void f_d$(int repeat) {
   editorDeleteToEndOfLine();
   if (!E.rows.empty()) {
     int r = E.rows.size() - E.fr;
@@ -2409,35 +2455,35 @@ inline void f_d$(int repeat) {
     }
 }
 
-inline void f_change_case(int repeat) {
+void f_change_case(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorChangeCase();
 }
 
-inline void f_replace(int repeat) {
+void f_replace(int repeat) {
   for (int i = 0; i < repeat; i++) {
     editorDelChar();
     editorInsertChar(E.last_typed[0]);
   }
 }
 
-inline void f_i(int repeat) {}
+void f_i(int repeat) {}
 
-inline void f_I(int repeat) {
+void f_I(int repeat) {
   editorMoveCursorBOL();
   E.fc = editorIndentAmount(E.fr);
 }
 
-inline void f_a(int repeat) {
+void f_a(int repeat) {
   editorMoveCursor(ARROW_RIGHT);
 }
 
-inline void f_A(int repeat) {
+void f_A(int repeat) {
   editorMoveCursorEOL();
   editorMoveCursor(ARROW_RIGHT); //works even though not in INSERT mode
 }
 
-inline void f_o(int repeat) {
+void f_o(int repeat) {
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(1);
     for (char const &c : E.last_typed) {
@@ -2447,7 +2493,7 @@ inline void f_o(int repeat) {
   }
 }
 
-inline void f_O(int repeat) {
+void f_O(int repeat) {
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(0);
     for (char const &c : E.last_typed) {
@@ -2458,29 +2504,29 @@ inline void f_O(int repeat) {
 }
 
 //lands on punctuation, lands on blank lines ...
-inline void f_w(int repeat) {
+void f_w(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveNextWord();
   }
 }
 
-inline void f_b(int repeat) {
+void f_b(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveBeginningWord();
   }
 }
 
-inline void f_e(int repeat) {
+void f_e(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveEndWord();
   }
 }
 
-inline void f_0(int repeat) {
+void f_0(int repeat) {
   editorMoveCursorBOL();
 }
 
-inline void f_$(int repeat) {
+void f_$(int repeat) {
   int r = E.fr;
   for (int n=0; n<repeat; n++) {
     if (r < E.rows.size() - 1) {
@@ -8243,7 +8289,6 @@ bool editorProcessKeypress(void) {
 
       switch (command) {
 
-        //case 1:  //i, I, a, A
         case 'i': case 'I': case 'a': case 'A': 
           editorCreateSnapshot();
           cmd_map1[command](E.repeat);
@@ -8251,7 +8296,6 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
-        //case 2: // O, o
         case 'o': case 'O':
           editorCreateSnapshot();
           E.last_typed.clear();
@@ -8260,13 +8304,11 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
-        //case 3: //x, dw, daw, dd
-        case 'x': case C_dw: case C_daw: case C_dd:
+        case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG:
           editorCreateSnapshot();
           cmd_map3[command](E.repeat);
           break;
 
-        //case 4: //cw, caw, s
         case C_cw: case C_caw: case 's':
           editorCreateSnapshot();
           E.last_typed.clear();
@@ -8275,12 +8317,18 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
+        case '~':
+          // editing cmd: can be dotted and does repeat
+          editorCreateSnapshot();
+          f_change_case(E.repeat);
+          break;
+
         //case 5: //w, e, b, 0, $
         case 'w': case 'e': case 'b': case '0': case '$':
           cmd_map5[command](E.repeat);
           E.move_only = true;// still need to draw status line, message and cursor
           break;
-      
+
         default:
           used_mapped_command = false;
       }
@@ -8312,35 +8360,6 @@ bool editorProcessKeypress(void) {
           E.mode = REPLACE;
           return false; //? true or handled in REPLACE mode
     
-        case '~':
-          // editing cmd: can be dotted and does repeat
-          editorCreateSnapshot();
-          f_change_case(E.repeat);
-          break;
-    
-        case C_de:
-          editorCreateSnapshot();
-          start = E.fc;
-          editorMoveEndWord(); //correct one to use to emulate vim
-          end = E.fc;
-          E.fc = start;
-          for (int j = 0; j < end - start + 1; j++) editorDelChar();
-          //E.fc = (start < E.rows.at(E.cy).size()) ? start : E.rows.at(E.cy).size() -1;
-          // below 11-26-2019
-          E.fc = (start < E.rows.at(E.fr).size()) ? start : E.rows.at(E.fr).size() -1;
-          break;
-
-        case C_dG:
-          editorCreateSnapshot();
-          E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
-          if (E.rows.empty()) {
-              E.fr = E.fc = E.cy = E.cx = E.line_offset = 0;
-              E.mode = NO_ROWS;
-          } else {
-              E.fr--;
-          }
-          break;
-
         case C_next_mispelling:
               {
           if (!E.spellcheck || pos_mispelled_words.empty()) {
@@ -8363,7 +8382,7 @@ bool editorProcessKeypress(void) {
           }
 
         case C_previous_mispelling:
-              {
+          {
           if (!E.spellcheck || pos_mispelled_words.empty()) {
             editorSetMessage("Spellcheck is off or no words mispelled");
           E.command[0] = '\0';
@@ -8382,6 +8401,7 @@ bool editorProcessKeypress(void) {
           editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
           return true;
           }
+
         case ':':
           editorSetMessage(":");
           E.command[0] = '\0';
@@ -8520,7 +8540,7 @@ bool editorProcessKeypress(void) {
           editorPageUpDown(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.repeat = 0;
-          return false;
+          return false;  //there is a check if editorscroll == true
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -8534,59 +8554,8 @@ bool editorProcessKeypress(void) {
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.move_only = true;
           E.repeat = 0;
-          return false;
+          return false; //there is a check if editorscroll == true
 
-        /*
-        case 'w':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-
-          //for (int i=0; i<E.repeat; i++) {
-          //  editorMoveNextWord();
-          //}
-          f_w(E.repeat);
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.move_only = true;
-          return;
-
-        case 'b':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveBeginningWord();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.move_only = true;
-          return;
-
-        case 'e':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveEndWord();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.move_only = true;
-          return;
-
-        case '0':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveCursorBOL();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.move_only = true;
-          return;
-
-        case '$':
-          // navigation: can't be dotted but does repeat
-          // navigation doesn't clear last dotted command
-          editorMoveCursorEOL();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.move_only = true;
-          return;
-
-          */
         case C_gg:
           // navigation: should not clear dot
           E.fc = E.line_offset = 0;
@@ -8594,7 +8563,7 @@ bool editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = 0;
           E.move_only = true;
-          return false;
+          return false; //there is a check if editorscroll == true
 
         case 'G':
           // navigation: can't be dotted and doesn't repeat
@@ -8608,7 +8577,7 @@ bool editorProcessKeypress(void) {
           E.repeat = 0;
           /////////////////////////
 
-          return false;
+          return false; //there is a check if editorscroll = true
 
        default:
           // latest thought is to return false when no need to redraw rows like when command is not matched yet
