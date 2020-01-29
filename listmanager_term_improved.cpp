@@ -8283,8 +8283,8 @@ bool editorProcessKeypress(void) {
       }
 
       /* starting to use command maps*/
-      {
-      bool used_mapped_command = true;
+      //{
+      //bool used_mapped_command = true;
       E.move_only = false; /////////this needs to get into master
 
       switch (command) {
@@ -8328,7 +8328,7 @@ bool editorProcessKeypress(void) {
           cmd_map5[command](E.repeat);
           E.move_only = true;// still need to draw status line, message and cursor
           break;
-
+ /*
         default:
           used_mapped_command = false;
       }
@@ -8344,10 +8344,10 @@ bool editorProcessKeypress(void) {
         editorSetMessage("command = %d", E.last_command);
         return true;
       }
-      }
+      //}
 
       switch (command) {
-
+*/
         case SHIFT_TAB:
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
@@ -8560,10 +8560,11 @@ bool editorProcessKeypress(void) {
           // navigation: should not clear dot
           E.fc = E.line_offset = 0;
           E.fr = E.repeat-1;
-          E.command[0] = '\0';
-          E.repeat = 0;
+          //E.command[0] = '\0';
+          //E.repeat = 0;
           E.move_only = true;
-          return false; //there is a check if editorscroll == true
+          break;
+          //return false; //there is a check if editorscroll == true
 
         case 'G':
           // navigation: can't be dotted and doesn't repeat
@@ -8573,11 +8574,11 @@ bool editorProcessKeypress(void) {
           E.move_only = true;
 
           /////////////////////////
-          E.command[0] = '\0';
-          E.repeat = 0;
+          //E.command[0] = '\0';
+          //E.repeat = 0;
           /////////////////////////
-
-          return false; //there is a check if editorscroll = true
+         break;
+         //return false; //there is a check if editorscroll = true
 
        default:
           // latest thought is to return false when no need to redraw rows like when command is not matched yet
@@ -8586,14 +8587,29 @@ bool editorProcessKeypress(void) {
       } // end of keyfromstring switch under case NORMAL 
 
       ///////////////////////////
-      E.command[0] = '\0';
-      E.last_repeat = E.repeat;
-      E.repeat = 0;
-      E.last_typed.clear();
-      E.last_command = command;
+     // E.command[0] = '\0';
+     // E.last_repeat = E.repeat;
+     // E.repeat = 0;
+     // E.last_typed.clear();
+     // E.last_command = command;
       ////////////////////////////
 
-      return true; // end of case NORMAL - there are a few breaks that can get to code above
+      if(E.move_only) {
+        E.command[0] = '\0';
+        E.repeat = 0;
+        editorSetMessage("command = %d", command);
+        return false;
+      } else {
+        E.last_repeat = E.repeat;
+        E.last_typed.clear();
+        E.last_command = command;
+        E.command[0] = '\0';
+        E.repeat = 0;
+        editorSetMessage("command = %d", command);
+        return true;
+      }    
+
+      // end of case NORMAL - there are breaks that can get to code above
 
     case COMMAND_LINE:
 
