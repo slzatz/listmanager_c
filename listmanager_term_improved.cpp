@@ -2540,120 +2540,48 @@ void editorDoRepeat(void) {
 
   editorCreateSnapshot();
 
-/* experimenting with map of functions*/
-  // i, I, a, A
-  if (cmd_map1.count(E.last_command)) {
-    cmd_map1[E.last_command](E.last_repeat);
-
-    for (int n=0; n<E.last_repeat; n++) {
-      for (char const &c : E.last_typed) {
-        if (c == '\r') editorInsertReturn();
-        else editorInsertChar(c);
-      }
-    }
-    return;
-
-  // 'o', 'O'
-  } else if (cmd_map2.count(E.last_command)) {
-    cmd_map2[E.last_command](E.last_repeat);
-    return;
-
-  // C_dw, C_daw, C_dd, C_d$, x
-  } else if (cmd_map3.count(E.last_command)) {
-    cmd_map3[E.last_command](E.last_repeat);
-    return;
-
-  // C_cw, C_caw, s
-  } else if (cmd_map4.count(E.last_command)) {
-    cmd_map4[E.last_command](E.last_repeat);
-    //return;
-
-    for (char const &c : E.last_typed) {
-      if (c == '\r') editorInsertReturn();
-      else editorInsertChar(c);
-    }
-    return;
-  }
-/*************************************/
   switch (E.last_command) {
 
-    /*
-    case C_cw: //one-time text command
-      f_cw(E.last_repeat);
-      break;
-    case C_caw: //one-time text
-      f_caw(E.last_repeat);
-      break;
-    case C_dw:
-      f_dw(E.last_repeat);
-      return;
-    case C_daw:
-      f_daw(E.last_repeat);
-      return;
-    case C_dd:
-      f_dd(E.last_repeat);
+    case 'i': case 'I': case 'a': case 'A': 
+      cmd_map1[E.last_command](E.last_repeat);
+
+      for (int n=0; n<E.last_repeat; n++) {
+        for (char const &c : E.last_typed) {
+          if (c == '\r') editorInsertReturn();
+          else editorInsertChar(c);
+        }
+      }
       return;
 
-    case 's':
-      f_s(E.last_repeat); //one-time text
+    case 'o': case 'O':
+      cmd_map2[E.last_command](E.last_repeat);
+      return;
+
+    case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG:
+      cmd_map3[E.last_command](E.last_repeat);
+      return;
+
+    case C_cw: case C_caw: case 's':
+      cmd_map4[E.last_command](E.last_repeat);
+
       for (char const &c : E.last_typed) {
         if (c == '\r') editorInsertReturn();
         else editorInsertChar(c);
       }
       return;
 
-    case 'x':
-      f_x(E.last_repeat);
-      return;
-
-*/
     case '~':
       f_change_case(E.last_repeat);
       return;
 
-    /*
-    case 'i':
-      f_i(E.last_repeat);
-      break;
-    case 'I':
-      f_I(E.last_repeat);
-      break;
-    case 'a':
-      f_a(E.last_repeat);
-      break;
-    case 'A':
-      f_A(E.last_repeat);
-      break;
-      */
-
     case 'r':
       f_replace(E.last_repeat);
       return;
-    /*
-    case 'o':
-      f_o(E.last_repeat);
-      return;
-    case 'O':
-      f_O(E.last_repeat);
-      return;
-     */
+
     default:
       editorSetMessage("You tried to repeat a command that doesn't repeat; Last command = %d", E.last_command);
       return;
   }
-
-  /*
-  int repeat;
-  if(cmd_set1.count(E.last_command)) repeat = E.last_repeat;
-  else repeat = 1;
-
-  for (int n=0; n<repeat; n++) {
-    for (char const &c : E.last_typed) {
-      if (c == '\r') editorInsertReturn();
-      else editorInsertChar(c);
-    }
-  }
-  */
 }
 
 // used by numerous other functions to sometimes insert zero length rows
@@ -8282,9 +8210,6 @@ bool editorProcessKeypress(void) {
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
-      /* starting to use command maps*/
-      //{
-      //bool used_mapped_command = true;
       E.move_only = false; /////////this needs to get into master
 
       switch (command) {
@@ -8298,7 +8223,7 @@ bool editorProcessKeypress(void) {
 
         case 'o': case 'O':
           editorCreateSnapshot();
-          E.last_typed.clear();
+          E.last_typed.clear(); //this is necessary
           cmd_map2[command](1); //note this is ! not e.repeat
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -8311,43 +8236,22 @@ bool editorProcessKeypress(void) {
 
         case C_cw: case C_caw: case 's':
           editorCreateSnapshot();
-          E.last_typed.clear();
+          //E.last_typed.clear();
           cmd_map4[command](E.repeat);
           E.mode = INSERT; 
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
         case '~':
-          // editing cmd: can be dotted and does repeat
           editorCreateSnapshot();
           f_change_case(E.repeat);
           break;
 
-        //case 5: //w, e, b, 0, $
         case 'w': case 'e': case 'b': case '0': case '$':
           cmd_map5[command](E.repeat);
           E.move_only = true;// still need to draw status line, message and cursor
           break;
- /*
-        default:
-          used_mapped_command = false;
-      }
 
-      if (used_mapped_command) {
-        if(!E.move_only) {
-          E.last_repeat = E.repeat;
-          E.last_typed.clear();
-          E.last_command = command;
-        }
-        E.command[0] = '\0';
-        E.repeat = 0;
-        editorSetMessage("command = %d", E.last_command);
-        return true;
-      }
-      //}
-
-      switch (command) {
-*/
         case SHIFT_TAB:
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
@@ -8361,7 +8265,7 @@ bool editorProcessKeypress(void) {
           return false; //? true or handled in REPLACE mode
     
         case C_next_mispelling:
-              {
+          {
           if (!E.spellcheck || pos_mispelled_words.empty()) {
             editorSetMessage("Spellcheck is off or no words mispelled");
           E.command[0] = '\0';
@@ -8459,20 +8363,16 @@ bool editorProcessKeypress(void) {
     
         case '^':
           view_html(O.rows.at(O.fr).id);
-          /*
-          not getting error messages with qutebrowser
-          so below not necessary (for the moment)
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          outlineRefreshScreen();
-          editorRefreshScreen();
-          */
+
+          //still getting messages to terminal from  qutebrowser
+          //so below may be necessary 
+          //write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+          //editorRefreshScreen();
 
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';
           return false;
 
-        //I will forget that the spelling suggestion command is z
-        //note can't have command mode command because cursor not in note
         case C_suggestions:
           editorSpellingSuggestions();
           E.command[0] = '\0';
@@ -8506,10 +8406,9 @@ bool editorProcessKeypress(void) {
           editorMarkupLink(); 
           return true;
     
-        //indent and unindent changed to E.fr from E.cy on 11-26-2019
         case C_indent:
           editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
+          for ( i = 0; i < E.repeat; i++ ) { 
             editorIndentRow();
             E.fr++;
             if (E.fr == E.rows.size() - 1) break;
@@ -8521,7 +8420,7 @@ bool editorProcessKeypress(void) {
     
         case C_unindent:
           editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) { //i defined earlier - need outside block
+          for ( i = 0; i < E.repeat; i++ ) {
             editorUnIndentRow();
             E.fr++;}
           E.fr-=i;
@@ -8535,21 +8434,14 @@ bool editorProcessKeypress(void) {
          E.repeat = 0;
          return false;
 
-        case PAGE_UP:
-        case PAGE_DOWN:
+        case PAGE_UP: case PAGE_DOWN:
           editorPageUpDown(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.repeat = 0;
-          return false;  //there is a check if editorscroll == true
+          return false; //there is a check if editorscroll == true
 
-        case ARROW_UP:
-        case ARROW_DOWN:
-        case ARROW_LEFT:
-        case ARROW_RIGHT:
-        case 'h':
-        case 'j':
-        case 'k':
-        case 'l':
+        case ARROW_UP: case ARROW_DOWN: case ARROW_LEFT: case ARROW_RIGHT:
+        case 'h': case 'j': case 'k': case 'l':
           editorMoveCursor(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.move_only = true;
@@ -8557,11 +8449,9 @@ bool editorProcessKeypress(void) {
           return false; //there is a check if editorscroll == true
 
         case C_gg:
-          // navigation: should not clear dot
+          // navigation: does not clear dot
           E.fc = E.line_offset = 0;
-          E.fr = E.repeat-1;
-          //E.command[0] = '\0';
-          //E.repeat = 0;
+          E.fr = E.repeat - 1;
           E.move_only = true;
           break;
           //return false; //there is a check if editorscroll == true
@@ -8572,11 +8462,6 @@ bool editorProcessKeypress(void) {
           E.fc = 0;
           E.fr = E.rows.size() - 1;
           E.move_only = true;
-
-          /////////////////////////
-          //E.command[0] = '\0';
-          //E.repeat = 0;
-          /////////////////////////
          break;
          //return false; //there is a check if editorscroll = true
 
@@ -8585,14 +8470,6 @@ bool editorProcessKeypress(void) {
           return false;
     
       } // end of keyfromstring switch under case NORMAL 
-
-      ///////////////////////////
-     // E.command[0] = '\0';
-     // E.last_repeat = E.repeat;
-     // E.repeat = 0;
-     // E.last_typed.clear();
-     // E.last_command = command;
-      ////////////////////////////
 
       if(E.move_only) {
         E.command[0] = '\0';
