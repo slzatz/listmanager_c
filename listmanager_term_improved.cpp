@@ -9745,7 +9745,7 @@ int main(int argc, char** argv) {
 
   while (1) {
 
-    // trying below to just refresh what has changed
+    // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
       scroll = editorScroll();
