@@ -2860,6 +2860,7 @@ void editorDrawCodeRows(std::string &ab) {
 
   std::stringstream display;
   std::string line;
+  // below is a quick hack folder tid = 18 -> code
   if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
    // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
