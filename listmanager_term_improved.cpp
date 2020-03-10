@@ -5,7 +5,7 @@
 #define DEBUG 0
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
-#define TZ_OFFSET 5 // time zone offset - either 4 or 5
+#define TZ_OFFSET 4 // time zone offset - either 4 or 5
 #define SCROLL_DOWN 0
 #define SCROLL_UP 1
 
