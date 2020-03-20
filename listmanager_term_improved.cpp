@@ -326,8 +326,6 @@ typedef struct orow {
   // and don't need to be reflected in database
   bool dirty;
   bool mark;
-
-  
 } orow;
 
 struct outlineConfig {
@@ -665,7 +663,6 @@ void signalHandler(int signum) {
       editorRefreshScreen(true);
       outlineRefreshScreen();
     }
-
 }
 
 void parse_ini_file(std::string ini_name)
@@ -679,6 +676,7 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
   inipp::extract(ini.sections["ini"]["port"], c.port);
 }
+
 //pg ini stuff
 void get_conn(void) {
   char conninfo[250];
@@ -769,7 +767,6 @@ void map_folder_titles_pg(void) {
   PQclear(res);
 }
 
-
 void map_context_titles_sqlite(void) {
 
   // note it's tid because it's sqlite
@@ -837,7 +834,6 @@ void get_items_pg(int max) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
-
 
   if (O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
@@ -1165,18 +1161,6 @@ std::pair<std::string, std::vector<std::string>>  get_task_keywords_sqlite(void)
    }
    return std::make_pair(s, task_keywords);
 }
-/*
-int task_keywords_callback_old(void *NotUsed, int argc, char **argv, char **azColName) {
-
-  UNUSED(NotUsed);
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  task_keywords.push_back(std::string(argv[0]));
-
-  return 0; //you need this
-}
-*/
 
 int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 
@@ -1188,6 +1172,7 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 
   return 0; //you need this
 }
+
 int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   bool *flag = static_cast<bool*>(no_rows);
@@ -1215,48 +1200,6 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
   return 0;
 }
-
-/* Now handled by get_containers
-void get_keywords_pg(void) {
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  std::string query = "SELECT * FROM keyword ORDER BY name;";
-
-  PGresult *res = PQexec(conn, query.c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("Problem retrieving the task's keywords");
-    PQclear(res);
-    return;
-  }
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-
-    orow row;
-
-    row.title = std::string(PQgetvalue(res, i, 1));
-    row.id = atoi(PQgetvalue(res, i, 0)); //right now pulling sqlite id not tid
-    row.star = (*PQgetvalue(res, i, 2) == 't') ? true: false;
-    row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
-    row.completed = false;
-    row.dirty = false;
-    row.mark = false;
-    strncpy(row.modified, PQgetvalue(res, i, 3), 16);
-    O.rows.push_back(row);
-  }
-
-  if (O.rows.empty()) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else
-    O.mode = NORMAL;
-
-  O.context = O.folder = "";
-
-}
-*/
 
 void add_task_keyword_pg(const std::string &kw, int id) {
 
@@ -1368,8 +1311,8 @@ void delete_task_keywords_sqlite(void) {
     sqlite3_free(S.err_msg);
     return;
   }
-  /**************fts virtual table update**********************/
 
+  /**************fts virtual table update**********************/
   std::stringstream query3;
   query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
 
@@ -1443,11 +1386,12 @@ void get_linked_items(int max) {
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
 
-  auto it = task_keywords.begin();
-  for (it; it != task_keywords.end() - 1; ++it) {
+  //auto it = task_keywords.begin();
+  for (auto it=task_keywords.begin(); it != task_keywords.end() - 1; ++it) {
     query << "keyword.name = '" << *it << "' OR ";
   }
-  query << "keyword.name = '" << *it << "')";
+  //query << "keyword.name = '" << *it << "')";
+  query << "keyword.name = '" << task_keywords.back() << "')";
 
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         //<< " ORDER BY task."
@@ -1512,11 +1456,10 @@ void get_items_sqlite(int max) {
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
 
-    auto it = keyword_vec.begin();
-    for (it; it != keyword_vec.end() - 1; ++it) {
+    for (auto it = keyword_vec.begin(); it != keyword_vec.end() - 1; ++it) {
       query << "keyword.name = '" << *it << "' OR ";
     }
-    query << "keyword.name = '" << *it << "')";
+    query << "keyword.name = '" << keyword_vec.back() << "')";
 
     callback = unique_data_callback;
     unique_ids.clear();
@@ -2122,7 +2065,6 @@ int keyfromstringcpp(const std::string& key) {
     return lookuptablemap.at(key); //note can't use [] on const unordered map since it could change map
   else
     return -1;
-
 }
 
 int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
@@ -2533,7 +2475,7 @@ void f_$(int repeat) {
        editorMoveCursorEOL();
        r++;
     }
- }
+  }
 }
 
 void editorDoRepeat(void) {
@@ -2688,11 +2630,10 @@ void editorInsertNewline(int direction) {
   editorInsertRow(E.fr, spaces);
 }
 
-
 void editorDelChar(void) {
   if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
   std::string& row = E.rows.at(E.fr);
-  if (row.empty() || E.fc > row.size()-1) return;
+  if (row.empty() || E.fc > static_cast<int>(row.size()) - 1) return;
   row.erase(row.begin() + E.fc);
   E.dirty++;
 }
@@ -2814,7 +2755,7 @@ void editorDisplayFile(void) {
     if (line_num > E.screenlines - 2) break;
     row_num++;
     if (row_num < initial_file_row) continue;
-    if (row.size() < E.screencols) {
+    if (static_cast<int>(row.size()) < E.screencols) {
       ab.append(row);
       ab.append(lf_ret);
       line_num++;
@@ -2916,7 +2857,7 @@ void editorDrawCodeRows(std::string &ab) {
   ab.append("\x1b[0m");
 
 // it may be surprising that the code below is not affected
-// by existing escape codes but it actually overwrites whatever 
+// by existing escape codes but it actually overwrites whatever
 // has already been written to the screen
   if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
     int highlight[2];
@@ -3085,7 +3026,7 @@ void outlineDrawSearchRows(std::string& ab) {
 
   if (O.rows.empty()) return;
 
-  int y;
+  unsigned int y;
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN);
 
@@ -3093,7 +3034,7 @@ void outlineDrawSearchRows(std::string& ab) {
 
   for (y = 0; y < O.screenlines; y++) {
     int fr = y + O.rowoff;
-    if (fr > O.rows.size() - 1) return;
+    if (fr > static_cast<int>(O.rows.size()) - 1) return;
     orow& row = O.rows[fr];
     int len;
 
@@ -3323,10 +3264,9 @@ void outlineRefreshScreen(void) {
 
   char buf[20];
 
-
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
-  for (int j=TOP_MARGIN; j < O.screenlines + 1;j++) {
+  for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
     //O.screencols + OUTLINE_LEFT_MARGIN);
     O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
@@ -3841,8 +3781,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case PAGE_DOWN:  
           if (command_history.empty()) return;
           O.mode = COMMAND_LINE;
-          if (c == PAGE_UP) cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
-          else cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
+          if (c == PAGE_UP) {
+            if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() -1;
+            else cmd_hx_idx--;
+           // cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : cmd_hx_idx--;
+          } else {
+            if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
+            else cmd_hx_idx++;
+          }
+            //cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
           outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
           O.command_line = command_history.at(cmd_hx_idx);
           outlineProcessKeypress('\r');
@@ -4036,14 +3983,18 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case ARROW_UP:
           if (command_history.empty()) return;
-          cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
+          if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() - 1;
+          else cmd_hx_idx--;
+          //cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
           outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
           O.command_line = command_history.at(cmd_hx_idx);
           return;
 
         case ARROW_DOWN:
           if (command_history.empty()) return;
-          cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
+          if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
+          else cmd_hx_idx++;
+          //cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
           outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
           O.command_line = command_history.at(cmd_hx_idx);
           return;
@@ -7537,7 +7488,7 @@ bool editorScroll(void) {
 std::string editorGenerateNoteWW(void) {
   if (E.rows.empty()) return "";
 
-  int highlight[2];
+  int highlight[2] = {0,0};
   std::string ab;
   //int y = 0;
   int y = -E.line_offset;
@@ -8033,7 +7984,8 @@ void editorPageUpDown(int key) {
 }
 // calls readKey()
 bool editorProcessKeypress(void) {
-  int i, start, end, command;
+  //int start, end;
+  int i, command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
