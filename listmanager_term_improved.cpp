@@ -5185,6 +5185,7 @@ void display_item_info_pg(int id) {
 
   std::string ab;
 
+  /*
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -5198,11 +5199,13 @@ void display_item_info_pg(int id) {
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   ab.append(buf, strlen(buf));
+*/
 
   //set background color to blue
+  ab.append("\n\n");
   ab.append("\x1b[44m", 5);
-
   char str[300];
+
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -5387,18 +5390,22 @@ void display_item_info_sqlite(int id) {
   std::stringstream query;
   query << "SELECT * FROM task WHERE id = " << id;
 
-  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, 0, &S.err_msg);
+  int tid = 0;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
     
   if (rc != SQLITE_OK ) {
     outlineShowMessage("SQL error: %s", S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   } 
+
+  display_item_info_pg(tid);
 }
 
-int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azColName) {
+int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
     
-  UNUSED(NotUsed);
+  int *pg_id = static_cast<int*>(tid);
+
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
     
@@ -5453,6 +5460,7 @@ int display_item_info_callback(void *NotUsed, int argc, char **argv, char **azCo
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   sprintf(str,"tid: %s", argv[1]);
+  *pg_id = atoi(argv[1]); ////////////////////////////////////////
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
   sprintf(str,"title: %s", argv[3]);
@@ -9623,6 +9631,7 @@ int main(int argc, char** argv) {
 
   if (argc > 1 && argv[1][0] == 's') {
     sqlite_open();
+    get_conn(); //pg
     get_items = get_items_sqlite;
     //get_items_by_id = get_items_by_id_sqlite;
     get_note = get_note_sqlite;
