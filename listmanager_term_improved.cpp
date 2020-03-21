@@ -1704,11 +1704,10 @@ void merge_note_sqlite(int id) {
   int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In merge_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   }
-
 }
 
 void get_note_sqlite(int id) {
@@ -2676,7 +2675,7 @@ std::string editorRowsToString(void) {
       z += i;
       z += '\n';
   }
-  z.pop_back(); //pop last return that we added
+  if (!z.empty()) z.pop_back(); //pop last return that we added
   return z;
 }
 
@@ -4065,7 +4064,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 editor_mode = true;
                 get_note(id); //if id == -1 does not try to retrieve note
                 //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
-                E.mode = NORMAL;
+                if (E.rows.empty()) {
+                  E.mode = INSERT;
+                  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+                  editorRefreshScreen(false);
+                } else E.mode = NORMAL;
+                //E.mode = (E.rows.empty()) ? INSERT : NORMAL;
+                //E.mode = NORMAL;
                 E.command[0] = '\0';
               } else {
                 outlineShowMessage("You need to save item before you can "
@@ -6830,7 +6835,8 @@ int insert_row_pg(orow& row) {
         << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "CURRENT_DATE," //added
-        << "'<This is a new note from sqlite>'," //note
+        //<< "'<This is a new note from sqlite>'," //note
+        << "''," //note
         << " FALSE," //deleted
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
         << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
@@ -6956,7 +6962,8 @@ int insert_row_sqlite(orow& row) {
         << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
-        << "'<This is a new note from sqlite>'," //note
+        //<< "'<This is a new note from sqlite>'," //note
+        << "''," //note
         << " False," //deleted
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
         << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
