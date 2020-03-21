@@ -9,6 +9,10 @@
 #define SCROLL_DOWN 0
 #define SCROLL_UP 1
 
+// to use GIT_BRANCH in makefile (from cmake)
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
 #include <Python.h>
 //#include <fcntl.h>
 #include <sys/ioctl.h>
@@ -3187,7 +3191,7 @@ void outlineDrawStatusBar(void) {
   //because of escapes
   len-=22;
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite" : "postgres"), "exp");
+  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite:" : "postgres:"), TOSTRING(GIT_BRANCH));
 
   if (len > screencols - 1) len = screencols - 1;
 

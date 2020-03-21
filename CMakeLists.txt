@@ -12,6 +12,15 @@ find_package(PythonLibs REQUIRED)
 find_package(PostgreSQL REQUIRED)
 find_package(Nuspell)
 
+execute_process(
+  COMMAND git rev-parse --abbrev-ref HEAD
+  WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_BRANCH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
+add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
+
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation -std=c++2a")
