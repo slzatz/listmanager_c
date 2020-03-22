@@ -459,44 +459,27 @@ void outlineSave(const std::string &);
 
 //Database-related Prototypes
 int get_id(void);
-//int insert_row_pg(orow&);
 int insert_row_sqlite(orow&);
-//int insert_container_pg(orow&);
 int insert_container_sqlite(orow&);
 int insert_keyword_sqlite(orow &);
-//int insert_keyword_pg(orow &);
 void update_container_sqlite(void);
-//void update_container_pg(void);
 void update_keyword_sqlite(void);
-//void update_keyword_pg(void);
 void get_items_sqlite(int); 
-//void get_items_pg(int);
 void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
-//void get_containers_pg(void);  //has an if that determines which columns go into which row variables (no callback in pg)
-//std::string get_task_keywords_sqlite(void); // puts them in comma delimited string
 std::pair<std::string, std::vector<std::string>> get_task_keywords_sqlite(void); // puts them in comma delimited string
-//void get_keywords_sqlite(void);
-//void get_keywords_pg(void);
-//void update_note_pg(void);
 void update_note_sqlite(void); 
-void solr_find(void);
+//void solr_find(void);
 void fts5_sqlite(std::string);
 void get_items_by_id_sqlite(std::stringstream &);
 int get_folder_tid(int); 
 
-//void update_task_context_pg(const std::string &, int);
 void update_task_context_sqlite(const std::string &, int);
-//void update_task_folder_pg(const std::string &, int);
 void update_task_folder_sqlite(const std::string &, int);
 
-//void map_context_titles_pg(void);
 void map_context_titles_sqlite(void);
-//void map_folder_titles_pg(void);
 void map_folder_titles_sqlite(void);
 
 void add_task_keyword_sqlite(const std::string &, int);
-//void add_task_keyword_pg(const std::string &, int);
-//void delete_task_keywords_pg(void);
 void delete_task_keywords_sqlite(void);
 
 void display_item_info_sqlite(int);
@@ -727,52 +710,6 @@ bool sqlite_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg
    return true;
 }
 
-/*
-void map_context_titles_pg(void) {
-
-  // note it's id because it's pg
-  std::string query("SELECT id,title FROM context;");
-
-  PGresult *res = PQexec(conn, query.c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("in map_context_titles_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return;
-  }
-
-  context_map.clear();
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    context_map[std::string(PQgetvalue(res, i, 1))] = atoi(PQgetvalue(res, i, 0));
-  }
-
-  PQclear(res);
-}
-
-void map_folder_titles_pg(void) {
-
-  // note it's id because it's pg
-  std::string query("SELECT id,title FROM folder;");
-
-  PGresult *res = PQexec(conn, query.c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("in map_folder_titles_pg: PQresultErrorMessage: %s\n", PQresultErrorMessage(res));
-    PQclear(res);
-    return;
-  }
-
-  folder_map.clear();
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    folder_map[std::string(PQgetvalue(res, i, 1))] = atoi(PQgetvalue(res, i, 0));
-  }
-
-  PQclear(res);
-}
-*/
-
 void map_context_titles_sqlite(void) {
 
   // note it's tid because it's sqlite
@@ -834,164 +771,6 @@ int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColNam
 
   return 0;
 }
-
-/*
-void get_items_pg(int max) {
-  std::stringstream query;
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  if (O.taskview == BY_CONTEXT) {
-    query << "SELECT * FROM task JOIN context ON context.id = task.context_tid"
-          << " WHERE context.title = '" << O.context << "' ";
-  } else if (O.taskview == BY_FOLDER) {
-    query << "SELECT * FROM task JOIN folder ON folder.id = task.folder_tid"
-          << " WHERE folder.title = '" << O.folder << "' ";
-  } else if (O.taskview == BY_RECENT) {
-    query << "SELECT * FROM task WHERE 1=1";
-  } else if (O.taskview == BY_JOIN) {
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-          << " JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE context.title = '" << O.context << "'"
-          << " AND folder.title = '" << O.folder << "'";
-  } else if (O.taskview == BY_KEYWORD) {
-    query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
-          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND keyword.name = '" << O.keyword << "'";
-  } else {
-      outlineShowMessage("You asked for an unsupported db query");
-      return;
-  }
-  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY task."
-        << O.sort
-        << " DESC NULLS LAST LIMIT " << max;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("in get_items_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return;
-  }    
-
-  int rows = PQntuples(res);
-  int sortcolnum = sort_map[O.sort];
-  for(int i=0; i<rows; i++) {
-    orow row;
-    row.title = std::string(PQgetvalue(res, i, 3));
-    row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    row.dirty = false;
-    row.mark = false;
-    (PQgetvalue(res, i, sortcolnum) != nullptr) ? strncpy(row.modified, PQgetvalue(res, i, sortcolnum), 16) : strncpy(row.modified, " ", 16);
-    O.rows.push_back(row);
-  }
-
-  PQclear(res);
-
-  O.view = TASK;
-
-  if (O.rows.empty()) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-    editorEraseScreen(); // in case there was a note displayed in previous view
-  } else {
-    O.mode = O.last_mode;
-    //get_note(O.rows.at(0).id);
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-  }
-}
-
-void get_containers_pg(void) {
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  std::string table;
-  switch (O.view) {
-    case CONTEXT:
-      table = "context";
-      break;
-    case FOLDER:
-      table = "folder";
-      break;
-    case KEYWORD:
-      table = "keyword";
-      break;
-    default:
-      outlineShowMessage("Somehow you are in a view I can't handle");
-      return;
-  }
-
-  std::stringstream query;
-  query << "SELECT * FROM " << table << ";";
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("in get_containers_pg: PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return;
-  }
-
-
-  int rows = PQntuples(res);
-
-  if (O.view == CONTEXT) {
-    for(int i=0; i<rows; i++) {
-      orow row;
-      row.title = std::string(PQgetvalue(res, i, 2));
-      row.id = atoi(PQgetvalue(res, i, 0));
-      row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
-      row.deleted = (*PQgetvalue(res, i, 5) == 't') ? true: false;
-      row.completed = false;
-      row.dirty = false;
-      row.mark = false;
-      strncpy(row.modified, PQgetvalue(res, i, 9), 16);
-      O.rows.push_back(row);
-    }
-  } else if (O.view == FOLDER) {
-    for(int i=0; i<rows; i++) {
-      orow row;
-      row.title = std::string(PQgetvalue(res, i, 2));
-      row.id = atoi(PQgetvalue(res, i, 0));
-      row.star = (*PQgetvalue(res, i, 3) == 't') ? true: false;
-      row.deleted = (*PQgetvalue(res, i, 7) == 't') ? true: false;
-      row.completed = false;
-      row.dirty = false;
-      row.mark = false;
-      strncpy(row.modified, PQgetvalue(res, i, 11), 16);
-      O.rows.push_back(row);
-    }
-  } else {
-    for(int i=0; i<rows; i++) {
-      orow row;
-      row.title = std::string(PQgetvalue(res, i, 1));
-      row.id = atoi(PQgetvalue(res, i, 0)); //right now pulling sqlite id not tid
-      row.star = (*PQgetvalue(res, i, 2) == 't') ? true: false;
-      row.deleted = false;//(atoi(argv[7]) == 1) ? true: false;
-      row.completed = false;
-      row.dirty = false;
-      row.mark = false;
-      strncpy(row.modified, PQgetvalue(res, i, 3), 16);
-      O.rows.push_back(row);
-    }
-  }
-
-  PQclear(res);
-
-  if (O.rows.empty()) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-  } else
-    O.mode = NORMAL;
-
-  O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
-}
-*/
 
 void get_containers_sqlite(void) {
 
@@ -1182,42 +961,6 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-/*
-void add_task_keyword_pg(const std::string &kw, int id) {
-
-  std::stringstream query;
-  query <<  "INSERT INTO keyword (name) VALUES ('" << kw << "') ON CONFLICT DO NOTHING;";  //<- works for postgres
-  PGresult *res = PQexec(conn, query.str().c_str());
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Problem inserting into keyword table: %s ", PQerrorMessage(conn));
-    PQclear(res);
-    return;
-  }
-
-  std::stringstream query2;
-  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
-
-  res = PQexec(conn, query2.str().c_str());
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Problem inserting into task_keyword table: %s", PQerrorMessage(conn));
-    PQclear(res);
-    return;
-  }
-
-  std::stringstream query3;
-  // updates task modified column so we know that something changed with the task
-  query3 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << id << ";";
-
-  res = PQexec(conn, query3.str().c_str());
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Problem updating task modified date: %s", PQerrorMessage(conn));
-    PQclear(res);
-    return;
-  }
-  PQclear(res);
-}
-*/
-
 void add_task_keyword_sqlite(const std::string &kw, int id) {
 
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
@@ -1306,57 +1049,6 @@ void delete_task_keywords_sqlite(void) {
     return;
   }
 }
-
-/*
-void delete_task_keywords_pg(void) {
-
-  std::stringstream query;
-  query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
-  PGresult *res = PQexec(conn, query.str().c_str());
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Problem deleting the task's keywords");
-    PQclear(res);
-    return;
-  }
-
-  std::stringstream query2;
-  // updates task modified column so know that something changed with the task
-  query2 << "UPDATE task SET modified = LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id =" << O.rows.at(O.fr).id << ";";
-  res = PQexec(conn, query2.str().c_str());
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Problem updating tasks modified date");
-    PQclear(res);
-    return;
-  }
-  PQclear(res);
-}
-
-//needs updating 01242020
-void get_task_keywords_pg(void) {
-
-  std::stringstream query;
-  //task_keywords.clear();
-  std::vector<std::string> task_keywords;
-
-  query << "SELECT keyword.name "
-           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
-           "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("Problem retrieving the task's keywords");
-    PQclear(res);
-    return;
-  }
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    task_keywords.push_back(PQgetvalue(res, i, 0));
-  }
-  PQclear(res);
-  // PQfinish(conn);
-}
-*/
 
 void get_linked_items(int max) {
   std::vector<std::string> task_keywords = get_task_keywords_sqlite().second;
@@ -1642,48 +1334,6 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-/*
-//brings back a set of ids generated by solr search
-void get_items_by_id_pg(std::stringstream& query) {
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("In %s. PQresultErrorMessage: %s", __func__, PQresultErrorMessage(res));
-    PQclear(res);
-  }    
-  
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  int rows = PQntuples(res);
-  for(int i=0; i<rows; i++) {
-    orow row;
-    row.title = std::string(PQgetvalue(res, i, 3));
-    row.id = atoi(PQgetvalue(res, i, 0));
-    row.star = (*PQgetvalue(res, i, 8) == 't') ? true: false;
-    row.deleted = (*PQgetvalue(res, i, 14) == 't') ? true: false;
-    row.completed = (*PQgetvalue(res, i, 10)) ? true: false;
-    row.dirty = false;
-    strncpy(row.modified, PQgetvalue(res, i, 16), 16);
-    O.rows.push_back(row);
-  }
-  PQclear(res);
-
-  O.view = TASK;
-
-  if (O.rows.empty()) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-    editorEraseScreen(); // in case there was a note displayed in previous view
-  } else {
-    O.mode = DATABASE;
-    //get_note(O.rows.at(0).id);
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-  }
-}
-*/
-
 void merge_note_sqlite(int id) {
   std::stringstream query;
 
@@ -1801,42 +1451,6 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-/*
-void get_note_pg(int id) {
-  if (id ==-1) return;
-
-
-  E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
-
-  std::stringstream query;
-  query << "SELECT note FROM task WHERE id = " << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-
-    outlineShowMessage("Problem retrieving note\n");        
-    PQclear(res);
-    //do_exit(conn);
-  }    
-  std::string note(PQgetvalue(res, 0, 0));
-  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
-  std::stringstream snote;
-  snote << note;
-  std::string s;
-  while (getline(snote, s, '\n')) {
-    //snote will not contain the '\n'
-    editorInsertRow(E.rows.size(), s);
-  }
-
-  E.dirty = false;
-  editorRefreshScreen(true);
-  PQclear(res);
-  return;
-}
-*/
-
 void view_html(int id) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -1892,87 +1506,6 @@ void view_html(int id) {
   //if (Py_FinalizeEx() < 0) {
   //}
 }
-
-/*
-void solr_find(void) {
-
-  PyObject *pName, *pModule, *pFunc;
-  PyObject *pArgs, *pValue;
-
-  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
-  pName = PyUnicode_DecodeFSDefault("solr_find"); //module
-
-  pModule = PyImport_Import(pName);
-  Py_DECREF(pName);
-
-  if (pModule != NULL) {
-      pFunc = PyObject_GetAttrString(pModule, "solr_find"); //function
-
-      if (pFunc && PyCallable_Check(pFunc)) {
-          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
-          pValue = Py_BuildValue("s", search_terms.c_str()); // **************
-          PyTuple_SetItem(pArgs, 0, pValue); // ***********
-          pValue = PyObject_CallObject(pFunc, pArgs);
-              if (!pValue) {
-                  Py_DECREF(pArgs);
-                  Py_DECREF(pModule);
-                  outlineShowMessage("Problem converting c variable for use in calling python function");
-          }
-          Py_DECREF(pArgs);
-          if (pValue != NULL) {
-              Py_ssize_t size; 
-              int len = PyList_Size(pValue);
-
-          if (O.rows.empty()) {
-            outlineShowMessage("No results were returned");
-            O.mode = NO_ROWS;
-            return;
-          }
-
-              std::stringstream query;
-
-              query << "SELECT * FROM task WHERE task.id IN (";
-
-              for (int i=0; i<len-1; i++) {
-                query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << ", ";
-              }
-              query << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size)
-                    << ")"
-                    << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-                    << " ORDER BY ";
-
-              for (int i = 0; i < len-1; i++) {
-                query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, i), &size) << " DESC, ";
-               }
-              query << "task.id = " << PyUnicode_AsUTF8AndSize(PyList_GetItem(pValue, len-1), &size) << " DESC";
-
-              Py_DECREF(pValue);
-              //DEBUGGING
-              //outlineShowMessage(query.str().c_str());
-              //return;
-              get_items_by_id_pg(query);
-          } else {
-              Py_DECREF(pFunc);
-              Py_DECREF(pModule);
-              PyErr_Print();
-              outlineShowMessage("Problem retrieving ids from solr!");
-          }
-      } else {
-          if (PyErr_Occurred()) PyErr_Print();
-          outlineShowMessage("Was not able to find the function: solr_find!");
-      }
-      Py_XDECREF(pFunc);
-      Py_DECREF(pModule);
-  } else {
-      PyErr_Print();
-      outlineShowMessage("Was not able to find the module: solr_find!");
-  }
-
-  //if (Py_FinalizeEx() < 0) {
-  //}
-
-}
-*/
 
 void update_solr(void) {
 
@@ -5793,55 +5326,6 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-/*
-void update_note_pg(void) {
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  //int len;
-  std::string text = editorRowsToString();
-  size_t pos = text.find("'");
-  while(pos != std::string::npos)
-    {
-      text.replace(pos, 1, "''");
-      pos = text.find("'", pos + 2);
-    }
-
-  int id = get_id();
-
-  std::stringstream query;
-
-  query  << "UPDATE task SET note='" << text << "', "
-         << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    editorSetMessage(PQerrorMessage(conn));
-  } else {
-    outlineShowMessage("Updated note for item %d", id);
-    outlineRefreshScreen();
-    //editorSetMessage("Note update succeeeded"); 
-  }
-  
-  PQclear(res);
-  //do_exit(conn);
-  E.dirty = 0;
-
-  outlineShowMessage("Updated %d", id);
-
-  return;
-}
-*/
-// not sure this should be calling outlineRefreshScreen - 01012020
-
 void update_note_sqlite(void) {
 
   std::string text = editorRowsToString();
@@ -5910,34 +5394,6 @@ void update_note_sqlite(void) {
   E.dirty = 0;
 }
 
-/*
-void update_task_context_pg(std::string &new_context, int id) {
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-      outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
-    }
-  }
-
-  std::stringstream query;
-  //int id = get_id();
-  int context_tid = context_map.at(new_context);
-
-  query << "UPDATE task SET context_tid=" << context_tid << ", "
-        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
-        << "WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
-  } else {
-    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
-  }
-  PQclear(res);
-}
-*/
-
 void update_task_context_sqlite(std::string &new_context, int id) {
 
   std::stringstream query;
@@ -5969,34 +5425,6 @@ void update_task_context_sqlite(std::string &new_context, int id) {
   sqlite3_close(db);
 }
 
-/*
-void update_task_folder_pg(std::string& new_folder, int id) {
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-      outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
-    }
-  }
-
-  std::stringstream query;
-  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
-  int folder_tid = folder_map.at(new_folder);
-
-  query << "UPDATE task SET folder_tid=" << folder_tid << ", "
-        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
-        << "WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn));
-  } else {
-    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
-  }
-  PQclear(res);
-}
-*/
-
 void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   std::stringstream query;
@@ -6027,39 +5455,6 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
 
   sqlite3_close(db);
 }
-
-/*
-void toggle_completed_pg(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  std::stringstream query;
-  int id = get_id();
-  query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "CURRENT_DATE") << ", "
-        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' "
-        <<  "WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Toggle completed failed - %s", PQresultErrorMessage(res));
-  }
-  else {
-    outlineShowMessage("Toggle completed succeeded");
-    row.completed = !row.completed;
-  }
-  PQclear(res);
-}
-*/
 
 void toggle_completed_sqlite(void) {
 
@@ -6097,68 +5492,7 @@ void toggle_completed_sqlite(void) {
   sqlite3_close(db);
     
 }
-/*
-void toggle_deleted_pg(void) {
 
-  orow& row = O.rows.at(O.fr);
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  std::stringstream query;
-  int id = get_id();
-  std::string table = (O.view == TASK) ? "task" : ((O.view == CONTEXT) ? "context" : "folder");
-
-  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
-        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
-  }
-  else {
-    outlineShowMessage("Toggle deleted succeeded");
-    row.deleted = !row.deleted;
-  }
-  PQclear(res);
-  return;
-}
-
-void touch_pg(void) {
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  std::stringstream query;
-  int id = get_id();
-
-  query << "UPDATE task SET modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Toggle deleted failed - %s", PQresultErrorMessage(res));
-  }
-  else {
-    outlineShowMessage("'Touch' succeeded");
-  }
-  PQclear(res);
-  return;
-}
-*/
 void touch_sqlite(void) {
 
   std::stringstream query;
@@ -6248,70 +5582,6 @@ void toggle_deleted_sqlite(void) {
 
 }
 
-/*
-void toggle_star_pg(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
-    }
-  }
-
-  std::stringstream query;
-  int id = get_id();
-
-  std::string table;
-  std::string column;
-
-  switch(O.view) {
-
-    case TASK:
-      table = "task";
-      column = "star";
-      break;
-
-    case CONTEXT:
-      table = "context";
-      column = "\"default\"";
-      break;
-
-    case FOLDER:
-      table = "folder";
-      column = "private";
-      break;
-
-    case KEYWORD:
-      table = "keyword";
-      column = "star";
-      break;
-
-    default:
-      outlineShowMessage("Not sure what you're trying to toggle");
-      return;
-  }
-
-  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "FALSE" : "TRUE") << ", "
-        << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-    outlineShowMessage("Toggle star failed - %s", PQresultErrorMessage(res));
-  }
-  else {
-    outlineShowMessage("Toggle star succeeded");
-    row.star = !row.star;
-  }
-  PQclear(res);
-  return;
-}
-*/
-
 void toggle_star_sqlite(void) {
 
   orow& row = O.rows.at(O.fr);
@@ -6374,104 +5644,6 @@ void toggle_star_sqlite(void) {
   }
   sqlite3_close(db);
 }
-
-/*
-void update_row_pg(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-
-    if (PQstatus(conn) != CONNECTION_OK){
-      if (PQstatus(conn) == CONNECTION_BAD) {
-          
-          fprintf(stderr, "Connection to database failed: %s",
-              PQerrorMessage(conn));
-          do_exit(conn);
-      }
-    }
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-    std::stringstream query;
-    query << "UPDATE task SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
-
-    PGresult *res = PQexec(conn, query.str().c_str());
-      
-    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineShowMessage(PQerrorMessage(conn));
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully update row %d", row.id);
-    }  
-
-    PQclear(res);
-
-  } else { 
-    insert_row_pg(row);
-  }  
-}
-
-void update_container_pg(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-
-    if (PQstatus(conn) != CONNECTION_OK){
-      if (PQstatus(conn) == CONNECTION_BAD) {
-
-          fprintf(stderr, "Connection to database failed: %s\n",
-              PQerrorMessage(conn));
-          do_exit(conn);
-      }
-    }
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << ((O.view == CONTEXT) ? "context" : "folder")
-          << " SET title='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
-
-    PGresult *res = PQexec(conn, query.str().c_str());
-
-    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineShowMessage(PQerrorMessage(conn));
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully update row %d", row.id);
-    }
-
-    PQclear(res);
-
-  } else {
-    insert_container_pg(row);
-  }
-}
-*/
 
 void update_row_sqlite(void) {
 
@@ -6647,57 +5819,6 @@ void update_keyword_sqlite(void) {
   }
 }
 
-/*
-void update_keyword_pg(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-
-    if (PQstatus(conn) != CONNECTION_OK){
-      if (PQstatus(conn) == CONNECTION_BAD) {
-
-          fprintf(stderr, "Connection to database failed: %s\n",
-              PQerrorMessage(conn));
-          do_exit(conn);
-      }
-    }
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << "keyword "
-          << "SET name='" << title << "', modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id; //I think id is correct
-
-    PGresult *res = PQexec(conn, query.str().c_str());
-
-    if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-      outlineShowMessage(PQerrorMessage(conn));
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully update row %d", row.id);
-    }
-
-    PQclear(res);
-
-  } else {
-    insert_keyword_pg(row);
-  }
-}
-*/
-
 int insert_keyword_sqlite(orow& row) {
 
   std::string title = row.title;
@@ -6754,164 +5875,6 @@ int insert_keyword_sqlite(orow& row) {
 
   return row.id;
 }
-
-/*
-int insert_keyword_pg(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO "
-        << "keyword "
-        << "("
-        << "name, "
-        << "star, "
-        << "deleted, "
-        << "modified"
-        //<< "tid, " //no tid on pg
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " " << row.star << ","
-        << " False," //default for context and private for folder
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'" //modified
-        << ") RETURNING id;";
-        //<< " 100);"; //tid
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return -1;
-  }
-
-  row.id = atoi(PQgetvalue(res, 0, 0));
-  row.dirty = false;
-
-  PQclear(res);
-  outlineShowMessage("Successfully inserted new context with id %d", row.id);
-
-  return row.id;
-}
-
-int insert_row_pg(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO task ("
-        << "priority, "
-        << "title, "
-        << "folder_tid, "
-        << "context_tid, "
-        << "star, "
-        << "added, "
-        << "note, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "startdate "
-        << ") VALUES ("
-        << " 3," //priority
-        << "'" << title << "'," //title
-        //<< " 1," //folder_tid
-        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
-        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << " True," //star
-        << "CURRENT_DATE," //added
-        //<< "'<This is a new note from sqlite>'," //note
-        << "''," //note
-        << " FALSE," //deleted
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
-        << " CURRENT_DATE" //startdate
-        << ") RETURNING id;";
-
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return -1;
-  }
-
-  row.id = atoi(PQgetvalue(res, 0, 0));
-  row.dirty = false;
-
-  PQclear(res);
-  outlineShowMessage("Successfully inserted new row with id %d", row.id);
-
-  return row.id;
-}
-
-int insert_container_pg(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-
-  query << "INSERT INTO "
-        << ((O.view == CONTEXT) ? "context" : "folder")
-        << " ("
-        << "title, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "tid, "
-        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> default; folder -> private
-        << "textcolor "
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " False," //deleted
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //created
-        << " LOCALTIMESTAMP - interval '" << TZ_OFFSET << "hours'," //modified
-        << " 100," //tid
-        << " False," //default for context and private for folder
-        << " 10" //textcolor
-        << ") RETURNING id;";
-
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) { //PGRES_TUPLES_OK is for query that returns data
-    outlineShowMessage("PQerrorMessage: %s", PQerrorMessage(conn)); //often same message - one below is on the problematic result
-    //outlineShowMessage("PQresultErrorMessage: %s", PQresultErrorMessage(res));
-    PQclear(res);
-    return -1;
-  }
-
-  row.id = atoi(PQgetvalue(res, 0, 0));
-  row.dirty = false;
-
-  PQclear(res);
-  outlineShowMessage("Successfully inserted new context with id %d", row.id);
-
-  return row.id;
-}
-*/
 
 int insert_row_sqlite(orow& row) {
 
@@ -7091,78 +6054,6 @@ int insert_container_sqlite(orow& row) {
 
   return row.id;
 }
-
-/*
-void update_rows_pg(void) {
-  int n = 0; //number of updated rows
-  int updated_rows[20];
-
-  if (PQstatus(conn) != CONNECTION_OK){
-    if (PQstatus(conn) == CONNECTION_BAD) {
-        
-      outlineShowMessage(PQerrorMessage(conn));
-    }
-  }
-
-  for (auto row: O.rows) {
-
-    if (!(row.dirty)) continue;
-
-    if (row.id != -1) {
-      std::string title = row.title;
-      size_t pos = title.find("'");
-      while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-      std::stringstream query;
-
-      query << "UPDATE task SET title='" << title << "', "
-            << "modified=LOCALTIMESTAMP - interval '" << TZ_OFFSET << " hours' WHERE id=" << row.id;
-
-      PGresult *res = PQexec(conn, query.str().c_str());
-  
-      if (PQresultStatus(res) != PGRES_COMMAND_OK) {
-        outlineShowMessage(PQerrorMessage(conn));
-        PQclear(res);
-        return;
-      } else {
-        row.dirty = false;
-        updated_rows[n] = row.id;
-        n++;
-        PQclear(res);
-      }  
-    } else { 
-      int id  = insert_row_pg(row);
-      updated_rows[n] = id;
-      if (id !=-1) n++;
-    }  
-  }
-
-  if (n == 0) {
-    outlineShowMessage("There were no rows to update");
-    return;
-  }
-
-  outlineShowMessage("Rows successfully updated ... %d", sizeof(updated_rows));
-  
-  outlineShowMessage("Rows successfully updated ... ");
-  char msg[200];
-  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
-  char *put;
-  put = &msg[strlen(msg)];
-
-  for (int j=0; j < n;j++) {
-    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
-  }
-
-  int slen = strlen(msg);
-  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  outlineShowMessage("%s",  msg);
-}
-*/
 
 void update_rows_sqlite(void) {
   int n = 0; //number of updated rows
@@ -9631,37 +8522,6 @@ int main(int argc, char** argv) {
     //get_keywords = get_keywords_sqlite;
 
     which_db = SQLITE;
-
- /*   
-  } else {
-    get_conn();
-    get_items = get_items_pg;
-    //get_items_by_id = get_items_by_id_pg;
-    get_note = get_note_pg;
-    update_note = update_note_pg;
-    toggle_star = toggle_star_pg;
-    toggle_completed = toggle_completed_pg;
-    toggle_deleted = toggle_deleted_pg;
-    //insert_row = insert_row_pg;
-    update_rows = update_rows_pg;
-    update_row = update_row_pg;
-    update_task_context = update_task_context_pg;
-    update_task_folder = update_task_folder_pg;
-    display_item_info = display_item_info_pg;
-    touch = touch_pg;
-    //search_db = solr_find;
-    get_containers = get_containers_pg;
-    update_container = update_container_pg;
-    update_keyword = update_keyword_pg;
-    map_context_titles = map_context_titles_pg;
-    map_folder_titles = map_folder_titles_pg;
-    add_task_keyword = add_task_keyword_pg;
-    delete_task_keywords = delete_task_keywords_pg;
-    //get_keywords = get_keywords_pg;
-
-    which_db = POSTGRES;
-  }
-*/
 
   map_context_titles();
   map_folder_titles();
