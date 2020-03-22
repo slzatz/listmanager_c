@@ -36,6 +36,7 @@
 #include <set>
 #include <nuspell/dictionary.hxx>
 #include <nuspell/finder.hxx>
+//#include "sqlite_db.h"
 
 //#include <boost/algorithm/string/case_conv.hpp> was using boost::to_lower but now sorting in sqlite
 
@@ -429,7 +430,6 @@ void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
 void outlineDrawRows(std::string&); // doesn't do any erasing which is done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
-
 void outlineSave(const std::string &);
 
 //Database-related Prototypes
@@ -456,18 +456,13 @@ void update_note(void);
 void search_db(std::string); //void fts5_sqlite(std::string);
 void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
-
-//void update_task_context(const std::string &, int);
-//void update_task_folder(const std::string &, int);
-
 void map_context_titles(void);
 void map_folder_titles(void);
-
 void add_task_keyword(const std::string &, int);
 void delete_task_keywords(void);
-
 void display_item_info(int);
 void display_container_info(int);
+
 //sqlite callback functions
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
@@ -552,6 +547,7 @@ void editorHighlightWord(int, int, int);
 int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
 
+std::string editorRowsToString(void);
 void editorSaveNoteToFile(const std::string &);
 void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
@@ -668,7 +664,8 @@ void get_conn(void) {
   } 
 }
 
-// only calling sqlite_open if which_db == SQLITE
+/* Begin sqlite database functions */
+
 void sqlite_open(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
   if (rc != SQLITE_OK) {
@@ -1435,16 +1432,1469 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+void display_item_info_pg(int id) {
+
+  if (id ==-1) return;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
+    PQclear(res);
+    return;
+  }    
+
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  std::string ab;
+
+  /*
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+*/
+
+  //set background color to blue
+  ab.append("\n\n");
+  ab.append("\x1b[44m", 5);
+  char str[300];
+
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int context_tid = atoi(PQgetvalue(res, 0, 6));
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  //int folder_tid = atoi(argv[5]);
+  int folder_tid = atoi(PQgetvalue(res, 0, 5));
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  //ab.append("\x1b[0m", 4);
+
+  ///////////////////////////
+
+  //get_task_keywords_pg(); ////should be pg, just did this to compile
+  std::vector<std::string> task_keywords = get_task_keywords().second;
+  std::string delim = "";
+  std::string s;
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
+  }
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+
+  ///////////////////////////
+
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  PQclear(res);
+}
+
+//void fts5_sqlite(std::string search_terms) {
+void search_db(std::string search_terms) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  std::stringstream fts_query;
+  /*
+   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
+   * may be retrieved from the fts db but they will not match when we look for them in the regular db
+  */
+  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
+            //<< search_terms << "' ORDER BY rank";
+            //<< search_terms << "' ORDER BY rank LIMIT " << 50;
+            //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
+            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
+
+  sqlite3 *db;
+  char *err_msg = nullptr;
+    
+  int rc = sqlite3_open(FTS_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  fts_ids.clear();
+  fts_titles.clear();
+  fts_counter = 0;
+
+  bool no_rows = true;
+  rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } 
+  sqlite3_close(db);
+
+  if (no_rows) {
+    outlineShowMessage("No results were returned");
+    O.mode = NO_ROWS;
+    return;
+  }
+  std::stringstream query;
+
+  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
+  query << "SELECT * FROM task WHERE task.id IN (";
+
+  for (int i = 0; i < fts_counter-1; i++) {
+    query << fts_ids[i] << ", ";
+  }
+  query << fts_ids[fts_counter-1]
+        << ")"
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY ";
+
+  for (int i = 0; i < fts_counter-1; i++) {
+    query << "task.id = " << fts_ids[i] << " DESC, ";
+  }
+  query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+
+  get_items_by_id(query);
+
+  //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
+  //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
+}
+
+int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  bool *flag = static_cast<bool*>(no_rows);
+  *flag = false;
+
+  fts_ids.push_back(atoi(argv[0]));
+  fts_titles[atoi(argv[0])] = std::string(argv[1]);
+  fts_counter++;
+
+  return 0;
+}
+
+int get_folder_tid(int id) {
+
+  std::stringstream query;
+  query << "SELECT folder_tid FROM task WHERE id = " << id;
+
+  int folder_tid = -1;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  } 
+  return folder_tid;
+}
+
+int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
+  int *f_tid = static_cast<int*>(folder_tid);
+  *f_tid = atoi(argv[0]);
+  return 0;
+
+}
+
+void display_item_info(int id) {
+
+  if (id ==-1) return;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  int tid = 0;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  } 
+
+  display_item_info_pg(tid);
+}
+
+int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
+    
+  int *pg_id = static_cast<int*>(tid);
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+    
+  /*
+  0: id = 1
+  1: tid = 1
+  2: priority = 3
+  3: title = Parents refrigerator broken.
+  4: tag = 
+  5: folder_tid = 1
+  6: context_tid = 1
+  7: duetime = NULL
+  8: star = 0
+  9: added = 2009-07-04
+  10: completed = 2009-12-20
+  11: duedate = NULL
+  12: note = new one coming on Monday, June 6, 2009.
+  13: repeat = NULL
+  14: deleted = 0
+  15: created = 2016-08-05 23:05:16.256135
+  16: modified = 2016-08-05 23:05:16.256135
+  17: startdate = 2009-07-04
+  18: remind = NULL
+  */
+
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //set background color to blue
+  //ab.append("\x1b[44m"); //blue is color 12 0;44 same as plain 44.
+  //ab.append("\x1b[38;5;21m"); //this is color 17
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  *pg_id = atoi(argv[1]); ////////////////////////////////////////
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[3]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int context_tid = atoi(argv[6]);
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+  sprintf(str,"context: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int folder_tid = atoi(argv[5]);
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"folder: %s", it2->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star: %s", (atoi(argv[8]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"deleted: %s", (atoi(argv[14]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"completed: %s", (argv[10]) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"modified: %s", argv[16]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"added: %s", argv[9]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  //ab.append("\x1b[0m", 4);
+
+  ///////////////////////////
+
+  std::string s = get_task_keywords().first;
+  sprintf(str,"keywords: %s", s.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"tag: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
+void display_container_info(int id) {
+  if (id ==-1) return;
+
+  std::string table;
+  std::string count_query;
+  int (*callback)(void *, int, char **, char **);
+
+  switch(O.view) {
+    case CONTEXT:
+      table = "context";
+      callback = context_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id = ";
+      break;
+    case FOLDER:
+      table = "folder";
+      callback = folder_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id = ";
+      break;
+    case KEYWORD:
+      table = "keyword";
+      callback = keyword_info_callback;
+      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id = ";
+      break;
+    default:
+      outlineShowMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+  std::stringstream query;
+  int count = 0;
+
+  query << count_query << id;
+  int rc = sqlite3_exec(S.db, query.str().c_str(), count_callback, &count, &S.err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.db);
+  } 
+
+  std::stringstream query2;
+  query2 << "SELECT * FROM " << table << " WHERE id = " << id;
+
+  // callback is *not* called if result (argv) is null
+ rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    sqlite3_free(S.err_msg);
+    sqlite3_close(S.fts_db);
+  }
+}
+
+int count_callback (void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *cnt = static_cast<int*>(count);
+  *cnt = atoi(argv[0]);
+  return 0;
+}
+
+int context_info_callback(void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  9: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int tid = atoi(argv[1]);
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+  sprintf(str,"context: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/default: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[9]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
+int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  5: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int tid = atoi(argv[1]);
+  auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+  sprintf(str,"folder: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/private: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[6]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[7]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[11]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
+int keyword_info_callback(void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  5: deleted
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"name: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
+}
+
+void update_note(void) {
+
+  std::string text = editorRowsToString();
+  std::stringstream query;
+
+  // need to escape single quotes with two single quotes
+  size_t pos = text.find("'");
+  while(pos != std::string::npos) {
+    text.replace(pos, 1, "''");
+    pos = text.find("'", pos + 2);
+  }
+
+  int id = get_id();
+  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Updated note for item %d", id);
+    outlineRefreshScreen();
+  }
+
+  sqlite3_close(db);
+
+  /***************fts virtual table update*********************/
+
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+    outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  std::stringstream query2;
+  //query.clear(); //this clear clears eof and fail flags so query.str(std::string());query.clear()
+  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << id;
+
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL fts error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Updated note and fts entry for item %d", id);
+    outlineRefreshScreen();
+    editorSetMessage("Note update succeeeded"); 
+  }
+   
+  sqlite3_close(db);
+
+  E.dirty = 0;
+}
+
+void update_task_context(std::string &new_context, int id) {
+
+  std::stringstream query;
+  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
+  int context_tid = context_map.at(new_context);
+  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
+  }
+
+  sqlite3_close(db);
+}
+
+void update_task_folder(std::string& new_folder, int id) {
+
+  std::stringstream query;
+  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
+  int folder_tid = folder_map.at(new_folder);
+  query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
+  }
+
+  sqlite3_close(db);
+}
+
+void toggle_completed(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  std::stringstream query;
+  int id = get_id();
+
+  query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
+        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
+        << "WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Toggle completed succeeded");
+    row.completed = !row.completed;
+  }
+
+  sqlite3_close(db);
+    
+}
+
+void touch(void) {
+
+  std::stringstream query;
+  int id = get_id();
+
+  query << "UPDATE task SET modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("'Touch' succeeded");
+  }
+
+  sqlite3_close(db);
+
+}
+
+void toggle_deleted(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  std::stringstream query;
+  int id = get_id();
+  std::string table;
+
+  switch(O.view) {
+    case TASK:
+      table = "task";
+      break;
+    case CONTEXT:
+      table = "context";
+      break;
+    case FOLDER:
+      table = "folder";
+      break;
+    case KEYWORD:
+      table = "keyword";
+      break;
+    default:
+      outlineShowMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+
+  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
+        <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
+
+  // ? whether should move all tasks out here or in sync
+  // UPDATE task SET folder_tid = 1 WHERE folder_tid = 4;
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Toggle deleted succeeded");
+    row.deleted = !row.deleted;
+  }
+
+  sqlite3_close(db);
+
+}
+
+void toggle_star(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  std::stringstream query;
+  int id = get_id();
+  std::string table;
+  std::string column;
+
+  switch(O.view) {
+
+    case TASK:
+      table = "task";
+      column = "star";
+      break;
+
+    case CONTEXT:
+      table = "context";
+      column = "\"default\"";
+      break;
+
+    case FOLDER:
+      table = "folder";
+      column = "private";
+      break;
+
+    case KEYWORD:
+      table = "keyword";
+      column = "star";
+      break;
+
+    default:
+      outlineShowMessage("Not sure what you're trying to toggle");
+      return;
+  }
+
+  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
+        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
+
+  sqlite3 *db;
+  char *err_msg = 0;
+    
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+    
+  if (rc != SQLITE_OK) {
+        
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return;
+  }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+    
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error: %s", err_msg);
+    sqlite3_free(err_msg);
+  } else {
+    outlineShowMessage("Toggle star succeeded");
+    row.star = !row.star;
+  }
+  sqlite3_close(db);
+}
+
+void update_row(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineShowMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+    std::string title = row.title;
+    size_t pos = title.find("'");
+    while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
+
+    std::stringstream query;
+    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
+
+    sqlite3 *db;
+    char *err_msg = 0;
+      
+    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+      
+    if (rc != SQLITE_OK) {
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+  
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineShowMessage("SQL error: %s", err_msg);
+      sqlite3_free(err_msg);
+    } else {
+      row.dirty = false;
+      outlineShowMessage("Successfully updated row %d", row.id);
+    }
+
+    sqlite3_close(db);
+    
+    /**************fts virtual table update**********************/
+
+    rc = sqlite3_open(FTS_DB.c_str(), &db);
+    if (rc != SQLITE_OK) {
+          
+      outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+  
+    std::stringstream query2;
+    query2 << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
+    rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+      
+    if (rc != SQLITE_OK ) {
+      outlineShowMessage("SQL error: %s", err_msg);
+      sqlite3_free(err_msg);
+      } else {
+        outlineShowMessage("Updated title and fts title entry for item %d", row.id);
+      }
+  
+      sqlite3_close(db);
+
+  } else { //row.id == -1
+    insert_row(row);
+  }
+}
+
+void update_container(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineShowMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+    std::string title = row.title;
+    size_t pos = title.find("'");
+    while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
+
+    std::stringstream query;
+    query << "UPDATE "
+          << ((O.view == CONTEXT) ? "context" : "folder")
+          << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
+
+    sqlite3 *db;
+    char *err_msg = 0;
+
+    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+    if (rc != SQLITE_OK) {
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineShowMessage("SQL error: %s", err_msg);
+      sqlite3_free(err_msg);
+    } else {
+      row.dirty = false;
+      outlineShowMessage("Successfully updated row %d", row.id);
+    }
+
+    sqlite3_close(db);
+
+  } else { //row.id == -1
+    insert_container(row);
+  }
+}
+
+void update_keyword(void) {
+
+  orow& row = O.rows.at(O.fr);
+
+  if (!row.dirty) {
+    outlineShowMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id != -1) {
+    std::string title = row.title;
+    size_t pos = title.find("'");
+    while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
+
+    std::stringstream query;
+    query << "UPDATE "
+          << "keyword "
+          << "SET name='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
+
+    sqlite3 *db;
+    char *err_msg = 0;
+
+    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+    if (rc != SQLITE_OK) {
+      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+      sqlite3_close(db);
+      return;
+    }
+
+    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+    if (rc != SQLITE_OK ) {
+      outlineShowMessage("SQL error: %s", err_msg);
+      sqlite3_free(err_msg);
+    } else {
+      row.dirty = false;
+      outlineShowMessage("Successfully updated row %d", row.id);
+    }
+
+    sqlite3_close(db);
+
+  } else { //row.id == -1
+    insert_keyword(row);
+  }
+}
+
+int insert_keyword(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO "
+        << "keyword "
+        << "("
+        << "name, "
+        << "star, "
+        << "deleted, "
+        << "modified, "
+        << "tid"
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " " << row.star << ","
+        << " False," //default for context and private for folder
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
+        << " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
+
+  temporary_tid++;
+
+  sqlite3 *db;
+  char *err_msg = nullptr; //0
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
+
+  return row.id;
+}
+
+int insert_row(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO task ("
+        << "priority, "
+        << "title, "
+        << "folder_tid, "
+        << "context_tid, "
+        << "star, "
+        << "added, "
+        << "note, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "startdate "
+        << ") VALUES ("
+        << " 3," //priority
+        << "'" << title << "'," //title
+        //<< " 1," //folder_tid
+        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
+        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << " True," //star
+        << "date()," //added
+        //<< "'<This is a new note from sqlite>'," //note
+        << "''," //note
+        << " False," //deleted
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
+        << " date()" //startdate
+        << ");"; // RETURNING id;",
+
+  /*
+    not used:
+    tid,
+    tag,
+    duetime,
+    completed,
+    duedate,
+    repeat,
+    remind
+  */
+
+  sqlite3 *db;
+  char *err_msg = nullptr; //0
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  /***************fts virtual table update*********************/
+
+  //should probably create a separate function that is a klugy
+  //way of making up for fact that pg created tasks don't appear in fts db
+  //"INSERT OR IGNORE INTO fts (title, lm_id) VALUES ('" << title << row.id << ");";
+
+  std::stringstream query2;
+  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
+
+  rc = sqlite3_open(FTS_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+    outlineShowMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return row.id;
+  }
+
+  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error doing FTS insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return row.id; // would mean regular insert succeeded and fts failed - need to fix this
+  }
+  sqlite3_close(db);
+  outlineShowMessage("Successfully inserted new row with id %d and indexed it", row.id);
+
+  return row.id;
+}
+
+int insert_container(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+
+  std::stringstream query;
+  query << "INSERT INTO "
+        //<< context
+        << ((O.view == CONTEXT) ? "context" : "folder")
+        << " ("
+        << "title, "
+        << "deleted, "
+        << "created, "
+        << "modified, "
+        << "tid, "
+        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
+      //  << "\"default\", " //folder does not have default
+        << "textcolor "
+        << ") VALUES ("
+        << "'" << title << "'," //title
+        << " False," //deleted
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
+        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
+        //<< " 99999," //tid
+        << " " << temporary_tid << "," //tid originally 100 but that is a legit client tid server id
+        << " False," //default for context and private for folder
+        << " 10" //textcolor
+        << ");"; // RETURNING id;",
+
+  temporary_tid++;      
+  /*
+   * not used:
+     "default" (not sure why in quotes but may be system variable
+      tid,
+      icon (varchar 32)
+      image (blob)
+    */
+
+  sqlite3 *db;
+  char *err_msg = nullptr; //0
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
+
+  return row.id;
+}
+
+void update_rows(void) {
+  int n = 0; //number of updated rows
+  int updated_rows[20];
+
+  for (auto row: O.rows) {
+    if (!(row.dirty)) continue;
+    if (row.id != -1) {
+      std::string title = row.title;
+      size_t pos = title.find("'");
+      while(pos != std::string::npos)
+      {
+        title.replace(pos, 1, "''");
+        pos = title.find("'", pos + 2);
+      }
+
+      std::stringstream query;
+      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
+
+      sqlite3 *db;
+      char *err_msg = 0;
+        
+      int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+        
+      if (rc != SQLITE_OK) {
+            
+        outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+        sqlite3_close(db);
+        return;
+        }
+    
+      rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+      if (rc != SQLITE_OK ) {
+        outlineShowMessage("SQL error: %s", err_msg);
+        sqlite3_free(err_msg);
+        sqlite3_close(db);
+        return; // ? should we abort all other rows
+      } else {
+        row.dirty = false;
+        updated_rows[n] = row.id;
+        n++;
+        sqlite3_close(db);
+      }
+    
+    } else { 
+      int id  = insert_row(row);
+      updated_rows[n] = id;
+      if (id !=-1) n++;
+    }  
+  }
+
+  if (n == 0) {
+    outlineShowMessage("There were no rows to update");
+    return;
+  }
+
+  char msg[200];
+  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
+  char *put;
+  put = &msg[strlen(msg)];
+
+  for (int j=0; j < n;j++) {
+    O.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
+    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
+  }
+
+  int slen = strlen(msg);
+  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
+  outlineShowMessage("%s",  msg);
+}
+
 void view_html(int id) {
 
   PyObject *pName, *pModule, *pFunc;
   PyObject *pArgs, *pValue;
 
   Py_Initialize();
-  if (which_db == POSTGRES)
-    pName = PyUnicode_DecodeFSDefault("view_html_pg"); //module
-  else 
-    pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  pName = PyUnicode_DecodeFSDefault("view_html"); //module
   /* Error checking of pName left out */
 
   pModule = PyImport_Import(pName);
@@ -4655,1461 +6105,7 @@ void synchronize(int report_only) { //using 1 or 0
   else outlineShowMessage("Number of tasks/items that were affected is %d", num);
 }
 
-void display_item_info_pg(int id) {
-
-  if (id ==-1) return;
-
-  std::stringstream query;
-  query << "SELECT * FROM task WHERE id = " << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
-    PQclear(res);
-    return;
-  }    
-
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-
-  std::string ab;
-
-  /*
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-*/
-
-  //set background color to blue
-  ab.append("\n\n");
-  ab.append("\x1b[44m", 5);
-  char str[300];
-
-  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  //int folder_tid = atoi(argv[5]);
-  int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  //ab.append("\x1b[0m", 4);
-
-  ///////////////////////////
-
-  //get_task_keywords_pg(); ////should be pg, just did this to compile
-  std::vector<std::string> task_keywords = get_task_keywords().second;
-  std::string delim = "";
-  std::string s;
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-
-  ///////////////////////////
-
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  PQclear(res);
-}
-
-//void fts5_sqlite(std::string search_terms) {
-void search_db(std::string search_terms) {
-
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
-
-  std::stringstream fts_query;
-  /*
-   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
-   * may be retrieved from the fts db but they will not match when we look for them in the regular db
-  */
-  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            //<< search_terms << "' ORDER BY rank";
-            //<< search_terms << "' ORDER BY rank LIMIT " << 50;
-            //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
-            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
-
-  sqlite3 *db;
-  char *err_msg = nullptr;
-    
-  int rc = sqlite3_open(FTS_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  fts_ids.clear();
-  fts_titles.clear();
-  fts_counter = 0;
-
-  bool no_rows = true;
-  rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } 
-  sqlite3_close(db);
-
-  if (no_rows) {
-    outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
-    return;
-  }
-  std::stringstream query;
-
-  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
-  query << "SELECT * FROM task WHERE task.id IN (";
-
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << fts_ids[i] << ", ";
-  }
-  query << fts_ids[fts_counter-1]
-        << ")"
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY ";
-
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << "task.id = " << fts_ids[i] << " DESC, ";
-  }
-  query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
-
-  get_items_by_id(query);
-
-  //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
-  //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
-}
-
-int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  fts_ids.push_back(atoi(argv[0]));
-  fts_titles[atoi(argv[0])] = std::string(argv[1]);
-  fts_counter++;
-
-  return 0;
-}
-
-int get_folder_tid(int id) {
-
-  std::stringstream query;
-  query << "SELECT folder_tid FROM task WHERE id = " << id;
-
-  int folder_tid = -1;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
-  return folder_tid;
-}
-
-int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
-  int *f_tid = static_cast<int*>(folder_tid);
-  *f_tid = atoi(argv[0]);
-  return 0;
-
-}
-
-void display_item_info(int id) {
-
-  if (id ==-1) return;
-
-  std::stringstream query;
-  query << "SELECT * FROM task WHERE id = " << id;
-
-  int tid = 0;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
-
-  display_item_info_pg(tid);
-}
-
-int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
-    
-  int *pg_id = static_cast<int*>(tid);
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-    
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag = 
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-  */
-
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //set background color to blue
-  //ab.append("\x1b[44m"); //blue is color 12 0;44 same as plain 44.
-  //ab.append("\x1b[38;5;21m"); //this is color 17
-  ab.append(COLOR_6); // Blue depending on theme
-
-  char str[300];
-  sprintf(str,"id: %s", argv[0]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"tid: %s", argv[1]);
-  *pg_id = atoi(argv[1]); ////////////////////////////////////////
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"title: %s", argv[3]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int context_tid = atoi(argv[6]);
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-  sprintf(str,"context: %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int folder_tid = atoi(argv[5]);
-  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"folder: %s", it2->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"star: %s", (atoi(argv[8]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"deleted: %s", (atoi(argv[14]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"completed: %s", (argv[10]) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"modified: %s", argv[16]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"added: %s", argv[9]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  //ab.append("\x1b[0m", 4);
-
-  ///////////////////////////
-
-  std::string s = get_task_keywords().first;
-  sprintf(str,"keywords: %s", s.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"tag: %s", argv[4]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  ///////////////////////////
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  return 0;
-}
-
-void display_container_info(int id) {
-  if (id ==-1) return;
-
-  std::string table;
-  std::string count_query;
-  int (*callback)(void *, int, char **, char **);
-
-  switch(O.view) {
-    case CONTEXT:
-      table = "context";
-      callback = context_info_callback;
-      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id = ";
-      break;
-    case FOLDER:
-      table = "folder";
-      callback = folder_info_callback;
-      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id = ";
-      break;
-    case KEYWORD:
-      table = "keyword";
-      callback = keyword_info_callback;
-      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id = ";
-      break;
-    default:
-      outlineShowMessage("Somehow you are in a view I can't handle");
-      return;
-  }
-  std::stringstream query;
-  int count = 0;
-
-  query << count_query << id;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), count_callback, &count, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
-
-  std::stringstream query2;
-  query2 << "SELECT * FROM " << table << " WHERE id = " << id;
-
-  // callback is *not* called if result (argv) is null
- rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.fts_db);
-  }
-}
-
-int count_callback (void *count, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  int *cnt = static_cast<int*>(count);
-  *cnt = atoi(argv[0]);
-  return 0;
-}
-
-int context_info_callback(void *count, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
-  4: created = 2016-08-05 23:05:16.256135
-  5: deleted => bool
-  6: icon => string 32
-  7: textcolor, Integer
-  8: image, largebinary
-  9: modified
-  */
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  ab.append(COLOR_6); // Blue depending on theme
-
-  char str[300];
-  sprintf(str,"id: %s", argv[0]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"tid: %s", argv[1]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"title: %s", argv[2]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int tid = atoi(argv[1]);
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
-  sprintf(str,"context: %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"star/default: %s", (atoi(argv[3]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"created: %s", argv[4]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"modified: %s", argv[9]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"Task count: %d", *static_cast<int*>(count));
-  ab.append(str, strlen(str));
-  //ab.append(lf_ret, nchars);
-
-  ///////////////////////////
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  return 0;
-}
-
-int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: private = Boolean ? what this is
-  4: archived = Boolean ? what this is
-  5: "order" = integer
-  6: created = 2016-08-05 23:05:16.256135
-  7: deleted => bool
-  8: icon => string 32
-  9: textcolor, Integer
-  10: image, largebinary
-  11: modified
-  */
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  ab.append(COLOR_6); // Blue depending on theme
-
-  char str[300];
-  sprintf(str,"id: %s", argv[0]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"tid: %s", argv[1]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"title: %s", argv[2]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int tid = atoi(argv[1]);
-  auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
-  sprintf(str,"folder: %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"star/private: %s", (atoi(argv[3]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"created: %s", argv[6]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"deleted: %s", (atoi(argv[7]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"modified: %s", argv[11]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"Task count: %d", *static_cast<int*>(count));
-  ab.append(str, strlen(str));
-  //ab.append(lf_ret, nchars);
-
-  ///////////////////////////
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  return 0;
-}
-
-int keyword_info_callback(void *count, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  /*
-  0: id => int
-  1: name = string 25
-  2: tid => int
-  3: star = Boolean
-  4: modified
-  5: deleted
-  */
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  ab.append(COLOR_6); // Blue depending on theme
-
-  char str[300];
-  sprintf(str,"id: %s", argv[0]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"tid: %s", argv[2]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"name: %s", argv[1]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"star: %s", (atoi(argv[3]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"modified: %s", argv[4]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"Task count: %d", *static_cast<int*>(count));
-  ab.append(str, strlen(str));
-  //ab.append(lf_ret, nchars);
-
-  ///////////////////////////
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  return 0;
-}
-
-void update_note(void) {
-
-  std::string text = editorRowsToString();
-  std::stringstream query;
-
-  // need to escape single quotes with two single quotes
-  size_t pos = text.find("'");
-  while(pos != std::string::npos) {
-    text.replace(pos, 1, "''");
-    pos = text.find("'", pos + 2);
-  }
-
-  int id = get_id();
-  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Updated note for item %d", id);
-    outlineRefreshScreen();
-  }
-
-  sqlite3_close(db);
-
-  /***************fts virtual table update*********************/
-
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  std::stringstream query2;
-  //query.clear(); //this clear clears eof and fail flags so query.str(std::string());query.clear()
-  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << id;
-
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL fts error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Updated note and fts entry for item %d", id);
-    outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded"); 
-  }
-   
-  sqlite3_close(db);
-
-  E.dirty = 0;
-}
-
-void update_task_context(std::string &new_context, int id) {
-
-  std::stringstream query;
-  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
-  int context_tid = context_map.at(new_context);
-  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
-  }
-
-  sqlite3_close(db);
-}
-
-void update_task_folder(std::string& new_folder, int id) {
-
-  std::stringstream query;
-  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
-  int folder_tid = folder_map.at(new_folder);
-  query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
-  }
-
-  sqlite3_close(db);
-}
-
-void toggle_completed(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
-  int id = get_id();
-
-  query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
-        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
-        << "WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle completed succeeded");
-    row.completed = !row.completed;
-  }
-
-  sqlite3_close(db);
-    
-}
-
-void touch(void) {
-
-  std::stringstream query;
-  int id = get_id();
-
-  query << "UPDATE task SET modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("'Touch' succeeded");
-  }
-
-  sqlite3_close(db);
-
-}
-
-void toggle_deleted(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
-  int id = get_id();
-  std::string table;
-
-  switch(O.view) {
-    case TASK:
-      table = "task";
-      break;
-    case CONTEXT:
-      table = "context";
-      break;
-    case FOLDER:
-      table = "folder";
-      break;
-    case KEYWORD:
-      table = "keyword";
-      break;
-    default:
-      outlineShowMessage("Somehow you are in a view I can't handle");
-      return;
-  }
-
-  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
-        <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
-
-  // ? whether should move all tasks out here or in sync
-  // UPDATE task SET folder_tid = 1 WHERE folder_tid = 4;
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle deleted succeeded");
-    row.deleted = !row.deleted;
-  }
-
-  sqlite3_close(db);
-
-}
-
-void toggle_star(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
-  int id = get_id();
-  std::string table;
-  std::string column;
-
-  switch(O.view) {
-
-    case TASK:
-      table = "task";
-      column = "star";
-      break;
-
-    case CONTEXT:
-      table = "context";
-      column = "\"default\"";
-      break;
-
-    case FOLDER:
-      table = "folder";
-      column = "private";
-      break;
-
-    case KEYWORD:
-      table = "keyword";
-      column = "star";
-      break;
-
-    default:
-      outlineShowMessage("Not sure what you're trying to toggle");
-      return;
-  }
-
-  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
-        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
-
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle star succeeded");
-    row.star = !row.star;
-  }
-  sqlite3_close(db);
-}
-
-void update_row(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
-
-    sqlite3 *db;
-    char *err_msg = 0;
-      
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-      
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-  
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-    
-    /**************fts virtual table update**********************/
-
-    rc = sqlite3_open(FTS_DB.c_str(), &db);
-    if (rc != SQLITE_OK) {
-          
-      outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-  
-    std::stringstream query2;
-    query2 << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
-    rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-      
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-      } else {
-        outlineShowMessage("Updated title and fts title entry for item %d", row.id);
-      }
-  
-      sqlite3_close(db);
-
-  } else { //row.id == -1
-    insert_row(row);
-  }
-}
-
-void update_container(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << ((O.view == CONTEXT) ? "context" : "folder")
-          << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
-
-    sqlite3 *db;
-    char *err_msg = 0;
-
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-
-  } else { //row.id == -1
-    insert_container(row);
-  }
-}
-
-void update_keyword(void) {
-
-  orow& row = O.rows.at(O.fr);
-
-  if (!row.dirty) {
-    outlineShowMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << "keyword "
-          << "SET name='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
-
-    sqlite3 *db;
-    char *err_msg = 0;
-
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-
-  } else { //row.id == -1
-    insert_keyword(row);
-  }
-}
-
-int insert_keyword(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO "
-        << "keyword "
-        << "("
-        << "name, "
-        << "star, "
-        << "deleted, "
-        << "modified, "
-        << "tid"
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " " << row.star << ","
-        << " False," //default for context and private for folder
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
-        << " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
-
-  temporary_tid++;
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
-
-  return row.id;
-}
-
-int insert_row(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO task ("
-        << "priority, "
-        << "title, "
-        << "folder_tid, "
-        << "context_tid, "
-        << "star, "
-        << "added, "
-        << "note, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "startdate "
-        << ") VALUES ("
-        << " 3," //priority
-        << "'" << title << "'," //title
-        //<< " 1," //folder_tid
-        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
-        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << " True," //star
-        << "date()," //added
-        //<< "'<This is a new note from sqlite>'," //note
-        << "''," //note
-        << " False," //deleted
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
-        << " date()" //startdate
-        << ");"; // RETURNING id;",
-
-  /*
-    not used:
-    tid,
-    tag,
-    duetime,
-    completed,
-    duedate,
-    repeat,
-    remind
-  */
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-  /***************fts virtual table update*********************/
-
-  //should probably create a separate function that is a klugy
-  //way of making up for fact that pg created tasks don't appear in fts db
-  //"INSERT OR IGNORE INTO fts (title, lm_id) VALUES ('" << title << row.id << ");";
-
-  std::stringstream query2;
-  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
-
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return row.id;
-  }
-
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error doing FTS insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return row.id; // would mean regular insert succeeded and fts failed - need to fix this
-  }
-  sqlite3_close(db);
-  outlineShowMessage("Successfully inserted new row with id %d and indexed it", row.id);
-
-  return row.id;
-}
-
-int insert_container(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO "
-        //<< context
-        << ((O.view == CONTEXT) ? "context" : "folder")
-        << " ("
-        << "title, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "tid, "
-        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
-      //  << "\"default\", " //folder does not have default
-        << "textcolor "
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " False," //deleted
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
-        //<< " 99999," //tid
-        << " " << temporary_tid << "," //tid originally 100 but that is a legit client tid server id
-        << " False," //default for context and private for folder
-        << " 10" //textcolor
-        << ");"; // RETURNING id;",
-
-  temporary_tid++;      
-  /*
-   * not used:
-     "default" (not sure why in quotes but may be system variable
-      tid,
-      icon (varchar 32)
-      image (blob)
-    */
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
-
-  return row.id;
-}
-
-void update_rows(void) {
-  int n = 0; //number of updated rows
-  int updated_rows[20];
-
-  for (auto row: O.rows) {
-    if (!(row.dirty)) continue;
-    if (row.id != -1) {
-      std::string title = row.title;
-      size_t pos = title.find("'");
-      while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-      std::stringstream query;
-      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
-
-      sqlite3 *db;
-      char *err_msg = 0;
-        
-      int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-        
-      if (rc != SQLITE_OK) {
-            
-        outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-        sqlite3_close(db);
-        return;
-        }
-    
-      rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-      if (rc != SQLITE_OK ) {
-        outlineShowMessage("SQL error: %s", err_msg);
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        return; // ? should we abort all other rows
-      } else {
-        row.dirty = false;
-        updated_rows[n] = row.id;
-        n++;
-        sqlite3_close(db);
-      }
-    
-    } else { 
-      int id  = insert_row(row);
-      updated_rows[n] = id;
-      if (id !=-1) n++;
-    }  
-  }
-
-  if (n == 0) {
-    outlineShowMessage("There were no rows to update");
-    return;
-  }
-
-  char msg[200];
-  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
-  char *put;
-  put = &msg[strlen(msg)];
-
-  for (int j=0; j < n;j++) {
-    O.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
-    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
-  }
-
-  int slen = strlen(msg);
-  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  outlineShowMessage("%s",  msg);
-}
+/* End sqlite database functions */
 
 int get_id(void) { //default is in prototype but should have no default at all
   return O.rows.at(O.fr).id;
@@ -6444,7 +6440,7 @@ std::string editorGenerateNoteWW(void) {
       y++;
     }
   }
-  E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+  //E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible 03222020
 }
 
 void editorDrawRows(std::string &ab) {

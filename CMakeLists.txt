@@ -34,7 +34,7 @@ set (source_dir "${PROJECT_SOURCE_DIR}/")
 add_executable(${PROJECT_NAME} listmanager_term_improved.cpp)
 
 # note that for what we're doing doesn't matter whether PUBLIC or PRIVATE (see CMAKE docs)
-target_include_directories(${PROJECT_NAME} PUBLIC "${source_dir}")
+#target_include_directories(${PROJECT_NAME} PUBLIC "${source_dir}")
 target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
