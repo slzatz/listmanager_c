@@ -395,31 +395,6 @@ static struct editorConfig E;
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
 */
-static void (*get_items)(int);
-//static void (*get_items_by_id)(std::stringstream&);
-static void (*get_note)(int);
-static void (*update_note)(void);
-static void (*toggle_star)(void);
-static void (*toggle_completed)(void);
-static void (*toggle_deleted)(void);
-static void (*update_task_context)(std::string &, int);
-static void (*update_task_folder)(std::string &, int);
-static void (*update_rows)(void);
-static void (*update_row)(void);
-//static int (*insert_row)(int); //not called directly
-static void (*display_item_info)(int);
-static void (*touch)(void);
-static void (*search_db)(std::string);
-static void (*map_context_titles)(void);
-static void (*map_folder_titles)(void);
-
-static void (*get_containers)(void);
-//static void (*get_keywords)(void);
-static void (*update_container)(void);
-static void (*update_keyword)(void);
-//static void (*insert_context)(void); //not called directly
-static void (*add_task_keyword)(const std::string &, int);
-static void (*delete_task_keywords)(void);
 int getWindowSize(int *, int *);
 
 // I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
@@ -458,32 +433,41 @@ void outlineScroll(void);
 void outlineSave(const std::string &);
 
 //Database-related Prototypes
+void update_task_context(std::string &, int);
+void update_task_folder(std::string &, int);
 int get_id(void);
-int insert_row_sqlite(orow&);
-int insert_container_sqlite(orow&);
-int insert_keyword_sqlite(orow &);
-void update_container_sqlite(void);
-void update_keyword_sqlite(void);
-void get_items_sqlite(int); 
-void get_containers_sqlite(void); //has an if that determines callback: context_callback or folder_callback
-std::pair<std::string, std::vector<std::string>> get_task_keywords_sqlite(void); // puts them in comma delimited string
-void update_note_sqlite(void); 
+void get_note(int);
+void update_row(void);
+void update_rows(void);
+void toggle_deleted(void);
+void toggle_star(void);
+void toggle_completed(void);
+void touch(void);
+int insert_row(orow&);
+int insert_container(orow&);
+int insert_keyword(orow &);
+void update_container(void);
+void update_keyword(void);
+void get_items(int); 
+void get_containers(void); //has an if that determines callback: context_callback or folder_callback
+std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
+void update_note(void); 
 //void solr_find(void);
-void fts5_sqlite(std::string);
-void get_items_by_id_sqlite(std::stringstream &);
+void search_db(std::string); //void fts5_sqlite(std::string);
+void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
 
-void update_task_context_sqlite(const std::string &, int);
-void update_task_folder_sqlite(const std::string &, int);
+//void update_task_context(const std::string &, int);
+//void update_task_folder(const std::string &, int);
 
-void map_context_titles_sqlite(void);
-void map_folder_titles_sqlite(void);
+void map_context_titles(void);
+void map_folder_titles(void);
 
-void add_task_keyword_sqlite(const std::string &, int);
-void delete_task_keywords_sqlite(void);
+void add_task_keyword(const std::string &, int);
+void delete_task_keywords(void);
 
-void display_item_info_sqlite(int);
-void display_container_info_sqlite(int);
+void display_item_info(int);
+void display_container_info(int);
 //sqlite callback functions
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
@@ -710,7 +694,7 @@ bool sqlite_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg
    return true;
 }
 
-void map_context_titles_sqlite(void) {
+void map_context_titles(void) {
 
   // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM context;");
@@ -741,7 +725,7 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
   return 0;
 }
 
-void map_folder_titles_sqlite(void) {
+void map_folder_titles(void) {
 
   // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM folder;");
@@ -772,7 +756,7 @@ int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColNam
   return 0;
 }
 
-void get_containers_sqlite(void) {
+void get_containers(void) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -890,7 +874,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-std::pair<std::string, std::vector<std::string>>  get_task_keywords_sqlite(void) {
+std::pair<std::string, std::vector<std::string>>  get_task_keywords(void) {
 
   //task_keywords.clear();
 
@@ -961,7 +945,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void add_task_keyword_sqlite(const std::string &kw, int id) {
+void add_task_keyword(const std::string &kw, int id) {
 
   //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
   std::stringstream query;
@@ -999,7 +983,7 @@ void add_task_keyword_sqlite(const std::string &kw, int id) {
   /**************fts virtual table update**********************/
   // tag update
 
-  std::string s = get_task_keywords_sqlite().first;
+  std::string s = get_task_keywords().first;
   std::stringstream query4;
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
 
@@ -1017,7 +1001,7 @@ int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColNam
   return 0;
 }
 
-void delete_task_keywords_sqlite(void) {
+void delete_task_keywords(void) {
 
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
@@ -1051,7 +1035,7 @@ void delete_task_keywords_sqlite(void) {
 }
 
 void get_linked_items(int max) {
-  std::vector<std::string> task_keywords = get_task_keywords_sqlite().second;
+  std::vector<std::string> task_keywords = get_task_keywords().second;
   if (task_keywords.empty()) return;
 
   std::stringstream query;
@@ -1098,7 +1082,7 @@ void get_linked_items(int max) {
   }
 }
 
-void get_items_sqlite(int max) {
+void get_items(int max) {
   std::stringstream query;
   std::vector<std::string> keyword_vec;
   int (*callback)(void *, int, char **, char **);
@@ -1252,7 +1236,7 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
 }
 
 // called as part of :find -> fts5_sqlite(fts5_callback) -> get_items_by_id_sqlite (by_id_data_callback)
-void get_items_by_id_sqlite(std::stringstream &query) {
+void get_items_by_id(std::stringstream &query) {
   /*
    * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
@@ -1334,20 +1318,20 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-void merge_note_sqlite(int id) {
+void merge_note(int id) {
   std::stringstream query;
 
   query << "SELECT note FROM task WHERE id = " << id;
   int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In merge_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In merge_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   }
 }
 
-void get_note_sqlite(int id) {
+void get_note(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
   word_positions.clear();
@@ -1360,7 +1344,7 @@ void get_note_sqlite(int id) {
   int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.db);
   }
@@ -1378,7 +1362,7 @@ void get_note_sqlite(int id) {
   rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.fts_db);
   }
@@ -1397,7 +1381,7 @@ void get_note_sqlite(int id) {
     n++;
 
     if (rc != SQLITE_OK ) {
-      outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+      outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
       sqlite3_free(S.err_msg);
       sqlite3_close(S.fts_db);
     } 
@@ -1460,7 +1444,7 @@ void view_html(int id) {
   if (which_db == POSTGRES)
     pName = PyUnicode_DecodeFSDefault("view_html_pg"); //module
   else 
-    pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
+    pName = PyUnicode_DecodeFSDefault("view_html"); //module
   /* Error checking of pName left out */
 
   pModule = PyImport_Import(pName);
@@ -2610,7 +2594,7 @@ void outlineDrawStatusBar(void) {
   //std::string keywords = "";
   switch (O.view) {
       case TASK:
-        //keywords = get_task_keywords_sqlite(); can't be here because O.rows.empty() might be true
+        //keywords = get_task_keywords(); can't be here because O.rows.empty() might be true
         switch (O.taskview) {
             case BY_SEARCH:
               s =  "search"; 
@@ -2650,7 +2634,7 @@ void outlineDrawStatusBar(void) {
     std::string truncated_title = row.title.substr(0, 12);
     if (E.dirty) truncated_title.append( "[+]");
     // needs to be here because O.rows could be empty
-    std::string keywords = (O.view == TASK) ? get_task_keywords_sqlite().first : ""; // see before and in switch
+    std::string keywords = (O.view == TASK) ? get_task_keywords().first : ""; // see before and in switch
 
     len = snprintf(status, sizeof(status),
                               // because video is reversted [42 sets text to green and 49 undoes it
@@ -2841,7 +2825,7 @@ void outlineMoveCursor(int key) {
       else {
         O.mode = DATABASE;
         if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-        else display_container_info_sqlite(O.rows.at(O.fr).id);
+        else display_container_info(O.rows.at(O.fr).id);
         O.command[0] = '\0';
         O.repeat = 0;
       }
@@ -2861,7 +2845,7 @@ void outlineMoveCursor(int key) {
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
         else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      } else display_container_info_sqlite(O.rows.at(O.fr).id);
+      } else display_container_info(O.rows.at(O.fr).id);
       break;
 
     case ARROW_DOWN:
@@ -2871,7 +2855,7 @@ void outlineMoveCursor(int key) {
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
         else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      } else display_container_info_sqlite(O.rows.at(O.fr).id);
+      } else display_container_info(O.rows.at(O.fr).id);
       break;
   }
 
@@ -2892,7 +2876,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
   c = (!c) ? readKey() : c;
   switch (O.mode) {
   size_t n;
-  //switch (int c = readKey(); O.mode) { //init statement for if/switch
+  //switch (int c = readKey(); O.mode)  //init statement for if/switch
 
     case NO_ROWS:
 
@@ -3038,7 +3022,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       }
  
       /*leading digit is a multiplier*/
-      //if (isdigit(c)) { //equiv to if (c > 47 && c < 58)
+      //if (isdigit(c))  //equiv to if (c > 47 && c < 58)
 
       if ((c > 47 && c < 58) && (strlen(O.command) == 0)) {
 
@@ -3594,7 +3578,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             case 'l':  
             case C_linked: //linked, related, l
               {
-              std::string keywords = get_task_keywords_sqlite().first;
+              std::string keywords = get_task_keywords().first;
               if (keywords.empty()) {
                 outlineShowMessage("The current entry has no keywords");
               } else {
@@ -3642,7 +3626,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               //EraseScreenRedrawLines(); //*****************************
               O.context = "search";
               s = O.command_line.substr(pos+1);
-              fts5_sqlite(s);
+              search_db(s); //fts5_sqlite(s);
               //std::istringstream iss(s);
               //for(std::string ss; iss >> s; ) search_terms2.push_back(ss);
               if (O.mode != NO_ROWS) {
@@ -4170,14 +4154,14 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 return;
               }
               outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
-              insert_row_sqlite(O.rows.at(0)); 
+              insert_row(O.rows.at(0)); 
               E.rows.clear();
               
               int n = 0;
               auto it = O.rows.begin();
               for(;;) {
                 it = find_if(it+1, O.rows.end(), [](const orow &row){return row.mark;});
-                if (it != O.rows.end()) merge_note_sqlite(it->id);
+                if (it != O.rows.end()) merge_note(it->id);
                 else break;
                 n++;
               }
@@ -4407,7 +4391,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case 'f':
           {
-          std::string keywords = get_task_keywords_sqlite().first;
+          std::string keywords = get_task_keywords().first;
           if (keywords.empty()) {
             outlineShowMessage("The current entry has no keywords");
           } else {
@@ -4755,7 +4739,7 @@ void display_item_info_pg(int id) {
   ///////////////////////////
 
   //get_task_keywords_pg(); ////should be pg, just did this to compile
-  std::vector<std::string> task_keywords = get_task_keywords_sqlite().second;
+  std::vector<std::string> task_keywords = get_task_keywords().second;
   std::string delim = "";
   std::string s;
   for (const auto &kw : task_keywords) {
@@ -4781,7 +4765,8 @@ void display_item_info_pg(int id) {
   PQclear(res);
 }
 
-void fts5_sqlite(std::string search_terms) {
+//void fts5_sqlite(std::string search_terms) {
+void search_db(std::string search_terms) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -4845,7 +4830,7 @@ void fts5_sqlite(std::string search_terms) {
   }
   query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  get_items_by_id_sqlite(query);
+  get_items_by_id(query);
 
   //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
   //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
@@ -4889,7 +4874,7 @@ int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColNam
 
 }
 
-void display_item_info_sqlite(int id) {
+void display_item_info(int id) {
 
   if (id ==-1) return;
 
@@ -5006,7 +4991,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
 
   ///////////////////////////
 
-  std::string s = get_task_keywords_sqlite().first;
+  std::string s = get_task_keywords().first;
   sprintf(str,"keywords: %s", s.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -5024,7 +5009,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   return 0;
 }
 
-void display_container_info_sqlite(int id) {
+void display_container_info(int id) {
   if (id ==-1) return;
 
   std::string table;
@@ -5070,7 +5055,7 @@ void display_container_info_sqlite(int id) {
  rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note_sqlite: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.fts_db);
   }
@@ -5326,7 +5311,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-void update_note_sqlite(void) {
+void update_note(void) {
 
   std::string text = editorRowsToString();
   std::stringstream query;
@@ -5394,7 +5379,7 @@ void update_note_sqlite(void) {
   E.dirty = 0;
 }
 
-void update_task_context_sqlite(std::string &new_context, int id) {
+void update_task_context(std::string &new_context, int id) {
 
   std::stringstream query;
   //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
@@ -5425,7 +5410,7 @@ void update_task_context_sqlite(std::string &new_context, int id) {
   sqlite3_close(db);
 }
 
-void update_task_folder_sqlite(std::string& new_folder, int id) {
+void update_task_folder(std::string& new_folder, int id) {
 
   std::stringstream query;
   //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
@@ -5456,7 +5441,7 @@ void update_task_folder_sqlite(std::string& new_folder, int id) {
   sqlite3_close(db);
 }
 
-void toggle_completed_sqlite(void) {
+void toggle_completed(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5493,7 +5478,7 @@ void toggle_completed_sqlite(void) {
     
 }
 
-void touch_sqlite(void) {
+void touch(void) {
 
   std::stringstream query;
   int id = get_id();
@@ -5525,7 +5510,7 @@ void touch_sqlite(void) {
 
 }
 
-void toggle_deleted_sqlite(void) {
+void toggle_deleted(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5582,7 +5567,7 @@ void toggle_deleted_sqlite(void) {
 
 }
 
-void toggle_star_sqlite(void) {
+void toggle_star(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5645,7 +5630,7 @@ void toggle_star_sqlite(void) {
   sqlite3_close(db);
 }
 
-void update_row_sqlite(void) {
+void update_row(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5713,11 +5698,11 @@ void update_row_sqlite(void) {
       sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_row_sqlite(row);
+    insert_row(row);
   }
 }
 
-void update_container_sqlite(void) {
+void update_container(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5764,11 +5749,11 @@ void update_container_sqlite(void) {
     sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_container_sqlite(row);
+    insert_container(row);
   }
 }
 
-void update_keyword_sqlite(void) {
+void update_keyword(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -5815,11 +5800,11 @@ void update_keyword_sqlite(void) {
     sqlite3_close(db);
 
   } else { //row.id == -1
-    insert_keyword_sqlite(row);
+    insert_keyword(row);
   }
 }
 
-int insert_keyword_sqlite(orow& row) {
+int insert_keyword(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -5876,7 +5861,7 @@ int insert_keyword_sqlite(orow& row) {
   return row.id;
 }
 
-int insert_row_sqlite(orow& row) {
+int insert_row(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -5983,7 +5968,7 @@ int insert_row_sqlite(orow& row) {
   return row.id;
 }
 
-int insert_container_sqlite(orow& row) {
+int insert_container(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
@@ -6055,7 +6040,7 @@ int insert_container_sqlite(orow& row) {
   return row.id;
 }
 
-void update_rows_sqlite(void) {
+void update_rows(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
@@ -6100,7 +6085,7 @@ void update_rows_sqlite(void) {
       }
     
     } else { 
-      int id  = insert_row_sqlite(row);
+      int id  = insert_row(row);
       updated_rows[n] = id;
       if (id !=-1) n++;
     }  
@@ -8495,33 +8480,10 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   //if (argc > 1 && argv[1][0] == 's') {
-    sqlite_open();
-    get_conn(); //pg
-    get_items = get_items_sqlite;
-    //get_items_by_id = get_items_by_id_sqlite;
-    get_note = get_note_sqlite;
-    update_note = update_note_sqlite;
-    toggle_star = toggle_star_sqlite;
-    toggle_completed = toggle_completed_sqlite;
-    toggle_deleted = toggle_deleted_sqlite;
-    //insert_row = insert_row_sqlite;
-    update_rows = update_rows_sqlite;
-    update_row = update_row_sqlite;
-    update_task_context = update_task_context_sqlite;
-    update_task_folder = update_task_folder_sqlite;
-    display_item_info = display_item_info_sqlite;
-    touch = touch_sqlite;
-    search_db = fts5_sqlite;
-    get_containers = get_containers_sqlite;
-    update_container = update_container_sqlite;
-    update_keyword = update_keyword_sqlite;
-    map_context_titles =  map_context_titles_sqlite;
-    map_folder_titles =  map_folder_titles_sqlite;
-    add_task_keyword = add_task_keyword_sqlite;
-    delete_task_keywords = delete_task_keywords_sqlite;
-    //get_keywords = get_keywords_sqlite;
+  sqlite_open();
+  get_conn(); //pg
 
-    which_db = SQLITE;
+  which_db = SQLITE;
 
   map_context_titles();
   map_folder_titles();
