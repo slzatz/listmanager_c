@@ -433,6 +433,7 @@ void outlineScroll(void);
 void outlineSave(const std::string &);
 
 //Database-related Prototypes
+void db_open(void);
 void update_task_context(std::string &, int);
 void update_task_folder(std::string &, int);
 int get_id(void);
@@ -451,6 +452,7 @@ void update_keyword(void);
 void get_items(int); 
 void get_containers(void); //has an if that determines callback: context_callback or folder_callback
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
+std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 void update_note(void); 
 //void solr_find(void);
 void search_db(std::string); //void fts5_sqlite(std::string);
@@ -461,6 +463,7 @@ void map_folder_titles(void);
 void add_task_keyword(const std::string &, int);
 void delete_task_keywords(void);
 void display_item_info(int);
+void display_item_info_pg(int);
 void display_container_info(int);
 
 //sqlite callback functions
@@ -473,7 +476,6 @@ int context_titles_callback(void *, int, char **, char **);
 int folder_titles_callback(void *, int, char **, char **);
 int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
-void display_item_info_pg(int);
 int display_item_info_callback(void *, int, char **, char **);
 int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);
@@ -666,7 +668,7 @@ void get_conn(void) {
 
 /* Begin sqlite database functions */
 
-void sqlite_open(void) {
+void db_open(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
   if (rc != SQLITE_OK) {
     sqlite3_close(S.db);
@@ -680,8 +682,7 @@ void sqlite_open(void) {
   }
 }
 
-//bool sqlite_query(sqlite3 *db, const char *sql, sq_callback callback, void *pArg, char **errmsg) {
-bool sqlite_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
+bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
    if (rc != SQLITE_OK) {
      outlineShowMessage("SQL error: %s", errmsg);
@@ -871,28 +872,16 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-std::pair<std::string, std::vector<std::string>>  get_task_keywords(void) {
-
-  //task_keywords.clear();
+std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
   std::stringstream query;
   query << "SELECT keyword.name "
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
 
-   std::vector<std::string> task_keywords; ////////////////////////////
-   bool success =  sqlite_query(S.db, query.str(), task_keywords_callback, &task_keywords, &S.err_msg);
-   /*
-   int rc = sqlite3_exec(S.db, query.str().c_str(), task_keywords_callback, nullptr, &S.err_msg);
-   if (rc != SQLITE_OK ) {
-     outlineShowMessage("SQL error: %s", S.err_msg);
-     sqlite3_free(S.err_msg);
-     return std::string();
-   }
-   */
+   std::vector<std::string> task_keywords = {}; ////////////////////////////
+   bool success =  db_query(S.db, query.str(), task_keywords_callback, &task_keywords, &S.err_msg);
    if (task_keywords.empty() || !success) return std::make_pair(std::string(), std::vector<std::string>());
-   //if (!success) return std::string();
-   //if (task_keywords.empty()) return std::string();
 
    std::string delim = "";
    std::string s;
@@ -901,6 +890,37 @@ std::pair<std::string, std::vector<std::string>>  get_task_keywords(void) {
      delim = ",";
    }
    return std::make_pair(s, task_keywords);
+}
+
+std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
+
+  std::stringstream query;
+  query << "SELECT keyword.name "
+           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
+           "WHERE " << tid << " =  task_keyword.task_id;";
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineShowMessage("Problem in get_task_keywords_pg!");
+    PQclear(res);
+    return std::make_pair(std::string(), std::vector<std::string>());
+  }
+
+  int rows = PQntuples(res);
+  std::vector<std::string> task_keywords = {};
+  for(int i=0; i<rows; i++) {
+    task_keywords.push_back(PQgetvalue(res, i, 0));
+  }
+   std::string delim = "";
+   std::string s = "pg:";
+   for (const auto &kw : task_keywords) {
+     s += delim += kw;
+     delim = ",";
+   }
+  PQclear(res);
+  return std::make_pair(s, task_keywords);
+  // PQfinish(conn);
 }
 
 int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
@@ -1431,117 +1451,6 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   E.dirty = 0;
   return 0;
 }
-
-void display_item_info_pg(int id) {
-
-  if (id ==-1) return;
-
-  std::stringstream query;
-  query << "SELECT * FROM task WHERE id = " << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
-    PQclear(res);
-    return;
-  }    
-
-  char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-
-  std::string ab;
-
-  /*
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-
-  //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
-
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
-*/
-
-  //set background color to blue
-  ab.append("\n\n");
-  ab.append("\x1b[44m", 5);
-  char str[300];
-
-  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  //int folder_tid = atoi(argv[5]);
-  int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  //ab.append("\x1b[0m", 4);
-
-  ///////////////////////////
-
-  //get_task_keywords_pg(); ////should be pg, just did this to compile
-  std::vector<std::string> task_keywords = get_task_keywords().second;
-  std::string delim = "";
-  std::string s;
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-
-
-  ///////////////////////////
-
-
-  ab.append("\x1b[0m", 4);
-
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-
-  PQclear(res);
-}
-
 //void fts5_sqlite(std::string search_terms) {
 void search_db(std::string search_terms) {
 
@@ -1764,9 +1673,6 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   sprintf(str,"added: %s", argv[9]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  //ab.append("\x1b[0m", 4);
-
-  ///////////////////////////
 
   std::string s = get_task_keywords().first;
   sprintf(str,"keywords: %s", s.c_str());
@@ -1776,14 +1682,90 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   sprintf(str,"tag: %s", argv[4]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-
-  ///////////////////////////
-
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   return 0;
+}
+
+void display_item_info_pg(int id) {
+
+  if (id ==-1) return;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
+    PQclear(res);
+    return;
+  }    
+
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  std::string ab;
+
+  //set background color to blue
+  ab.append("\n\n");
+  ab.append("\x1b[44m", 5);
+  char str[300];
+
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int context_tid = atoi(PQgetvalue(res, 0, 6));
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  //int folder_tid = atoi(argv[5]);
+  int folder_tid = atoi(PQgetvalue(res, 0, 5));
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  std::string s = get_task_keywords_pg(id).first;
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  PQclear(res);
 }
 
 void display_container_info(int id) {
@@ -8476,7 +8458,7 @@ int main(int argc, char** argv) {
   //outline_normal_map['k'] = move_up;
 
   //if (argc > 1 && argv[1][0] == 's') {
-  sqlite_open();
+  db_open();
   get_conn(); //pg
 
   which_db = SQLITE;
