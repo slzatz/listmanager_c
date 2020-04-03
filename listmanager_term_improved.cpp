@@ -38,12 +38,6 @@
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
 
-//#include <boost/algorithm/string/case_conv.hpp> was using boost::to_lower but now sorting in sqlite
-
-/***the following is not yet in use and would get rid of switch statements***/
-//typedef void (*pfunc)(void);
-//typedef void (*pfunc)(int);
-typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -171,6 +165,7 @@ enum Command {
   C_sort,
 
   C_find,
+  C_search,
   C_fts,
   C_linked,
 
@@ -212,7 +207,7 @@ enum Command {
   C_edit,
 
   C_dbase,
-  C_search,
+  //C_search,
 
   C_saveoutline,
   C_syntax,
@@ -247,6 +242,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"filter", C_join}, //need because this is command line command with a target word
   {"fin", C_find},
   {"find", C_find},
+  {"search", C_find},
   {"linked", C_linked}, // also 'l' in COMMAND_LINE
   {"related", C_linked}, // also 'l' in COMMAND_LINE
   {"fts", C_fts},
@@ -293,7 +289,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"val", C_valgrind},
   {"dbase", C_dbase},
   {"database", C_dbase},
-  {"search", C_search},
+  //{"search", C_search},
   {"set", C_set},
   {"z=", C_suggestions},
   {"saveoutline", C_saveoutline},
@@ -467,6 +463,8 @@ void display_item_info_pg(int);
 void display_container_info(int);
 
 //sqlite callback functions
+typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
+
 int fts5_callback(void *, int, char **, char **);
 int data_callback(void *, int, char **, char **);
 int context_callback(void *, int, char **, char **);
@@ -692,22 +690,24 @@ bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, ch
    return true;
 }
 
+bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
+   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
+   if (rc != SQLITE_OK) {
+     outlineShowMessage("SQL error in %s: %s", func, errmsg);
+     sqlite3_free(errmsg);
+     return false;
+   }
+   return true;
+}
+
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM context;");
 
   bool no_rows = true;
-  int rc = sqlite3_exec(S.db, query.c_str(), context_titles_callback, &no_rows, &S.err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("map_context_titles: SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-    }
-
-  if (no_rows)
-    outlineShowMessage("There were no context titles to map!");
+  if (!db_query(S.db, query.c_str(), context_titles_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (no_rows) outlineShowMessage("There were no context titles to map!");
 }
 
 int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -729,16 +729,8 @@ void map_folder_titles(void) {
   std::string query("SELECT tid,title FROM folder;");
 
   bool no_rows = true;
-  int rc = sqlite3_exec(S.db, query.c_str(), folder_titles_callback, &no_rows, &S.err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("map_folder_titles: SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
-
-  if (no_rows)
-    outlineShowMessage("There were no folder titles to map!");
+  if (!db_query(S.db, query.c_str(), folder_titles_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (no_rows) outlineShowMessage("There were no folder titles to map!");
 }
 
 int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -783,26 +775,16 @@ void get_containers(void) {
 
   std::stringstream query;
   query << "SELECT * FROM " << table << " ORDER BY " << column  << " COLLATE NOCASE ASC;";
- // query << "SELECT * FROM " << table << ";";
 
   bool no_rows = true;
+  if (!db_query(S.db, query.str().c_str(), callback, &no_rows, &S.err_msg, __func__)) return;
 
-  int rc = sqlite3_exec(S.db, query.str().c_str(), callback, &no_rows, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("get_containers: SQL error: %s\n", S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
   if (no_rows) {
     outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
-  } else
-    O.mode = NORMAL;
+  } else O.mode = NORMAL;
 
   O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
-
-  //note below worked
-// std::sort(O.rows.begin(), O.rows.end(), [](orow r0, orow r1){boost::to_lower(r0.title); boost::to_lower(r1.title); return r1.title > r0.title;}); 
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -857,6 +839,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   10: image, largebinary
   11: modified
   */
+
   orow row;
 
   row.title = std::string(argv[2]);
@@ -867,6 +850,35 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.dirty = false;
   row.mark = false;
   strncpy(row.modified, argv[11], 16);
+  O.rows.push_back(row);
+
+  return 0;
+}
+
+int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
+
+  bool *flag = static_cast<bool*>(no_rows);
+  *flag = false;
+
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  5:deleted
+  */
+
+  orow row;
+
+  row.title = std::string(argv[1]);
+  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
+  row.star = (atoi(argv[3]) == 1) ? true: false; 
+  row.deleted = (atoi(argv[5]) == 1) ? true: false;
+  row.completed = false;
+  row.dirty = false;
+  row.mark = false;
+  strncpy(row.modified, argv[4], 16);
   O.rows.push_back(row);
 
   return 0;
@@ -884,7 +896,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
    if (task_keywords.empty() || !success) return std::make_pair(std::string(), std::vector<std::string>());
 
    std::string delim = "";
-   std::string s;
+   std::string s = "";
    for (const auto &kw : task_keywords) {
      s += delim += kw;
      delim = ",";
@@ -892,6 +904,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
    return std::make_pair(s, task_keywords);
 }
 
+// need this pg db function
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
 
   std::stringstream query;
@@ -913,7 +926,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
     task_keywords.push_back(PQgetvalue(res, i, 0));
   }
    std::string delim = "";
-   std::string s = "pg:";
+   std::string s = "";
    for (const auto &kw : task_keywords) {
      s += delim += kw;
      delim = ",";
@@ -934,33 +947,6 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
   return 0; //you need this
 }
 
-int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: name = string 25
-  2: tid => int
-  3: star = Boolean
-  4: modified
-  5:deleted
-  */
-  orow row;
-
-  row.title = std::string(argv[1]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; 
-  row.deleted = (atoi(argv[5]) == 1) ? true: false;
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-  strncpy(row.modified, argv[4], 16);
-  O.rows.push_back(row);
-
-  return 0;
-}
 
 void add_task_keyword(const std::string &kw, int id) {
 
@@ -971,45 +957,23 @@ void add_task_keyword(const std::string &kw, int id) {
   query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
         <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
 
-  int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query). SQLITE error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   std::stringstream query2;
   query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
-  rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query2). SQLITE error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   std::stringstream query3;
   // updates task modified column so we know that something changed with the task
   query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
-  rc = sqlite3_exec(S.db, query3.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query3). SQLITE error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   /**************fts virtual table update**********************/
-  // tag update
 
   std::string s = get_task_keywords().first;
   std::stringstream query4;
   query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
-
-  rc = sqlite3_exec(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("add_task_keyword: SQLITE fts error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 }
 
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
@@ -1022,33 +986,17 @@ void delete_task_keywords(void) {
 
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
-  int rc = sqlite3_exec(S.db, query.str().c_str(), 0, 0, &S.err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query). SQL error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-  }
+  if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   std::stringstream query2;
   // updates task modified column so know that something changed with the task
   query2 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
-  rc = sqlite3_exec(S.db, query2.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query2). SQL error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   /**************fts virtual table update**********************/
   std::stringstream query3;
   query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
-
-  rc = sqlite3_exec(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg);
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In %s (query3): SQL fts error: %s", __func__, S.err_msg);
-    sqlite3_free(S.err_msg);
-    return;
-  }
+  if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 }
 
 void get_linked_items(int max) {
@@ -1064,11 +1012,9 @@ void get_linked_items(int max) {
     query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
           << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
 
-  //auto it = task_keywords.begin();
   for (auto it=task_keywords.begin(); it != task_keywords.end() - 1; ++it) {
     query << "keyword.name = '" << *it << "' OR ";
   }
-  //query << "keyword.name = '" << *it << "')";
   query << "keyword.name = '" << task_keywords.back() << "')";
 
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -1079,12 +1025,7 @@ void get_linked_items(int max) {
         << " DESC LIMIT " << max;
 
     int sortcolnum = sort_map[O.sort];
-    int rc = sqlite3_exec(S.db, query.str().c_str(), unique_data_callback, &sortcolnum, &S.err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("In %s: SQL error: %s", __func__, S.err_msg);
-      sqlite3_free(S.err_msg);
-    }
+    if (!db_query(S.db, query.str().c_str(), unique_data_callback, &sortcolnum, &S.err_msg, __func__)) return;
 
   O.view = TASK;
 
@@ -1143,8 +1084,8 @@ void get_items(int max) {
     unique_ids.clear();
 
   } else {
-      outlineShowMessage("You asked for an unsupported db query");
-      return;
+    outlineShowMessage("You asked for an unsupported db query");
+    return;
   }
 
   query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
@@ -1154,13 +1095,8 @@ void get_items(int max) {
         << O.sort
         << " DESC LIMIT " << max;
 
-    int sortcolnum = sort_map[O.sort];
-    int rc = sqlite3_exec(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("In %s: SQL error: %s", __func__, S.err_msg);
-      sqlite3_free(S.err_msg);
-    }
+  int sortcolnum = sort_map[O.sort];
+  if (!db_query(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg, __func__)) return;
 
   O.view = TASK;
 
@@ -1252,21 +1188,15 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   return 0;
 }
 
-// called as part of :find -> fts5_sqlite(fts5_callback) -> get_items_by_id_sqlite (by_id_data_callback)
+// called as part of :find -> search_db -> fts5_callback -> get_items_by_id -> by_id_data_callback
 void get_items_by_id(std::stringstream &query) {
   /*
    * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
 
-    bool no_rows = true;
-    int rc = sqlite3_exec(S.db, query.str().c_str(), by_id_data_callback, &no_rows, &S.err_msg);
-    
-    if (rc != SQLITE_OK ) {
-        outlineShowMessage("In %s. SQL error: %s", S.err_msg);
-        sqlite3_free(S.err_msg);
-        return;
-    } 
+  bool no_rows = true;
+  if (!db_query(S.db, query.str().c_str(), by_id_data_callback, &no_rows, &S.err_msg, __func__)) return;
 
   O.view = TASK;
 
@@ -1276,9 +1206,6 @@ void get_items_by_id(std::stringstream &query) {
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
-    //get_note(O.rows.at(0).id);
-    //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
     get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -1679,9 +1606,10 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
-  sprintf(str,"tag: %s", argv[4]);
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  //sprintf(str,"tag: %s", argv[4]);
+  //ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
   ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -1705,65 +1633,65 @@ void display_item_info_pg(int id) {
   }    
 
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
-  std::string ab;
+  std::string s;
 
   //set background color to blue
-  ab.append("\n\n");
-  ab.append("\x1b[44m", 5);
+  s.append("\n\n");
+  s.append("\x1b[44m", 5);
   char str[300];
 
   sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
   sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
 
   int context_tid = atoi(PQgetvalue(res, 0, 6));
   auto it = std::find_if(std::begin(context_map), std::end(context_map),
                          [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
 
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
 
-  //int folder_tid = atoi(argv[5]);
   int folder_tid = atoi(PQgetvalue(res, 0, 5));
   auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
                          [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
   sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
 
   sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
   sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
   sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
   sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
   sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  s.append(str);
+  s.append(lf_ret);
 
-  std::string s = get_task_keywords_pg(id).first;
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", s.c_str());
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
+  std::string ss = get_task_keywords_pg(id).first;
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", ss.c_str());
+  s.append(str);
+  s.append(lf_ret);
 
-  sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
-  ab.append(str, strlen(str));
-  ab.append(lf_ret, nchars);
-  ab.append("\x1b[0m", 4);
+  //sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  //s.append(str);
+  //s.append(lf_ret);
 
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  s.append("\x1b[0m");
+
+  write(STDOUT_FILENO, s.c_str(), s.size());
 
   PQclear(res);
 }
@@ -5034,19 +4962,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.context = "";
               O.folder = "";
               O.taskview = BY_SEARCH;
-              //search_terms2.clear();
               //O.mode = SEARCH; ////// it's in get_items_by_id
               search_terms = O.command_line.substr(pos+1);
               std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-              //std::istringstream iss(search_terms);
-              //for(std::string ss; iss >> ss; ) search_terms2.push_back(ss);
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+              command_history.push_back(O.command_line); 
+              outlineShowMessage("Searching for %s", search_terms.c_str());
               search_db(search_terms);
-              outlineShowMessage("You searched for %s", search_terms.c_str());
-              
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               return;
               }
+
             case C_fts: 
               {
               std::string s;
