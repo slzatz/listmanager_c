@@ -4346,6 +4346,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           outlineDelChar();
           return;
 
+        case '\t':
+          return;
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -6838,7 +6840,7 @@ bool editorProcessKeypress(void) {
           return false;
     
         case CTRL_KEY('b'):
-        case CTRL_KEY('i'):
+        //case CTRL_KEY('i'): CTRL_KEY('i') -> 9 same as tab
         case CTRL_KEY('e'):
           editorCreateSnapshot();
           editorDecorateWord(c);
@@ -6888,6 +6890,11 @@ bool editorProcessKeypress(void) {
           //editorSetMessage(E.last_typed.c_str());
           return true;
     
+        // deal with tab in insert mode - was causing segfault  
+        case '\t':
+          for (int i=0; i<4; i++) editorInsertChar(' ');
+          return true;  
+
         default:
           editorInsertChar(c);
           E.last_typed += c;
@@ -7319,6 +7326,13 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
+              return true;
+
+            case C_vim:
+              open_in_vim();
+              E.command[0] = '\0';
+              E.command_line.clear();
+              E.mode = NORMAL;
               return true;
 
             default: // default for switch (command)
