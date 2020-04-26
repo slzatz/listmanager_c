@@ -1266,13 +1266,16 @@ void merge_note(int id) {
   std::stringstream query;
 
   query << "SELECT note FROM task WHERE id = " << id;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
 
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In merge_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  }
+  if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
+
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
+
+  //if (rc != SQLITE_OK ) {
+  //  outlineShowMessage("In merge_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+  //  sqlite3_free(S.err_msg);
+  //  sqlite3_close(S.db);
+  //}
 }
 
 void get_note(int id) {
@@ -1283,15 +1286,16 @@ void get_note(int id) {
   E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
 
   std::stringstream query;
-
   query << "SELECT note FROM task WHERE id = " << id;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
+  if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
 
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  }
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
+
+  //if (rc != SQLITE_OK ) {
+  //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+  //  sqlite3_free(S.err_msg);
+  //  sqlite3_close(S.db);
+  //}
 
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
@@ -1303,13 +1307,15 @@ void get_note(int id) {
 
   int rowid = -1;
   // callback is *not* called if result (argv) is null
-  rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
+  if (!db_query(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg, __func__)) return;
 
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.fts_db);
-  }
+  //rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
+
+  //if (rc != SQLITE_OK ) {
+  //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+  //  sqlite3_free(S.err_msg);
+  //  sqlite3_close(S.fts_db);
+  //}
 
   // split string into a vector of words
   std::vector<std::string> vec;
@@ -1321,14 +1327,18 @@ void get_note(int id) {
     word_positions.push_back(std::vector<int>{});
     query3.str(std::string()); // how you clear a stringstream
     query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
-    rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
+    if (!db_query(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg, __func__)) return;
+
     n++;
 
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-      sqlite3_free(S.err_msg);
-      sqlite3_close(S.fts_db);
-    } 
+    //rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
+    //n++;
+
+    //if (rc != SQLITE_OK ) {
+    //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    //  sqlite3_free(S.err_msg);
+    //  sqlite3_close(S.fts_db);
+    //} 
   }
   int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
@@ -1395,30 +1405,32 @@ void search_db(std::string search_terms) {
             //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
             << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
 
-  sqlite3 *db;
-  char *err_msg = nullptr;
+  //sqlite3 *db;
+  //char *err_msg = nullptr;
     
-  int rc = sqlite3_open(FTS_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
+  //int rc = sqlite3_open(FTS_DB.c_str(), &db);
+  //  
+  //if (rc != SQLITE_OK) {
+  //      
+  //  outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
+  //  sqlite3_close(db);
+  //  return;
+  //}
 
   fts_ids.clear();
   fts_titles.clear();
   fts_counter = 0;
 
   bool no_rows = true;
-  rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } 
-  sqlite3_close(db);
+  if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
+
+  //rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
+  //  
+  //if (rc != SQLITE_OK ) {
+  //  outlineShowMessage("SQL error: %s", err_msg);
+  //  sqlite3_free(err_msg);
+  //} 
+  //sqlite3_close(db);
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
