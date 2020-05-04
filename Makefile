@@ -40,6 +40,9 @@ default_target: all
 .SUFFIXES: .hpux_make_needs_suffix_list
 
 
+# Command-line flag to silence nested $(MAKE).
+$(VERBOSE)MAKESILENT = -s
+
 # Suppress display of executed commands.
 $(VERBOSE).SILENT:
 
@@ -98,13 +101,13 @@ edit_cache/fast: edit_cache
 # The main all target
 all: cmake_check_build_system
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/slzatz/listmanager_cpp/CMakeFiles /home/slzatz/listmanager_cpp/CMakeFiles/progress.marks
-	$(MAKE) -f CMakeFiles/Makefile2 all
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
 	$(CMAKE_COMMAND) -E cmake_progress_start /home/slzatz/listmanager_cpp/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	$(MAKE) -f CMakeFiles/Makefile2 clean
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 clean
 .PHONY : clean
 
 # The main clean target
@@ -114,12 +117,12 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	$(MAKE) -f CMakeFiles/Makefile2 preinstall
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	$(MAKE) -f CMakeFiles/Makefile2 preinstall
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 preinstall
 .PHONY : preinstall/fast
 
 # clear depends
@@ -132,12 +135,12 @@ depend:
 
 # Build rule for target.
 listmanager_cpp: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 listmanager_cpp
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 listmanager_cpp
 .PHONY : listmanager_cpp
 
 # fast build rule for target.
 listmanager_cpp/fast:
-	$(MAKE) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/build
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/build
 .PHONY : listmanager_cpp/fast
 
 listmanager_term_improved.o: listmanager_term_improved.cpp.o
@@ -146,7 +149,7 @@ listmanager_term_improved.o: listmanager_term_improved.cpp.o
 
 # target to build an object file
 listmanager_term_improved.cpp.o:
-	$(MAKE) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.o
 .PHONY : listmanager_term_improved.cpp.o
 
 listmanager_term_improved.i: listmanager_term_improved.cpp.i
@@ -155,7 +158,7 @@ listmanager_term_improved.i: listmanager_term_improved.cpp.i
 
 # target to preprocess a source file
 listmanager_term_improved.cpp.i:
-	$(MAKE) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.i
 .PHONY : listmanager_term_improved.cpp.i
 
 listmanager_term_improved.s: listmanager_term_improved.cpp.s
@@ -164,7 +167,7 @@ listmanager_term_improved.s: listmanager_term_improved.cpp.s
 
 # target to generate assembly for a file
 listmanager_term_improved.cpp.s:
-	$(MAKE) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/listmanager_cpp.dir/build.make CMakeFiles/listmanager_cpp.dir/listmanager_term_improved.cpp.s
 .PHONY : listmanager_term_improved.cpp.s
 
 # Help Target
