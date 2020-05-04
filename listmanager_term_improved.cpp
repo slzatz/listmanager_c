@@ -171,7 +171,7 @@ enum Command {
 
   C_refresh,
 
-  C_new, //create a new item
+  C_new, //create a new item/entry
 
   C_contexts, //change O.view to CONTEXTs :c
   C_folders,  //change O.view to FOLDERs :f
@@ -1482,13 +1482,8 @@ int get_folder_tid(int id) {
   query << "SELECT folder_tid FROM task WHERE id = " << id;
 
   int folder_tid = -1;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
+  if (!db_query(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg, __func__)) return -1;
   return folder_tid;
 }
 
@@ -1496,7 +1491,6 @@ int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColNam
   int *f_tid = static_cast<int*>(folder_tid);
   *f_tid = atoi(argv[0]);
   return 0;
-
 }
 
 void display_item_info(int id) {
@@ -1506,16 +1500,12 @@ void display_item_info(int id) {
   std::stringstream query;
   query << "SELECT * FROM task WHERE id = " << id;
 
-  int tid = 0;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
+  //int tid = 0;
+  int tid;
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
+  if (!db_query(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg)) return;
 
-  display_item_info_pg(tid);
+  if (tid) display_item_info_pg(tid);
 }
 
 int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
@@ -1575,10 +1565,12 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   sprintf(str,"id: %s", argv[0]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
-  sprintf(str,"tid: %s", argv[1]);
-  *pg_id = atoi(argv[1]); ////////////////////////////////////////
+
+  *pg_id = argv[1] ? atoi(argv[1]) : 0;
+  sprintf(str,"tid: %d", *pg_id);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
+
   sprintf(str,"title: %s", argv[3]);
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
