@@ -234,6 +234,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"d$", C_d$},
 
   {"help", C_help},
+  {"h", C_help}, //need because this is command line command with a target word
   {"open", C_open},
   {"o", C_open}, //need because this is command line command with a target word
   {"of", C_openfolder}, //need because this is command line command with a target word
@@ -452,6 +453,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // p
 void update_note(void); 
 //void solr_find(void);
 void search_db(std::string); //void fts5_sqlite(std::string);
+void search_db2(std::string); //void fts5_sqlite(std::string);
 void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
 void map_context_titles(void);
@@ -948,14 +950,26 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 }
 
 
-void add_task_keyword(const std::string &kw, int id) {
+//void add_task_keyword(const std::string &kw, int id) {
+void add_task_keyword(std::string &kw, int id) {
 
-  //IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango') <- doesn't work for sqlite
+  size_t pos = kw.find("'");
+  while(pos != std::string::npos)
+    {
+      kw.replace(pos, 1, "''");
+      pos = kw.find("'", pos + 2);
+    }
+
   std::stringstream query;
-  // note you don't have to do INSERT OR IGNORE but could just do INSERT since there is a unique constraint on keyword.name
-  // but you don't want to trigger an error either so probably best to retain INSERT OR IGNORE
-  query <<  "INSERT OR IGNORE INTO keyword (name, star, modified) VALUES ('"
-        <<  kw << "', true, datetime('now', '-" << TZ_OFFSET << " hours'));";  //<- works for sqlite
+
+  /*IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
+   * <- doesn't work for sqlite
+   * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
+   * on keyword.name but you don't want to trigger an error either so probably best to retain
+   * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*/
+
+  query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
+        <<  kw << "', " << 0 << ", true, datetime('now', '-" << TZ_OFFSET << " hours'), false);"; 
 
   if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -1289,14 +1303,6 @@ void get_note(int id) {
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
 
-  //int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
-
-  //if (rc != SQLITE_OK ) {
-  //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-  //  sqlite3_free(S.err_msg);
-  //  sqlite3_close(S.db);
-  //}
-
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
     return;
@@ -1308,14 +1314,6 @@ void get_note(int id) {
   int rowid = -1;
   // callback is *not* called if result (argv) is null
   if (!db_query(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg, __func__)) return;
-
-  //rc = sqlite3_exec(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg);
-
-  //if (rc != SQLITE_OK ) {
-  //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-  //  sqlite3_free(S.err_msg);
-  //  sqlite3_close(S.fts_db);
-  //}
 
   // split string into a vector of words
   std::vector<std::string> vec;
@@ -1330,16 +1328,8 @@ void get_note(int id) {
     if (!db_query(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg, __func__)) return;
 
     n++;
-
-    //rc = sqlite3_exec(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg);
-    //n++;
-
-    //if (rc != SQLITE_OK ) {
-    //  outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    //  sqlite3_free(S.err_msg);
-    //  sqlite3_close(S.fts_db);
-    //} 
   }
+
   int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
@@ -1459,6 +1449,52 @@ void search_db(std::string search_terms) {
 
   //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
   //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
+}
+
+void search_db2(std::string search_terms) {
+
+  O.rows.clear();
+  O.fc = O.fr = O.rowoff = 0;
+
+  std::stringstream fts_query;
+  /*
+   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
+   * may be retrieved from the fts db but they will not match when we look for them in the regular db
+  */
+  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
+            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
+
+  fts_ids.clear();
+  fts_titles.clear();
+  fts_counter = 0;
+
+  bool no_rows = true;
+  if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
+
+  if (no_rows) {
+    outlineShowMessage("No results were returned");
+    O.mode = NO_ROWS;
+    return;
+  }
+  std::stringstream query;
+
+  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
+  query << "SELECT * FROM task WHERE task.context_tid = 16 and task.id IN (";
+
+  for (int i = 0; i < fts_counter-1; i++) {
+    query << fts_ids[i] << ", ";
+  }
+  query << fts_ids[fts_counter-1]
+        << ")"
+        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << " ORDER BY ";
+
+  for (int i = 0; i < fts_counter-1; i++) {
+    query << "task.id = " << fts_ids[i] << " DESC, ";
+  }
+  query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+
+  get_items_by_id(query);
 }
 
 int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -2519,9 +2555,10 @@ int insert_keyword(orow& row) {
         << " " << row.star << ","
         << " False," //default for context and private for folder
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
-        << " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
+        //<< " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
+        << " " << 0 << ");"; //unproven belief that you don't have to have multiple tids if you insert multiple keywords
 
-  temporary_tid++;
+  //temporary_tid++;
 
   sqlite3 *db;
   char *err_msg = nullptr; //0
@@ -5270,7 +5307,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = O.last_mode;
               return;
 
-            case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error since no context given  
+            case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error if no context given  
             case C_open: //by context
               {
               std::string new_context;
@@ -5572,12 +5609,27 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
             case 'h':
             case C_help:
-              initial_file_row = 0;
-              O.last_mode = O.mode;
-              O.mode = FILE_DISPLAY;
-              outlineShowMessage("Displaying help file");
-              editorReadFile("listmanager_commands");
-              editorDisplayFile();
+              if (!pos) {             
+                /*This needs to be changed to show database text not ext file*/
+                initial_file_row = 0;
+                O.last_mode = O.mode;
+                O.mode = FILE_DISPLAY;
+                outlineShowMessage("Displaying help file");
+                editorReadFile("listmanager_commands");
+                editorDisplayFile();
+              } else {
+                //std::string help_topic = O.command_line.substr(pos+1);
+                search_terms = O.command_line.substr(pos+1);
+                O.context = "";
+                O.folder = "";
+                O.taskview = BY_SEARCH;
+                //O.mode = SEARCH; ////// it's in get_items_by_id
+                std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
+                command_history.push_back(O.command_line); 
+                search_db2(search_terms);
+                outlineShowMessage("Will look for help on %s", search_terms.c_str());
+                //O.mode = NORMAL;
+              }  
               return;
 
             case C_highlight:

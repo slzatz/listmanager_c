@@ -6,3 +6,5 @@ config*
 *.bac
 *.bak
 Makefile
+*.db
+test*

@@ -295,8 +295,9 @@ def synchronize(report_only=True):
         log += "\nFolders that were updated/created on Client that need to be updated/created on Server:\n"
     for cf in client_updated_folders:
 
-        # note for a new context/folder/keyword this cf/cc/ck.tid is the bogus one so should be high enough or ? negative
+        # note for a new context/folder/keyword this cf/cc/ck.tid is set = 0
         folder = remote_session.query(p.Folder).filter_by(id=cf.tid).first()
+
         # the below works great for new [folder/context/keyword] but not for updating [name/title]
         #folder = remote_session.query(p.Folder).filter_by(title=cf.title).first()
 
@@ -351,11 +352,11 @@ def synchronize(report_only=True):
         log += "\nKeywords that were updated/created on Client that need to be updated/created on Server:\n"
     for ck in client_updated_keywords:
 
-        # note for a new context/folder/keyword this cf/cc/ck.tid is the bogus one so should be high enough or ? negative
         # means you can only do one new one at a time since both get same bogus tid unless you increment it each time
+        # I think the above is wrong - at least for keywords, it doesn't matter if three new keywords get the same placeholder tid = 0
         keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
         # the below works great for new [folder/context/keyword] but not for updating [name/title]
-        keyword = remote_session.query(p.Keyword).filter_by(name=ck.name).first()
+        #keyword = remote_session.query(p.Keyword).filter_by(name=ck.name).first()
 
         if not keyword:
             action = "created"
@@ -502,7 +503,7 @@ def synchronize(report_only=True):
 
         log += f"{action} - id: {task.id}; star: {task.star}; priority: {task.priority}; completed: {task.completed}; title: {task.title[:32]}\n"
 
-        # ? could be an dekete query
+        # ? could be an delete query
         #remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.task_id = task.id).delete(synchronize_session=False)
         #if task.tag:
         for tk in task.taskkeywords:
@@ -510,6 +511,7 @@ def synchronize(report_only=True):
         remote_session.commit()
 
         for kw in ct.keywords:
+            # the theory is that this should always match but we do check below and log an error if no remote keyword names matches client kw
             keyword = remote_session.query(p.Keyword).filter_by(name=kw.name).first()
 
            # no longer makes sense to create keyword here since unconnected by tid to the client keyword

@@ -17,7 +17,7 @@ task_table = Table('task',metadata,
               # tid below, unique=True, nullable=False), #the toodledo id ...
               # unique=True, nullable=False), needs to be non-unique because
               # we get the tids on sync not in use because not using toodledo
-              Column('tid', Integer), 
+              #Column('tid', Integer),  # not needed but for some reason drop through psql just hangs
               Column('priority', Integer, default=1),
               Column('title',String(255)),
               Column('tag',String(64)),
@@ -58,7 +58,7 @@ task_table = Table('task',metadata,
 context_table = Table('context', metadata,
                  Column('id', Integer, primary_key=True),
                  #Column('tid', Integer, unique=True, nullable=False), #the toodledo id
-                 Column('tid', Integer), #the toodledo id - can be null till we pick one up - not needed if we stop synching with toodledo
+                 #Column('tid', Integer), #the toodledo id - can be null till we pick one up - not needed if we stop synching with toodledo
                  Column('title', String(32), unique=True, nullable=False), 
                  Column('default', Boolean, default=False),
                  Column('created', DateTime, default=datetime.datetime.now), 
@@ -72,7 +72,7 @@ context_table = Table('context', metadata,
 folder_table = Table('folder', metadata,
                  Column('id', Integer, primary_key=True),
                  #Column('tid', Integer, unique=True, nullable=False), #the toodledo id
-                 Column('tid', Integer), #the toodledo id - can be null till we pick one up - not needed if we stop synching with toodledo
+                 #Column('tid', Integer), #the toodledo id - can be null till we pick one up - not needed if we stop synching with toodledo
                  Column('title', String(32), nullable=False),#unique=True - toodledo can have same title
                  Column('private', Boolean, default=False),
                  Column('archived', Boolean, default=False),
