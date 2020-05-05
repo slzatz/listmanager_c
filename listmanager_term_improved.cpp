@@ -458,7 +458,7 @@ void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
 void map_context_titles(void);
 void map_folder_titles(void);
-void add_task_keyword(const std::string &, int);
+void add_task_keyword(std::string &, int);
 void delete_task_keywords(void);
 void display_item_info(int);
 void display_item_info_pg(int);
@@ -951,43 +951,55 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 
 
 //void add_task_keyword(const std::string &kw, int id) {
-void add_task_keyword(std::string &kw, int id) {
+void add_task_keyword(std::string &kws, int id) {
 
-  size_t pos = kw.find("'");
-  while(pos != std::string::npos)
-    {
-      kw.replace(pos, 1, "''");
-      pos = kw.find("'", pos + 2);
-    }
+  std::stringstream temp(kws);
+  std::string phrase;
+  std::vector<std::string> keyword_list;
+  while(getline(temp, phrase, ',')) {
+    keyword_list.push_back(phrase);
+  }    
 
-  std::stringstream query;
+  //    
+  //Then need for for (auto i:keyword_list) ; kw = *i
+  for (std::string kw : keyword_list) {
 
-  /*IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
-   * <- doesn't work for sqlite
-   * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
-   * on keyword.name but you don't want to trigger an error either so probably best to retain
-   * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*/
+    size_t pos = kw.find("'");
+    while(pos != std::string::npos)
+      {
+        kw.replace(pos, 1, "''");
+        pos = kw.find("'", pos + 2);
+      }
 
-  query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
-        <<  kw << "', " << 0 << ", true, datetime('now', '-" << TZ_OFFSET << " hours'), false);"; 
+    std::stringstream query;
 
-  if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+    /*IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
+     * <- doesn't work for sqlite
+     * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
+     * on keyword.name but you don't want to trigger an error either so probably best to retain
+     * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*/
 
-  std::stringstream query2;
-  query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
-  if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+    query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
+          <<  kw << "', " << 0 << ", true, datetime('now', '-" << TZ_OFFSET << " hours'), false);"; 
 
-  std::stringstream query3;
-  // updates task modified column so we know that something changed with the task
-  query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
-  if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+    if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  /**************fts virtual table update**********************/
+    std::stringstream query2;
+    query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+    if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  std::string s = get_task_keywords().first;
-  std::stringstream query4;
-  query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
-  if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+    std::stringstream query3;
+    // updates task modified column so we know that something changed with the task
+    query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
+    if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+    /**************fts virtual table update**********************/
+
+    std::string s = get_task_keywords().first;
+    std::stringstream query4;
+    query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
+    if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+  }
 }
 
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
