@@ -3405,7 +3405,7 @@ void editorDoRepeat(void) {
       cmd_map2[E.last_command](E.last_repeat);
       return;
 
-    case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG:
+    case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
       cmd_map3[E.last_command](E.last_repeat);
       return;
 
@@ -7028,7 +7028,7 @@ bool editorProcessKeypress(void) {
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
 
-        case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG:
+        case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
           editorCreateSnapshot();
           cmd_map3[command](E.repeat);
           break;
