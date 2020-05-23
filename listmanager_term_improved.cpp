@@ -38,7 +38,6 @@
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
 
-
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
@@ -3375,12 +3374,12 @@ void f_0(int repeat) {
 }
 
 void f_$(int repeat) {
-  int r = E.fr;
-  for (int n=0; n<repeat; n++) {
-    if (r < E.rows.size() - 1) {
-       editorMoveCursorEOL();
-       r++;
-    }
+  editorMoveCursorEOL();
+  for (int i=0; i<repeat-1; i++) {
+    if (E.fr < E.rows.size() - 1) {
+      E.fr++;
+      editorMoveCursorEOL();
+    } else break;  
   }
 }
 
@@ -3455,13 +3454,8 @@ void editorDelRow(int r) {
   }
 
   E.dirty++;
-  //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr, E.numrows, E.cx, E.row[fr].size); 
-}
-
-// only used by editorBackspace
-void editorRowAppendString(std::string& row, std::string& s) {
-  row.insert(row.end() - 1, s.begin(), s.end());
-  E.dirty++;
+  //editorSetMessage("Row deleted = %d; E.numrows after deletion = %d E.cx = %d E.row[fr].size = %d", fr,
+  //E.numrows, E.cx, E.row[fr].size); 
 }
 
 /*** editor operations ***/
@@ -3562,7 +3556,8 @@ void editorBackspace(void) {
     row.erase(row.begin() + E.fc - 1);
     E.fc--;
   } else if (row.size() > 1){
-    editorRowAppendString(E.rows.at(E.fr - 1), row); //only use of this function
+    E.rows.at(E.fr-1) = E.rows.at(E.fr-1) + row;
+    editorDelRow(E.fr); //05082020
     E.fr--;
     E.fc = E.rows.at(E.fr).size();
   } else {
