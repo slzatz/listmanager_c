@@ -2856,7 +2856,7 @@ void view_html(int id) {
   PyObject *pArgs, *pValue;
 
   Py_Initialize();
-  pName = PyUnicode_DecodeFSDefault("view_html"); //module
+  pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
   /* Error checking of pName left out */
 
   pModule = PyImport_Import(pName);

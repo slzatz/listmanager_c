@@ -1,9 +1,10 @@
 #!bin/python
 
 import sys
+import os
 from lmdb_s import *
 import tempfile
-from subprocess import call
+from subprocess import call, Popen
 from bs4 import BeautifulSoup #########
 
 meta_html = '''<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -33,7 +34,8 @@ def view_html(task_id):
 
     note = task.note if task.note else ''
 
-    with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
+    #with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
+    with tempfile.NamedTemporaryFile(suffix=".tmp", dir="/home/slzatz/listmanager_cpp/assets") as tf:
         #tf.write(note.encode("utf-8"))
         text = f"# {task.title} \n\n{note}"
         tf.write(text.encode('utf-8'))
@@ -60,8 +62,10 @@ def view_html(task_id):
     # not sure how to eliminate error message
     #call(['chromium', '--single-process', html_fn]) # default is -new-tab
     #call(['chromium', html_fn]) # default is -new-tab
-    call(['qutebrowser', html_fn]) # default is -new-tab
-
+    #call(['qutebrowser', html_fn]) # default is -new-tab
+    html_fn = os.path.split(html_fn)[1]
+    #call(['./ultralight', html_fn]) #call doesn't work because it doesn't return
+    Popen(['./ultralight', html_fn]) 
 
 if __name__ == "__main__":
     view_html(4809)
