@@ -38,6 +38,122 @@
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
 
+#include "Ultralight/Ultralight.h"
+#include "maddy/parser.h"
+#include <memory>
+//#include <cstdlib>
+
+using namespace ultralight;
+
+//std::string generate_html(void) {
+//  //std::stringstream markdownInput("# hello\n\n the rain in **spain** falls mainly on the plain");
+//
+//  orow& row = O.rows.at(O.fr);
+//  //std::ofstream myfile;
+//  //myfile.open(filename); //filename
+//  //myfile << editorRowsToString();
+//  std::string note = editorRowsToString();
+//  std::stringstream text;
+//  text = row.title << "\n" << note;
+//  
+//
+//  // config is optional
+//  std::shared_ptr<maddy::ParserConfig> config = std::make_shared<maddy::ParserConfig>();
+//  config->isEmphasizedParserEnabled = true; // default
+//  config->isHTMLWrappedInParagraph = true; // default
+//
+//  std::shared_ptr<maddy::Parser> parser = std::make_shared<maddy::Parser>(config);
+//  //std::string htmlOutput = parser->Parse(markdownInput);
+//  std::string htmlOutput = parser->Parse(text);
+//  return htmlOutput;
+//}
+//
+
+void outlineShowMessage(const char *fmt, ...);
+
+std::string generate_html(void);
+
+class MyApp : public LoadListener {
+  RefPtr<Renderer> renderer_;
+  RefPtr<View> view_;
+  bool done_ = false;
+public:
+  MyApp() {
+    Config config;
+    config.device_scale_hint = 2.0;
+    config.font_family_standard = "Arial";
+
+    Platform::instance().set_config(config);
+
+    renderer_ = Renderer::Create();
+
+    view_ = renderer_->CreateView(400, 400, false);
+
+    view_->set_load_listener(this);
+
+    //view_->LoadHTML(htmlString());
+    view_->LoadHTML(generate_html().c_str());
+  }
+
+  virtual ~MyApp() {
+    view_ = nullptr;
+    renderer_ = nullptr;
+  }
+
+  void Run() {
+    //std::cout << "Starting Run(), waiting for page to load..." << std::endl;
+    while (!done_)
+      renderer_->Update();
+
+   // std::cout << "Finished." << std::endl;
+  }
+
+  virtual void OnFinishLoading(ultralight::View* caller) {
+    //std::cout << "Our page has loaded! Rendering it now..." << std::endl;
+
+    renderer_->Render();
+    
+    //view_->bitmap()->WritePNG("result.png");
+    auto bitmap = view_->bitmap();
+    auto format_ = bitmap->format();
+    auto size = bitmap->size();
+    auto zz = typeid(bitmap).name();
+    auto pixels = bitmap->LockPixels();
+    auto zzz = typeid(pixels).name();
+    //<ESC>_Gs=10,v=2,t=s,o=z;<encoded some-shared-memory-name><ESC>>
+
+    //outlineShowMessage("bitmap type: %s; pixels type: %s; bitmap format: %d; bitmap size: %d; row_bytes: %d; width: %d height %d", zz, zzz, format_, size, bitmap->row_bytes(), bitmap->width(), bitmap->height());
+    outlineShowMessage("bitmap format: %d; bitmap size: %d; row_bytes: %d", format_, size, bitmap->row_bytes());
+
+    //std::cout << "Saved a render of our page to result.png." << std::endl;
+  //std::ifstream infile ("test.txt",std::ifstream::binary);
+  //std::ofstream outfile ("new.txt",std::ofstream::binary);
+
+  // get size of file
+  //infile.seekg (0,infile.end);
+  //long size = infile.tellg();
+  //infile.seekg (0);
+
+  // allocate memory for file content
+  //char* buffer = new char[size];
+
+  // read content of infile
+  //infile.read (buffer,size);
+  //infile.read (buffer,size);
+
+  // write to outfile
+  //outfile.write (pixels,size);
+
+  // release dynamically-allocated memory
+  //delete[] buffer;
+
+  //outfile.close();
+  //infile.close();
+  //return 0;
+    done_ = true;
+  }
+};
+
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
@@ -66,6 +182,7 @@ static std::set<int> unique_ids; //used in unique_data_callback
 static std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
 static size_t cmd_hx_idx = 0;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
+static std::map<int, std::string> html_files;
 
 const std::string COLOR_1 = "\x1b[0;31m";
 const std::string COLOR_2 = "\x1b[0;32m";
@@ -74,6 +191,7 @@ const std::string COLOR_4 = "\x1b[0;34m";
 const std::string COLOR_5 = "\x1b[0;35m";
 const std::string COLOR_6 = "\x1b[0;36m";
 const std::string COLOR_7 = "\x1b[0;37m";
+static int SMARTINDENT = 4; //should be in config
 static int temporary_tid = 99999;
 
 enum outlineKey {
@@ -163,6 +281,7 @@ enum Command {
 
   C_sort,
 
+  C_clear,
   C_find,
   C_search,
   C_fts,
@@ -214,7 +333,9 @@ enum Command {
   C_merge,
 
   C_vim,
-  C_valgrind
+  C_valgrind,
+
+  C_pdf
 };
 
 static const std::unordered_map<std::string, int> lookuptablemap {
@@ -302,7 +423,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"vim", C_vim},
   {"merge", C_merge},
   {"syntax", C_syntax},
-  {"valgrind", C_valgrind}
+  {"clear", C_clear},
+  {"pdf", C_pdf}
 };
 
 struct sqlite_db {
@@ -401,7 +523,7 @@ void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 
 //Outline Prototypes
-void outlineShowMessage(const char *fmt, ...);
+//void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 //void getcharundercursor();
 void outlineDrawStatusBar(void);
@@ -576,6 +698,8 @@ inline void f_e(int);
 inline void f_0(int);
 inline void f_$(int);
 
+void generate_pdf(void);
+
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
 //static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
@@ -643,6 +767,102 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["dbname"], c.dbname);
   inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
   inipp::extract(ini.sections["ini"]["port"], c.port);
+}
+
+std::string generate_html(void) {
+  // generates for currently displayed note
+  // uses third party maddy c++ header
+  std::string meta = "</!DOCTYPE html public \"-//W3C//DTD HTML 4.0 Transitional //EN\">"
+  "<html>"
+  "<head>"
+  "<title></title>"
+  "<meta content=\"width=device-width, initial-scale=1\" name=\"viewport\"/>"
+  "<link href=\"/home/slzatz/Documents/github-markdown.css\" rel=\"stylesheet\"/>"
+  "<style>"
+  "    .markdown-body {"
+  "        box-sizing: border-box;"
+  "        min-width: 200px;"
+  "        max-width: 980px;"
+  "        margin: 0 auto;"
+  "        padding: 45px;"
+  "    }"
+  "    @media (max-width: 767px) {"
+  "        .markdown-body {"
+  "            padding: 15px;"
+  "        }"
+  "}"
+  "</style>"
+  "</head>"
+  "<article class=\"markdown-body\">";
+
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+
+  // config is optional
+  std::shared_ptr<maddy::ParserConfig> config = std::make_shared<maddy::ParserConfig>();
+  config->isEmphasizedParserEnabled = true; // default
+  config->isHTMLWrappedInParagraph = true; // default
+
+  std::shared_ptr<maddy::Parser> parser = std::make_shared<maddy::Parser>(config);
+  std::string htmlOutput = parser->Parse(text);
+  return meta + htmlOutput + "</article><html>";
+}
+
+/*
+class MyApp : public LoadListener {
+  RefPtr<Renderer> renderer_;
+  RefPtr<View> view_;
+  bool done_ = false;
+public:
+  MyApp() {
+    Config config;
+    config.device_scale_hint = 2.0;
+    config.font_family_standard = "Arial";
+
+    Platform::instance().set_config(config);
+
+    renderer_ = Renderer::Create();
+
+    view_ = renderer_->CreateView(400, 400, false);
+
+    view_->set_load_listener(this);
+
+    //view_->LoadHTML(htmlString());
+    view_->LoadHTML(generate_html().c_str());
+  }
+
+  virtual ~MyApp() {
+    view_ = nullptr;
+    renderer_ = nullptr;
+  }
+
+  void Run() {
+    //std::cout << "Starting Run(), waiting for page to load..." << std::endl;
+    while (!done_)
+      renderer_->Update();
+
+   // std::cout << "Finished." << std::endl;
+  }
+
+  virtual void OnFinishLoading(ultralight::View* caller) {
+    //std::cout << "Our page has loaded! Rendering it now..." << std::endl;
+
+    renderer_->Render();
+    
+    view_->bitmap()->WritePNG("result.png");
+
+    //std::cout << "Saved a render of our page to result.png." << std::endl;
+
+    done_ = true;
+  }
+};
+*/
+
+void generate_pdf(void) {
+  MyApp app;
+  app.Run();
 }
 
 //pg ini stuff
@@ -2851,6 +3071,40 @@ void update_rows(void) {
 }
 
 void view_html(int id) {
+  //if (!E.rows.empty()) return;
+  //
+  //std::string html = generate_html() 
+  bool existing_file = false;
+  std::string fn;
+  auto it = html_files.find(id);
+  if (it != html_files.end()) {
+      fn = it->second;
+      existing_file = true;
+  } else {
+    fn = std::tmpnam(nullptr);
+    html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
+  }  
+
+  std::ofstream f;
+  /* need to change /tmp/filecjdjdj -> tmp/file....html*/
+  fn = fn.erase(0,1);
+  fn = fn + ".html";    
+  f.open("assets/" + fn);
+  f << generate_html();
+  f.close();
+
+  if (!existing_file) {
+    std::string system_call = "./ultralight " + fn;
+
+    //std::system(system_call.c_str());  
+    FILE* id_ = popen (system_call.c_str(), "r");
+  outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
+  } else outlineShowMessage("updated file");
+}
+
+
+
+void view_html_(int id) {
 
   PyObject *pName, *pModule, *pFunc;
   PyObject *pArgs, *pValue;
@@ -5691,6 +5945,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               outlineShowMessage("Spellcheck");
               return;
 
+            case C_pdf:
+              generate_pdf();
+              return;
+
             default: // default for commandfromstring
 
               //\x1b[41m => red background
@@ -6911,7 +7169,7 @@ bool editorProcessKeypress(void) {
     
         // this should be a command line command
         case CTRL_KEY('z'):
-          E.smartindent = (E.smartindent == 1) ? 0 : 1;
+          E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
           editorSetMessage("E.smartindent = %d", E.smartindent); 
           return false;
     
@@ -7180,7 +7438,7 @@ bool editorProcessKeypress(void) {
 
         case CTRL_KEY('z'):
 
-          E.smartindent = (E.smartindent == 4) ? 0 : 4;
+          E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
           editorSetMessage("E.smartindent = %d", E.smartindent);
           return false;
     
@@ -7309,8 +7567,17 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editorSetMessage("");
+              if (html_files.count(O.rows.at(O.fr).id)) view_html(O.rows.at(O.fr).id);
               return false;
   
+            case C_clear:
+              html_files.clear();
+              E.mode = NORMAL;
+              E.command[0] = '\0';
+              E.command_line.clear();
+              editorSetMessage("");
+              return false;
+
             case 'x':
               update_note();
               E.mode = NORMAL;
