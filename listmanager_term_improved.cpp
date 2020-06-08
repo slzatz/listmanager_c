@@ -38,125 +38,18 @@
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
 
-#include "Ultralight/Ultralight.h"
+//#include "Ultralight/Ultralight.h"
 #include "maddy/parser.h"
 #include <memory>
 //#include <cstdlib>
 
-using namespace ultralight;
-
-//std::string generate_html(void) {
-//  //std::stringstream markdownInput("# hello\n\n the rain in **spain** falls mainly on the plain");
-//
-//  orow& row = O.rows.at(O.fr);
-//  //std::ofstream myfile;
-//  //myfile.open(filename); //filename
-//  //myfile << editorRowsToString();
-//  std::string note = editorRowsToString();
-//  std::stringstream text;
-//  text = row.title << "\n" << note;
-//  
-//
-//  // config is optional
-//  std::shared_ptr<maddy::ParserConfig> config = std::make_shared<maddy::ParserConfig>();
-//  config->isEmphasizedParserEnabled = true; // default
-//  config->isHTMLWrappedInParagraph = true; // default
-//
-//  std::shared_ptr<maddy::Parser> parser = std::make_shared<maddy::Parser>(config);
-//  //std::string htmlOutput = parser->Parse(markdownInput);
-//  std::string htmlOutput = parser->Parse(text);
-//  return htmlOutput;
-//}
-//
-
-void outlineShowMessage(const char *fmt, ...);
-
-std::string generate_html(void);
-
-class MyApp : public LoadListener {
-  RefPtr<Renderer> renderer_;
-  RefPtr<View> view_;
-  bool done_ = false;
-public:
-  MyApp() {
-    Config config;
-    config.device_scale_hint = 2.0;
-    config.font_family_standard = "Arial";
-
-    Platform::instance().set_config(config);
-
-    renderer_ = Renderer::Create();
-
-    view_ = renderer_->CreateView(400, 400, false);
-
-    view_->set_load_listener(this);
-
-    //view_->LoadHTML(htmlString());
-    view_->LoadHTML(generate_html().c_str());
-  }
-
-  virtual ~MyApp() {
-    view_ = nullptr;
-    renderer_ = nullptr;
-  }
-
-  void Run() {
-    //std::cout << "Starting Run(), waiting for page to load..." << std::endl;
-    while (!done_)
-      renderer_->Update();
-
-   // std::cout << "Finished." << std::endl;
-  }
-
-  virtual void OnFinishLoading(ultralight::View* caller) {
-    //std::cout << "Our page has loaded! Rendering it now..." << std::endl;
-
-    renderer_->Render();
-    
-    //view_->bitmap()->WritePNG("result.png");
-    auto bitmap = view_->bitmap();
-    auto format_ = bitmap->format();
-    auto size = bitmap->size();
-    auto zz = typeid(bitmap).name();
-    auto pixels = bitmap->LockPixels();
-    auto zzz = typeid(pixels).name();
-    //<ESC>_Gs=10,v=2,t=s,o=z;<encoded some-shared-memory-name><ESC>>
-
-    //outlineShowMessage("bitmap type: %s; pixels type: %s; bitmap format: %d; bitmap size: %d; row_bytes: %d; width: %d height %d", zz, zzz, format_, size, bitmap->row_bytes(), bitmap->width(), bitmap->height());
-    outlineShowMessage("bitmap format: %d; bitmap size: %d; row_bytes: %d", format_, size, bitmap->row_bytes());
-
-    //std::cout << "Saved a render of our page to result.png." << std::endl;
-  //std::ifstream infile ("test.txt",std::ifstream::binary);
-  //std::ofstream outfile ("new.txt",std::ofstream::binary);
-
-  // get size of file
-  //infile.seekg (0,infile.end);
-  //long size = infile.tellg();
-  //infile.seekg (0);
-
-  // allocate memory for file content
-  //char* buffer = new char[size];
-
-  // read content of infile
-  //infile.read (buffer,size);
-  //infile.read (buffer,size);
-
-  // write to outfile
-  //outfile.write (pixels,size);
-
-  // release dynamically-allocated memory
-  //delete[] buffer;
-
-  //outfile.close();
-  //infile.close();
-  //return 0;
-    done_ = true;
-  }
-};
-
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
+static const std::string CURRENT_NOTE_FILE = "current.html";
+static const std::string META_FILE = "assets/meta.html";
+static  std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
+static std::string meta;
 static int which_db;
 static int EDITOR_LEFT_MARGIN;
 static struct termios orig_termios;
@@ -523,7 +416,7 @@ void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 
 //Outline Prototypes
-//void outlineShowMessage(const char *fmt, ...);
+void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 //void getcharundercursor();
 void outlineDrawStatusBar(void);
@@ -671,9 +564,15 @@ int keyfromstringcpp(const std::string&);
 int commandfromstringcpp(const std::string&, std::size_t&);
 
 std::string editorRowsToString(void);
+std::string generate_html(void);
+void view_html(int);
+void load_meta(void);
+void update_html_file(void);
 void editorSaveNoteToFile(const std::string &);
 void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
+
+void update_solr(void);
 
 /* experimenting with map of functions*/
 inline void f_i(int);
@@ -698,7 +597,7 @@ inline void f_e(int);
 inline void f_0(int);
 inline void f_$(int);
 
-void generate_pdf(void);
+//void generate_pdf(void);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
@@ -769,31 +668,24 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["port"], c.port);
 }
 
+void load_meta(void) {
+  std::ifstream f(META_FILE);
+  std::string line;
+  static std::stringstream text;
+
+  //text.str(std::string());
+  //text.clear();
+
+  while (getline(f, line)) {
+    text << line << '\n';
+  }
+  meta = text.str();
+  f.close();
+}
+
 std::string generate_html(void) {
-  // generates for currently displayed note
-  // uses third party maddy c++ header
-  std::string meta = "</!DOCTYPE html public \"-//W3C//DTD HTML 4.0 Transitional //EN\">"
-  "<html>"
-  "<head>"
-  "<title></title>"
-  "<meta content=\"width=device-width, initial-scale=1\" name=\"viewport\"/>"
-  "<link href=\"/home/slzatz/Documents/github-markdown.css\" rel=\"stylesheet\"/>"
-  "<style>"
-  "    .markdown-body {"
-  "        box-sizing: border-box;"
-  "        min-width: 200px;"
-  "        max-width: 980px;"
-  "        margin: 0 auto;"
-  "        padding: 45px;"
-  "    }"
-  "    @media (max-width: 767px) {"
-  "        .markdown-body {"
-  "            padding: 15px;"
-  "        }"
-  "}"
-  "</style>"
-  "</head>"
-  "<article class=\"markdown-body\">";
+  // generates markdown-derived html for currently displayed note
+  // uses third party maddy c++ header which is a problem since doesn't nearly meet standard
 
   std::string note = editorRowsToString();
   std::stringstream text;
@@ -807,62 +699,8 @@ std::string generate_html(void) {
 
   std::shared_ptr<maddy::Parser> parser = std::make_shared<maddy::Parser>(config);
   std::string htmlOutput = parser->Parse(text);
-  return meta + htmlOutput + "</article><html>";
-}
-
-/*
-class MyApp : public LoadListener {
-  RefPtr<Renderer> renderer_;
-  RefPtr<View> view_;
-  bool done_ = false;
-public:
-  MyApp() {
-    Config config;
-    config.device_scale_hint = 2.0;
-    config.font_family_standard = "Arial";
-
-    Platform::instance().set_config(config);
-
-    renderer_ = Renderer::Create();
-
-    view_ = renderer_->CreateView(400, 400, false);
-
-    view_->set_load_listener(this);
-
-    //view_->LoadHTML(htmlString());
-    view_->LoadHTML(generate_html().c_str());
-  }
-
-  virtual ~MyApp() {
-    view_ = nullptr;
-    renderer_ = nullptr;
-  }
-
-  void Run() {
-    //std::cout << "Starting Run(), waiting for page to load..." << std::endl;
-    while (!done_)
-      renderer_->Update();
-
-   // std::cout << "Finished." << std::endl;
-  }
-
-  virtual void OnFinishLoading(ultralight::View* caller) {
-    //std::cout << "Our page has loaded! Rendering it now..." << std::endl;
-
-    renderer_->Render();
-    
-    view_->bitmap()->WritePNG("result.png");
-
-    //std::cout << "Saved a render of our page to result.png." << std::endl;
-
-    done_ = true;
-  }
-};
-*/
-
-void generate_pdf(void) {
-  MyApp app;
-  app.Run();
+  // meta variable loaded above
+  return meta + htmlOutput + "</article></body><html>";
 }
 
 //pg ini stuff
@@ -1536,6 +1374,7 @@ void get_note(int id) {
 
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
+    update_html_file();
     return;
   }
 
@@ -1565,6 +1404,7 @@ void get_note(int id) {
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
+  update_html_file();
 }
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
@@ -3094,7 +2934,8 @@ void view_html(int id) {
   f.close();
 
   if (!existing_file) {
-    std::string system_call = "./ultralight " + fn;
+    //std::string system_call = "./Browser " + fn;
+    std::string system_call = "./lm_browser " + fn;
 
     //std::system(system_call.c_str());  
     FILE* id_ = popen (system_call.c_str(), "r");
@@ -3102,59 +2943,11 @@ void view_html(int id) {
   } else outlineShowMessage("updated file");
 }
 
-
-
-void view_html_(int id) {
-
-  PyObject *pName, *pModule, *pFunc;
-  PyObject *pArgs, *pValue;
-
-  Py_Initialize();
-  pName = PyUnicode_DecodeFSDefault("view_html_sqlite"); //module
-  /* Error checking of pName left out */
-
-  pModule = PyImport_Import(pName);
-  Py_DECREF(pName);
-
-  if (pModule != NULL) {
-      pFunc = PyObject_GetAttrString(pModule, "view_html"); //function
-      /* pFunc is a new reference */
-
-      if (pFunc && PyCallable_Check(pFunc)) {
-          pArgs = PyTuple_New(1); // PyTuple_New(x) creates a tuple with x elements
-          pValue = Py_BuildValue("i", id); // **************
-          PyTuple_SetItem(pArgs, 0, pValue); // ***********
-          pValue = PyObject_CallObject(pFunc, pArgs);
-              if (!pValue) {
-                  Py_DECREF(pArgs);
-                  Py_DECREF(pModule);
-                  outlineShowMessage("Problem converting c variable for use in calling python function");
-          }
-          Py_DECREF(pArgs);
-          if (pValue != NULL) {
-            outlineShowMessage("Successfully rendered the note in html");
-          }
-          else {
-              Py_DECREF(pFunc);
-              Py_DECREF(pModule);
-              PyErr_Print();
-              outlineShowMessage("Was not able to render the note in html!");
-          }
-      }
-      else {
-          if (PyErr_Occurred()) PyErr_Print();
-          outlineShowMessage("Was not able to find the function: view_html!");
-      }
-      Py_XDECREF(pFunc);
-      Py_DECREF(pModule);
-  }
-  else {
-      PyErr_Print();
-      outlineShowMessage("Was not able to find the module: view_html!");
-  }
-
-  //if (Py_FinalizeEx() < 0) {
-  //}
+void update_html_file(void) {
+  std::ofstream f;
+  f.open("assets/" + CURRENT_NOTE_FILE);
+  f << generate_html();
+  f.close();
 }
 
 void update_solr(void) {
@@ -4321,21 +4114,23 @@ void outlineDrawStatusBar(void) {
   ab.append(" ", 1);
 
   char editor_status[200];
-  int editor_len;
+  int editor_len = 0;
 
-  if (!E.rows.empty()){
-    int line = editorGetLineInRowWW(E.fr, E.fc);
-    int line_char_count = editorGetLineCharCountWW(E.fr, line);
-    int lines = editorGetLinesInRowWW(E.fr);
+  if (DEBUG) {
+    if (!E.rows.empty()){
+      int line = editorGetLineInRowWW(E.fr, E.fc);
+      int line_char_count = editorGetLineCharCountWW(E.fr, line);
+      int lines = editorGetLinesInRowWW(E.fr);
 
-    editor_len = snprintf(editor_status,
-                   sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
-                                   "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                   E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
-  } else {
-    editor_len =  snprintf(editor_status, sizeof(editor_status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
-                                      E.cx, E.cy, E.rows.size(), E.line_offset);
-  }
+      editor_len = snprintf(editor_status,
+                     sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
+                                     "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
+                                     E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
+    } else {
+      editor_len =  snprintf(editor_status, sizeof(editor_status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
+                                        E.cx, E.cy, E.rows.size(), E.line_offset);
+    }
+  }  
 
   ab.append(editor_status, editor_len);
 
@@ -5946,7 +5741,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               return;
 
             case C_pdf:
-              generate_pdf();
+              //generate_pdf();
               return;
 
             default: // default for commandfromstring
@@ -7566,8 +7361,9 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              editorSetMessage("");
               if (html_files.count(O.rows.at(O.fr).id)) view_html(O.rows.at(O.fr).id);
+              update_html_file();
+              editorSetMessage("");
               return false;
   
             case C_clear:
@@ -7584,6 +7380,7 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editor_mode = false;
+              update_html_file();
               editorSetMessage("");
               return false;
   
@@ -8728,6 +8525,7 @@ int main(int argc, char** argv) {
   //if (argc > 1 && argv[1][0] == 's') {
   db_open();
   get_conn(); //pg
+  load_meta(); 
 
   which_db = SQLITE;
 
@@ -8759,6 +8557,10 @@ int main(int argc, char** argv) {
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d      orow size: %d int: %d char*: %d bool: %d", screenlines, screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); 
   return_cursor();
+
+  //std::string system_call = "./Browser " + CURRENT_NOTE_FILE;
+  //std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
+  FILE* id_ = popen (system_call.c_str(), "r");
 
   while (1) {
 
