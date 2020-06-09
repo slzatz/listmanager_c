@@ -38,12 +38,11 @@ add_executable(${PROJECT_NAME} listmanager_term_improved.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/ultralight_sdk/include)
-target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/maddy/include)
+#target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/maddy/include)
 # add_executable has to come before target_link_libraries
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a ${PROJECT_SOURCE_DIR}/ultralight_sdk/bin/libUltralight.so ${PROJECT_SOURCE_DIR}/ultralight_sdk/bin/libUltralightCore.so)
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown) 
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)

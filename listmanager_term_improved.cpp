@@ -19,9 +19,10 @@
 #include <csignal>
 #include <termios.h>
 #include <libpq-fe.h>
+#include <sqlite3.h>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
 #include "process.h" // https://github.com/skystrife/procxx
-#include <sqlite3.h>
+//#include "mkdio.hpp" // https://gist.github.com/Orc/97b5711dd8c8a3b371928db756eba6e5
 
 #include <string>
 #include <string_view> 
@@ -38,11 +39,13 @@
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
 
-//#include "Ultralight/Ultralight.h"
-#include "maddy/parser.h"
+//#include "maddy/parser.h"
 #include <memory>
 //#include <cstdlib>
-
+extern "C" {
+//#include <stdio.h>  
+#include <mkdio.h>
+}
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 static const std::string DB_INI = "db.ini";
@@ -565,6 +568,7 @@ int commandfromstringcpp(const std::string&, std::size_t&);
 
 std::string editorRowsToString(void);
 std::string generate_html(void);
+std::string generate_html2(void);
 void view_html(int);
 void load_meta(void);
 void update_html_file(void);
@@ -683,9 +687,11 @@ void load_meta(void) {
   f.close();
 }
 
-std::string generate_html(void) {
+/*
+std::string generate_html2(void) {
   // generates markdown-derived html for currently displayed note
   // uses third party maddy c++ header which is a problem since doesn't nearly meet standard
+  // maddy turned out to be way too far from standard markdown
 
   std::string note = editorRowsToString();
   std::stringstream text;
@@ -701,6 +707,43 @@ std::string generate_html(void) {
   std::string htmlOutput = parser->Parse(text);
   // meta variable loaded above
   return meta + htmlOutput + "</article></body><html>";
+}
+*/
+
+std::string generate_html(void) { //this works and currently used by ^ triggering view_html
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+  std::stringstream htmlOutput;
+  std::string line;
+  procxx::process cat("cat");
+  procxx::process markdown("markdown"); //this is discount markdown
+  (cat | markdown).exec();
+  cat << text.str();
+  cat.close(procxx::pipe_t::write_end());
+  //highlight.exec();
+  while(getline(markdown.output(), line)) { htmlOutput << line << '\n';}
+  return meta + htmlOutput.str() + "</article></body><html>";
+}
+
+void update_html_file(void) {
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_compile(blob, 0); //did something
+
+  FILE *fptr;
+  fptr = fopen("assets/current.html", "w");
+  fprintf(fptr, meta.c_str());
+  //fprintf(fptr, "<p>Norm</p>"); // was just confirming where the html came from
+  mkd_generatehtml(blob, fptr);
+  fprintf(fptr, "</article></body><html>");
+  fclose(fptr);
+  mkd_cleanup(blob);
 }
 
 //pg ini stuff
@@ -2911,9 +2954,6 @@ void update_rows(void) {
 }
 
 void view_html(int id) {
-  //if (!E.rows.empty()) return;
-  //
-  //std::string html = generate_html() 
   bool existing_file = false;
   std::string fn;
   auto it = html_files.find(id);
@@ -2934,21 +2974,21 @@ void view_html(int id) {
   f.close();
 
   if (!existing_file) {
-    //std::string system_call = "./Browser " + fn;
     std::string system_call = "./lm_browser " + fn;
-
-    //std::system(system_call.c_str());  
-    FILE* id_ = popen (system_call.c_str(), "r");
-  outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
+    popen (system_call.c_str(), "r"); // returns FILE* id
+    outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
   } else outlineShowMessage("updated file");
 }
 
+/* this was the function that used the procxx-based markdown in generate_html()
+ * generate_html is still being used for view_html ^ but that should probably change
 void update_html_file(void) {
   std::ofstream f;
   f.open("assets/" + CURRENT_NOTE_FILE);
   f << generate_html();
   f.close();
 }
+*/
 
 void update_solr(void) {
 
@@ -8560,7 +8600,7 @@ int main(int argc, char** argv) {
 
   //std::string system_call = "./Browser " + CURRENT_NOTE_FILE;
   //std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
-  FILE* id_ = popen (system_call.c_str(), "r");
+  popen (system_call.c_str(), "r"); //returns FILE* id
 
   while (1) {
 
