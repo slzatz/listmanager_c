@@ -89,6 +89,8 @@ const std::string COLOR_6 = "\x1b[0;36m";
 const std::string COLOR_7 = "\x1b[0;37m";
 static int SMARTINDENT = 4; //should be in config
 static int temporary_tid = 99999;
+static int link_id = 0;
+static char link_text[20];
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -726,6 +728,14 @@ std::string generate_html(void) { //this works and currently used by ^ triggerin
   while(getline(markdown.output(), line)) { htmlOutput << line << '\n';}
   return meta + htmlOutput.str() + "</article></body><html>";
 }
+//typedef char * (*mkd_callback_t)(const char*, const int, void*);
+char * (url_callback)(const char *x, const int y, void *z) {
+  link_id++;
+  sprintf(link_text,"id=\"%d\"", link_id);
+
+  //return "id=\"4\"";
+  return link_text;
+}  
 
 void update_html_file(void) {
   std::string note = editorRowsToString();
@@ -734,6 +744,7 @@ void update_html_file(void) {
   text << "# " << title << "\n\n" << note;
   //MKIOT blob(const char *text, int size, mkd_flag_t flags)
   MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
   mkd_compile(blob, 0); //did something
 
   FILE *fptr;
@@ -743,7 +754,11 @@ void update_html_file(void) {
   mkd_generatehtml(blob, fptr);
   fprintf(fptr, "</article></body><html>");
   fclose(fptr);
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
   mkd_cleanup(blob);
+  link_id = 0;
 }
 
 //pg ini stuff
