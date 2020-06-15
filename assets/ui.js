@@ -25,3 +25,39 @@ function updateLoading(is_loading) {
 function updateURL(url) {
 	document.getElementById('address').value = url;
 }
+
+function key_response(e) {
+  var key = e.which;
+  switch (key) {
+    case 72:
+      OnBack(e, null);
+      break;
+    case 76:
+      OnForward(e, null);
+      break;
+    case 49:
+      OnClickURL_1(e, null);
+      break;
+    case 50:
+      OnClickURL_2(e, null);
+      break;
+    case 51:
+      OnClickURL_3(e, null);
+      break;
+    case 81:
+      OnQuit(e, null);
+      break;
+    case 37:
+      OnScrollLeft(e, null);
+      break;
+    case 38:
+      OnScrollUp(e, null);
+      break;
+    case 39:
+      OnScrollRight(e, null);
+      break;
+    case 40:
+      OnScrollDown(e, null);
+      break;
+  }    
+}

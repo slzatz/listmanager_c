@@ -40,27 +40,7 @@
 	<script>
 
 	  function bindCallbacks() {
-      //document.addEventListener('keydown', event => OnBack()) //this works
-
-      document.addEventListener('keydown', function(event) { if(event.which == '72'){ OnBack(event, null);} else if(event.which == '76') { OnForward(event, null) } else if(event.which == '49') { OnClickURL(event, null); } else if (event.which == '38') { OnScrollUp(event, null); } else if(event.which == '40') { OnScrollDown(event, null) } else if(event.which == '81') { OnQuit(event, null);}}); //this works
-
-/*      
-document.addEventListener('keydown', function(event) { var key = event.which;
-       switch (key) {
-         case '65':
-           OnBack(event, null);
-           break;
-         case '49':
-           OnClickURL(event, null);
-           break;
-         case '81':
-           OnQuit(event, null);
-       }    
-     }
-  );
-*/
-
-      //document.addEventListener('keydown', function(event) { if(event.which == '65'){ OnBack(event, null)} }); //works
+      document.addEventListener('keydown', key_response, false) 
 			document.querySelector('#back').addEventListener('click', event => OnBack())
 			document.querySelector('#forward').addEventListener('click', event => OnForward())
 			document.querySelector('#refresh').addEventListener('click', event => OnRefresh())
