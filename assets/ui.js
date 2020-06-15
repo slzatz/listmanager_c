@@ -36,13 +36,16 @@ function key_response(e) {
       OnForward(e, null);
       break;
     case 49:
-      OnClickURL_1(e, null);
+      OnClickURL(key);
       break;
     case 50:
-      OnClickURL_2(e, null);
+      OnClickURL(key);
       break;
     case 51:
-      OnClickURL_3(e, null);
+      OnClickURL(key);
+      break;
+    case 52:
+      OnClickURL(key);
       break;
     case 81:
       OnQuit(e, null);
