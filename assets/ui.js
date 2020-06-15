@@ -28,6 +28,7 @@ function updateURL(url) {
 
 function key_response(e) {
   var key = e.which;
+  // need first check if key < 58 then just do OnClickURL(key) and return
   switch (key) {
     case 72:
       OnBack(e, null);
@@ -61,6 +62,9 @@ function key_response(e) {
       break;
     case 40:
       OnScrollDown(e, null);
+      break;
+    case 83:
+      OnNumberLinks(e, null);
       break;
   }    
 }
