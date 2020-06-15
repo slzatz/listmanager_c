@@ -29,42 +29,31 @@ function updateURL(url) {
 function key_response(e) {
   var key = e.which;
   // need first check if key < 58 then just do OnClickURL(key) and return
+  if (key > 48 && key < 58) {OnClickURL(key); return;}
   switch (key) {
-    case 72:
-      OnBack(e, null);
+    case 72: //H
+      OnBack();
       break;
-    case 76:
-      OnForward(e, null);
+    case 76: //L
+      OnForward();
       break;
-    case 49:
-      OnClickURL(key);
+    case 81: //q
+      OnQuit();
       break;
-    case 50:
-      OnClickURL(key);
+    case 37: //left arrow
+      OnScrollLeft();
       break;
-    case 51:
-      OnClickURL(key);
+    case 38: //up arrow
+      OnScrollUp();
       break;
-    case 52:
-      OnClickURL(key);
+    case 39: //right arrow
+      OnScrollRight();
       break;
-    case 81:
-      OnQuit(e, null);
+    case 40: //down arrow
+      OnScrollDown();
       break;
-    case 37:
-      OnScrollLeft(e, null);
-      break;
-    case 38:
-      OnScrollUp(e, null);
-      break;
-    case 39:
-      OnScrollRight(e, null);
-      break;
-    case 40:
-      OnScrollDown(e, null);
-      break;
-    case 83:
-      OnNumberLinks(e, null);
+    case 83: //s[how]
+      OnNumberLinks();
       break;
   }    
 }
