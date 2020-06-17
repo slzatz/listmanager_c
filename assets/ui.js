@@ -50,6 +50,8 @@ function key_response(e) {
       OnScrollRight();
       break;
     case 40: //down arrow
+      //var scroll = window.pageYOffset;
+      //OnScrollDown(scroll);
       OnScrollDown();
       break;
     case 83: //s[how]
