@@ -3710,7 +3710,7 @@ void editorEraseScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-// currently used for help, sync log
+// currently used for sync log
 void editorReadFile(const std::string &filename) {
 
   std::ifstream f(filename);
