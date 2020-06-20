@@ -689,34 +689,14 @@ void load_meta(void) {
   f.close();
 }
 
-/*
-std::string generate_html2(void) {
-  // generates markdown-derived html for currently displayed note
-  // uses third party maddy c++ header which is a problem since doesn't nearly meet standard
-  // maddy turned out to be way too far from standard markdown
-
-  std::string note = editorRowsToString();
-  std::stringstream text;
-  std::string title = O.rows.at(O.fr).title;
-  text << "# " << title << "\n\n" << note;
-
-  // config is optional
-  std::shared_ptr<maddy::ParserConfig> config = std::make_shared<maddy::ParserConfig>();
-  config->isEmphasizedParserEnabled = true; // default
-  config->isHTMLWrappedInParagraph = true; // default
-
-  std::shared_ptr<maddy::Parser> parser = std::make_shared<maddy::Parser>(config);
-  std::string htmlOutput = parser->Parse(text);
-  // meta variable loaded above
-  return meta + htmlOutput + "</article></body><html>";
-}
-*/
-
+//if this is going to stay should get rid of procxx pipes
 std::string generate_html(void) { //this works and currently used by ^ triggering view_html
   std::string note = editorRowsToString();
   std::stringstream text;
   std::string title = O.rows.at(O.fr).title;
   text << "# " << title << "\n\n" << note;
+  std::size_t p = meta.find("</title>");
+  meta.insert(p, title);
   std::stringstream htmlOutput;
   std::string line;
   procxx::process cat("cat");
@@ -742,6 +722,13 @@ void update_html_file(void) {
   std::stringstream text;
   std::string title = O.rows.at(O.fr).title;
   text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
   //MKIOT blob(const char *text, int size, mkd_flag_t flags)
   MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
   mkd_e_flags(blob, url_callback);
@@ -749,7 +736,7 @@ void update_html_file(void) {
 
   FILE *fptr;
   fptr = fopen("assets/current.html", "w");
-  fprintf(fptr, meta.c_str());
+  fprintf(fptr, meta_.c_str());
   //fprintf(fptr, "<p>Norm</p>"); // was just confirming where the html came from
   mkd_generatehtml(blob, fptr);
   fprintf(fptr, "</article></body><html>");
