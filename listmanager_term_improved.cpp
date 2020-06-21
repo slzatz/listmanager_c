@@ -447,6 +447,7 @@ void outlineDrawRows(std::string&); // doesn't do any erasing which is done in o
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 void outlineSave(const std::string &);
+void return_cursor(void);
 
 //Database-related Prototypes
 void db_open(void);
@@ -660,6 +661,10 @@ void signalHandler(int signum) {
       editorRefreshScreen(true);
       outlineRefreshScreen();
     }
+    
+  outlineDrawStatusBar();
+  outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
+  return_cursor();
 }
 
 void parse_ini_file(std::string ini_name)
@@ -4321,13 +4326,13 @@ void outlineMoveCursor(int key) {
     case 'h':
       if (O.fc > 0) O.fc--; 
       // arowing left in NORMAL puts you into DATABASE mode
-      else {
-        O.mode = DATABASE;
-        if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-        else display_container_info(O.rows.at(O.fr).id);
-        O.command[0] = '\0';
-        O.repeat = 0;
-      }
+     // else {
+     //   O.mode = DATABASE;
+     //   if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
+     //   else display_container_info(O.rows.at(O.fr).id);
+     //   O.command[0] = '\0';
+     //   O.repeat = 0;
+     // }
       break;
 
     case ARROW_RIGHT:
@@ -4587,15 +4592,26 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.command[0] = '\0';
           return;
 
-        // should look at these since using arrow key and 
-        // don't use these at all
-        case '<':
+        //Tab cycles between OUTLINE and DATABASE modes
         case '\t':
-        case SHIFT_TAB:
           O.fc = 0; //intentionally leave O.fr wherever it is
           O.mode = DATABASE;
+          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id);
+          outlineShowMessage("");
           O.command[0] = '\0';
           O.repeat = 0;
+          return;
+
+        //SHIFT_Tab cycles between OUTLINE and DATABASE modes
+        case SHIFT_TAB:
+          if (O.taskview == BY_SEARCH) {
+            O.fc = 0; //intentionally leave O.fr wherever it is
+            O.mode = SEARCH;
+            O.command[0] = '\0';
+            O.repeat = 0;
+            outlineShowMessage("");
+          }
           return;
 
         case 'i':
@@ -5812,7 +5828,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     // note database mode always deals with current character regardless of previously typed char
     // since all commands are one char.
     case DATABASE:
-    case SEARCH:
+    //case SEARCH:
 
       switch (c) {
 
@@ -5835,14 +5851,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           outlineMoveCursor(c);
           return;
 
-        case ARROW_RIGHT:
-        case '\x1b':
-          O.fc = 0; //otherwise END in DATABASE mode could have done bad things
+        //TAB toggles between DATABASE and OUTLINE mode
+        case '\t':  
+          O.fc = 0; 
           O.mode = NORMAL;
           get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineShowMessage("");
           return;
 
+        /*  
         case ARROW_LEFT:
           if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
             O.mode = SEARCH;
@@ -5866,6 +5883,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.fc = O.rows.at(O.fr).title.size();
           return;
           }
+       */ 
 
         case ':':
           outlineShowMessage(":");
@@ -5989,6 +6007,44 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       } // end of switch(c) in case DATABASLE
 
       //return; //end of outer case DATABASE //won't be executed
+
+    case SEARCH:  
+      switch (c) {
+
+        case PAGE_UP:
+        case PAGE_DOWN:
+          if (c == PAGE_UP) {
+            O.fr = (O.screenlines > O.fr) ? 0 : O.fr - O.screenlines; //O.fr and O.screenlines are unsigned ints
+          } else if (c == PAGE_DOWN) {
+             O.fr += O.screenlines;
+             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
+          }
+          return;
+
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case 'j':
+        case 'k':
+        case 'h':
+        case 'l':
+          outlineMoveCursor(c);
+          return;
+
+        //case ARROW_RIGHT:
+        //case '\x1b':
+        //case '\t':  
+        case SHIFT_TAB:  
+          O.fc = 0; //otherwise END in DATABASE mode could have done bad things
+          O.mode = NORMAL;
+          get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          outlineShowMessage("");
+          return;
+
+        default:
+          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
+          else outlineShowMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
+          return;
+      } // end of switch(c) in case DATABASLE
 
     case VISUAL:
   
@@ -8590,6 +8646,8 @@ int main(int argc, char** argv) {
   // assume the reimports are essentially no-ops
   //Py_Initialize(); 
 
+  popen (system_call.c_str(), "r"); //returns FILE* id
+
   signal(SIGWINCH, signalHandler);
   bool text_change;
   bool scroll;
@@ -8597,12 +8655,10 @@ int main(int argc, char** argv) {
 
   outlineRefreshScreen(); // now just draws rows
   outlineDrawStatusBar();
-  outlineShowMessage("rows: %d  cols: %d      orow size: %d int: %d char*: %d bool: %d", screenlines, screencols, sizeof(orow), sizeof(int), sizeof(char*), sizeof(bool)); 
+  outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
   return_cursor();
 
-  //std::string system_call = "./Browser " + CURRENT_NOTE_FILE;
-  //std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
-  popen (system_call.c_str(), "r"); //returns FILE* id
+  //popen (system_call.c_str(), "r"); //returns FILE* id
 
   while (1) {
 
