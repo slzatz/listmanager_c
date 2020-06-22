@@ -232,6 +232,7 @@ enum Command {
 
   C_vim,
   C_valgrind,
+  C_write,
 
   C_pdf
 };
@@ -268,10 +269,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"refresh", C_refresh},
   {"new", C_new}, //don't need "n" because there is no target
   {"contexts", C_contexts},
-  {"context", C_contexts},
   {"c", C_contexts},
   {"folders", C_folders},
-  {"folder", C_folders},
   {"f", C_folders},
   {"keywords", C_keywords},
   {"keyword", C_keywords},
@@ -291,11 +290,11 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"update", C_update},
   {"sort", C_sort},
   {"sync", C_synch},
-  {"synch", C_synch},
   {"synchronize", C_synch},
   {"test", C_synch_test},
   {"showall", C_showall},
   {"show", C_showall},
+  {"write", C_write},
   {"synchtest", C_synch_test},
   {"synch_test", C_synch_test},
   {"quit", C_quit},
@@ -549,7 +548,7 @@ void editorMoveBeginningWord(void);
 void editorMoveEndWord(void); 
 void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
 void editorMoveNextWord(void);
-void editorMarkupLink(void);
+//void editorMarkupLink(void); //no longer doing links this way but preserving code
 std::string editorGetWordUnderCursor(void);
 void editorFindNextWord(void);
 void editorChangeCase(void);
@@ -4833,13 +4832,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.repeat = 0;
           return;
 
-        // not sure that this should be CTRL-h; maybe CTRL-m
+        /* now using simpler links but preserving the code for a while
         case CTRL_KEY('h'):
           editorMarkupLink(); 
-          //editorRefreshScreen();
-          update_note(); // write updated note to database
+          update_note(); 
           O.command[0] = '\0';
           return;
+        */  
 
         case C_daw:
           for (int i = 0; i < O.repeat; i++) outlineDelWord();
@@ -5017,6 +5016,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           switch(command) {
 
             case 'w':
+            case C_write:  
               if (O.view == TASK) update_rows();
               O.mode = O.last_mode;
               O.command_line.clear();
@@ -7192,15 +7192,32 @@ bool editorProcessKeypress(void) {
           f_change_case(E.repeat);
           break;
 
+        case 'J':
+          //1J and 2J are same in vim
+            editorCreateSnapshot();
+            E.fc = E.rows.at(E.fr).size();
+            E.repeat = (E.repeat == 1) ? 2 : E.repeat;
+            for (i=1; i<E.repeat; i++) { 
+              if (E.fr == E.rows.size()- 1) break;
+              E.rows.at(E.fr) += " " + E.rows.at(E.fr+1);
+              editorDelRow(E.fr+1); 
+            }  
+            E.command[0] = '\0';
+            E.repeat = 0;
+          //}  
+          return true;
+
         case 'w': case 'e': case 'b': case '0': case '$':
           cmd_map5[command](E.repeat);
           E.move_only = true;// still need to draw status line, message and cursor
           break;
 
+        /*  
         case SHIFT_TAB:
           editor_mode = false;
           E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
           return false;
+        */
 
         case 'r':
           // editing cmd: can be dotted and does repeat
@@ -7213,8 +7230,8 @@ bool editorProcessKeypress(void) {
           {
           if (!E.spellcheck || pos_mispelled_words.empty()) {
             editorSetMessage("Spellcheck is off or no words mispelled");
-          E.command[0] = '\0';
-          E.repeat = 0;
+            E.command[0] = '\0';
+            E.repeat = 0;
             return false;
           }
           auto &z = pos_mispelled_words;
@@ -7347,10 +7364,12 @@ bool editorProcessKeypress(void) {
           editorSaveNoteToFile("lm_temp");
           return false;
 
+        /*  
         case CTRL_KEY('h'):
           editorMarkupLink(); 
           return true;
-    
+        */
+
         case C_indent:
           editorCreateSnapshot();
           for ( i = 0; i < E.repeat; i++ ) { 
@@ -7454,6 +7473,7 @@ bool editorProcessKeypress(void) {
 
           switch (command) {
 
+            case C_write:
             case 'w':
               update_note();
               E.mode = NORMAL;
@@ -8455,7 +8475,7 @@ void editorFindNextWord(void) {
     E.fr = y;
   }
 }
-
+/* no longer doing links this way but preserving code
 void editorMarkupLink(void) {
   int y, numrows, n, nn;
   std::string http = "http";
@@ -8513,7 +8533,7 @@ void editorMarkupLink(void) {
   E.dirty++;
   E.fc = E.fr = E.line_offset = 0;
 }
-
+*/
 
 void EraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
