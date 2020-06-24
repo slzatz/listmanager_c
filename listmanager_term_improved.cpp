@@ -116,6 +116,7 @@ enum Mode {
   DATABASE, // = 6, // only outline mode
   FILE_DISPLAY,// = 7, // only outline mode
   NO_ROWS,// = 8
+  VISUAL_BLOCK,
   SEARCH
 };
 
@@ -389,6 +390,7 @@ struct editorConfig {
   int dirty; //file changes since last save
   char message[120]; //status msg is a character array max 80 char
   int highlight[2];
+  int vb0[3];
   int mode;
   // probably OK that command is a char[] and not a std::string
   char command[10]; // right now includes normal mode commands and command line commands
@@ -515,7 +517,8 @@ int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
-std::string editorGenerateNoteWW(void);
+std::string editorGenerateNoteWW(void); //? really only used by editorDrawCodeRows
+void editorDrawCodeRows(std::string &);
 int editorGetInitialRow(int &);
 int editorGetInitialRow(int &, int);
 
@@ -6650,7 +6653,16 @@ void editorDrawRows(std::string &ab) {
         << "\x1b[0m";
       ab.append(s.str());
       ab.append(lf_ret, nchars);
-
+    }
+    if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
+      int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
+      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1;
+      std::stringstream s;
+      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+        << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
+        << "\x1b[0m";
+      ab.append(s.str());
+      ab.append(lf_ret, nchars);
     }
   }
   E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
@@ -7085,6 +7097,44 @@ bool editorProcessKeypress(void) {
           //else if (E.last_command == 'O') f_O(E.last_repeat-1);
           /****************************************************/
 
+
+          if (E.last_command == -1) {
+            for (int n=0; n<E.last_repeat-1; n++) {
+              for (char const &c : E.last_typed) {editorInsertChar(c);}
+            }
+            {
+            int temp = E.fr;
+
+            for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
+              for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
+                E.fc = E.vb0[0]; 
+                for (char const &c : E.last_typed) {editorInsertChar(c);}
+              }
+            }
+            E.fr = temp;
+            E.fc = E.vb0[0];
+          }
+          }
+
+          if (E.last_command == -2) {
+            //E.fc++;a doesn't go here
+            for (int n=0; n<E.last_repeat-1; n++) {
+              for (char const &c : E.last_typed) {editorInsertChar(c);}
+            }
+            {
+            int temp = E.fr;
+
+            for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
+              for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
+                E.fc = E.vb0[2];
+                for (char const &c : E.last_typed) {editorInsertChar(c);}
+              }
+            }
+            E.fr = temp;
+            E.fc = E.vb0[0];
+          }
+          }
+
           E.mode = NORMAL;
           E.repeat = 0;
           if (E.fc > 0) E.fc--;
@@ -7100,7 +7150,7 @@ bool editorProcessKeypress(void) {
               }
             }
           }
-          editorSetMessage("");
+          editorSetMessage(""); 
           //editorSetMessage(E.last_typed.c_str());
           return true;
     
@@ -7289,6 +7339,15 @@ bool editorProcessKeypress(void) {
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = E.fc;
           editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+          return false;
+
+        case CTRL_KEY('v'):
+          E.mode = VISUAL_BLOCK;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.vb0[0] = E.fc;
+          E.vb0[1] = E.fr;
+          editorSetMessage("\x1b[1m-- VISUAL BLOCK --\x1b[0m");
           return false;
     
         case 'p':  
@@ -7673,6 +7732,107 @@ bool editorProcessKeypress(void) {
           editorSetMessage("");
           return true;
     
+        case '\x1b':
+          E.mode = 0;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("");
+          return true;
+    
+        default:
+          return false;
+      }
+
+      return false;
+
+    case VISUAL_BLOCK:
+
+      switch (c) {
+    
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case ARROW_LEFT:
+        case ARROW_RIGHT:
+        case 'h':
+        case 'j':
+        case 'k':
+        case 'l':
+          editorMoveCursor(c);
+          E.highlight[1] = E.fr;
+          return true;
+    
+        case 'x':
+          if (!E.rows.empty()) {
+            editorCreateSnapshot();
+    
+          for (int i = E.vb0[1]; i < E.fr + 1; i++) {
+            E.rows.at(i).erase(E.vb0[0], E.fc - E.vb0[0] + 1);       
+          }
+
+          E.fc = E.vb0[0];
+          E.fr = E.vb0[1];
+          }
+          E.command[0] = '\0';
+          E.repeat = E.last_repeat = 0;
+          E.mode = NORMAL;
+          editorSetMessage("");
+          return true;
+    
+        case 'I':
+          if (!E.rows.empty()) {
+            editorCreateSnapshot();
+      
+          //E.repeat = E.fr - E.vb0[1];  
+            {
+          int temp = E.fr; //E.fr is wherever cursor Y is    
+          //E.vb0[2] = E.fr;
+          E.fc = E.vb0[0]; //vb0[0] is where cursor X was when ctrl-v happened
+          E.fr = E.vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
+          E.vb0[1] = temp; // resets E.vb0 to last cursor Y position - this could just be E.vb0[2]
+          //cmd_map1[c](E.repeat);
+          command = -1;
+          E.repeat = 1;
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+            }
+
+          }
+
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
+          E.last_command = command;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("command = %d", command);
+          return true;
+
+        case 'A':
+          if (!E.rows.empty()) {
+            editorCreateSnapshot();
+      
+          //E.repeat = E.fr - E.vb0[1];  
+            {
+          int temp = E.fr;    
+          E.fr = E.vb0[1];
+          E.vb0[1] = temp;
+          E.fc++;
+          E.vb0[2] = E.fc;
+          //cmd_map1[c](E.repeat);
+          command = -2;
+          E.repeat = 1;
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+            }
+
+          }
+
+          E.last_repeat = E.repeat;
+          E.last_typed.clear();
+          E.last_command = command;
+          E.command[0] = '\0';
+          E.repeat = 0;
+          editorSetMessage("command = %d", command);
+          return true;
         case '\x1b':
           E.mode = 0;
           E.command[0] = '\0';
