@@ -7097,7 +7097,7 @@ bool editorProcessKeypress(void) {
           //else if (E.last_command == 'O') f_O(E.last_repeat-1);
           /****************************************************/
 
-
+          //'I' in VISUAL BLOCK mode
           if (E.last_command == -1) {
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
@@ -7116,6 +7116,7 @@ bool editorProcessKeypress(void) {
           }
           }
 
+          //'A' in VISUAL BLOCK mode
           if (E.last_command == -2) {
             //E.fc++;a doesn't go here
             for (int n=0; n<E.last_repeat-1; n++) {
@@ -7126,6 +7127,8 @@ bool editorProcessKeypress(void) {
 
             for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
               for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
+                int size = E.rows.at(E.fr).size();
+                if (E.vb0[2] >= size) E.rows.at(E.fr).insert(size, E.vb0[2]-size+1, ' ');
                 E.fc = E.vb0[2];
                 for (char const &c : E.last_typed) {editorInsertChar(c);}
               }
@@ -7758,7 +7761,7 @@ bool editorProcessKeypress(void) {
         case 'k':
         case 'l':
           editorMoveCursor(c);
-          E.highlight[1] = E.fr;
+          //E.highlight[1] = E.fr;
           return true;
     
         case 'x':
@@ -7817,6 +7820,9 @@ bool editorProcessKeypress(void) {
           E.vb0[1] = temp;
           E.fc++;
           E.vb0[2] = E.fc;
+          //int last_row_size = E.rows.at(E.vb0[1]).size();
+          int first_row_size = E.rows.at(E.fr).size();
+          if (E.vb0[2] >= first_row_size) E.rows.at(E.fr).insert(first_row_size, E.vb0[2]-first_row_size+1, ' ');
           //cmd_map1[c](E.repeat);
           command = -2;
           E.repeat = 1;
@@ -7833,6 +7839,7 @@ bool editorProcessKeypress(void) {
           E.repeat = 0;
           editorSetMessage("command = %d", command);
           return true;
+
         case '\x1b':
           E.mode = 0;
           E.command[0] = '\0';
