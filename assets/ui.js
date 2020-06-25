@@ -57,5 +57,11 @@ function key_response(e) {
     case 83: //s[how]
       OnNumberLinks();
       break;
+    case 187: //=/+  
+      OnIncreaseFontSize();
+      break;
+    case 189: //-  
+      OnDecreaseFontSize();
+      break;
   }    
 }
