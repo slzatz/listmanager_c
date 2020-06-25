@@ -79,6 +79,7 @@ static std::vector<std::string> command_history; // the history of commands to m
 static size_t cmd_hx_idx = 0;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 static std::map<int, std::string> html_files;
+static bool lm_browser = true;
 
 const std::string COLOR_1 = "\x1b[0;31m";
 const std::string COLOR_2 = "\x1b[0;32m";
@@ -1426,7 +1427,7 @@ void get_note(int id) {
 
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
-    update_html_file();
+    if (lm_browser) update_html_file();
     return;
   }
 
@@ -1456,7 +1457,7 @@ void get_note(int id) {
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
-  update_html_file();
+  if (lm_browser) update_html_file();
 }
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
@@ -7541,8 +7542,8 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              if (html_files.count(O.rows.at(O.fr).id)) view_html(O.rows.at(O.fr).id);
-              update_html_file();
+              //if (html_files.count(O.rows.at(O.fr).id)) view_html(O.rows.at(O.fr).id);
+              if (lm_browser) update_html_file();
               editorSetMessage("");
               return false;
   
@@ -7560,7 +7561,7 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editor_mode = false;
-              update_html_file();
+              if (lm_browser) update_html_file();
               editorSetMessage("");
               return false;
   
@@ -8807,7 +8808,8 @@ int main(int argc, char** argv) {
   //outline_normal_map[ARROW_UP] = move_up;
   //outline_normal_map['k'] = move_up;
 
-  //if (argc > 1 && argv[1][0] == 's') {
+  if (argc > 1 && argv[1][0] == '-') lm_browser = false;
+
   db_open();
   get_conn(); //pg
   load_meta(); 
@@ -8833,7 +8835,7 @@ int main(int argc, char** argv) {
   // assume the reimports are essentially no-ops
   //Py_Initialize(); 
 
-  popen (system_call.c_str(), "r"); //returns FILE* id
+  if (lm_browser) popen (system_call.c_str(), "r"); //returns FILE* id
 
   signal(SIGWINCH, signalHandler);
   bool text_change;
@@ -8844,8 +8846,6 @@ int main(int argc, char** argv) {
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
   return_cursor();
-
-  //popen (system_call.c_str(), "r"); //returns FILE* id
 
   while (1) {
 
