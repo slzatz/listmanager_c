@@ -58,10 +58,10 @@ function key_response(e) {
       OnNumberLinks();
       break;
     case 187: //=/+  
-      OnIncreaseFontSize();
+      OnIncreaseZoom();
       break;
     case 189: //-  
-      OnDecreaseFontSize();
+      OnDecreaseZoom();
       break;
   }    
 }
