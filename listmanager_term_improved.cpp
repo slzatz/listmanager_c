@@ -578,7 +578,7 @@ std::string generate_html(void);
 std::string generate_html2(void);
 void generate_persistent_html_file(int);
 void load_meta(void);
-void update_html_file(void);
+void update_html_file(std::string &&);
 void editorSaveNoteToFile(const std::string &);
 void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
@@ -698,16 +698,15 @@ void load_meta(void) {
   f.close();
 }
 
-//typedef char * (*mkd_callback_t)(const char*, const int, void*);
+// typedef char * (*mkd_callback_t)(const char*, const int, void*);
+// needed by markdown code in update_html_file
 char * (url_callback)(const char *x, const int y, void *z) {
   link_id++;
   sprintf(link_text,"id=\"%d\"", link_id);
-
-  //return "id=\"4\"";
   return link_text;
 }  
 
-void update_html_file(void) {
+void update_html_file(std::string &&fn) {
   std::string note = editorRowsToString();
   std::stringstream text;
   std::string title = O.rows.at(O.fr).title;
@@ -725,7 +724,7 @@ void update_html_file(void) {
   mkd_compile(blob, 0); //did something
 
   FILE *fptr;
-  fptr = fopen("assets/current.html", "w");
+  fptr = fopen(fn.c_str(), "w");
   fprintf(fptr, meta_.c_str());
   mkd_generatehtml(blob, fptr);
   fprintf(fptr, "</article></body><html>");
@@ -735,106 +734,21 @@ void update_html_file(void) {
   //mkd_e_free(blob, x); 
   mkd_cleanup(blob);
   link_id = 0;
-}
-
-//the only way to update is on writes w and x - not worth it
-void generate_persistent_html_file___(int id) {
-  FILE *fptr;
-  std::string fn = O.rows.at(O.fr).title.substr(0, 20);
-  std::string illegal_chars = "\\/:?\"<>|\n ";
-  for (auto& c: fn){
-    if (illegal_chars.find(c) != std::string::npos) c = '_';
-  }
-
-  fn = fn + ".html";    
-  fptr = fopen(("assets/" + fn).c_str(), "w");
-  std::string note = editorRowsToString();
-  std::stringstream text;
-  std::string title = O.rows.at(O.fr).title;
-  text << "# " << title << "\n\n" << note;
-
-  // inserting title to tell if note displayed by ultralight 
-  // has changed to know whether to preserve scroll
-  // not necessary unless updating this file too
-  std::string meta_(meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  //
-  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
-  mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, 0); //did something
-
-  fprintf(fptr, meta_.c_str());
-  mkd_generatehtml(blob, fptr);
-  fprintf(fptr, "</article></body><html>");
-  fclose(fptr);
-
-  /* don't know if below is correct or necessary - I don't think so*/
-  //mkd_free_t x; 
-  //mkd_e_free(blob, x); 
-  //
-  mkd_cleanup(blob);
-  link_id = 0;
-
-  std::string call = "./lm_browser " + fn;
-  popen (call.c_str(), "r"); // returns FILE* id
-  //html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
-  html_files[id] = fn;
-  outlineShowMessage("Created file: %s and displayed with ultralight", call.c_str());
 }
 
 void generate_persistent_html_file(int id) {
-  bool existing_file = false;
-  std::string fn;
-  auto it = html_files.find(id);
-  if (it != html_files.end()) {
-      fn = it->second;
-      existing_file = true;
-  } else {
-    fn = O.rows.at(O.fr).title.substr(0, 20);
+  std::string  fn = O.rows.at(O.fr).title.substr(0, 20);
     std::string illegal_chars = "\\/:?\"<>|\n ";
     for (auto& c: fn){
       if (illegal_chars.find(c) != std::string::npos) c = '_';
     }
-    html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
-  }  
-
-  FILE *fptr;
   fn = fn + ".html";    
-  fptr = fopen(("assets/" + fn).c_str(), "w");
-  std::string note = editorRowsToString();
-  std::stringstream text;
-  std::string title = O.rows.at(O.fr).title;
-  text << "# " << title << "\n\n" << note;
+  html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
+  update_html_file("assets/" + fn);
 
-  // inserting title to tell if note displayed by ultralight 
-  // has changed to know whether to preserve scroll
-  std::string meta_(meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  //
-  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
-  mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, 0); //did something
-
-  fprintf(fptr, meta_.c_str());
-  //fprintf(fptr, "<p>Norm</p>"); // was just confirming where the html came from
-  mkd_generatehtml(blob, fptr);
-  fprintf(fptr, "</article></body><html>");
-  fclose(fptr);
-  /* don't know if below is correct or necessary - I don't think so*/
-  //mkd_free_t x; 
-  //mkd_e_free(blob, x); 
-  mkd_cleanup(blob);
-  link_id = 0;
-
-  if (!existing_file) {
-    std::string call = "./lm_browser " + fn;
-    popen (call.c_str(), "r"); // returns FILE* id
-    outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
-  } else outlineShowMessage("updated file");
+  std::string call = "./lm_browser " + fn;
+  popen (call.c_str(), "r"); // returns FILE* id
+  outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
 }
 
 //pg ini stuff
@@ -1508,7 +1422,7 @@ void get_note(int id) {
 
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
-    if (lm_browser) update_html_file();
+    if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
     return;
   }
 
@@ -1538,7 +1452,7 @@ void get_note(int id) {
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
-  if (lm_browser) update_html_file();
+  if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
 }
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
@@ -7572,11 +7486,12 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              if (lm_browser) update_html_file();
+              if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
               {
               int id = O.rows.at(O.fr).id;
               auto it = html_files.find(id);
-              if (it != html_files.end()) generate_persistent_html_file(id);
+              //if (it != html_files.end()) generate_persistent_html_file(id);
+              if (it != html_files.end()) update_html_file("assets/" + it->second);
               }
               editorSetMessage("");
               return false;
@@ -7595,7 +7510,13 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editor_mode = false;
-              if (lm_browser) update_html_file();
+              if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              {
+              int id = O.rows.at(O.fr).id;
+              auto it = html_files.find(id);
+              //if (it != html_files.end()) generate_persistent_html_file(id);
+              if (it != html_files.end()) update_html_file("assets/" + it->second);
+              }
               editorSetMessage("");
               return false;
   
