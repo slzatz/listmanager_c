@@ -152,6 +152,7 @@ static const std::string mode_text[] = {
                         "DATABASE",
                         "FILE DISPLAY",
                         "NO ROWS",
+                        "VISUAL_BLOCK",
                         "SEARCH"
                        }; 
 
@@ -575,7 +576,7 @@ int commandfromstringcpp(const std::string&, std::size_t&);
 std::string editorRowsToString(void);
 std::string generate_html(void);
 std::string generate_html2(void);
-void view_html(int);
+void generate_persistent_html_file(int);
 void load_meta(void);
 void update_html_file(void);
 void editorSaveNoteToFile(const std::string &);
@@ -697,25 +698,6 @@ void load_meta(void) {
   f.close();
 }
 
-//if this is going to stay should get rid of procxx pipes
-std::string generate_html(void) { //this works and currently used by ^ triggering view_html
-  std::string note = editorRowsToString();
-  std::stringstream text;
-  std::string title = O.rows.at(O.fr).title;
-  text << "# " << title << "\n\n" << note;
-  std::size_t p = meta.find("</title>");
-  meta.insert(p, title);
-  std::stringstream htmlOutput;
-  std::string line;
-  procxx::process cat("cat");
-  procxx::process markdown("markdown"); //this is discount markdown
-  (cat | markdown).exec();
-  cat << text.str();
-  cat.close(procxx::pipe_t::write_end());
-  //highlight.exec();
-  while(getline(markdown.output(), line)) { htmlOutput << line << '\n';}
-  return meta + htmlOutput.str() + "</article></body><html>";
-}
 //typedef char * (*mkd_callback_t)(const char*, const int, void*);
 char * (url_callback)(const char *x, const int y, void *z) {
   link_id++;
@@ -745,6 +727,99 @@ void update_html_file(void) {
   FILE *fptr;
   fptr = fopen("assets/current.html", "w");
   fprintf(fptr, meta_.c_str());
+  mkd_generatehtml(blob, fptr);
+  fprintf(fptr, "</article></body><html>");
+  fclose(fptr);
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+  mkd_cleanup(blob);
+  link_id = 0;
+}
+
+//the only way to update is on writes w and x - not worth it
+void generate_persistent_html_file___(int id) {
+  FILE *fptr;
+  std::string fn = O.rows.at(O.fr).title.substr(0, 20);
+  std::string illegal_chars = "\\/:?\"<>|\n ";
+  for (auto& c: fn){
+    if (illegal_chars.find(c) != std::string::npos) c = '_';
+  }
+
+  fn = fn + ".html";    
+  fptr = fopen(("assets/" + fn).c_str(), "w");
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  // not necessary unless updating this file too
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, 0); //did something
+
+  fprintf(fptr, meta_.c_str());
+  mkd_generatehtml(blob, fptr);
+  fprintf(fptr, "</article></body><html>");
+  fclose(fptr);
+
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+  //
+  mkd_cleanup(blob);
+  link_id = 0;
+
+  std::string call = "./lm_browser " + fn;
+  popen (call.c_str(), "r"); // returns FILE* id
+  //html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
+  html_files[id] = fn;
+  outlineShowMessage("Created file: %s and displayed with ultralight", call.c_str());
+}
+
+void generate_persistent_html_file(int id) {
+  bool existing_file = false;
+  std::string fn;
+  auto it = html_files.find(id);
+  if (it != html_files.end()) {
+      fn = it->second;
+      existing_file = true;
+  } else {
+    fn = O.rows.at(O.fr).title.substr(0, 20);
+    std::string illegal_chars = "\\/:?\"<>|\n ";
+    for (auto& c: fn){
+      if (illegal_chars.find(c) != std::string::npos) c = '_';
+    }
+    html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
+  }  
+
+  FILE *fptr;
+  fn = fn + ".html";    
+  fptr = fopen(("assets/" + fn).c_str(), "w");
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, 0); //did something
+
+  fprintf(fptr, meta_.c_str());
   //fprintf(fptr, "<p>Norm</p>"); // was just confirming where the html came from
   mkd_generatehtml(blob, fptr);
   fprintf(fptr, "</article></body><html>");
@@ -754,6 +829,12 @@ void update_html_file(void) {
   //mkd_e_free(blob, x); 
   mkd_cleanup(blob);
   link_id = 0;
+
+  if (!existing_file) {
+    std::string call = "./lm_browser " + fn;
+    popen (call.c_str(), "r"); // returns FILE* id
+    outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
+  } else outlineShowMessage("updated file");
 }
 
 //pg ini stuff
@@ -2963,43 +3044,6 @@ void update_rows(void) {
   outlineShowMessage("%s",  msg);
 }
 
-void view_html(int id) {
-  bool existing_file = false;
-  std::string fn;
-  auto it = html_files.find(id);
-  if (it != html_files.end()) {
-      fn = it->second;
-      existing_file = true;
-  } else {
-    fn = std::tmpnam(nullptr);
-    html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
-  }  
-
-  std::ofstream f;
-  /* need to change /tmp/filecjdjdj -> tmp/file....html*/
-  fn = fn.erase(0,1);
-  fn = fn + ".html";    
-  f.open("assets/" + fn);
-  f << generate_html();
-  f.close();
-
-  if (!existing_file) {
-    std::string system_call = "./lm_browser " + fn;
-    popen (system_call.c_str(), "r"); // returns FILE* id
-    outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
-  } else outlineShowMessage("updated file");
-}
-
-/* this was the function that used the procxx-based markdown in generate_html()
- * generate_html is still being used for view_html ^ but that should probably change
-void update_html_file(void) {
-  std::ofstream f;
-  f.open("assets/" + CURRENT_NOTE_FILE);
-  f << generate_html();
-  f.close();
-}
-*/
-
 void update_solr(void) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -4606,7 +4650,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.repeat = 0;
           return;
 
-        //SHIFT_Tab cycles between OUTLINE and DATABASE modes
+        //SHIFT_Tab cycles between OUTLINE and SEARCH modes
         case SHIFT_TAB:
           if (O.taskview == BY_SEARCH) {
             O.fc = 0; //intentionally leave O.fr wherever it is
@@ -4777,7 +4821,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '^':
           {
           orow& row = O.rows.at(O.fr);
-          view_html(row.id);
+          generate_persistent_html_file(row.id);
 
           /*
           I am getting messages from qutebrowser to screen   
@@ -5991,19 +6035,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           display_item_info(O.rows.at(O.fr).id);
           return;
   
-        case 'v': //render in browser
-          
-          view_html(O.rows.at(O.fr).id);
-
-          /* when I switched from chrome to qutebrowser I thought I was not
-          getting error/status messages to stdout but they do appear to 
-          occur sometimes and so may need to do a clear screen
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          outlineRefreshScreen();
-          editorRefreshScreen();
-          */
-          return;
-
         default:
           if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
           else outlineShowMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
@@ -6034,9 +6065,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           outlineMoveCursor(c);
           return;
 
-        //case ARROW_RIGHT:
-        //case '\x1b':
-        //case '\t':  
+        //TAB and SHIFT_TAB moves from SEARCH to OUTLINE NORMAL mode but SHIFT_TAB gets back
+        case '\t':  
         case SHIFT_TAB:  
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
@@ -7129,7 +7159,7 @@ bool editorProcessKeypress(void) {
             for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
               for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
                 int size = E.rows.at(E.fr).size();
-                if (E.vb0[2] >= size) E.rows.at(E.fr).insert(size, E.vb0[2]-size+1, ' ');
+                if (E.vb0[2] > size) E.rows.at(E.fr).insert(size, E.vb0[2]-size, ' ');
                 E.fc = E.vb0[2];
                 for (char const &c : E.last_typed) {editorInsertChar(c);}
               }
@@ -7387,7 +7417,7 @@ bool editorProcessKeypress(void) {
           return true;
     
         case '^':
-          view_html(O.rows.at(O.fr).id);
+          generate_persistent_html_file(O.rows.at(O.fr).id);
 
           //still getting messages to terminal from  qutebrowser
           //so below may be necessary 
@@ -7542,8 +7572,12 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              //if (html_files.count(O.rows.at(O.fr).id)) view_html(O.rows.at(O.fr).id);
               if (lm_browser) update_html_file();
+              {
+              int id = O.rows.at(O.fr).id;
+              auto it = html_files.find(id);
+              if (it != html_files.end()) generate_persistent_html_file(id);
+              }
               editorSetMessage("");
               return false;
   
@@ -7765,6 +7799,13 @@ bool editorProcessKeypress(void) {
           //E.highlight[1] = E.fr;
           return true;
     
+        case '$':
+          editorMoveCursorEOL();
+          E.command[0] = '\0';
+          E.repeat = E.last_repeat = 0;
+          editorSetMessage("");
+          return true;
+
         case 'x':
           if (!E.rows.empty()) {
             editorCreateSnapshot();
@@ -7823,7 +7864,7 @@ bool editorProcessKeypress(void) {
           E.vb0[2] = E.fc;
           //int last_row_size = E.rows.at(E.vb0[1]).size();
           int first_row_size = E.rows.at(E.fr).size();
-          if (E.vb0[2] >= first_row_size) E.rows.at(E.fr).insert(first_row_size, E.vb0[2]-first_row_size+1, ' ');
+          if (E.vb0[2] > first_row_size) E.rows.at(E.fr).insert(first_row_size, E.vb0[2]-first_row_size, ' ');
           //cmd_map1[c](E.repeat);
           command = -2;
           E.repeat = 1;
