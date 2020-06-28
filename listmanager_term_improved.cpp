@@ -237,6 +237,8 @@ enum Command {
   C_valgrind,
   C_write,
 
+  C_browser,
+
   C_pdf
 };
 
@@ -324,6 +326,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"merge", C_merge},
   {"syntax", C_syntax},
   {"clear", C_clear},
+  {"browser", C_browser},
   {"pdf", C_pdf}
 };
 
@@ -4733,20 +4736,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         case '^':
-          {
-          orow& row = O.rows.at(O.fr);
-          generate_persistent_html_file(row.id);
-
-          /*
-          I am getting messages from qutebrowser to screen   
-          write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          outlineRefreshScreen();
-          editorRefreshScreen();
-          */
-
+          generate_persistent_html_file(O.rows.at(O.fr).id);
           O.command[0] = '\0';
           return;
-          }
 
         case PAGE_UP:
         case PAGE_DOWN:  
@@ -5762,6 +5754,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
             case C_pdf:
               //generate_pdf();
+              return;
+
+            case 'b':
+            case C_browser:
+              generate_persistent_html_file(O.rows.at(O.fr).id);
+              O.command[0] = '\0';
+              O.mode = O.last_mode;
               return;
 
             default: // default for commandfromstring
@@ -7488,9 +7487,7 @@ bool editorProcessKeypress(void) {
               E.command_line.clear();
               if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
               {
-              int id = O.rows.at(O.fr).id;
-              auto it = html_files.find(id);
-              //if (it != html_files.end()) generate_persistent_html_file(id);
+              auto it = html_files.find(O.rows.at(O.fr).id);
               if (it != html_files.end()) update_html_file("assets/" + it->second);
               }
               editorSetMessage("");
@@ -7512,9 +7509,7 @@ bool editorProcessKeypress(void) {
               editor_mode = false;
               if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
               {
-              int id = O.rows.at(O.fr).id;
-              auto it = html_files.find(id);
-              //if (it != html_files.end()) generate_persistent_html_file(id);
+              auto it = html_files.find(O.rows.at(O.fr).id);
               if (it != html_files.end()) update_html_file("assets/" + it->second);
               }
               editorSetMessage("");
@@ -7597,6 +7592,14 @@ bool editorProcessKeypress(void) {
               E.command_line.clear();
               E.mode = NORMAL;
               return true;
+
+            case 'b':
+            case C_browser:
+              generate_persistent_html_file(O.rows.at(O.fr).id);
+              E.command[0] = '\0';
+              E.command_line.clear();
+              E.mode = NORMAL;
+              return false;
 
             default: // default for switch (command)
               editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
