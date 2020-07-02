@@ -38,6 +38,7 @@
 #include <nuspell/dictionary.hxx>
 #include <nuspell/finder.hxx>
 //#include "sqlite_db.h"
+#include <zmq.hpp>
 
 //#include "maddy/parser.h"
 #include <memory>
@@ -8772,6 +8773,12 @@ int main(int argc, char** argv) {
 
   //outline_normal_map[ARROW_UP] = move_up;
   //outline_normal_map['k'] = move_up;
+  zmq::context_t context (1);
+  zmq::socket_t publisher (context, ZMQ_PUB);
+  publisher.bind("tcp://*:5556");
+  publisher.bind("ipc://weather.ipc");                // Not usable on Windows.
+
+  //zmq::message_t message(20);
 
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
@@ -8820,6 +8827,13 @@ int main(int argc, char** argv) {
       scroll = editorScroll();
       redraw = (E.mode == COMMAND_LINE) ? false : (text_change || scroll);
       editorRefreshScreen(redraw);
+      ////////////////////
+      if (scroll) {
+        zmq::message_t message(20);
+        snprintf ((char *) message.data(), 20, "%d", E.line_offset*25); //25 - complete hack but works ok
+        publisher.send(message, zmq::send_flags::dontwait);
+      }
+      ////////////////////
     } else if (O.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       outlineScroll();

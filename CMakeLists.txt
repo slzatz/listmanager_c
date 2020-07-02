@@ -4,8 +4,16 @@
 # the build directory to ~/c_stuff/listmanager
 
 cmake_minimum_required(VERSION 3.15)
-
 project(listmanager_cpp)
+set(CMAKE_CXX_STANDARD 20)
+
+find_package(ZeroMQ QUIET)
+
+if(NOT ZeroMQ_FOUND)
+  message(STATUS "CMake libzmq package not found, trying again with pkg-config (normal install of zeromq)")
+  list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/libzmq-pkg-config)
+  find_package(ZeroMQ REQUIRED)
+endif()
 
 find_package(SQLite3 REQUIRED)
 find_package(PythonLibs REQUIRED)
@@ -23,7 +31,8 @@ add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
 
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation -std=c++2a")
+#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation -std=c++2a")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation")
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wsign-compare -std=c++2a")
 set (source_dir "${PROJECT_SOURCE_DIR}/")
 
@@ -38,11 +47,12 @@ add_executable(${PROJECT_NAME} listmanager_term_improved.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
 #target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/maddy/include)
 # add_executable has to come before target_link_libraries
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown) 
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown) 
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)
