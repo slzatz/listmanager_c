@@ -354,13 +354,16 @@ def synchronize(report_only=True):
 
         # means you can only do one new one at a time since both get same bogus tid unless you increment it each time
         # I think the above is wrong - at least for keywords, it doesn't matter if three new keywords get the same placeholder tid = 0
+
+
+        # could be duplicated keyword name that is deleted on server
         keyword = remote_session.query(p.Keyword).filter_by(id=ck.tid).first()
-        # the below works great for new [folder/context/keyword] but not for updating [name/title]
-        #keyword = remote_session.query(p.Keyword).filter_by(name=ck.name).first()
+        dup_keyword = remote_session.query(p.Keyword).filter_by(name=ck.name).first()
+        name = ck.name if not dup_keyword else ck.name+"_dup"   
 
         if not keyword:
             action = "created"
-            keyword = p.Keyword(ck.name)
+            keyword = p.Keyword(name)
             remote_session.add(keyword)
             remote_session.commit()
             ck.tid = keyword.id
@@ -371,7 +374,8 @@ def synchronize(report_only=True):
                 action += "-server won"
                 continue
 
-            keyword.name = ck.name
+            keyword.name = name
+            remote_session.commit()
 
         keyword.star = ck.star
         #modified should be handled by db
