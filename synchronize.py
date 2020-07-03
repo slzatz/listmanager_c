@@ -94,7 +94,7 @@ def synchronize(report_only=True):
       
     if server_deleted_keywords:
         nn+=len(server_deleted_keywords)
-        log+=f"Deleted server Keywords since the last sync: {len(server_deleted_folders)}.\n"
+        log+=f"Deleted server Keywords since the last sync: {len(server_deleted_keywords)}.\n"
     else:
         log+="There were no server Keywords deleted since the last sync.\n" 
 
