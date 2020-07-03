@@ -698,7 +698,7 @@ def synchronize(report_only=True):
             local_session.delete(keyword)
             local_session.commit() 
         else:
-            log+="Keyword deleted on Server unsuccessful trying to delete on Client - could not find Client keyword with tid = {sk.id}\n"
+            log+=f"Keyword deleted on Server unsuccessful trying to delete on Client - could not find Client keyword with tid = {sk.id}\n"
 
     # Delete from server keywords deleted on client
     for ck in client_deleted_keywords:
