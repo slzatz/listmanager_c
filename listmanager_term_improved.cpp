@@ -290,7 +290,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"addkw", C_addkeyword},
   {"deletekeywords", C_deletekeywords},
   {"deletekeyword", C_deletekeywords},
-  {"delkw", C_deletekeywords},
+  {"delk", C_deletekeywords},
   {"delmarks", C_delmarks},
   {"delm", C_delmarks},
   {"update", C_update},
