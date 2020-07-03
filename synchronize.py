@@ -693,7 +693,8 @@ def synchronize(report_only=True):
         if keyword:
             log+=f"Keyword deleted on Server deleted on Client - id: {keyword.id}; tid: {keyword.tid}; title: {keyword.name}\n"
 
-            local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==sk.id).delete(synchronize_session=False)
+            #local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==sk.id).delete(synchronize_session=False)
+            local_session.query(TaskKeyword).filter(TaskKeyword.keyword_id==keyword.id).delete(synchronize_session=False)
             local_session.commit()
             local_session.delete(keyword)
             local_session.commit() 
@@ -711,7 +712,10 @@ def synchronize(report_only=True):
         if keyword:
             log+=f"Keyword deleted on Client will be marked as deleted on Server - id: {keyword.id}; title: {keyword.title}\n"
 
-            remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword_id==ck.tid).delete(synchronize_session=False) 
+            # two lines below should be the same but not symmetrical when it comes to deleting local task_keywords above
+            #remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword_id==ck.tid).delete(synchronize_session=False) 
+            remote_session.query(p.TaskKeyword).filter(p.TaskKeyword.keyword_id==keyword.id).delete(synchronize_session=False) 
+
             remote_session.commit()
             keyword.deleted = True
             remote_session.commit() 
