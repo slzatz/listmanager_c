@@ -279,8 +279,6 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"folders", C_folders},
   {"f", C_folders},
   {"keywords", C_keywords},
-  {"keyword", C_keywords},
-  {"kw", C_keywords},
   {"k", C_keywords},
   {"mtc", C_movetocontext}, //need because this is command line command with a target word
   {"movetocontext", C_movetocontext},
@@ -892,7 +890,11 @@ void get_containers(void) {
   if (no_rows) {
     outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
-  } else O.mode = NORMAL;
+  } else {
+    //O.mode = NORMAL;
+    O.mode = O.last_mode;
+    display_container_info(O.rows.at(O.fr).id);
+  }
 
   O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
 }
@@ -4672,11 +4674,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.fr = O.rows.size() - 1;
           O.command[0] = '\0';
           O.repeat = 0;
-
-          if (O.view == TASK) { //{get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-            if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-            else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-          }
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id);
           return;
       
         case 'O': //Same as C_new in COMMAND_LINE mode
@@ -4859,11 +4858,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.fr = O.repeat-1; //this needs to take into account O.rowoff
           O.command[0] = '\0';
           O.repeat = 0;
-          if (O.view == TASK) {
-            if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-            else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-          }
-          //if (O.view == TASK) get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id);
           return;
 
         case C_gt:
@@ -5225,9 +5221,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 editorEraseScreen();
                 O.view = KEYWORD;
                 command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
-                //get_keywords();
                 get_containers();
-                O.mode = NORMAL;
+                //O.mode = NORMAL; //in get_containers
                 outlineShowMessage("Retrieved keywords");
                 return;
               } else {
@@ -5789,7 +5784,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     // note database mode always deals with current character regardless of previously typed char
     // since all commands are one char.
     case DATABASE:
-    //case SEARCH:
 
       switch (c) {
 
@@ -5813,13 +5807,31 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         //TAB toggles between DATABASE and OUTLINE mode
+        //Escape one way between DATABASE and OUTLINE
+        case '\x1b':
         case '\t':  
           O.fc = 0; 
           O.mode = NORMAL;
-          get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
           outlineShowMessage("");
           return;
 
+        case 'G':
+          O.fc = 0;
+          O.fr = O.rows.size() - 1;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id);
+          return;
+
+        case 'g':
+          O.fr = O.fc = O.rowoff = 0;
+          O.command[0] = '\0';
+          O.repeat = 0;
+          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id); 
+          return;
         /*  
         case ARROW_LEFT:
           if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
@@ -5858,45 +5870,19 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           if (O.view == TASK) toggle_completed();
           return;
 
-        /*
-        case 'c': // show contexts
-          editorEraseScreen(); //erase note if there is one
-          O.view = CONTEXT;
-          get_containers();
-          O.mode = NORMAL;
-          outlineShowMessage("Retrieved contexts");
-          return;
-
         case 'f':
-          editorEraseScreen(); //erase note if there is one
-          O.view = FOLDER;
-          get_containers();
-          O.mode = NORMAL;
-          outlineShowMessage("Retrieved folders");
-          return;
+          if (O.view == TASK) {
+            std::string keywords = get_task_keywords().first;
+            if (keywords.empty()) {
+              outlineShowMessage("The current entry has no keywords");
+            } else {
+              O.keyword = keywords;
+              O.context = "No Context";
+              O.folder = "No Folder";
+              O.taskview = BY_KEYWORD;
 
-        case 'y':
-          editorEraseScreen(); //erase note if there is one
-          O.view = KEYWORD;
-          get_keywords();
-          O.mode = NORMAL;
-          outlineShowMessage("Retrieved keywords");
-          return;
-        */
-
-        case 'f':
-          {
-          std::string keywords = get_task_keywords().first;
-          if (keywords.empty()) {
-            outlineShowMessage("The current entry has no keywords");
-          } else {
-            O.keyword = keywords;
-            O.context = "No Context";
-            O.folder = "No Folder";
-            O.taskview = BY_KEYWORD;
-
-            get_linked_items(MAX);
-          }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+              get_linked_items(MAX);
+            }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
           }
           return;
 
@@ -5949,8 +5935,11 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
   
         default:
-          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
-          else outlineShowMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
+          //O.mode = NORMAL;
+          //O.command[0] = '\0'; 
+          //outlineProcessKeypress(c); 
+          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE mode", c);
+          else outlineShowMessage("<%c> doesn't do anything in DATABASE mode", c);
           return;
       } // end of switch(c) in case DATABASLE
 
@@ -5988,10 +5977,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         default:
-          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE/SEARCH mode", c);
-          else outlineShowMessage("<%c> doesn't do anything in DATABASE/SEARCH mode", c);
+          O.mode = NORMAL;
+          O.command[0] = '\0'; 
+          outlineProcessKeypress(c); 
+          //if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in SEARCH mode", c);
+          //else outlineShowMessage("<%c> doesn't do anything in SEARCH mode", c);
           return;
-      } // end of switch(c) in case DATABASLE
+      } // end of switch(c) in case SEARCH
 
     case VISUAL:
   
