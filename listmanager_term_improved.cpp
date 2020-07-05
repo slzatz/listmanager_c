@@ -631,6 +631,9 @@ struct config {
 };
 struct config c;
 
+zmq::context_t context (1);
+zmq::socket_t publisher (context, ZMQ_PUB);
+
 PGconn *conn = nullptr;
 
 void do_exit(PGconn *conn) {
@@ -707,7 +710,12 @@ char * (url_callback)(const char *x, const int y, void *z) {
   return link_text;
 }  
 
-void update_html_file(std::string &&fn) {
+/* this works but used mkd_generalhtml
+ * and I thought it might be better to 
+ * us mkd_document since then you can
+ * write to the file once
+ */
+void update_html_file_works(std::string &&fn) {
   std::string note = editorRowsToString();
   std::stringstream text;
   std::string title = O.rows.at(O.fr).title;
@@ -733,6 +741,84 @@ void update_html_file(std::string &&fn) {
   /* don't know if below is correct or necessary - I don't think so*/
   //mkd_free_t x; 
   //mkd_e_free(blob, x); 
+  mkd_cleanup(blob);
+  link_id = 0;
+}
+
+/* this version of update_html_file uses mkd_document
+ * and only writes to the file once
+ */
+void update_html_file(std::string &&fn) {
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::stringstream html;
+  char *doc = nullptr;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, 0); //did something
+  mkd_document(blob, &doc);
+  html << meta_ << doc << "</article></body><html>";
+  
+  std::ofstream myfile;
+  myfile.open(fn); //filename
+  myfile << html.str().c_str();
+  myfile.close();
+
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+  //
+  mkd_cleanup(blob);
+  link_id = 0;
+}
+
+/* this zeromq version works but there is a problem on the ultralight
+ * side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
+ * if this is my mistake or intentional
+ * */
+void update_html_zmq(std::string &&fn) {
+  std::string note = editorRowsToString();
+  std::stringstream text;
+  std::stringstream html;
+  std::string title = O.rows.at(O.fr).title;
+  char *doc = nullptr;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, 0); 
+
+  mkd_document(blob, &doc);
+  html << meta_ << doc << "</article></body><html>";
+
+  zmq::message_t message(html.str().size()+1);
+
+  // probably don't need snprint to get html into message
+  snprintf ((char *) message.data(), html.str().size()+1, "%s", html.str().c_str()); 
+
+  publisher.send(message, zmq::send_flags::dontwait);
+
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+
   mkd_cleanup(blob);
   link_id = 0;
 }
@@ -8764,12 +8850,13 @@ int main(int argc, char** argv) {
 
   //outline_normal_map[ARROW_UP] = move_up;
   //outline_normal_map['k'] = move_up;
-  zmq::context_t context (1);
-  zmq::socket_t publisher (context, ZMQ_PUB);
+  //zmq::context_t context (1);
+  //zmq::socket_t publisher (context, ZMQ_PUB);
   publisher.bind("tcp://*:5556");
-  publisher.bind("ipc://weather.ipc");                // Not usable on Windows.
+  publisher.bind("ipc://scroll.ipc"); 
 
-  //zmq::message_t message(20);
+  publisher.bind("tcp://*:5557");
+  publisher.bind("ipc://html.ipc"); 
 
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
