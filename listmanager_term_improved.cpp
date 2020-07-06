@@ -43,6 +43,12 @@
 //#include "maddy/parser.h"
 #include <memory>
 //#include <cstdlib>
+
+#include <fcntl.h>
+#include <unistd.h>
+
+//
+//
 extern "C" {
 //#include <stdio.h>  
 #include <mkdio.h>
@@ -413,6 +419,8 @@ struct editorConfig {
 
 static struct editorConfig E;
 
+struct flock lock;
+
 /* note that you can call these either through explicit dereference: (*get_note)(4328)
  * or through implicit dereference: get_note(4328)
 */
@@ -769,10 +777,23 @@ void update_html_file(std::string &&fn) {
   mkd_document(blob, &doc);
   html << meta_ << doc << "</article></body><html>";
   
+  /*
   std::ofstream myfile;
   myfile.open(fn); //filename
   myfile << html.str().c_str();
   myfile.close();
+  */
+
+  int fd;
+  //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, html.str().c_str(), html.str().size());
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else outlineShowMessage("Couldn't lock file");
+  } else outlineShowMessage("Couldn't open file");
 
   /* don't know if below is correct or necessary - I don't think so*/
   //mkd_free_t x; 
@@ -8855,8 +8876,13 @@ int main(int argc, char** argv) {
   publisher.bind("tcp://*:5556");
   publisher.bind("ipc://scroll.ipc"); 
 
-  publisher.bind("tcp://*:5557");
-  publisher.bind("ipc://html.ipc"); 
+  //publisher.bind("tcp://*:5557");
+  //publisher.bind("ipc://html.ipc"); 
+
+  lock.l_whence = SEEK_SET;
+  lock.l_start = 0;
+  lock.l_len = 0;
+  lock.l_pid = getpid();
 
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
