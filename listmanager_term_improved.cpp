@@ -4535,8 +4535,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
-          if (O.view == TASK) update_row();
-          else if (O.view == CONTEXT || O.view == FOLDER) update_container();
+          if (O.view == TASK)  {
+            update_row();
+            if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+          } else if (O.view == CONTEXT || O.view == FOLDER) update_container();
           else if (O.view == KEYWORD) update_keyword();
           O.command[0] = '\0'; //11-26-2019
           O.mode = NORMAL;
@@ -5113,6 +5115,20 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
               editorEraseScreen(); //erases the note area
               O.mode = INSERT;
+
+              {
+              int fd;
+              std::string fn = "assets/" + CURRENT_NOTE_FILE;
+              if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+                lock.l_type = F_WRLCK;  
+                if (fcntl(fd, F_SETLK, &lock) != -1) {
+                write(fd, " ", 1);
+                lock.l_type = F_UNLCK;
+                fcntl(fd, F_SETLK, &lock);
+                } else outlineShowMessage("Couldn't lock file");
+              } else outlineShowMessage("Couldn't open file");
+              }
+
               return;
 
             case 'e':
