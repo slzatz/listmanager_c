@@ -7411,7 +7411,7 @@ bool editorProcessKeypress(void) {
           E.vb0[1] = E.fr;
           editorSetMessage("\x1b[1m-- VISUAL BLOCK --\x1b[0m");
           return false;
-    
+
         case 'p':  
           editorCreateSnapshot();
           if (!string_buffer.empty()) editorPasteString();
@@ -7468,11 +7468,10 @@ bool editorProcessKeypress(void) {
           return true;
 
         case CTRL_KEY('z'):
-
           E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
           editorSetMessage("E.smartindent = %d", E.smartindent);
           return false;
-    
+
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
