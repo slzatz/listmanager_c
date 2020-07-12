@@ -229,6 +229,7 @@ enum Command {
 
   C_help,
   C_readfile,
+  C_savefile,
 
   C_edit,
 
@@ -319,6 +320,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   //{"search", C_search},
   {"set", C_set},
   {"z=", C_suggestions},
+  {"savefile", C_savefile},
+  {"save", C_savefile},
   {"saveoutline", C_saveoutline},
   {"so", C_saveoutline},
   {"highlight", C_highlight},
@@ -326,6 +329,7 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"[s", C_next_mispelling},
   {"]s", C_previous_mispelling},
   {"readfile", C_readfile},
+  {"read", C_readfile},
   {"vim", C_vim},
   {"merge", C_merge},
   {"syntax", C_syntax},
@@ -3859,24 +3863,24 @@ void editorDrawCodeRows(std::string &ab) {
 
   //save the current file to code_file with correct extension
   std::ofstream myfile;
-  myfile.open("code_file"); //filename was .cpp
+  myfile.open("code_file"); 
   myfile << editorGenerateNoteWW();
-  //editorSetMessage("wrote file"); //debugging
   myfile.close();
-
-  //procxx::process highlight("highlight", "code_file.md", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz");
-  //procxx::process highlight("bat", "code_file.md", "--style=plain", "--theme=gruvbox", "--paging=never", "--color=always");
 
   std::stringstream display;
   std::string line;
+
   // below is a quick hack folder tid = 18 -> code
   if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
-   procxx::process highlight("highlight", "code_file", "--out-format=xterm256", "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+   procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
    // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
     highlight.exec();
     while(getline(highlight.output(), line)) { display << line << '\n';}
   } else {
-    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=md.hbs", "--italic-text=always","--theme=gruvbox-markdown");
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
+                               "--color=always", "--language=md.hbs", "--italic-text=always",
+                               "--theme=gruvbox-markdown");
     highlight.exec();
     while(getline(highlight.output(), line)) { display << line << '\n';}
   }
@@ -3940,16 +3944,30 @@ void editorDrawCodeRows(std::string &ab) {
     if (E.mode == VISUAL) {
       int x = editorGetScreenXFromRowColWW(E.fr, highlight[0]) + EDITOR_LEFT_MARGIN + 1;
       int y = editorGetScreenYFromRowColWW(E.fr, highlight[0]) + TOP_MARGIN + 1;
+      
+      //int x1 = editorGetScreenXFromRowColWW(E.fr, highlight[1]) + EDITOR_LEFT_MARGIN + 1;
+      //int y1 = editorGetScreenYFromRowColWW(E.fr, highlight[1]) + TOP_MARGIN + 1;
+      
+/* note below that E.rows.at(E.fr) will not be syntax highlighted and isn't word-wrapped */
+
       std::stringstream s;
-      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-        << E.rows.at(E.fr).substr(highlight[0], highlight[1]-highlight[0])
-        << "\x1b[0m";
+      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m";
+        //<< E.rows.at(E.fr).substr(highlight[0], highlight[1]-highlight[0])
+      s  << visual_line_snippet;
+      s  << "\x1b[0m";
+      //s << "\x1b[" << y1 << ";" << x1 << "H" << "\x1b[0m";
       ab.append(s.str());
-      ab.append(lf_ret, nchars);
+      //ab.append(lf_ret, nchars);
     } else if (E.mode == VISUAL_LINE) {
       int x = EDITOR_LEFT_MARGIN + 1;
       int y = editorGetScreenYFromRowColWW(highlight[0], 0) + TOP_MARGIN + 1;
       //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
+
+      /* note this doesn't take into account word wrapping and editorGenerateNoteWW did*/
+      //visual_line_snippet = "";
+      //for (int i=highlight[0]; i<highlight[1]; i++) {
+      //  visual_line_snippet += (E.rows.at(i) + lf_ret);
+      //}  
       std::stringstream s;
       s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
         << visual_line_snippet
@@ -5675,12 +5693,28 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
             case C_readfile:
               {
-              const std::string filename = O.command_line.substr(pos+1);
+              std::string filename;
+              if (pos) filename = O.command_line.substr(pos+1);
+              else filename = "example.cpp";
               editorReadFileIntoNote(filename);
-              outlineShowMessage("Read the file: %s", filename.c_str());
-              O.mode = O.last_mode;
+              outlineShowMessage("Note generated from file: %s", filename.c_str());
+              }
+              //O.mode = O.last_mode; editorReadfile puts in editor mode but probably shouldn't
+              O.command[0] = '\0';
               return;
-             }
+             
+
+            //case CTRL_KEY('s'):
+            case C_savefile:  
+              {
+              std::string filename;
+              if (pos) filename = O.command_line.substr(pos+1);
+              else filename = "example.cpp";
+              editorSaveNoteToFile(filename);
+              O.last_mode = O.mode;
+              outlineShowMessage("Note saved to file: %s", filename.c_str());
+              }
+              return;
 
             case C_valgrind:
               initial_file_row = 0; //for arrowing or displaying files
@@ -6534,6 +6568,13 @@ bool editorScroll(void) {
   else {E.prev_line_offset = E.line_offset; return true;}
 }
 
+/* this exists to create a text file that has the proper
+ * line breaks based on screen width for syntax highlighters
+ * to operate on 
+ * Produces a text string that starts at the first line of the
+ * file and ends on the last visible line
+ */
+
 std::string editorGenerateNoteWW(void) {
   if (E.rows.empty()) return "";
 
@@ -6562,9 +6603,12 @@ std::string editorGenerateNoteWW(void) {
 
   for (;;) {
     if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
+
     std::string row = E.rows.at(filerow);
     
-    /*************************************************/
+    /****** creates visual line snippet for editorDrawCodeRows*************/
+    /**** note the snippet isn't syntax highlighted yet ******/
+    /**** but does take into account word wrapping  ******/
     if (E.mode == VISUAL_LINE) {
       if (filerow == highlight[0]) {
         size_begin = ab.size();
@@ -6582,6 +6626,21 @@ std::string editorGenerateNoteWW(void) {
           visual_line_snippet.replace(pos, 1, lf_ret);
         }
       }
+    }
+    if (E.mode == VISUAL) {
+      if (filerow == E.fr) {
+        size_begin = ab.size() + highlight[0];
+      }
+      if (filerow == E.fr + 1) {
+        visual_line_snippet = ab.substr(size_begin, highlight[1]-highlight[0]); 
+        int pos = -2;
+        for (;;) {
+          pos += 2;
+          pos = visual_line_snippet.find('\n', pos);
+          if (pos == std::string::npos) break;
+          visual_line_snippet.replace(pos, 1, lf_ret);
+        }
+    }
     }
     /*************************************************/
 
