@@ -6780,6 +6780,148 @@ std::string editorGenerateNoteWW(void) {
 
 void editorDrawRows(std::string &ab) {
 
+  /* for visual modes */
+  int begin = 0;
+  std::string abs = "";
+ 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf.str());
+
+  // erase the screen
+  for (int i=0; i < E.screenlines; i++) {
+    ab.append("\x1b[K");
+    ab.append(lf_ret, nchars);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  if (E.rows.empty()) return;
+
+  int nnn = 0;
+  int highlight[2] = {0,0};
+  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
+    if (E.highlight[1] < E.highlight[0]) {
+      highlight[1] = E.highlight[0];
+      highlight[0] = E.highlight[1];
+    } else {
+      highlight[0] = E.highlight[0];
+      highlight[1] = E.highlight[1];
+    }
+  }
+
+  int y = 0;
+  int filerow = E.first_visible_row;
+
+  for (;;){
+    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return;}
+    std::string row = E.rows.at(filerow);
+    //std::string_view row(E.rows.at(filerow));
+
+    if (E.mode == VISUAL_LINE && filerow == E.highlight[0])
+      ab.append("\x1b[48;5;242m", 11);
+
+    if (E.mode == VISUAL_LINE && filerow == E.highlight[1] + 1)
+      ab.append("\x1b[0m", 4); //return background to normal
+
+    if (E.mode == VISUAL) {
+      if (filerow == E.fr) {
+        int zz = highlight[0]/E.screencols;
+        begin = ab.size() + highlight[0] + 7*zz;
+      outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0]);
+      }
+      if (filerow == E.fr + 1) {
+        visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
+        int pos = -1;
+        for (;;) {
+          pos += 1;
+          pos = visual_snippet.find('\r', pos);
+          if (pos == std::string::npos) break;
+          nnn += 1;
+        }
+      ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
+      //outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0] + 7*nnn);
+      
+    }
+    }
+    if (row.empty()) {
+      if (y == E.screenlines - 1) return;
+      ab.append(lf_ret, nchars);
+      filerow++;
+      y++;
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= E.screencols) {
+        ab.append(row, pos+1, E.screencols);
+        abs.append(row, pos+1, E.screencols);
+        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
+        ab.append(lf_ret, nchars);
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = E.screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      abs.append(row, prev_pos+1, pos-prev_pos);
+      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
+      ab.append(lf_ret, nchars);
+      y++;
+    }
+
+
+
+
+
+
+
+
+    if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
+      int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
+      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1;
+      std::stringstream s;
+      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
+        << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
+        << "\x1b[0m";
+      ab.append(s.str());
+      ab.append(lf_ret, nchars);
+    }
+  }
+  /*
+  if (E.mode == VISUAL) {
+    ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
+    ab.insert(begin, "\x1b[48;5;242m");
+    */
+  E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+}
+
+void editorDrawRows_old(std::string &ab) {
+
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
@@ -6862,7 +7004,7 @@ void editorDrawRows(std::string &ab) {
         << row.substr(E.highlight[0], E.highlight[1]-E.highlight[0])
         << "\x1b[0m";
       ab.append(s.str());
-      ab.append(lf_ret, nchars);
+      //ab.append(lf_ret, nchars);
     }
     if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
       int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
