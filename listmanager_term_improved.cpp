@@ -3859,8 +3859,7 @@ void open_in_vim(void){
   editorReadFileIntoNote(filename);
 }
 
-void editorDrawCodeRows__(std::string &ab) {
-
+void editorDrawCodeRows(std::string &ab) {
   //save the current file to code_file with correct extension
   std::ofstream myfile;
   myfile.open("code_file"); 
@@ -3918,57 +3917,9 @@ void editorDrawCodeRows__(std::string &ab) {
   }
   ab.append("\x1b[0m");
 
-// it may be surprising that the code below is not affected
-// by existing escape codes but it actually overwrites whatever
-// has already been written to the screen
-  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
-    int highlight[2];
-    if (E.highlight[1] < E.highlight[0]) {
-      highlight[1] = E.highlight[0];
-      highlight[0] = E.highlight[1];
-    } else {
-      highlight[0] = E.highlight[0];
-      highlight[1] = E.highlight[1];
-    }
-
-    if (E.mode == VISUAL) {
-      int x = editorGetScreenXFromRowColWW(E.fr, highlight[0]) + EDITOR_LEFT_MARGIN + 1;
-      int y = editorGetScreenYFromRowColWW(E.fr, highlight[0]) + TOP_MARGIN + 1;
-      
-      //int x1 = editorGetScreenXFromRowColWW(E.fr, highlight[1]) + EDITOR_LEFT_MARGIN + 1;
-      //int y1 = editorGetScreenYFromRowColWW(E.fr, highlight[1]) + TOP_MARGIN + 1;
-      
-      size_t pos = 0;
-      int n = 0;
-      for (;;) {
-        if (n == y) break;
-        pos = ab.find('\r', pos) + 1;
-        n += 1;
-      }
-      visual_snippet = ab.substr(pos + x +3, pos + 3 + highlight[1] - highlight[0]);
-/* note below that E.rows.at(E.fr) will not be syntax highlighted and isn't word-wrapped */
-
-      std::stringstream s;
-      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-        << visual_snippet
-        << "\x1b[0m";
-      ab.append(s.str());
-    } else if (E.mode == VISUAL_LINE) {
-      int x = EDITOR_LEFT_MARGIN + 1;
-      int y = editorGetScreenYFromRowColWW(highlight[0], 0) + TOP_MARGIN + 1;
-      //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
-
-      std::stringstream s;
-      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-        << visual_snippet
-        << "\x1b[0m";
-      ab.append(s.str());
-      ab.append(lf_ret, nchars);
-
-    }
-  }
 }
-void editorDrawCodeRows(std::string &ab) {
+
+void editorDrawCodeRows_works(std::string &ab) {
 
   //save the current file to code_file with correct extension
   std::ofstream myfile;
@@ -6670,6 +6621,121 @@ bool editorScroll(void) {
 std::string editorGenerateNoteWW(void) {
   if (E.rows.empty()) return "";
 
+  std::string ab = "";
+  //int y = 0;
+  int y = -E.line_offset;
+  //int filerow = E.first_visible_row;
+  int filerow = 0;
+  char lf_ret[10];
+  int begin = 0;
+  int size_end = 0;
+  // \x1b[NC moves cursor forward by N columns
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  int highlight[2] = {0,0};
+  int nnn = 0;
+  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
+    if (E.highlight[1] < E.highlight[0]) {
+      highlight[1] = E.highlight[0];
+      highlight[0] = E.highlight[1];
+    } else {
+      highlight[0] = E.highlight[0];
+      highlight[1] = E.highlight[1];
+    }
+  }
+
+  for (;;) {
+    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
+
+    std::string row = E.rows.at(filerow);
+    
+    /****** creates visual line snippet for editorDrawCodeRows*************/
+    /**** note the snippet isn't syntax highlighted yet ******/
+    /**** but does take into account word wrapping  ******/
+    if (E.mode == VISUAL_LINE) {
+      if (filerow == highlight[0]) {
+        begin = ab.size();
+      }
+
+      if (filerow == highlight[1] + 1) {
+        size_end = ab.size();
+        //ab.append("<<<<<"); //return background to normal
+        visual_snippet = ab.substr(begin, size_end-begin); 
+        int pos = -2;
+        for (;;) {
+          pos += 2;
+          pos = visual_snippet.find('\n', pos);
+          if (pos == std::string::npos) break;
+          visual_snippet.replace(pos, 1, lf_ret);
+        }
+      }
+    }
+    if (E.mode == VISUAL) {
+      if (filerow == E.fr) {
+        int zz = highlight[0]/E.screencols;
+        begin = ab.size() + highlight[0] + zz;
+      }
+      if (filerow == E.fr + 1) {
+        visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
+        int pos = -1;
+        for (;;) {
+          pos += 1;
+          pos = visual_snippet.find('\n', pos);
+          if (pos == std::string::npos) break;
+          nnn += 1;
+        }
+      ab.insert(begin + highlight[1] - highlight[0] + nnn, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
+    }
+    }
+    /*************************************************/
+
+    if (row.empty()) {
+      if (y == E.screenlines - 1) return ab;
+      ab.append("\n");
+      filerow++;
+      y++;
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= E.screencols) {
+        ab.append(row, pos+1, E.screencols);
+        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
+        ab.append("\n");
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+E.screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + E.screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = E.screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
+      ab.append("\n");
+      y++;
+    }
+  }
+  //E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible 03222020
+}
+
+std::string editorGenerateNoteWW_works(void) {
+  if (E.rows.empty()) return "";
+
   int highlight[2] = {0,0};
   std::string ab;
   //int y = 0;
@@ -6840,7 +6906,6 @@ void editorDrawRows(std::string &ab) {
       if (filerow == E.fr) {
         int zz = highlight[0]/E.screencols;
         begin = ab.size() + highlight[0] + zz;
-      outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0]);
       }
       if (filerow == E.fr + 1) {
         visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
@@ -6858,6 +6923,7 @@ void editorDrawRows(std::string &ab) {
       
     }
     }
+
     if (row.empty()) {
       if (y == E.screenlines - 1) break;
       //ab.append(lf_ret, nchars);
@@ -6903,24 +6969,17 @@ void editorDrawRows(std::string &ab) {
       ab.append(1, '\f');
       y++;
     }
-
     if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
       int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
-      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1;
+      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1 - E.line_offset;
       std::stringstream s;
       s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
         << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
         << "\x1b[0m";
       ab.append(s.str());
-      //ab.append(lf_ret, nchars);
       ab.append(1, '\f');
     }
   }
-  /*
-  if (E.mode == VISUAL) {
-    ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
-    ab.insert(begin, "\x1b[48;5;242m");
-    */
   E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
 
   size_t p = 0;
@@ -7245,8 +7304,8 @@ void editorRefreshScreen(bool redraw) {
 
   if (redraw) {
     //Temporary kluge tid for code folder = 18
-    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) editorDrawRows(ab);
-    if (E.highlight_syntax == true) editorDrawCodeRows(ab);
+    if (get_folder_tid(O.rows.at(O.fr).id) == 18 && !(E.mode == VISUAL || E.mode == VISUAL_LINE || E.mode == VISUAL_BLOCK)) editorDrawCodeRows(ab);
+    //if (E.highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
   editorDrawMessageBar(ab); //01012020
@@ -9181,7 +9240,7 @@ void initEditor(void) {
   E.first_visible_row = 0;
   E.spellcheck = false;
   E.move_only = false;
-  E.highlight_syntax = false;
+  E.highlight_syntax = true; // should only apply to code
 
   // ? whether the screen-related stuff should be in one place
   E.screenlines = screenlines - 2 - TOP_MARGIN;
