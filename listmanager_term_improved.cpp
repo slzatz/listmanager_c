@@ -80,7 +80,6 @@ static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[
 static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 //static std::vector<std::string> task_keywords;
 static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
-static std::string visual_snippet; //used by editorGenerateNoteWW to provide the various Visual mode snippets needed by editorDrawCodeRows
 static std::set<int> unique_ids; //used in unique_data_callback
 static std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
 static size_t cmd_hx_idx = 0;
@@ -532,7 +531,7 @@ int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
 int editorGetLineInRowWW(int, int);
 int editorGetLinesInRowWW(int);
 int editorGetLineCharCountWW(int, int);
-std::string editorGenerateNoteWW(void); //? really only used by editorDrawCodeRows
+std::string editorGenerateWWString(void); // only used by editorDrawCodeRows
 void editorDrawCodeRows(std::string &);
 int editorGetInitialRow(int &);
 int editorGetInitialRow(int &, int);
@@ -3863,7 +3862,7 @@ void editorDrawCodeRows(std::string &ab) {
   //save the current file to code_file with correct extension
   std::ofstream myfile;
   myfile.open("code_file"); 
-  myfile << editorGenerateNoteWW();
+  myfile << editorGenerateWWString();
   myfile.close();
 
   std::stringstream display;
@@ -3917,109 +3916,6 @@ void editorDrawCodeRows(std::string &ab) {
   }
   ab.append("\x1b[0m");
 
-}
-
-void editorDrawCodeRows_works(std::string &ab) {
-
-  //save the current file to code_file with correct extension
-  std::ofstream myfile;
-  myfile.open("code_file"); 
-  myfile << editorGenerateNoteWW();
-  myfile.close();
-
-  std::stringstream display;
-  std::string line;
-
-  // below is a quick hack folder tid = 18 -> code
-  if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
-   procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  } else {
-    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
-                               "--color=always", "--language=md.hbs", "--italic-text=always",
-                               "--theme=gruvbox-markdown");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  }
-
-  char lf_ret[10];
-  // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  ab.append("\x1b[?25l"); //hides the cursor
-
-  std::stringstream buf;
-  // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  ab.append(buf.str());
-
-  // erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K");
-    ab.append(lf_ret, nchars);
-  }
-
-  std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  ab.append(buf2.str()); //reposition cursor
-
-  //std::string line;
-  display.clear();
-  display.seekg(0, std::ios::beg);
-  int n = 0;
-  while(std::getline(display, line, '\n')) {
-    if (n >= E.line_offset) {
-      ab.append(line);
-      ab.append(lf_ret);
-    }
-    n++;
-  }
-  ab.append("\x1b[0m");
-
-// it may be surprising that the code below is not affected
-// by existing escape codes but it actually overwrites whatever
-// has already been written to the screen
-  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
-    int highlight[2];
-    if (E.highlight[1] < E.highlight[0]) {
-      highlight[1] = E.highlight[0];
-      highlight[0] = E.highlight[1];
-    } else {
-      highlight[0] = E.highlight[0];
-      highlight[1] = E.highlight[1];
-    }
-
-    if (E.mode == VISUAL) {
-      int x = editorGetScreenXFromRowColWW(E.fr, highlight[0]) + EDITOR_LEFT_MARGIN + 1;
-      int y = editorGetScreenYFromRowColWW(E.fr, highlight[0]) + TOP_MARGIN + 1;
-      
-      //int x1 = editorGetScreenXFromRowColWW(E.fr, highlight[1]) + EDITOR_LEFT_MARGIN + 1;
-      //int y1 = editorGetScreenYFromRowColWW(E.fr, highlight[1]) + TOP_MARGIN + 1;
-      
-/* note below that E.rows.at(E.fr) will not be syntax highlighted and isn't word-wrapped */
-      y -= E.line_offset;
-      std::stringstream s;
-      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-        << visual_snippet
-        << "\x1b[0m";
-      ab.append(s.str());
-    } else if (E.mode == VISUAL_LINE) {
-      int x = EDITOR_LEFT_MARGIN + 1;
-      int y = editorGetScreenYFromRowColWW(highlight[0], 0) + TOP_MARGIN + 1;
-      //int y1 = editorGetScreenYFromRowColWW(E.highlight[1], 0) + TOP_MARGIN + 1;
-
-      y -= E.line_offset;
-      std::stringstream s;
-      s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;242m"
-        << visual_snippet
-        << "\x1b[0m";
-      ab.append(s.str());
-      ab.append(lf_ret, nchars);
-
-    }
-  }
 }
 
 void editorReadFileIntoNote(const std::string &filename) {
@@ -6618,79 +6514,18 @@ bool editorScroll(void) {
  * file and ends on the last visible line
  */
 
-std::string editorGenerateNoteWW(void) {
+std::string editorGenerateWWString(void) {
   if (E.rows.empty()) return "";
 
   std::string ab = "";
-  //int y = 0;
   int y = -E.line_offset;
-  //int filerow = E.first_visible_row;
   int filerow = 0;
-  char lf_ret[10];
-  int begin = 0;
-  int size_end = 0;
-  // \x1b[NC moves cursor forward by N columns
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-
-  int highlight[2] = {0,0};
-  int nnn = 0;
-  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
-    if (E.highlight[1] < E.highlight[0]) {
-      highlight[1] = E.highlight[0];
-      highlight[0] = E.highlight[1];
-    } else {
-      highlight[0] = E.highlight[0];
-      highlight[1] = E.highlight[1];
-    }
-  }
 
   for (;;) {
     if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
 
     std::string row = E.rows.at(filerow);
     
-    /****** creates visual line snippet for editorDrawCodeRows*************/
-    /**** note the snippet isn't syntax highlighted yet ******/
-    /**** but does take into account word wrapping  ******/
-    if (E.mode == VISUAL_LINE) {
-      if (filerow == highlight[0]) {
-        begin = ab.size();
-      }
-
-      if (filerow == highlight[1] + 1) {
-        size_end = ab.size();
-        //ab.append("<<<<<"); //return background to normal
-        visual_snippet = ab.substr(begin, size_end-begin); 
-        int pos = -2;
-        for (;;) {
-          pos += 2;
-          pos = visual_snippet.find('\n', pos);
-          if (pos == std::string::npos) break;
-          visual_snippet.replace(pos, 1, lf_ret);
-        }
-      }
-    }
-    if (E.mode == VISUAL) {
-      if (filerow == E.fr) {
-        int zz = highlight[0]/E.screencols;
-        begin = ab.size() + highlight[0] + zz;
-      }
-      if (filerow == E.fr + 1) {
-        visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
-        int pos = -1;
-        for (;;) {
-          pos += 1;
-          pos = visual_snippet.find('\n', pos);
-          if (pos == std::string::npos) break;
-          nnn += 1;
-        }
-      ab.insert(begin + highlight[1] - highlight[0] + nnn, "\x1b[0m");
-      ab.insert(begin, "\x1b[48;5;242m");
-    }
-    }
-    /*************************************************/
-
     if (row.empty()) {
       if (y == E.screenlines - 1) return ab;
       ab.append("\n");
@@ -6730,118 +6565,6 @@ std::string editorGenerateNoteWW(void) {
       y++;
     }
   }
-  //E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible 03222020
-}
-
-std::string editorGenerateNoteWW_works(void) {
-  if (E.rows.empty()) return "";
-
-  int highlight[2] = {0,0};
-  std::string ab;
-  //int y = 0;
-  int y = -E.line_offset;
-  //int filerow = E.first_visible_row;
-  int filerow = 0;
-  char lf_ret[10];
-  size_t size_begin = 0;
-  size_t size_end = 0;
-  // \x1b[NC moves cursor forward by N columns
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-
-  if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
-    if (E.highlight[1] < E.highlight[0]) {
-      highlight[1] = E.highlight[0];
-      highlight[0] = E.highlight[1];
-    } else {
-      highlight[0] = E.highlight[0];
-      highlight[1] = E.highlight[1];
-    }
-  }
-
-  for (;;) {
-    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return ab;}
-
-    std::string row = E.rows.at(filerow);
-    
-    /****** creates visual line snippet for editorDrawCodeRows*************/
-    /**** note the snippet isn't syntax highlighted yet ******/
-    /**** but does take into account word wrapping  ******/
-    if (E.mode == VISUAL_LINE) {
-      if (filerow == highlight[0]) {
-        size_begin = ab.size();
-      }
-
-      if (filerow == highlight[1] + 1) {
-        size_end = ab.size();
-        //ab.append("<<<<<"); //return background to normal
-        visual_snippet = ab.substr(size_begin, size_end-size_begin); 
-        int pos = -2;
-        for (;;) {
-          pos += 2;
-          pos = visual_snippet.find('\n', pos);
-          if (pos == std::string::npos) break;
-          visual_snippet.replace(pos, 1, lf_ret);
-        }
-      }
-    }
-    if (E.mode == VISUAL) {
-      if (filerow == E.fr) {
-        size_begin = ab.size() + highlight[0];
-      }
-      if (filerow == E.fr + 1) {
-        visual_snippet = ab.substr(size_begin, highlight[1]-highlight[0]); 
-        int pos = -2;
-        for (;;) {
-          pos += 2;
-          pos = visual_snippet.find('\n', pos);
-          if (pos == std::string::npos) break;
-          visual_snippet.replace(pos, 1, lf_ret);
-        }
-    }
-    }
-    /*************************************************/
-
-    if (row.empty()) {
-      if (y == E.screenlines - 1) return ab;
-      ab.append("\n");
-      filerow++;
-      y++;
-      continue;
-    }
-
-    int pos = -1;
-    int prev_pos;
-    for (;;) {
-      /* this is needed because it deals where the end of the line doesn't have a space*/
-      if (row.substr(pos+1).size() <= E.screencols) {
-        ab.append(row, pos+1, E.screencols);
-        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
-        ab.append("\n");
-        y++;
-        filerow++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-
-      //note npos when signed = -1 and order of if/else may matter
-      if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      } else if (pos == prev_pos) {
-        row = row.substr(pos+1);
-        prev_pos = -1;
-        pos = E.screencols - 1;
-      }
-
-      ab.append(row, prev_pos+1, pos-prev_pos);
-      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return ab;}
-      ab.append("\n");
-      y++;
-    }
-  }
-  //E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible 03222020
 }
 
 void editorDrawRows(std::string &ab) {
@@ -6907,8 +6630,8 @@ void editorDrawRows(std::string &ab) {
         int zz = highlight[0]/E.screencols;
         begin = ab.size() + highlight[0] + zz;
       }
-      if (filerow == E.fr + 1) {
-        visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
+      if (filerow == E.fr + 1) { //doesn't work when highlighting something in last row - ? more down
+        std::string visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
         int pos = -1;
         for (;;) {
           pos += 1;
@@ -6969,6 +6692,24 @@ void editorDrawRows(std::string &ab) {
       ab.append(1, '\f');
       y++;
     }
+    /*? should go here ao last line highlight works
+      if (filerow == E.fr + 1) { //doesn't work when highlighting something in last row - ? more down
+        std::string visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
+        int pos = -1;
+        for (;;) {
+          pos += 1;
+          pos = visual_snippet.find('\f', pos);
+          if (pos == std::string::npos) break;
+          nnn += 1;
+        }
+      //ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
+      ab.insert(begin + highlight[1] - highlight[0] + nnn, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
+      //outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0] + 7*nnn);
+      
+    }
+   */
+
     if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
       int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
       int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1 - E.line_offset;
@@ -6990,106 +6731,6 @@ void editorDrawRows(std::string &ab) {
       ab.replace(p, 1, lf_ret);
       p += 7;
   }
-}
-
-void editorDrawRows_old(std::string &ab) {
-
-  char lf_ret[10];
-  // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  ab.append("\x1b[?25l"); //hides the cursor
-
-  std::stringstream buf;
-  // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  ab.append(buf.str());
-
-  // erase the screen
-  for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K");
-    ab.append(lf_ret, nchars);
-  }
-
-  std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  ab.append(buf2.str()); //reposition cursor
-
-  if (E.rows.empty()) return;
-
-  int y = 0;
-  int filerow = E.first_visible_row;
-
-  for (;;){
-    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return;}
-    std::string row = E.rows.at(filerow);
-    //std::string_view row(E.rows.at(filerow));
-
-    if (E.mode == VISUAL_LINE && filerow == E.highlight[0])
-      ab.append("\x1b[48;5;242m", 11);
-
-    if (E.mode == VISUAL_LINE && filerow == E.highlight[1] + 1)
-      ab.append("\x1b[0m", 4); //return background to normal
-
-    if (row.empty()) {
-      if (y == E.screenlines - 1) return;
-      ab.append(lf_ret, nchars);
-      filerow++;
-      y++;
-      continue;
-    }
-
-    int pos = -1;
-    int prev_pos;
-    for (;;) {
-      /* this is needed because it deals where the end of the line doesn't have a space*/
-      if (row.substr(pos+1).size() <= E.screencols) {
-        ab.append(row, pos+1, E.screencols);
-        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
-        ab.append(lf_ret, nchars);
-        y++;
-        filerow++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+E.screencols);
-
-      //note npos when signed = -1 and order of if/else may matter
-      if (pos == std::string::npos) {
-        pos = prev_pos + E.screencols;
-      } else if (pos == prev_pos) {
-        row = row.substr(pos+1);
-        prev_pos = -1;
-        pos = E.screencols - 1;
-      }
-
-      ab.append(row, prev_pos+1, pos-prev_pos);
-      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
-      ab.append(lf_ret, nchars);
-      y++;
-    }
-    if (E.mode == VISUAL && filerow == E.fr + 1) {
-      int c = editorGetScreenXFromRowColWW(E.fr, E.highlight[0]) + EDITOR_LEFT_MARGIN + 1;
-      int r = editorGetScreenYFromRowColWW(E.fr, E.highlight[0]) + TOP_MARGIN + 1;
-      std::stringstream s;
-      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
-        << row.substr(E.highlight[0], E.highlight[1]-E.highlight[0])
-        << "\x1b[0m";
-      ab.append(s.str());
-      //ab.append(lf_ret, nchars);
-    }
-    if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
-      int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
-      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1;
-      std::stringstream s;
-      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
-        << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
-        << "\x1b[0m";
-      ab.append(s.str());
-      ab.append(lf_ret, nchars);
-    }
-  }
-  E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
 }
 
 
