@@ -6798,6 +6798,7 @@ void editorDrawRows(std::string &ab) {
   for (int i=0; i < E.screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
+    //ab.append(1, '\f');
   }
 
   std::stringstream buf2;
@@ -6820,9 +6821,12 @@ void editorDrawRows(std::string &ab) {
 
   int y = 0;
   int filerow = E.first_visible_row;
+  bool flag = false;
 
   for (;;){
-    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return;}
+    if (flag) break;
+    //if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; return;}
+    if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; break;}
     std::string row = E.rows.at(filerow);
     //std::string_view row(E.rows.at(filerow));
 
@@ -6835,7 +6839,7 @@ void editorDrawRows(std::string &ab) {
     if (E.mode == VISUAL) {
       if (filerow == E.fr) {
         int zz = highlight[0]/E.screencols;
-        begin = ab.size() + highlight[0] + 7*zz;
+        begin = ab.size() + highlight[0] + zz;
       outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0]);
       }
       if (filerow == E.fr + 1) {
@@ -6843,19 +6847,21 @@ void editorDrawRows(std::string &ab) {
         int pos = -1;
         for (;;) {
           pos += 1;
-          pos = visual_snippet.find('\r', pos);
+          pos = visual_snippet.find('\f', pos);
           if (pos == std::string::npos) break;
           nnn += 1;
         }
-      ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
+      //ab.insert(begin + highlight[1] - highlight[0] + 7*nnn, "\x1b[0m");
+      ab.insert(begin + highlight[1] - highlight[0] + nnn, "\x1b[0m");
       ab.insert(begin, "\x1b[48;5;242m");
       //outlineShowMessage("begin: %d  end: %d", begin, begin + highlight[1] - highlight[0] + 7*nnn);
       
     }
     }
     if (row.empty()) {
-      if (y == E.screenlines - 1) return;
-      ab.append(lf_ret, nchars);
+      if (y == E.screenlines - 1) break;
+      //ab.append(lf_ret, nchars);
+      ab.append(1, '\f');
       filerow++;
       y++;
       continue;
@@ -6868,8 +6874,10 @@ void editorDrawRows(std::string &ab) {
       if (row.substr(pos+1).size() <= E.screencols) {
         ab.append(row, pos+1, E.screencols);
         abs.append(row, pos+1, E.screencols);
-        if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
-        ab.append(lf_ret, nchars);
+        //if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
+        if (y == E.screenlines - 1) {flag=true; break;}
+        //ab.append(lf_ret, nchars);
+        ab.append(1, '\f');
         y++;
         filerow++;
         break;
@@ -6889,17 +6897,12 @@ void editorDrawRows(std::string &ab) {
 
       ab.append(row, prev_pos+1, pos-prev_pos);
       abs.append(row, prev_pos+1, pos-prev_pos);
-      if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
-      ab.append(lf_ret, nchars);
+      //if (y == E.screenlines - 1) {E.last_visible_row = filerow - 1; return;}
+      if (y == E.screenlines - 1) {flag=true; break;}
+      //ab.append(lf_ret, nchars);
+      ab.append(1, '\f');
       y++;
     }
-
-
-
-
-
-
-
 
     if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
       int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
@@ -6909,7 +6912,8 @@ void editorDrawRows(std::string &ab) {
         << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
         << "\x1b[0m";
       ab.append(s.str());
-      ab.append(lf_ret, nchars);
+      //ab.append(lf_ret, nchars);
+      ab.append(1, '\f');
     }
   }
   /*
@@ -6918,6 +6922,15 @@ void editorDrawRows(std::string &ab) {
     ab.insert(begin, "\x1b[48;5;242m");
     */
   E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+
+  size_t p = 0;
+  for (;;) {
+      if (p > ab.size()) break;
+      p = ab.find('\f', p);
+      if (p == std::string::npos) break;
+      ab.replace(p, 1, lf_ret);
+      p += 7;
+  }
 }
 
 void editorDrawRows_old(std::string &ab) {
@@ -8244,14 +8257,15 @@ bool editorProcessKeypress(void) {
     
         case 'x':
           editorCreateSnapshot();
-          E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
+          //E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
+          E.repeat = abs(E.highlight[1] - E.highlight[0]); //July 13, 2020
           //editorYankString();  /// *** causing segfault
 
           E.fc = (E.highlight[1] > E.highlight[0]) ? E.highlight[0] : E.highlight[1];
           for (int i = 0; i < E.repeat; i++) {
             editorDelChar2(E.fr, E.fc);
           }
-          if (E.fc) E.fc--;
+          //if (E.fc) E.fc--;
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
