@@ -6598,8 +6598,9 @@ void editorDrawRows(std::string &ab) {
   int nnn = 0;
   int highlight[2] = {0,0};
   bool visual = false;
+  bool visual_block = false;
   if (E.mode == VISUAL || E.mode == VISUAL_LINE) {
-    if (E.highlight[1] < E.highlight[0]) {
+    if (E.highlight[1] < E.highlight[0]) { //note E.highlight[1] should == E.fc
       highlight[1] = E.highlight[0];
       highlight[0] = E.highlight[1];
     } else {
@@ -6629,6 +6630,14 @@ void editorDrawRows(std::string &ab) {
       begin = ab.size() + highlight[0] + zz;
       visual = true;
     }
+
+    /**************************************/
+    if (E.mode == VISUAL_BLOCK && (filerow > (E.vb0[1] - 1) && filerow < (E.fr + 1))) { //highlight[3] top row highlight[4] lower (higher #)
+      int zz = E.vb0[0]/E.screencols;
+      begin = ab.size() + E.vb0[0] + zz;
+      visual_block = true;
+    } else visual_block = false;
+    /**************************************/
 
     if (row.empty()) {
       if (y == E.screenlines - 1) break;
@@ -6682,21 +6691,24 @@ void editorDrawRows(std::string &ab) {
         if (pos == std::string::npos) break;
         nnn += 1;
       }
-      ab.insert(begin + highlight[1] - highlight[0] + nnn, "\x1b[0m");
+      ab.insert(begin + highlight[1] - highlight[0] + nnn + 1, "\x1b[0m");
       ab.insert(begin, "\x1b[48;5;242m");
       visual = false;
     }
 
-    if (E.mode == VISUAL_BLOCK && (filerow > E.vb0[1] && filerow < E.fr + 2)) {
-      int c = editorGetScreenXFromRowColWW(filerow - 1, E.vb0[0]) + EDITOR_LEFT_MARGIN + 1;
-      int r = editorGetScreenYFromRowColWW(filerow - 1, E.vb0[0]) + TOP_MARGIN + 1 - E.line_offset;
-      std::stringstream s;
-      s << "\x1b[" << r << ";" << c << "H" << "\x1b[48;5;242m"
-        << row.substr(E.vb0[0], E.fc-E.vb0[0] + 1)
-        << "\x1b[0m";
-      ab.append(s.str());
-      ab.append(1, '\f');
+    if (visual_block) { 
+      std::string visual_snippet = ab.substr(begin, E.fc-E.vb0[0]); //E.fc = highlight[1] ; vb0[0] = highlight[0] 
+      int pos = -1;
+      for (;;) {
+        pos += 1;
+        pos = visual_snippet.find('\f', pos);
+        if (pos == std::string::npos) break;
+        nnn += 1;
+      }
+      ab.insert(begin + E.fc - E.vb0[0] + nnn + 1, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
     }
+
   }
   E.last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
 
