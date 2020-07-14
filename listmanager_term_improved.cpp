@@ -590,6 +590,7 @@ std::string generate_html2(void);
 void generate_persistent_html_file(int);
 void load_meta(void);
 void update_html_file(std::string &&);
+void update_html_code_file(std::string &&);
 void editorSaveNoteToFile(const std::string &);
 void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
@@ -846,6 +847,38 @@ void update_html_zmq(std::string &&fn) {
   link_id = 0;
 }
 
+void update_html_code_file(std::string &&fn) {
+  std::ofstream myfile;
+  myfile.open("code_file"); 
+  myfile << editorRowsToString(); //don't need word wrap
+  myfile.close();
+  std::stringstream html;
+  std::string line;
+
+   procxx::process highlight("highlight", "code_file", "--out-format=html", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { html << line << '\n';}
+    //while(getline(highlight.output(), line)) { html << line << "<br>";}
+
+  /*
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  */
+  
+  int fd;
+  //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, html.str().c_str(), html.str().size());
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else outlineShowMessage("Couldn't lock file");
+  } else outlineShowMessage("Couldn't open file");
+
+}
 void generate_persistent_html_file(int id) {
   std::string  fn = O.rows.at(O.fr).title.substr(0, 20);
     std::string illegal_chars = "\\/:?\"<>|\n ";
@@ -1536,7 +1569,11 @@ void get_note(int id) {
 
   if (O.taskview != BY_SEARCH) {
     editorRefreshScreen(true);
-    if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    if (lm_browser) {
+      if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+      else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+    }   
     return;
   }
 
@@ -1566,7 +1603,11 @@ void get_note(int id) {
   editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
   editorRefreshScreen(true);
-  if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  }   
 }
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
@@ -4493,7 +4534,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\r': //also does escape into NORMAL mode
           if (O.view == TASK)  {
             update_row();
-            if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+            if (lm_browser) {
+              if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+            }   
           } else if (O.view == CONTEXT || O.view == FOLDER) update_container();
           else if (O.view == KEYWORD) update_keyword();
           O.command[0] = '\0'; //11-26-2019
@@ -7565,7 +7609,11 @@ bool editorProcessKeypress(void) {
               E.mode = NORMAL;
               E.command[0] = '\0';
               E.command_line.clear();
-              if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              if (lm_browser) {
+                if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+                else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+              }   
               {
               auto it = html_files.find(O.rows.at(O.fr).id);
               if (it != html_files.end()) update_html_file("assets/" + it->second);
@@ -7587,7 +7635,11 @@ bool editorProcessKeypress(void) {
               E.command[0] = '\0';
               E.command_line.clear();
               editor_mode = false;
-              if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              if (lm_browser) {
+                if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+                else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+              }   
               {
               auto it = html_files.find(O.rows.at(O.fr).id);
               if (it != html_files.end()) update_html_file("assets/" + it->second);
