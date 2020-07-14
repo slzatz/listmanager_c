@@ -6595,7 +6595,6 @@ void editorDrawRows(std::string &ab) {
 
   if (E.rows.empty()) return;
 
-  int nnn = 0;
   int highlight[2] = {0,0};
   bool visual = false;
   bool visual_block = false;
@@ -6685,13 +6684,14 @@ void editorDrawRows(std::string &ab) {
     if (visual) { 
       std::string visual_snippet = ab.substr(begin, highlight[1]-highlight[0]); 
       int pos = -1;
+      int n = 0;
       for (;;) {
         pos += 1;
         pos = visual_snippet.find('\f', pos);
         if (pos == std::string::npos) break;
-        nnn += 1;
+        n += 1;
       }
-      ab.insert(begin + highlight[1] - highlight[0] + nnn + 1, "\x1b[0m");
+      ab.insert(begin + highlight[1] - highlight[0] + n + 1, "\x1b[0m");
       ab.insert(begin, "\x1b[48;5;242m");
       visual = false;
     }
@@ -6699,13 +6699,14 @@ void editorDrawRows(std::string &ab) {
     if (visual_block) { 
       std::string visual_snippet = ab.substr(begin, E.fc-E.vb0[0]); //E.fc = highlight[1] ; vb0[0] = highlight[0] 
       int pos = -1;
+      int n = 0;
       for (;;) {
         pos += 1;
         pos = visual_snippet.find('\f', pos);
         if (pos == std::string::npos) break;
-        nnn += 1;
+        n += 1;
       }
-      ab.insert(begin + E.fc - E.vb0[0] + nnn + 1, "\x1b[0m");
+      ab.insert(begin + E.fc - E.vb0[0] + n + 1, "\x1b[0m");
       ab.insert(begin, "\x1b[48;5;242m");
     }
 
@@ -7366,7 +7367,7 @@ bool editorProcessKeypress(void) {
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = E.fc;
           editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
-          return false;
+          return true; //want a redraw to highlight current char like vim does
 
         case CTRL_KEY('v'):
           E.mode = VISUAL_BLOCK;
@@ -7375,7 +7376,7 @@ bool editorProcessKeypress(void) {
           E.vb0[0] = E.fc;
           E.vb0[1] = E.fr;
           editorSetMessage("\x1b[1m-- VISUAL BLOCK --\x1b[0m");
-          return false;
+          return true; //want a redraw to highlight current char like vim does
 
         case 'p':  
           editorCreateSnapshot();
@@ -7814,7 +7815,7 @@ bool editorProcessKeypress(void) {
             editorCreateSnapshot();
     
           for (int i = E.vb0[1]; i < E.fr + 1; i++) {
-            E.rows.at(i).erase(E.vb0[0], E.fc - E.vb0[0] + 1);       
+            E.rows.at(i).erase(E.vb0[0], E.fc - E.vb0[0] + 1); //needs to be cleaned up for E.fc < E.vb0[0] ? abs
           }
 
           E.fc = E.vb0[0];
@@ -7915,16 +7916,19 @@ bool editorProcessKeypress(void) {
           return true;
     
         case 'x':
-          editorCreateSnapshot();
-          //E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1;
-          E.repeat = abs(E.highlight[1] - E.highlight[0]); //July 13, 2020
+          if (!E.rows.empty()) {
+            editorCreateSnapshot();
+          E.repeat = abs(E.highlight[1] - E.highlight[0]) + 1; //July 13, 2020
           //editorYankString();  /// *** causing segfault
 
           E.fc = (E.highlight[1] > E.highlight[0]) ? E.highlight[0] : E.highlight[1];
+
+          // note ? should mirror VISUAL_BLOCK use of E.rows.at(E.fr).erase(E.highlight[1] - E.highlight[0] + 1)
           for (int i = 0; i < E.repeat; i++) {
             editorDelChar2(E.fr, E.fc);
           }
           //if (E.fc) E.fc--;
+          }
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
