@@ -1432,9 +1432,16 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
   row.mark = false;
-  //(argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
-  (argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
-                                                 : strncpy(row.modified, " ", 16);
+
+  //(argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
+  //                                               : strncpy(row.modified, " ", 16);
+
+  //the reason for below is I am thinking about changing row.modified to a std::string but that's lots of changes
+  //wanted to show how it would work
+  int *sc = static_cast<int*>(sortcolnum);
+  std::string row_modified; //would be row.modified if changed to string
+  (argv[*sc] != nullptr) ? row_modified.assign(argv[*sc], 16) : row_modified.assign(16, ' ');
+  strncpy(row.modified, row_modified.c_str(), 16);
   O.rows.push_back(row);
 
   return 0;
@@ -1534,6 +1541,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
   row.mark = false;
+  //if changed modified (which should be some generic time name) then row.modified.assign(argv[16], 16)
   strncpy(row.modified, argv[16], 16);
   O.rows.push_back(row);
 
