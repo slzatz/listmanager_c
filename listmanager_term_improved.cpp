@@ -557,7 +557,9 @@ void editorDelChar(void);
 void editorDeleteToEndOfLine(void);
 void editorYankLine(int);
 void editorPasteLine(void);
+void editorPasteLineVisual(void);
 void editorPasteString(void);
+void editorPasteStringVisual(void);
 void editorYankString(void);
 void editorMoveCursorEOL(void);
 void editorMoveCursorBOL(void);
@@ -5979,6 +5981,30 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
           else display_container_info(O.rows.at(O.fr).id); 
           return;
+
+
+        case '\r':
+          if (orow& row = O.rows.at(O.fr); O.view == TASK) {
+            O.command[0] = '\0';
+            return;
+          } else if (O.view == CONTEXT) {
+            O.context = row.title;
+            O.folder = "";
+            O.taskview = BY_CONTEXT;
+          } else if (O.view == FOLDER) {
+            O.folder = row.title;
+            O.context = "";
+            O.taskview = BY_FOLDER;
+          } else if (O.view == KEYWORD) {
+            O.keyword = row.title;
+            O.folder = "";
+            O.context = "";
+            O.taskview = BY_KEYWORD;
+          }
+          get_items(MAX);
+          O.command[0] = '\0';
+          return;
+
         /*  
         case ARROW_LEFT:
           if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
@@ -6242,6 +6268,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\x1b':
           O.mode = O.last_mode;
+          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+          else display_container_info(O.rows.at(O.fr).id);
           O.command[0] = '\0';
           O.repeat = 0;
           outlineShowMessage("");
@@ -7411,7 +7439,7 @@ bool editorProcessKeypress(void) {
           E.repeat = 0;
           E.highlight[0] = E.highlight[1] = E.fr;
           editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
-          return false;
+          return true;
     
         case 'v':
           E.mode = VISUAL;
@@ -7995,7 +8023,7 @@ bool editorProcessKeypress(void) {
           editorSetMessage("");
           return true;
     
-        case 'y':  
+        case 'y':
           //E.repeat = E.highlight[1] - E.highlight[0] + 1; // 12-14-2019
           E.fc = E.highlight[0];
           editorYankString();
@@ -8005,6 +8033,15 @@ bool editorProcessKeypress(void) {
           editorSetMessage("");
           return true;
     
+        case 'p':
+          editorCreateSnapshot();
+          if (!string_buffer.empty()) editorPasteStringVisual();
+          else editorPasteLineVisual();
+          E.command[0] = '\0';
+          E.repeat = 0;
+          E.mode = NORMAL;
+          return true;
+
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
@@ -8353,10 +8390,34 @@ void editorPasteString(void) {
   E.dirty++;
 }
 
+void editorPasteStringVisual(void) {
+  if (E.rows.empty() || string_buffer.empty()) return;
+  std::string& row = E.rows.at(E.fr);
+
+  row.replace(row.begin() + E.highlight[0], row.begin() + E.highlight[1] + 1, string_buffer);
+  E.fc += string_buffer.size();
+  E.dirty++;
+}
+
 void editorPasteLine(void){
   if (E.rows.empty())  editorInsertRow(0, std::string());
 
-  for (int i=0; i < line_buffer.size(); i++) {
+  for (size_t i=0; i < line_buffer.size(); i++) {
+    //int len = (line_buffer[i].size());
+    E.fr++;
+    editorInsertRow(E.fr, line_buffer[i]);
+  }
+}
+
+void editorPasteLineVisual(void){
+  if (E.rows.empty())  editorInsertRow(0, std::string());
+
+  E.rows.at(E.fr).erase(E.highlight[0], E.highlight[1] - E.highlight[0] + 1);
+  E.fc = E.highlight[0];
+  editorInsertReturn();
+  E.fr--;
+
+  for (size_t i=0; i < line_buffer.size(); i++) {
     //int len = (line_buffer[i].size());
     E.fr++;
     editorInsertRow(E.fr, line_buffer[i]);
