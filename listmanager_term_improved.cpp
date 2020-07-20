@@ -3759,15 +3759,6 @@ void editorDelChar(void) {
   E.dirty++;
 }
 
-// used by 'x' in editor/visual mode
-void editorDelChar2(int fr, int fc) {
-  if (E.rows.empty()) return;
-  std::string& row = E.rows.at(fr);
-  if (row.empty()) return;
-  row.erase(row.begin() + fc);
-  E.dirty++;
-}
-
 void editorBackspace(void) {
 
   if (E.fc == 0 && E.fr == 0) return;
