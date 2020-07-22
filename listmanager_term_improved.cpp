@@ -488,7 +488,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // p
 void update_note(void); 
 //void solr_find(void);
 void search_db(std::string); //void fts5_sqlite(std::string);
-void search_db2(std::string); //void fts5_sqlite(std::string);
+void search_db2(std::string); //just searches documentation - should be combined with above
 void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
 void map_context_titles(void);
@@ -1680,18 +1680,6 @@ void search_db(std::string search_terms) {
             //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
             << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
 
-  //sqlite3 *db;
-  //char *err_msg = nullptr;
-    
-  //int rc = sqlite3_open(FTS_DB.c_str(), &db);
-  //  
-  //if (rc != SQLITE_OK) {
-  //      
-  //  outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-  //  sqlite3_close(db);
-  //  return;
-  //}
-
   fts_ids.clear();
   fts_titles.clear();
   fts_counter = 0;
@@ -1699,16 +1687,9 @@ void search_db(std::string search_terms) {
   bool no_rows = true;
   if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
 
-  //rc = sqlite3_exec(db, fts_query.str().c_str(), fts5_callback, &no_rows, &err_msg);
-  //  
-  //if (rc != SQLITE_OK ) {
-  //  outlineShowMessage("SQL error: %s", err_msg);
-  //  sqlite3_free(err_msg);
-  //} 
-  //sqlite3_close(db);
-
   if (no_rows) {
     outlineShowMessage("No results were returned");
+    editorEraseScreen(); //note can still return no rows from get_items_by_id if we found rows above that were deleted
     O.mode = NO_ROWS;
     return;
   }
@@ -1736,6 +1717,7 @@ void search_db(std::string search_terms) {
   //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 }
 
+//total kluge but just brings back context_tid = 16
 void search_db2(std::string search_terms) {
 
   O.rows.clear();
@@ -1758,6 +1740,7 @@ void search_db2(std::string search_terms) {
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
+    editorEraseScreen();
     O.mode = NO_ROWS;
     return;
   }
@@ -3808,10 +3791,10 @@ void editorEraseScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   ab.append(buf, strlen(buf));
 
-  //need to erase the screen
+  //erase the screen
   for (int i=0; i < E.screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
+    ab.append("\x1b[K");
+    ab.append(lf_ret);
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
@@ -5185,12 +5168,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               return;
 
             case C_find: //catches 'fin' and 'find' 
-              {
+              
               if (O.command_line.size() < 6) {
                 outlineShowMessage("You need more characters");
                 return;
               }  
-
+              {
               O.context = "";
               O.folder = "";
               O.taskview = BY_SEARCH;
@@ -5200,8 +5183,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               command_history.push_back(O.command_line); 
               outlineShowMessage("Searching for %s", search_terms.c_str());
               search_db(search_terms);
-              return;
               }
+              return;
 
             case C_fts: 
               {
@@ -5690,12 +5673,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
             //case CTRL_KEY('s'):
             case C_savefile:  
+              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
               {
               std::string filename;
               if (pos) filename = O.command_line.substr(pos+1);
               else filename = "example.cpp";
               editorSaveNoteToFile(filename);
-              O.last_mode = O.mode;
+              O.mode = O.last_mode;
               outlineShowMessage("Note saved to file: %s", filename.c_str());
               }
               return;
