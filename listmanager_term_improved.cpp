@@ -1846,7 +1846,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
 
   std::string ab;
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   ab.append(buf, strlen(buf));
@@ -3782,14 +3782,19 @@ void editorEraseScreen(void) {
   E.rows.clear();
 
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
+  //or
+  //fmt::memory_buffer lf_ret;
+  //format_to(lf_ret, "\r\n\x1b[{}C", EDITOR_LEFT_MARGIN)
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
 
   std::string ab;
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
+  //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
+  ab.append(buf);
 
   //erase the screen
   for (int i=0; i < E.screenlines; i++) {
@@ -3798,7 +3803,7 @@ void editorEraseScreen(void) {
   }
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
+  ab.append(buf);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
