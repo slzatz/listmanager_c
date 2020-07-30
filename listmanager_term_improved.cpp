@@ -498,10 +498,12 @@ int get_folder_tid(int);
 void map_context_titles(void);
 void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
+void add_task_keyword(int, int);
 void delete_task_keywords(void);
 void display_item_info(int);
 void display_item_info_pg(int);
 void display_container_info(int);
+int keyword_exists(std::string &);  
 
 //sqlite callback functions
 typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
@@ -1281,6 +1283,16 @@ void add_task_keyword(std::string &kws, int id) {
     if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
   }
 }
+
+/*from  November 23, 2019*/
+int keyword_exists(std::string &name) {  
+  std::stringstream query;
+  query << "SELECT keyword.id from keyword WHERE keyword.name = '" << name << "';";
+  int keyword_id = 0;
+  if (!db_query(S.db, query.str().c_str(), keyword_id_callback, &keyword_id, &S.err_msg, __func__)) return -1;
+  //rc = sqlite3_exec(db, query2.str().c_str(), keyword_id_callback, &keyword_id, &err_msg);
+  return keyword_id;
+  }
 
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
   int *id = static_cast<int*>(keyword_id);
@@ -5408,10 +5420,19 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 return;
               }  
 
+              // only do this if there was text after :k whatever
               if (O.last_mode == NO_ROWS) return;
 
               {
               std::string keyword = O.command_line.substr(pos+1);
+              //keyword_id = keyword_exists(...);
+              //if (!keyword_id) {
+              if (!keyword_exists(keyword)) {
+                  O.mode = O.last_mode;
+                  outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
+                  return;
+              }
+              //should use id above to use add_task_keyword(int, int)
 
               if (marked_entries.empty()) {
                 add_task_keyword(keyword, O.rows.at(O.fr).id);
