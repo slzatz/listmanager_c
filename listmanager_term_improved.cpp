@@ -29,6 +29,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <cstdio>
 #include <cstring>
 #include <algorithm>
@@ -82,7 +83,9 @@ static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"
 static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 static std::set<int> unique_ids; //used in unique_data_callback
 static std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
+static std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
 static size_t cmd_hx_idx = 0;
+static size_t page_hx_idx = 0;
 //static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 static std::map<int, std::string> html_files;
 static bool lm_browser = true;
@@ -98,6 +101,8 @@ static int SMARTINDENT = 4; //should be in config
 static int temporary_tid = 99999;
 static int link_id = 0;
 static char link_text[20];
+
+static std::unordered_set<int> marked_entries;
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -438,7 +443,6 @@ bool editorProcessKeypress(void);
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
-//void getcharundercursor();
 void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineDelWord();
@@ -458,7 +462,7 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
-void outlineDrawRows(std::string&); // doesn't do any erasing which is done in outlineRefreshRows
+void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 void outlineSave(const std::string &);
@@ -513,7 +517,7 @@ int by_id_data_callback(void *, int, char **, char **);
 int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 int task_keywords_callback(void *, int, char **, char **);
-int keyword_id_callback(void *, int, char **, char **);
+int keyword_id_callback(void *, int, char **, char **);//? not in use
 int rowid_callback(void *, int, char **, char **);
 int offset_callback(void *, int, char **, char **);
 int folder_tid_callback(void *, int, char **, char **); 
@@ -1204,8 +1208,31 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
   return 0; //you need this
 }
 
+//overload that takes keyword_id and task_id
+void add_task_keyword(int keyword_id, int task_id) {
+
+    std::stringstream query;
+    query << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " 
+          << task_id << ", keyword.id FROM keyword WHERE keyword.id = " 
+          << keyword_id << ";";
+    if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+    std::stringstream query2;
+    // updates task modified column so we know that something changed with the task
+    query2 << "UPDATE task SET modified = datetime('now', '-"
+           << TZ_OFFSET << " hours') WHERE id =" << task_id << ";";
+    if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+    /**************fts virtual table update**********************/
+
+    std::string s = get_task_keywords().first;
+    std::stringstream query3;
+    query3 << "Update fts SET tag='" << s << "' WHERE lm_id=" << task_id << ";";
+    if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+}
 
 //void add_task_keyword(const std::string &kw, int id) {
+//overload that takes keyword name and task_id
 void add_task_keyword(std::string &kws, int id) {
 
   std::stringstream temp(kws);
@@ -1215,8 +1242,6 @@ void add_task_keyword(std::string &kws, int id) {
     keyword_list.push_back(phrase);
   }    
 
-  //    
-  //Then need for for (auto i:keyword_list) ; kw = *i
   for (std::string kw : keyword_list) {
 
     size_t pos = kw.find("'");
@@ -4042,7 +4067,8 @@ void outlineDrawRows(std::string& ab) {
     else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
     if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
-    if (row.mark) ab.append("\x1b[46m", 5); //cyan background
+    //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
+    if (marked_entries.find(row.id) != marked_entries.end()) ab.append("\x1b[46m", 5);
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
@@ -4638,6 +4664,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
 
           // return means retrieve items by context or folder
+          // do this in database mode
           if (O.view == CONTEXT) {
             O.context = row.title;
             O.folder = "";
@@ -4647,10 +4674,20 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             O.context = "";
             O.taskview = BY_FOLDER;
           } else if (O.view == KEYWORD) {
+            if (!marked_entries.empty()) {
+              for (const auto& task_id : marked_entries) {
+                add_task_keyword(row.id, task_id);
+              }
+              outlineShowMessage("Marked tasks had keyword %s added", row.title.c_str());
+            }
+            O.command[0] = '\0';
+            return;
+           /*
             O.keyword = row.title;
             O.folder = "";
             O.context = "";
             O.taskview = BY_KEYWORD;
+            */
           }
           }
           get_items(MAX);
@@ -4816,10 +4853,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         case 'm':
-          if (O.view == TASK) {
-            O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
+          O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
+          if (O.rows.at(O.fr).mark) {
+            marked_entries.insert(O.rows.at(O.fr).id);
+          } else {
+            marked_entries.erase(O.rows.at(O.fr).id);
+          }  
           outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
-          }
           O.command[0] = '\0';
           return;
 
@@ -4840,36 +4880,38 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case PAGE_UP:
         case PAGE_DOWN:  
-          if (command_history.empty()) return;
+          if (page_history.size() < 2) return;
+          {
+          //size_t temp;  
           O.mode = COMMAND_LINE;
           if (c == PAGE_UP) {
-            if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() -1;
-            else cmd_hx_idx--;
-           // cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : cmd_hx_idx--;
+
+            // if O.view!=TASK and PAGE_UP - moves back to last page
+            if (O.view == TASK) { //no else needed for container view
+
+              if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
+              else page_hx_idx--;
+            }
+
           } else {
-            if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
-            else cmd_hx_idx++;
+            if (page_hx_idx == (page_history.size() - 1)) page_hx_idx = 0;
+            else page_hx_idx++;
           }
-            //cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
-          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
-          O.command_line = command_history.at(cmd_hx_idx);
+
+          //temp = page_hx_idx;
+          //outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
+          O.command_line = page_history.at(page_hx_idx);
           outlineProcessKeypress('\r');
           O.mode = NORMAL;
           O.command[0] = '\0';
           O.command_line.clear();
-          command_history.pop_back();
-          return;
-
-          /*
-          if (c == PAGE_UP) {
-            O.fr -= O.screenlines; //should be screen lines although same
-            if (O.fr < 0) O.fr = 0;
-          } else {
-             O.fr += O.screenlines;
-             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
+          //page_history.pop_back();
+          page_history.erase(page_history.begin() + page_hx_idx);
+          //page_hx_idx = temp;
+          page_hx_idx--;
+          outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
           }
           return;
-         */
 
         case ARROW_UP:
         case ARROW_DOWN:
@@ -5020,6 +5062,24 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.mode = NORMAL;
           return;
           }
+
+        /* not needed - page up works  
+        case BACKSPACE:
+          if (O.view != TASK) {
+            if (page_history.empty()) return;
+            O.mode = COMMAND_LINE;
+            size_t temp = page_hx_idx;  
+            outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
+            O.command_line = page_history.at(page_hx_idx);
+            outlineProcessKeypress('\r');
+            O.mode = NORMAL;
+            O.command[0] = '\0';
+            O.command_line.clear();
+            page_history.pop_back();
+            page_hx_idx = temp;
+          }
+          return;
+          */
 
         default:
           // if a single char or sequence of chars doesn't match then
@@ -5186,6 +5246,14 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               search_terms = O.command_line.substr(pos+1);
               std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
               command_history.push_back(O.command_line); 
+
+             // page_history.push_back(O.command_line); 
+             // page_hx_idx = page_history.size() - 1;
+
+              page_hx_idx++;
+              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+
+
               outlineShowMessage("Searching for %s", search_terms.c_str());
               search_db(search_terms);
               }
@@ -5279,7 +5347,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               if (!pos) {
                 editorEraseScreen();
                 O.view = FOLDER;
-                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+                command_history.push_back(O.command_line); 
                 get_containers();
                 O.mode = NORMAL;
                 outlineShowMessage("Retrieved folders");
@@ -5333,35 +5401,31 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               if (!pos) {
                 editorEraseScreen();
                 O.view = KEYWORD;
-                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+                command_history.push_back(O.command_line); 
                 get_containers();
                 //O.mode = NORMAL; //in get_containers
                 outlineShowMessage("Retrieved keywords");
                 return;
+              }  
+
+              if (O.last_mode == NO_ROWS) return;
+
+              {
+              std::string keyword = O.command_line.substr(pos+1);
+
+              if (marked_entries.empty()) {
+                add_task_keyword(keyword, O.rows.at(O.fr).id);
+                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
               } else {
-
-                if (O.last_mode == NO_ROWS) return;
-                std::string keyword = O.command_line.substr(pos+1);
-                outlineShowMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
-
-                bool success = false;
-                for (const auto& it : O.rows) {
-                  if (it.mark) {
-                    add_task_keyword(keyword, it.id);
-                    success = true;
-                  }
+                for (const auto& id : marked_entries) {
+                  add_task_keyword(keyword, id);
                 }
-
-                if (success) {
-                  outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
-                } else {
-                  add_task_keyword(keyword, O.rows.at(O.fr).id);
-                  outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
-                }
-                O.mode = O.last_mode;
-                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-                return;
+                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
               }
+              }
+              O.mode = O.last_mode;
+              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+              return;
 
             case C_movetocontext:
               {
@@ -5509,7 +5573,11 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               }
               //EraseScreenRedrawLines(); //*****************************
               outlineShowMessage("\'%s\' will be opened", new_context.c_str());
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+              command_history.push_back(O.command_line);
+              page_hx_idx++;
+              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+
+              marked_entries.clear();
               O.context = new_context;
               O.folder = "";
               O.taskview = BY_CONTEXT;
@@ -5541,7 +5609,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 return;
               }
               outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+              command_history.push_back(O.command_line);
+              page_hx_idx++;
+              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+              marked_entries.clear();
               O.context = "";
               O.taskview = BY_FOLDER;
               get_items(MAX);
@@ -5559,7 +5630,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
               O.keyword = O.command_line.substr(pos+1);
               outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+              command_history.push_back(O.command_line);
+              page_hx_idx++;
+              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+              marked_entries.clear();
               O.context = "No Context";
               O.folder = "No Folder";
               O.taskview = BY_KEYWORD;
@@ -5621,7 +5695,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
             case C_recent:
               outlineShowMessage("Will retrieve recent items");
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+              command_history.push_back(O.command_line);
+              page_history.push_back(O.command_line);
+              page_hx_idx = page_history.size() - 1;
+              marked_entries.clear();
               O.context = "No Context";
               O.taskview = BY_RECENT;
               O.folder = "No Folder";
@@ -5700,6 +5777,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             case C_delmarks:
               for (auto& it : O.rows) {
                 it.mark = false;}
+              if (O.view == TASK) marked_entries.clear();
               O.mode = O.last_mode;
               outlineShowMessage("Marks all deleted");
               return;
@@ -9047,6 +9125,7 @@ int main(int argc, char** argv) {
   initEditor();
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
+  page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
  // PQfinish(conn); // this should happen when exiting
 
