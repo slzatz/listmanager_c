@@ -22,6 +22,7 @@
 #include <sqlite3.h>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
 #include "process.h" // https://github.com/skystrife/procxx
+//cpp header for markdown but not in use - using c interface
 //#include "mkdio.hpp" // https://gist.github.com/Orc/97b5711dd8c8a3b371928db756eba6e5
 
 #include <string>
@@ -3293,7 +3294,7 @@ int readKey() {
    So the while loop below just keeps cycling until a byte is read
    it does check to see if there was an error (nread == -1)*/
 
-   /*Note that ctrl-key maps to ctrl-A=1, ctrl-b=2 etc.*/
+   /*Note that ctrl-key maps to ctrl-a => 1, ctrl-b => 2 etc.*/
 
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
@@ -5133,7 +5134,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           std::size_t pos;
 
           // passes back position of space (if there is one) in var pos
-          command = commandfromstringcpp(O.command_line, pos); //assume pos paramter is now a reference but should check
+          command = commandfromstringcpp(O.command_line, pos); 
           switch(command) {
 
             case 'w':
@@ -6188,9 +6189,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
   
         default:
-          //O.mode = NORMAL;
-          //O.command[0] = '\0'; 
-          //outlineProcessKeypress(c); 
           if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE mode", c);
           else outlineShowMessage("<%c> doesn't do anything in DATABASE mode", c);
           return;
@@ -6421,9 +6419,7 @@ void synchronize(int report_only) { //using 1 or 0
   else outlineShowMessage("Number of tasks/items that were affected is %d", num);
 }
 
-/* End sqlite database functions */
-
-int get_id(void) { //default is in prototype but should have no default at all
+int get_id(void) { 
   return O.rows.at(O.fr).id;
 }
 
@@ -6510,12 +6506,10 @@ void outlineMoveEndWord2() {
   for (j = O.fc + 1; j < row.title.size() ; j++) {
     if (row.title[j] < 48) break;
   }
-
   O.fc = j - 1;
 }
 
 void outlineMoveNextWord() {
-  // below is same is outlineMoveEndWord2
   int j;
   orow& row = O.rows.at(O.fr);
 
@@ -6524,7 +6518,6 @@ void outlineMoveNextWord() {
   }
 
   O.fc = j - 1;
-  // end outlineMoveEndWord2
 
   for (j = O.fc + 1; j < row.title.size() ; j++) { //+1
     if (row.title[j] > 48) break;
@@ -6540,12 +6533,10 @@ void outlineMoveBeginningWord() {
     else break;
     if (O.fc == 0) return;
   }
-
   int i;
   for (i = O.fc - 1; i > -1; i--){
     if (row.title[i] < 48) break;
   }
-
   O.fc = i + 1;
 }
 
@@ -6557,12 +6548,10 @@ void outlineMoveEndWord() {
     else break;
     if (O.fc == row.title.size() - 1) return;
   }
-
   int j;
   for (j = O.fc + 1; j < row.title.size() ; j++) {
     if (row.title[j] < 48) break;
   }
-
   O.fc = j - 1;
 }
 
@@ -6583,9 +6572,7 @@ void outlineGetWordUnderCursor(){
   for (x=i+1; x<j; x++) {
       search_string.push_back(title.at(x));
   }
-
   outlineShowMessage("word under cursor: <%s>", search_string.c_str());
-
 }
 
 void outlineFindNextWord() {
@@ -6648,18 +6635,15 @@ bool editorScroll(void) {
 
   //deal with scrol where current line wouldn't be visible because we're scrolled too far
   if (cy < E.line_offset) {
-    E.line_offset =  cy;
-    //E.first_visible_row = 0; //kluge isn't general
+    E.line_offset = cy;
     E.first_visible_row = editorGetInitialRow(E.line_offset, SCROLL_UP);
-    //E.line_offset =  cy;
   }
-  
-  if (E.line_offset == 0) E.first_visible_row = 0; //////////////////////12-16-2019
+  if (E.line_offset == 0) E.first_visible_row = 0; 
 
   E.cy = cy - E.line_offset;
 
   // vim seems to want full rows to be displayed although I am not sure
-  // it's either helpful or worthit but this is a placeholder for the idea
+  // it's either helpful or worth it but this is a placeholder for the idea
 
   // returns true if display needs to scroll and false if it doesn't
   if (E.line_offset == E.prev_line_offset) return false;
@@ -6672,7 +6656,6 @@ bool editorScroll(void) {
  * Produces a text string that starts at the first line of the
  * file and ends on the last visible line
  */
-
 std::string editorGenerateWWString(void) {
   if (E.rows.empty()) return "";
 
@@ -6746,7 +6729,6 @@ void editorDrawRows(std::string &ab) {
   for (int i=0; i < E.screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
-    //ab.append(1, '\f');
   }
 
   std::stringstream buf2;
@@ -6778,16 +6760,10 @@ void editorDrawRows(std::string &ab) {
     if (filerow == E.rows.size()) {E.last_visible_row = filerow - 1; break;}
     std::string row = E.rows.at(filerow);
 
-    //if (E.mode == VISUAL_LINE && filerow == E.highlight[0])
     if (E.mode == VISUAL_LINE && filerow == highlight[0]) {
       ab.append("\x1b[48;5;242m", 11);
       visual_line = true;
     }
-
-    /*  
-    if (E.mode == VISUAL_LINE && filerow == E.highlight[1] + 1)
-      ab.append("\x1b[0m", 4); //return background to normal
-    */
 
     if (E.mode == VISUAL && filerow == E.fr) {
       /* zz counting the number of additional chars generated by '\n' at end of line*/
@@ -7196,8 +7172,6 @@ bool editorProcessKeypress(void) {
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  //int c = readKey();
-
   switch (int c = readKey(); E.mode) {
 
     case NO_ROWS:
@@ -7405,9 +7379,7 @@ bool editorProcessKeypress(void) {
           return false;
         }
       }
-
       if ( E.repeat == 0 ) E.repeat = 1;
-    
       {
       int n = strlen(E.command);
       E.command[n] = c;
@@ -7441,7 +7413,6 @@ bool editorProcessKeypress(void) {
 
         case C_cw: case C_caw: case 's':
           editorCreateSnapshot();
-          //E.last_typed.clear();
           cmd_map4[command](E.repeat);
           E.mode = INSERT; 
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -7594,12 +7565,6 @@ bool editorProcessKeypress(void) {
     
         case '^':
           generate_persistent_html_file(O.rows.at(O.fr).id);
-
-          //still getting messages to terminal from  qutebrowser
-          //so below may be necessary 
-          //write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-          //editorRefreshScreen();
-
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
           O.command[0] = '\0';
           return false;
@@ -7685,8 +7650,7 @@ bool editorProcessKeypress(void) {
           E.fc = E.line_offset = 0;
           E.fr = E.repeat - 1;
           E.move_only = true;
-          break;
-          //return false; //there is a check if editorscroll == true
+          break; //see code after switch
 
         case 'G':
           // navigation: can't be dotted and doesn't repeat
@@ -7694,11 +7658,10 @@ bool editorProcessKeypress(void) {
           E.fc = 0;
           E.fr = E.rows.size() - 1;
           E.move_only = true;
-         break;
-         //return false; //there is a check if editorscroll = true
+         break; //see code after switch
 
        default:
-          // latest thought is to return false when no need to redraw rows like when command is not matched yet
+          /* return false when no need to redraw rows like when command is not matched yet*/
           return false;
     
       } // end of keyfromstring switch under case NORMAL 
