@@ -4769,20 +4769,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             O.taskview = BY_FOLDER;
             // will return to previous code commented out below
           } else if (O.view == KEYWORD) {
-            if (!marked_entries.empty()) {
-              for (const auto& task_id : marked_entries) {
-                add_task_keyword(row.id, task_id);
-              }
-              outlineShowMessage("Marked tasks had keyword %s added", row.title.c_str());
-            }
-            O.command[0] = '\0';
-            return;
-           /*
             O.keyword = row.title;
             O.folder = "";
             O.context = "";
             O.taskview = BY_KEYWORD;
-            */
           }
           }
           get_items(MAX);
@@ -5162,24 +5152,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.mode = NORMAL;
           return;
           }
-
-        /* not needed - page up works  
-        case BACKSPACE:
-          if (O.view != TASK) {
-            if (page_history.empty()) return;
-            O.mode = COMMAND_LINE;
-            size_t temp = page_hx_idx;  
-            outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
-            O.command_line = page_history.at(page_hx_idx);
-            outlineProcessKeypress('\r');
-            O.mode = NORMAL;
-            O.command[0] = '\0';
-            O.command_line.clear();
-            page_history.pop_back();
-            page_hx_idx = temp;
-          }
-          return;
-          */
 
         default:
           // if a single char or sequence of chars doesn't match then
@@ -6180,32 +6152,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           get_items(MAX);
           O.command[0] = '\0';
           return;
-
-        /*  
-        case ARROW_LEFT:
-          if (O.mode == DATABASE && O.taskview == BY_SEARCH) {
-            O.mode = SEARCH;
-            outlineShowMessage("You are now in SEARCH mode");
-          } else if (O.mode == SEARCH) {
-            O.mode = DATABASE;
-            outlineShowMessage("You are now in DATABASE mode");
-          } else {
-            outlineShowMessage("There is no active search!");
-          }
-          return;
-
-        case '0':
-        case HOME_KEY:
-          O.fc = 0;
-          return;
-
-        case END_KEY:
-        case '$':
-          {
-          O.fc = O.rows.at(O.fr).title.size();
-          return;
-          }
-       */ 
 
         case ':':
           outlineShowMessage(":");
