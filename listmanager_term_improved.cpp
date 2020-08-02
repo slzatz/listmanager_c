@@ -98,10 +98,13 @@ const std::string COLOR_4 = "\x1b[0;34m";
 const std::string COLOR_5 = "\x1b[0;35m";
 const std::string COLOR_6 = "\x1b[0;36m";
 const std::string COLOR_7 = "\x1b[0;37m";
+
 static int SMARTINDENT = 4; //should be in config
 static int temporary_tid = 99999;
 static int link_id = 0;
 static char link_text[20];
+
+static int current_task_id;
 
 static std::unordered_set<int> marked_entries;
 
@@ -130,7 +133,8 @@ enum Mode {
   FILE_DISPLAY,// = 7, // only outline mode
   NO_ROWS,// = 8
   VISUAL_BLOCK,
-  SEARCH
+  SEARCH,
+  ADD_KEYWORD  
 };
 
 enum View {
@@ -165,7 +169,8 @@ static const std::string mode_text[] = {
                         "FILE DISPLAY",
                         "NO ROWS",
                         "VISUAL_BLOCK",
-                        "SEARCH"
+                        "SEARCH",
+                        "ADD_KEYWORD"  
                        }; 
 
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
@@ -207,9 +212,9 @@ enum Command {
   C_contexts, //change O.view to CONTEXTs :c
   C_folders,  //change O.view to FOLDERs :f
   C_keywords,
+  C_addkeyword,
   C_movetocontext,
   C_movetofolder,
-  C_addkeyword,
   C_deletekeywords,
 
   C_delmarks,
@@ -464,6 +469,7 @@ void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
 void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineDrawKeywords(std::string&); // doesn't do any erasing; done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 void outlineSave(const std::string &);
@@ -546,7 +552,7 @@ int editorGetInitialRow(int &, int);
 //Editor Prototypes
 void editorDrawRows(std::string &); //erases lines to right as it goes
 void editorDrawMessageBar(std::string &);
-void editorDrawStatusBar(std::string &);
+//void editorDrawStatusBar(std::string &); //only one status bar
 void editorSetMessage(const char *fmt, ...);
 bool editorScroll(void);
 void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
@@ -4107,10 +4113,80 @@ void outlineDrawRows(std::string& ab) {
     spaces = O.screencols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); // + offset
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
-    ab.append("\x1b[0m", 4); // return background to normal ////////////////////////////////
+    ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
+    ab.append(lf_ret, nchars);
+  }
+}
+
+void outlineDrawKeywords(std::string& ab) {
+  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
+  char buf[32];
+  int offset = 60;
+
+  if (O.rows.empty()) return;
+
+  unsigned int y;
+  char lf_ret[16];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN + offset);
+
+  int spaces;
+
+  ab.append("\x1b[60C"); //kluge to be fixed
+
+  for (y = 0; y < O.screenlines; y++) {
+    unsigned int fr = y + O.rowoff;
+    if (fr > O.rows.size() - 1) return;
+    orow& row = O.rows[fr];
+
+    // if a line is long you only draw what fits on the screen
+    //below solves problem when deleting chars from a scrolled long line
+    unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
+    if (len > O.screencols) len = O.screencols;
+
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
+    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
+    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
+    //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+    else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
+    if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
+    if (row.dirty) ab.append("\x1b[41m", 5); //red background
+    //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
+    if (marked_entries.find(row.id) != marked_entries.end()) ab.append("\x1b[46m", 5);
+
+    // below - only will get visual highlighting if it's the active
+    // then also deals with column offset
+    if (O.mode == VISUAL && fr == O.fr) {
+
+       // below in case E.highlight[1] < E.highlight[0]
+      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
+      j =!k;
+      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append("\x1b[48;5;242m", 11);
+      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
+                                             - O.highlight[j]);
+      ab.append("\x1b[49m", 5); // return background to normal
+      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+
+    } else {
+        // current row is only row that is scrolled if O.coloff != 0
+        ab.append(&row.title[((fr == O.fr) ? O.coloff : 0)], len);
+    }
+
+    // for a 'dirty' (red) row or ithe selected row, the spaces make it look
+    // like the whole row is highlighted
+    spaces = O.screencols - len;
+    for (int i=0; i < spaces; i++) ab.append(" ", 1);
+    //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2 + offset); // + offset
+    ab.append(buf, strlen(buf));
+    ab.append(row.modified, 16);
+    ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
     ab.append(lf_ret, nchars);
   }
 }
@@ -4160,7 +4236,7 @@ void outlineDrawSearchRows(std::string& ab) {
     len = (row.title.size() <= O.screencols) ? row.title.size() : O.screencols;
     spaces = O.screencols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); //wouldn't need offset
     ab.append("\x1b[0m", 4); // return background to normal
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
@@ -4315,7 +4391,11 @@ void return_cursor() {
       ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
     }
   } else {
-    if (O.mode == SEARCH || O.mode == DATABASE) {
+    //if (O.view == KEYWORD){
+    if (O.mode == ADD_KEYWORD){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN + 60); //offset
+      ab.append(buf, strlen(buf));
+    } else if (O.mode == SEARCH || O.mode == DATABASE) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
       ab.append(buf, strlen(buf));
     } else if (O.mode != COMMAND_LINE) {
@@ -4362,21 +4442,22 @@ void outlineRefreshScreen(void) {
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
-  for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-    //O.screencols + OUTLINE_LEFT_MARGIN);
-    O.screencols + OUTLINE_LEFT_MARGIN + 17); ////////////////////////////////////////////////////////////////////////////
-    ab.append(buf, strlen(buf));
+  //if (O.view != KEYWORD) {
+  if (O.mode != ADD_KEYWORD) {
+    for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
+      O.screencols + OUTLINE_LEFT_MARGIN + 17); 
+      ab.append(buf, strlen(buf));
+    }
   }
-
   // put cursor at upper left after erasing
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , OUTLINE_LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-  if (O.mode == SEARCH)
-    outlineDrawSearchRows(ab);
-  else
-    outlineDrawRows(ab); 
+  if (O.mode == SEARCH) outlineDrawSearchRows(ab);
+  //else if (O.view == KEYWORD) outlineDrawKeywords(ab);
+  else if (O.mode == ADD_KEYWORD) outlineDrawKeywords(ab);
+  else  outlineDrawRows(ab);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -4686,6 +4767,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             O.folder = row.title;
             O.context = "";
             O.taskview = BY_FOLDER;
+            // will return to previous code commented out below
           } else if (O.view == KEYWORD) {
             if (!marked_entries.empty()) {
               for (const auto& task_id : marked_entries) {
@@ -4893,14 +4975,19 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case PAGE_UP:
         case PAGE_DOWN:  
-          if (page_history.size() < 2) return;
+          if (page_history.size() == 1 && O.view == TASK) {
+            O.mode = NORMAL;
+            O.command[0] = '\0';
+            O.command_line.clear();
+            return;
+          }
           {
           //size_t temp;  
           O.mode = COMMAND_LINE;
           if (c == PAGE_UP) {
 
             // if O.view!=TASK and PAGE_UP - moves back to last page
-            if (O.view == TASK) { //no else needed for container view
+            if (O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
 
               if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
               else page_hx_idx--;
@@ -5415,25 +5502,58 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 editorEraseScreen();
                 O.view = KEYWORD;
                 command_history.push_back(O.command_line); 
-                get_containers();
-                //O.mode = NORMAL; //in get_containers
+                get_containers(); //O.mode = NORMAL is in get_containers
                 outlineShowMessage("Retrieved keywords");
                 return;
               }  
 
-              // only do this if there was text after :k whatever
+              // only do this if there was text after C_keywords
               if (O.last_mode == NO_ROWS) return;
 
               {
               std::string keyword = O.command_line.substr(pos+1);
-              //keyword_id = keyword_exists(...);
-              //if (!keyword_id) {
               if (!keyword_exists(keyword)) {
                   O.mode = O.last_mode;
                   outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
                   return;
               }
-              //should use id above to use add_task_keyword(int, int)
+
+              if (marked_entries.empty()) {
+                add_task_keyword(keyword, O.rows.at(O.fr).id);
+                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
+              } else {
+                for (const auto& id : marked_entries) {
+                  add_task_keyword(keyword, id);
+                }
+                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
+              }
+              }
+              O.mode = O.last_mode;
+              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+              return;
+
+            case C_addkeyword: //catches addkeyword, addkw 
+              if (!pos) {
+                current_task_id = O.rows.at(O.fr).id;
+                editorEraseScreen();
+                O.view = KEYWORD;
+                command_history.push_back(O.command_line); 
+                get_containers(); //O.mode = NORMAL is in get_containers
+                O.mode = ADD_KEYWORD;
+                outlineShowMessage("Select keyword to add to marked or current entry");
+                return;
+              }  
+
+              // only do this if there was text after C_addkeyword
+              if (O.last_mode == NO_ROWS) return;
+
+              {
+              std::string keyword = O.command_line.substr(pos+1);
+              if (!keyword_exists(keyword)) {
+                  O.mode = O.last_mode;
+                  outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
+                  return;
+              }
 
               if (marked_entries.empty()) {
                 add_task_keyword(keyword, O.rows.at(O.fr).id);
@@ -5537,31 +5657,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
               }
-
-            case C_addkeyword:
-            {
-              if (O.last_mode == NO_ROWS) return;
-              std::string keyword = O.command_line.substr(pos+1);
-              outlineShowMessage("keyword \'%s\' will be added to task %d", keyword.c_str(), O.rows.at(O.fr).id);
-
-              bool success = false;
-              for (const auto& it : O.rows) {
-                if (it.mark) {
-                  add_task_keyword(keyword, it.id);
-                  success = true;
-                }
-              }
-
-              if (success) {
-                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
-              } else {
-                add_task_keyword(keyword, O.rows.at(O.fr).id);
-                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
-              }
-              O.mode = O.last_mode;
-              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-              return;
-            }
 
             case C_deletekeywords:
               outlineShowMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
@@ -6312,6 +6407,62 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       return; //////// end of outer case REPLACE
 
+    case ADD_KEYWORD:
+
+      switch(c) {
+
+        case '\x1b':
+          {
+          O.mode = COMMAND_LINE;
+          size_t temp = page_hx_idx;  
+          outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
+          O.command_line = page_history.at(page_hx_idx);
+          outlineProcessKeypress('\r');
+          O.mode = NORMAL;
+          O.command[0] = '\0';
+          O.command_line.clear();
+          page_history.pop_back();
+          page_hx_idx = temp;
+          O.repeat = 0;
+          current_task_id = -1; //not sure this is right
+          }
+          return;
+
+        case '\r':
+
+          {
+          orow& row = O.rows.at(O.fr); //currently highlighted keyword
+          if (marked_entries.empty()) {
+            add_task_keyword(row.id, current_task_id);
+            outlineShowMessage("No tasks were marked so added %s to current task", row.title.c_str());
+          } else {
+            for (const auto& task_id : marked_entries) {
+              add_task_keyword(row.id, task_id);
+            }
+            outlineShowMessage("Marked tasks had keyword %s added", row.title.c_str());
+            }
+          }
+          O.command[0] = '\0'; //might not be necessary
+          return;
+
+        case ARROW_UP:
+        case ARROW_DOWN:
+        case 'j':
+        case 'k':
+          //for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
+          outlineMoveCursor(c);
+          //O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          //O.repeat = 0;
+          return;
+
+        default:
+          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in ADD_KEYWORD mode", c);
+          else outlineShowMessage("<%c> doesn't do anything in ADD_KEYWORD mode", c);
+          return;
+      }
+
+      return; //in ADD_KEYWORDS - do nothing if no c match
+
     case FILE_DISPLAY: 
 
       switch (c) {
@@ -6999,6 +7150,7 @@ void editorSpellingSuggestions(void) {
 
 //status bar has inverted colors
 /*****************************************/
+/*
 void editorDrawStatusBar(std::string& ab) {
   int len;
   char status[200];
@@ -7035,10 +7187,9 @@ void editorDrawStatusBar(std::string& ab) {
       ab.append(" ", 1);
       len++;
     }
-
   ab.append("\x1b[m", 3); //switches back to normal formatting
-
 }
+*/
 
 void editorDrawMessageBar(std::string& ab) {
   std::stringstream buf;
@@ -8981,7 +9132,7 @@ void EraseScreenRedrawLines(void) {
   for (int j = 1; j < screenlines + 1; j++) {
 
     // First vertical line
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1);
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - OUTLINE_RIGHT_MARGIN + 1); //don't think need offset
     write(STDOUT_FILENO, buf, strlen(buf));
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
@@ -9001,7 +9152,7 @@ void EraseScreenRedrawLines(void) {
   }
 
   // draw first column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - OUTLINE_RIGHT_MARGIN + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - OUTLINE_RIGHT_MARGIN + 1); //may not need offset
   write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
 
