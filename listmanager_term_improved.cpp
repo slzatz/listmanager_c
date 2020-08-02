@@ -208,6 +208,8 @@ enum Command {
   C_addkeyword,
   C_movetocontext,
   C_movetofolder,
+  C_updatecontext,
+  C_updatefolder,
   C_deletekeywords,
 
   C_delmarks,
@@ -294,6 +296,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"movetocontext", C_movetocontext},
   {"mtf", C_movetofolder}, //need because this is command line command with a target word
   {"movetofolder", C_movetofolder},
+  {"updatefolder", C_updatefolder},
+  {"updatecontext", C_updatecontext},
   {"addkeyword", C_addkeyword},
   {"addkw", C_addkeyword},
   {"delkeywords", C_deletekeywords},
@@ -504,6 +508,8 @@ void display_item_info(int);
 void display_item_info_pg(int);
 void display_container_info(int);
 int keyword_exists(std::string &);  
+int folder_exists(std::string &);
+int context_exists(std::string &);
 
 //sqlite callback functions
 typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
@@ -520,6 +526,7 @@ int note_callback(void *, int, char **, char **);
 int display_item_info_callback(void *, int, char **, char **);
 int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);//? not in use
+int container_id_callback(void *, int, char **, char **);
 int rowid_callback(void *, int, char **, char **);
 int offset_callback(void *, int, char **, char **);
 int folder_tid_callback(void *, int, char **, char **); 
@@ -1284,22 +1291,45 @@ void add_task_keyword(std::string &kws, int id) {
   }
 }
 
-/*from  November 23, 2019*/
 int keyword_exists(std::string &name) {  
   std::stringstream query;
   query << "SELECT keyword.id from keyword WHERE keyword.name = '" << name << "';";
   int keyword_id = 0;
-  if (!db_query(S.db, query.str().c_str(), keyword_id_callback, &keyword_id, &S.err_msg, __func__)) return -1;
-  //rc = sqlite3_exec(db, query2.str().c_str(), keyword_id_callback, &keyword_id, &err_msg);
+  if (!db_query(S.db, query.str().c_str(), container_id_callback, &keyword_id, &S.err_msg, __func__)) return -1;
   return keyword_id;
-  }
+}
 
+/*
 int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
   int *id = static_cast<int*>(keyword_id);
   *id = atoi(argv[0]);
   return 0;
 }
+*/
 
+// not in use but might have some use
+int folder_exists(std::string &name) {  
+  std::stringstream query;
+  query << "SELECT folder.id from folder WHERE folder.name = '" << name << "';";
+  int folder_id = 0;
+  if (!db_query(S.db, query.str().c_str(), container_id_callback, &folder_id, &S.err_msg, __func__)) return -1;
+  return folder_id;
+}
+
+// not in use but might have some use
+int context_exists(std::string &name) {  
+  std::stringstream query;
+  query << "SELECT context.id from context WHERE context.name = '" << name << "';";
+  int context_id = 0;
+  if (!db_query(S.db, query.str().c_str(), container_id_callback, &context_id, &S.err_msg, __func__)) return -1;
+  return context_id;
+}
+
+int container_id_callback(void *container_id, int argc, char **argv, char **azColName) {
+  int *id = static_cast<int*>(container_id);
+  *id = atoi(argv[0]);
+  return 0;
+}
 void delete_task_keywords(void) {
 
   std::stringstream query;
@@ -5462,6 +5492,20 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
 
+            case C_updatefolder:
+            case C_updatecontext:
+              if (!pos) {
+                current_task_id = O.rows.at(O.fr).id;
+                editorEraseScreen();
+                if (command == C_updatefolder) O.view = FOLDER;
+                else O.view = CONTEXT;
+                command_history.push_back(O.command_line); 
+                get_containers(); //O.mode = NORMAL is in get_containers
+                O.mode = ADD_KEYWORD;
+                outlineShowMessage("Select keyword to add to marked or current entry");
+              }  
+              return;
+
             case C_addkeyword: //catches addkeyword, addkw 
               if (!pos) {
                 current_task_id = O.rows.at(O.fr).id;
@@ -6337,19 +6381,50 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         // update_task_context(std::string &, int)
         // maybe make update_task_context(int, int)
         case '\r':
-
           {
           orow& row = O.rows.at(O.fr); //currently highlighted keyword
           if (marked_entries.empty()) {
-            add_task_keyword(row.id, current_task_id);
-            outlineShowMessage("No tasks were marked so added %s to current task", row.title.c_str());
+            switch (O.view) {
+              case KEYWORD:
+                add_task_keyword(row.id, current_task_id);
+                outlineShowMessage("No tasks were marked so added keyword %s to current task",
+                                   row.title.c_str());
+                break;
+              case FOLDER:
+                update_task_folder(row.title, current_task_id);
+                outlineShowMessage("No tasks were marked so current task had folder changed to %s",
+                                   row.title.c_str());
+                break;
+              case CONTEXT:
+                update_task_context(row.title, current_task_id);
+                outlineShowMessage("No tasks were marked so current task had context changed to %s",
+                                   row.title.c_str());
+                break;
+            }
           } else {
             for (const auto& task_id : marked_entries) {
-              add_task_keyword(row.id, task_id);
-            }
-            outlineShowMessage("Marked tasks had keyword %s added", row.title.c_str());
+              //add_task_keyword(row.id, task_id);
+              switch (O.view) {
+                case KEYWORD:
+                  add_task_keyword(row.id, task_id);
+                  outlineShowMessage("Marked tasks had keyword %s added",
+                                     row.title.c_str());
+                break;
+                case FOLDER:
+                  update_task_folder(row.title, task_id);
+                  outlineShowMessage("Marked tasks had folder changed to %s",
+                                     row.title.c_str());
+                break;
+                case CONTEXT:
+                  update_task_context(row.title, task_id);
+                  outlineShowMessage("Marked tasks had context changed to %s",
+                                     row.title.c_str());
+                break;
+              }
             }
           }
+          }
+
           O.command[0] = '\0'; //might not be necessary
           return;
 
