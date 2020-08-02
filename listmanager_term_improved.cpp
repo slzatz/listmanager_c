@@ -14,7 +14,6 @@
 #define TOSTRING(x) STRINGIFY(x)
 
 #include <Python.h>
-//#include <fcntl.h>
 #include <sys/ioctl.h>
 #include <csignal>
 #include <termios.h>
@@ -22,8 +21,6 @@
 #include <sqlite3.h>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
 #include "process.h" // https://github.com/skystrife/procxx
-//cpp header for markdown but not in use - using c interface
-//#include "mkdio.hpp" // https://gist.github.com/Orc/97b5711dd8c8a3b371928db756eba6e5
 
 #include <string>
 #include <string_view> 
@@ -39,12 +36,9 @@
 #include <set>
 #include <nuspell/dictionary.hxx>
 #include <nuspell/finder.hxx>
-//#include "sqlite_db.h"
 #include <zmq.hpp>
 
-//#include "maddy/parser.h"
 #include <memory>
-//#include <cstdlib>
 
 #include <fcntl.h>
 #include <unistd.h>
@@ -52,7 +46,6 @@
 //
 //
 extern "C" {
-//#include <stdio.h>  
 #include <mkdio.h>
 }
 static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
@@ -4122,72 +4115,37 @@ void outlineDrawRows(std::string& ab) {
 }
 
 void outlineDrawKeywords(std::string& ab) {
-  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
-  char buf[32];
-  int offset = 60;
 
   if (O.rows.empty()) return;
 
-  unsigned int y;
   char lf_ret[16];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN + offset);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
 
-  int spaces;
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%dG", EDITOR_LEFT_MARGIN + 1); 
+  ab.append(buf); 
 
-  ab.append("\x1b[60C"); //kluge to be fixed
-
-  for (y = 0; y < O.screenlines; y++) {
+  for (int y = 0; y < O.screenlines; y++) {
     unsigned int fr = y + O.rowoff;
     if (fr > O.rows.size() - 1) return;
+
     orow& row = O.rows[fr];
 
-    // if a line is long you only draw what fits on the screen
-    //below solves problem when deleting chars from a scrolled long line
-    unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
-    if (len > O.screencols) len = O.screencols;
+    size_t len = (row.title.size() > O.screencols) ? O.screencols : row.title.size();
 
     if (row.star) {
       ab.append("\x1b[1m"); //bold
       ab.append("\x1b[1;36m");
     }  
-    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
-    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
-    //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
-    else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
-    if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
-    if (row.dirty) ab.append("\x1b[41m", 5); //red background
-    //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
-    if (marked_entries.find(row.id) != marked_entries.end()) ab.append("\x1b[46m", 5);
+    //? do this after everything drawn
+    if (fr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
 
-    // below - only will get visual highlighting if it's the active
-    // then also deals with column offset
-    if (O.mode == VISUAL && fr == O.fr) {
-
-       // below in case E.highlight[1] < E.highlight[0]
-      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
-      j =!k;
-      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
-      ab.append("\x1b[48;5;242m", 11);
-      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
-                                             - O.highlight[j]);
-      ab.append("\x1b[49m", 5); // return background to normal
-      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
-
-    } else {
-        // current row is only row that is scrolled if O.coloff != 0
-        ab.append(&row.title[((fr == O.fr) ? O.coloff : 0)], len);
-    }
-
-    // for a 'dirty' (red) row or ithe selected row, the spaces make it look
-    // like the whole row is highlighted
-    spaces = O.screencols - len;
-    for (int i=0; i < spaces; i++) ab.append(" ", 1);
-    //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2 + offset); // + offset
-    ab.append(buf, strlen(buf));
-    ab.append(row.modified, 16);
-    ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
-    ab.append(lf_ret, nchars);
+    ab.append(&row.title[0], len);
+    int spaces = O.screencols - len; //needs to change but reveals stuff being written
+    std::string s(spaces, ' '); 
+    ab.append(s);
+    ab.append("\x1b[0m"); // return background to normal /////
+    ab.append(lf_ret);
   }
 }
 
@@ -4391,9 +4349,9 @@ void return_cursor() {
       ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
     }
   } else {
-    //if (O.view == KEYWORD){
     if (O.mode == ADD_KEYWORD){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN + 60); //offset
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN + 60); //offset
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, EDITOR_LEFT_MARGIN); //offset
       ab.append(buf, strlen(buf));
     } else if (O.mode == SEARCH || O.mode == DATABASE) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
@@ -6374,6 +6332,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
           return;
 
+        // could be generalized for folders and contexts too  
+        // update_task_folder and update_task_context
+        // update_task_context(std::string &, int)
+        // maybe make update_task_context(int, int)
         case '\r':
 
           {
