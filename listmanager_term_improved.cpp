@@ -4751,20 +4751,32 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             O.context = row.title;
             O.folder = "";
             O.taskview = BY_CONTEXT;
+            outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+            O.command_line = "o " + O.context;
           } else if (O.view == FOLDER) {
             O.folder = row.title;
             O.context = "";
             O.taskview = BY_FOLDER;
-            // will return to previous code commented out below
+            outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+            O.command_line = "o " + O.folder;
           } else if (O.view == KEYWORD) {
             O.keyword = row.title;
             O.folder = "";
             O.context = "";
             O.taskview = BY_KEYWORD;
+            outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
+            O.command_line = "ok " + O.keyword;
           }
           }
+
+          command_history.push_back(O.command_line);
+          page_hx_idx++;
+          page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+          marked_entries.clear();
+
           get_items(MAX);
           O.command[0] = '\0';
+          O.mode = NORMAL;
           return;
 
         //Tab cycles between OUTLINE and DATABASE modes
@@ -5725,8 +5737,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               page_hx_idx++;
               page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
               marked_entries.clear();
-              O.context = "No Context";
-              O.folder = "No Folder";
+              O.context = "";
+              O.folder = "";
               O.taskview = BY_KEYWORD;
               get_items(MAX);
               //editorRefreshScreen(); //in get_note
