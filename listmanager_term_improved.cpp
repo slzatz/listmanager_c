@@ -238,7 +238,7 @@ enum Command {
 
   C_edit,
 
-  C_dbase,
+  C_database,
   //C_search,
 
   C_saveoutline,
@@ -322,8 +322,8 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"rec", C_recent},
   {"recent", C_recent},
   {"val", C_valgrind},
-  {"dbase", C_dbase},
-  {"database", C_dbase},
+  {"database", C_database},
+  {"db", C_database},
   //{"search", C_search},
   {"set", C_set},
   {"z=", C_suggestions},
@@ -5873,7 +5873,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               outlineShowMessage("Marks all deleted");
               return;
 
-            case C_dbase:
+            case C_database:
               O.mode = DATABASE;
               O.command[0] = '\0';
               O.repeat = 0;
