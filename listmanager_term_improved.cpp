@@ -442,9 +442,10 @@ void EraseScreenRedrawLines(void);
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
-void F_open(int = 0);
-void F_openfolder(int = 0);
-void F_openkeyword(int = 0);
+void F_open(int);
+void F_openfolder(int);
+void F_openkeyword(int);
+void F_deletekeywords(int); //int pos not used
 
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
@@ -506,7 +507,7 @@ void map_context_titles(void);
 void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
 void add_task_keyword(int, int);
-void delete_task_keywords(void);
+//void delete_task_keywords(void); -> F_deletekeywords
 void display_item_info(int);
 void display_item_info_pg(int);
 void display_container_info(int);
@@ -643,6 +644,8 @@ inline void f_$(int);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
+pfunc funcfromstring(const std::string&);
+pfunc commandfromstring(const std::string&, std::size_t&);
 //static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
 static std::unordered_map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
 static std::unordered_map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
@@ -650,7 +653,20 @@ static std::unordered_map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_d
 static std::unordered_map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
 static std::unordered_map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
 /*************************************/
-static std::unordered_map<int, pfunc> cmd_map = {{C_open, F_open}, {C_openfolder, F_openfolder},{C_openkeyword, F_openkeyword}};
+
+static std::unordered_map<std::string, pfunc> lookuptable {
+  {"open", F_open},
+  {"o", F_open},
+  {"openfolder", F_openfolder},
+  {"of", F_openfolder},
+  {"openkeyword", F_openkeyword},
+  {"ok", F_openkeyword},
+  {"deletekeywords", F_deletekeywords},
+  {"delkw", F_deletekeywords},
+  {"delk", F_deletekeywords},
+};
+
+
 // config struct for reading db.ini file
 struct config {
   std::string user;
@@ -1333,7 +1349,8 @@ int container_id_callback(void *container_id, int argc, char **argv, char **azCo
   *id = atoi(argv[0]);
   return 0;
 }
-void delete_task_keywords(void) {
+//void delete_task_keywords(void) {
+void F_deletekeywords(int pos) {
 
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
@@ -1348,6 +1365,9 @@ void delete_task_keywords(void) {
   std::stringstream query3;
   query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
   if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+  outlineShowMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", O.rows.at(O.fr).id);
+  O.mode = O.last_mode;
 }
 
 void get_linked_items(int max) {
@@ -3246,6 +3266,17 @@ int keyfromstringcpp(const std::string& key) {
     return -1;
 }
 
+//this is so short should just incorporate in new commandfromstring
+pfunc funcfromstring(const std::string& key) {
+
+  // c++20 = c++2a contains on associate containers
+  //if (lookuptablemap.contains(key))
+  if (lookuptable.count(key))
+    return lookuptable.at(key); //note can't use [] on const unordered map since it could change map
+  else
+    return nullptr;
+}
+
 int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
 
   // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
@@ -3262,6 +3293,18 @@ int commandfromstringcpp(const std::string& key, std::size_t& found) { //for com
   } else {
     found = 0;
     return keyfromstringcpp(key);
+  }
+}
+
+// new one
+pfunc commandfromstring(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
+
+  found = key.find(' ');
+  if (found != std::string::npos) {
+    return funcfromstring(key.substr(0, found));
+  } else {
+    found = 0;
+    return funcfromstring(key);
   }
 }
 
@@ -5297,12 +5340,20 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           std::size_t pos;
 
           // passes back position of space (if there is one) in var pos
+          //auto f = commandfromstring(O.command_line, pos); 
+          if (auto f = commandfromstring(O.command_line, pos);f) {
+            f(pos);
+            return;
+          }
+          /*
           command = commandfromstringcpp(O.command_line, pos); 
           if (auto it = cmd_map.find(command);it != cmd_map.end()) {
             it->second(pos);
             return;
           }
+         */
 
+          command = commandfromstringcpp(O.command_line, pos); 
           switch(command) {
 
             case 'w':
@@ -5753,6 +5804,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               return;
               }
 
+              /*
             case C_deletekeywords:
               outlineShowMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
               delete_task_keywords();
@@ -5760,7 +5812,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               return;
 
             //case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error if no context given  
-              /*
             case C_open: //by context
               F_open(pos);
               return;
