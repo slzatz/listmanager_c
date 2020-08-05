@@ -442,6 +442,9 @@ void EraseScreenRedrawLines(void);
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
+void F_open(int = 0);
+void F_openfolder(int = 0);
+void F_openkeyword(int = 0);
 
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
@@ -641,13 +644,13 @@ inline void f_$(int);
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
 //static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
-static std::map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
-static std::map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
-static std::map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}, {C_de, f_de}, {C_dG, f_dG}};
-static std::map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
-static std::map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
+static std::unordered_map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
+static std::unordered_map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
+static std::unordered_map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}, {C_de, f_de}, {C_dG, f_dG}};
+static std::unordered_map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
+static std::unordered_map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
 /*************************************/
-
+static std::unordered_map<int, pfunc> cmd_map = {{C_open, F_open}, {C_openfolder, F_openfolder},{C_openkeyword, F_openkeyword}};
 // config struct for reading db.ini file
 struct config {
   std::string user;
@@ -3246,6 +3249,7 @@ int keyfromstringcpp(const std::string& key) {
 int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
 
   // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
+  // should probably just drop this if entirely 08052020
   if (key.size() == 1) {
     found = 0;
     return key[0]; //? return keyfromstring[key] or just drop this if entirely
@@ -3390,6 +3394,106 @@ int getWindowSize(int *rows, int *cols) {
 
     return 0;
   }
+}
+
+void F_open(int pos) { //C_open - by context
+  std::string new_context;
+  if (pos) {
+    bool success = false;
+    //structured bindings
+    for (const auto & [k,v] : context_map) {
+      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        O.context = k;
+        success = true;
+        break;
+      }
+    }
+    if (!success) {
+      outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
+      O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+      return;
+    }
+  } else {
+    outlineShowMessage("You did not provide a context!");
+    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    return;
+  }
+  //EraseScreenRedrawLines(); //*****************************
+  outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+  command_history.push_back(O.command_line);
+  page_hx_idx++;
+  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+
+  marked_entries.clear();
+  O.folder = "";
+  O.taskview = BY_CONTEXT;
+  get_items(MAX);
+  //O.mode = O.last_mode;
+  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  return;
+}
+
+void F_openfolder(int pos) {
+  if (pos) {
+    bool success = false;
+    for (const auto & [k,v] : folder_map) {
+      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        O.folder = k;
+        success = true;
+        break;
+      }
+    }
+    if (!success) {
+      outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
+      O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+      return;
+    }
+
+  } else {
+    outlineShowMessage("You did not provide a folder!");
+    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    return;
+  }
+  outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+  command_history.push_back(O.command_line);
+  page_hx_idx++;
+  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  marked_entries.clear();
+  O.context = "";
+  O.taskview = BY_FOLDER;
+  get_items(MAX);
+  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  return;
+}
+
+void F_openkeyword(int pos) {
+  if (!pos) {
+    outlineShowMessage("You need to provide a keyword");
+    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    return;
+  }
+ 
+  //O.keyword = O.command_line.substr(pos+1);
+  std::string keyword = O.command_line.substr(pos+1);
+  if (!keyword_exists(keyword)) {
+    O.mode = O.last_mode;
+    outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
+    return;
+  }
+
+  O.keyword = keyword;  
+  outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
+  command_history.push_back(O.command_line);
+  page_hx_idx++;
+  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  marked_entries.clear();
+  O.context = "";
+  O.folder = "";
+  O.taskview = BY_KEYWORD;
+  get_items(MAX);
+  //editorRefreshScreen(); //in get_note
+  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  return;
 }
 
 /*** outline operations ***/
@@ -5194,6 +5298,11 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
           // passes back position of space (if there is one) in var pos
           command = commandfromstringcpp(O.command_line, pos); 
+          if (auto it = cmd_map.find(command);it != cmd_map.end()) {
+            it->second(pos);
+            return;
+          }
+
           switch(command) {
 
             case 'w':
@@ -5650,8 +5759,11 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = O.last_mode;
               return;
 
-            case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error if no context given  
+            //case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error if no context given  
+              /*
             case C_open: //by context
+              F_open(pos);
+              return;
               {
               std::string new_context;
               if (pos) {
@@ -5674,7 +5786,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
                 return;
               }
-              //EraseScreenRedrawLines(); //*****************************
+              //EraseScreenRedrawLines(); //////////
               outlineShowMessage("\'%s\' will be opened", new_context.c_str());
               command_history.push_back(O.command_line);
               page_hx_idx++;
@@ -5722,7 +5834,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               return;
 
-
             case C_openkeyword:
 
               if (!pos) {
@@ -5744,6 +5855,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               //editorRefreshScreen(); //in get_note
               O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
               return;
+              */
 
 
             case C_join:
@@ -9239,7 +9351,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
   db_open();
-  get_conn(); //pg
+  //get_conn(); //pg
   load_meta(); 
 
   which_db = SQLITE;
