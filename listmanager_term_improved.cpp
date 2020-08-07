@@ -185,9 +185,9 @@ enum Command {
 
   C_yy,
 
-  C_open,
-  C_openfolder,
-  C_openkeyword,
+  //C_open,
+  //C_openfolder,
+  //C_openkeyword,
   C_join,
 
   C_sort,
@@ -205,12 +205,12 @@ enum Command {
   C_contexts, //change O.view to CONTEXTs :c
   C_folders,  //change O.view to FOLDERs :f
   C_keywords,
-  C_addkeyword,
+  //C_addkeyword,
   C_movetocontext,
   C_movetofolder,
   C_updatecontext,
   C_updatefolder,
-  C_deletekeywords,
+  //C_deletekeywords,
 
   C_delmarks,
   C_showall,
@@ -272,10 +272,10 @@ static const std::unordered_map<std::string, int> lookuptablemap {
 
   {"help", C_help},
   {"h", C_help}, //need because this is command line command with a target word
-  {"open", C_open},
-  {"o", C_open}, //need because this is command line command with a target word
-  {"of", C_openfolder}, //need because this is command line command with a target word
-  {"ok", C_openkeyword}, //need because this is command line command with a target word
+  //{"open", C_open},
+  //{"o", C_open}, //need because this is command line command with a target word
+  //{"of", C_openfolder}, //need because this is command line command with a target word
+  //{"ok", C_openkeyword}, //need because this is command line command with a target word
   {"join", C_join}, //need because this is command line command with a target word
   {"filter", C_join}, //need because this is command line command with a target word
   {"fin", C_find},
@@ -298,10 +298,10 @@ static const std::unordered_map<std::string, int> lookuptablemap {
   {"movetofolder", C_movetofolder},
   {"updatefolder", C_updatefolder},
   {"updatecontext", C_updatecontext},
-  {"addkeyword", C_addkeyword},
-  {"addkw", C_addkeyword},
-  {"delkeywords", C_deletekeywords},
-  {"delk", C_deletekeywords},
+  //{"addkeyword", C_addkeyword},
+  //{"addkw", C_addkeyword},
+  //{"delkeywords", C_deletekeywords},
+  //{"delk", C_deletekeywords},
   {"delmarks", C_delmarks},
   {"delm", C_delmarks},
   {"update", C_update},
@@ -442,10 +442,12 @@ void EraseScreenRedrawLines(void);
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
+
 void F_open(int);
 void F_openfolder(int);
 void F_openkeyword(int);
 void F_deletekeywords(int); //int pos not used
+void F_addkeyword(int); 
 
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
@@ -664,6 +666,9 @@ static std::unordered_map<std::string, pfunc> lookuptable {
   {"deletekeywords", F_deletekeywords},
   {"delkw", F_deletekeywords},
   {"delk", F_deletekeywords},
+  {"addkeywords", F_addkeyword},
+  {"addkw", F_addkeyword},
+  {"addk", F_addkeyword},
 };
 
 
@@ -3269,7 +3274,7 @@ int keyfromstringcpp(const std::string& key) {
 //this is so short should just incorporate in new commandfromstring
 pfunc funcfromstring(const std::string& key) {
 
-  // c++20 = c++2a contains on associate containers
+  // c++20 has a member function 'contains' on associate containers
   //if (lookuptablemap.contains(key))
   if (lookuptable.count(key))
     return lookuptable.at(key); //note can't use [] on const unordered map since it could change map
@@ -3536,6 +3541,44 @@ void F_openkeyword(int pos) {
   get_items(MAX);
   //editorRefreshScreen(); //in get_note
   O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  return;
+}
+
+void F_addkeyword(int pos) {
+  if (!pos) {
+    current_task_id = O.rows.at(O.fr).id;
+    editorEraseScreen();
+    O.view = KEYWORD;
+    command_history.push_back(O.command_line);
+    get_containers(); //O.mode = NORMAL is in get_containers
+    O.mode = ADD_KEYWORD;
+    outlineShowMessage("Select keyword to add to marked or current entry");
+    return;
+  }
+
+  // only do this if there was text after C_addkeyword
+  if (O.last_mode == NO_ROWS) return;
+
+  {
+  std::string keyword = O.command_line.substr(pos+1);
+  if (!keyword_exists(keyword)) {
+      O.mode = O.last_mode;
+      outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
+      return;
+  }
+
+  if (marked_entries.empty()) {
+    add_task_keyword(keyword, O.rows.at(O.fr).id);
+    outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
+  } else {
+    for (const auto& id : marked_entries) {
+      add_task_keyword(keyword, id);
+    }
+    outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
+  }
+  }
+  O.mode = O.last_mode;
+  if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
   return;
 }
 
@@ -5677,7 +5720,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 outlineShowMessage("Select keyword to add to marked or current entry");
               }  
               return;
-
+            /*
             case C_addkeyword: //catches addkeyword, addkw 
               if (!pos) {
                 current_task_id = O.rows.at(O.fr).id;
@@ -5714,6 +5757,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = O.last_mode;
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
+             */
 
             case C_movetocontext:
               {
