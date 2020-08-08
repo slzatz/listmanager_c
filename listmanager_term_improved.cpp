@@ -449,6 +449,31 @@ void F_openkeyword(int);
 void F_deletekeywords(int); //int pos not used
 void F_addkeyword(int); 
 
+void return_N(void);
+void w_N(void);
+void insert_N(void);
+void s_N(void);
+void x_N(void);
+void r_N(void);
+void tilde_N(void);
+void a_N(void);
+void A_N(void);
+void b_N(void);
+void e_N(void);
+void zero_N(void);
+void dollar_N(void);
+void I_N(void);
+void G_N(void);
+void O_N(void);
+void colon_N(void);
+void v_N(void);
+void p_N(void);
+void asterisk_N(void);
+void m_N(void);
+void n_N(void);
+void u_N(void);
+void caret_N(void);
+
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
@@ -466,7 +491,7 @@ void outlineMoveCursorEOL();
 void outlineMoveBeginningWord();
 void outlineMoveEndWord(); 
 void outlineMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
-void outlineMoveNextWord();
+//void outlineMoveNextWord();// now w_N
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
@@ -642,10 +667,13 @@ inline void f_e(int);
 inline void f_0(int);
 inline void f_$(int);
 
+bool e_i(int);
 //void generate_pdf(void);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
+typedef void (*zfunc)(void);
+typedef bool (*efunc)(int);
 pfunc funcfromstring(const std::string&);
 pfunc commandfromstring(const std::string&, std::size_t&);
 //static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
@@ -656,7 +684,7 @@ static std::unordered_map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, 
 static std::unordered_map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
 /*************************************/
 
-static std::unordered_map<std::string, pfunc> lookuptable {
+static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open},
   {"o", F_open},
   {"openfolder", F_openfolder},
@@ -671,7 +699,50 @@ static std::unordered_map<std::string, pfunc> lookuptable {
   {"addk", F_addkeyword},
 };
 
+static std::unordered_map<std::string, zfunc> n_lookup {
+  {"\r", return_N},
+  {"i", insert_N},
+  {"s", s_N},
+  {"~", tilde_N},
+  {"r", r_N},
+  {"a", a_N},
+  {"A", A_N},
+  {"x", x_N},
+  {"w", w_N},
 
+
+  {"b", b_N},
+  {"e", e_N},
+  {"0", zero_N},
+  {"$", dollar_N},
+  {"I", I_N},
+  {"G", G_N},
+  {"O", O_N},
+  {":", colon_N},
+  {"v", v_N},
+  {"p", p_N},
+  {"*", asterisk_N},
+  {"m", m_N},
+  {"n", n_N},
+  {"u", u_N},
+  {"^", caret_N},
+
+};
+
+static std::unordered_map<std::string, efunc> e_lookup {
+      //lookup(command) --> insert_functions
+      //lookup(command) --> oO_functions
+      //lookup(command) --> delete_functions
+      //lookup(command) --> change_functions
+      //lookup(command) --> tilde_f
+      //lookup(command) --> concatentate or J_function
+
+  {"i", e_i},
+  //{"I", insert_functions},
+  //{"a", insert_functions},
+  //{"A", insert_functions},
+
+};
 // config struct for reading db.ini file
 struct config {
   std::string user;
@@ -3276,8 +3347,8 @@ pfunc funcfromstring(const std::string& key) {
 
   // c++20 has a member function 'contains' on associate containers
   //if (lookuptablemap.contains(key))
-  if (lookuptable.count(key))
-    return lookuptable.at(key); //note can't use [] on const unordered map since it could change map
+  if (cmd_lookup.count(key))
+    return cmd_lookup.at(key); //note can't use [] on const unordered map since it could change map
   else
     return nullptr;
 }
@@ -3582,6 +3653,237 @@ void F_addkeyword(int pos) {
   return;
 }
 
+
+//case '\r':
+void return_N(void) {
+  orow& row = O.rows.at(O.fr);
+
+  if(row.dirty){
+    if (O.view == TASK) update_row();
+    else if (O.view == CONTEXT || O.view == FOLDER) update_container();
+    else if (O.view == KEYWORD) update_keyword();
+    O.command[0] = '\0'; //11-26-2019
+    O.mode = NORMAL;
+    if (O.fc > 0) O.fc--;
+    //outlineShowMessage("");
+  }
+
+  // return means retrieve items by context or folder
+  // do this in database mode
+  if (O.view == CONTEXT) {
+    O.context = row.title;
+    O.folder = "";
+    O.taskview = BY_CONTEXT;
+    outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+    O.command_line = "o " + O.context;
+  } else if (O.view == FOLDER) {
+    O.folder = row.title;
+    O.context = "";
+    O.taskview = BY_FOLDER;
+    outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+    O.command_line = "o " + O.folder;
+  } else if (O.view == KEYWORD) {
+    O.keyword = row.title;
+    O.folder = "";
+    O.context = "";
+    O.taskview = BY_KEYWORD;
+    outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
+    O.command_line = "ok " + O.keyword;
+  }
+
+  command_history.push_back(O.command_line);
+  page_hx_idx++;
+  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  marked_entries.clear();
+
+  get_items(MAX);
+  O.command[0] = '\0';
+  O.mode = NORMAL;
+}
+//case 'i':
+void insert_N(void){
+  O.mode = INSERT;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+}
+
+//case 's':
+void s_N(void){
+  //for (int i = 0; i < O.repeat; i++) outlineDelChar();
+  orow& row = O.rows.at(O.fr);
+  row.title.erase(O.fc, O.repeat);
+  row.dirty = true;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  O.mode = INSERT;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
+}          
+
+//case 'x':
+void x_N(void){
+  //for (int i = 0; i < O.repeat; i++) outlineDelChar();
+  orow& row = O.rows.at(O.fr);
+  row.title.erase(O.fc, O.repeat);
+  row.dirty = true;
+  O.command[0] = '\0';
+  O.repeat = 0;
+}        
+
+//case 'r':
+void r_N(void) {
+  O.command[0] = '\0';
+  O.mode = REPLACE;
+}
+
+//case '~'
+void tilde_N(void) {
+  for (int i = 0; i < O.repeat; i++) outlineChangeCase();
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case 'a':
+void a_N(void){
+  O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+  outlineMoveCursor(ARROW_RIGHT);
+  O.command[0] = '\0';
+  O.repeat = 0;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+}
+
+//case 'A':
+void A_N(void) {
+  outlineMoveCursorEOL();
+  O.mode = INSERT; //needs to be here for movecursor to work at EOLs
+  outlineMoveCursor(ARROW_RIGHT);
+  O.command[0] = '\0';
+  O.repeat = 0;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+}
+
+//case 'b':
+void b_N(void) {
+  outlineMoveBeginningWord();
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case 'e':
+void e_N(void) {
+  outlineMoveEndWord();
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case '0':
+void zero_N(void) {
+  if (!O.rows.empty()) O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case '$':
+void dollar_N(void) {
+  outlineMoveCursorEOL();
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case 'I':
+void I_N(void) {
+  if (!O.rows.empty()) {
+    O.fc = 0;
+    O.mode = 1;
+    outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+  }
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case 'G':
+void G_N(void) {
+  O.fc = 0;
+  O.fr = O.rows.size() - 1;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  else display_container_info(O.rows.at(O.fr).id);
+}
+
+//case 'O': //Same as C_new in COMMAND_LINE mode
+void O_N(void) {
+  outlineInsertRow(0, "", true, false, false, BASE_DATE);
+  O.fc = O.fr = O.rowoff = 0;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+  editorEraseScreen(); //erases the note area
+  O.mode = INSERT;
+}
+
+//case ':':
+void colon_N(void) {
+  outlineShowMessage(":");
+  O.command[0] = '\0';
+  O.command_line.clear();
+  O.last_mode = O.mode;
+  O.mode = COMMAND_LINE;
+}
+
+//case 'v':
+void v_N(void) {
+  O.mode = VISUAL;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  O.highlight[0] = O.highlight[1] = O.fc;
+  outlineShowMessage("\x1b[1m-- VISUAL --\x1b[0m");
+}
+
+//case 'p':  
+void p_N(void) {
+  if (!string_buffer.empty()) outlinePasteString();
+  O.command[0] = '\0';
+  O.repeat = 0;
+}
+
+//case '*':  
+void asterisk_N(void) {
+  outlineGetWordUnderCursor();
+  outlineFindNextWord(); 
+  O.command[0] = '\0';
+}
+
+//case 'm':
+void m_N(void) {
+  O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
+  if (O.rows.at(O.fr).mark) {
+    marked_entries.insert(O.rows.at(O.fr).id);
+  } else {
+    marked_entries.erase(O.rows.at(O.fr).id);
+  }  
+  outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+  O.command[0] = '\0';
+}
+
+//case 'n':
+void n_N(void) {
+  outlineFindNextWord();
+  O.command[0] = '\0';
+}
+
+//case 'u':
+void u_N(void) {
+  //could be used to update solr - would use U
+  O.command[0] = '\0';
+}
+
+//case '^':
+void caret_N(void) {
+  generate_persistent_html_file(O.rows.at(O.fr).id);
+  O.command[0] = '\0';
+}
+
 /*** outline operations ***/
 
 void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool completed, const char* modified) {
@@ -3842,6 +4144,20 @@ void f_$(int repeat) {
       editorMoveCursorEOL();
     } else break;  
   }
+}
+
+// returns whether need redraw
+bool e_i(int repeat) {
+  editorCreateSnapshot();
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'i';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
 }
 
 void editorDoRepeat(void) {
@@ -4906,20 +5222,26 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         }
       }
 
-      if ( O.repeat == 0 ) O.repeat = 1;
+      if (O.repeat == 0) O.repeat = 1;
 
       n = strlen(O.command);
       O.command[n] = c;
       O.command[n+1] = '\0';
 
+      if (n_lookup.count(O.command)) {
+        n_lookup.at(O.command)();
+        return;
+      }
       // arrow keys are mapped above ascii range (start at 1000) so
       // can't just have below be keyfromstring return command[0]
       //probably also faster to check if n=0 and just return c as below
       //also means that any key sequence ending in arrow key will move cursor
       command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
+
       switch(command) {  
 
+        /*
         case '\r':
           {
           orow& row = O.rows.at(O.fr);
@@ -4968,6 +5290,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.command[0] = '\0';
           O.mode = NORMAL;
           return;
+        */
 
         //Tab cycles between OUTLINE and DATABASE modes
         case '\t':
@@ -4991,6 +5314,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
           return;
 
+        /*  
         case 'i':
           O.mode = INSERT;
           O.command[0] = '\0';
@@ -5011,7 +5335,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.command[0] = '\0';
           O.repeat = 0;
           return;
-        
+
         case 'r':
           O.command[0] = '\0';
           O.mode = REPLACE;
@@ -5152,6 +5476,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           generate_persistent_html_file(O.rows.at(O.fr).id);
           O.command[0] = '\0';
           return;
+        */
 
         case PAGE_UP:
         case PAGE_DOWN:  
@@ -6862,7 +7187,8 @@ void outlineMoveEndWord2() {
   O.fc = j - 1;
 }
 
-void outlineMoveNextWord() {
+//void outlineMoveNextWord() {
+void w_N(void) {
   int j;
   orow& row = O.rows.at(O.fr);
 
@@ -6876,6 +7202,9 @@ void outlineMoveNextWord() {
     if (row.title[j] > 48) break;
   }
   O.fc = j;
+
+  O.command[0] = '\0';
+  O.repeat = 0;
 }
 
 void outlineMoveBeginningWord() {
@@ -7737,14 +8066,29 @@ bool editorProcessKeypress(void) {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
+
+
+      if (e_lookup.count(E.command)) {
+        return e_lookup.at(E.command)(E.repeat);
+      }
+
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
       E.move_only = false; /////////this needs to get into master
 
+
       switch (command) {
 
-        case 'i': case 'I': case 'a': case 'A': 
+      //lookup(command) --> insert_functions
+      //lookup(command) --> oO_functions
+      //lookup(command) --> delete_functions
+      //lookup(command) --> change_functions
+      //lookup(command) --> tilde_f
+      //lookup(command) --> concatentate or J_function
+
+
+        case 'I': case 'a': case 'A': //case 'i'
           editorCreateSnapshot();
           cmd_map1[command](E.repeat);
           E.mode = INSERT;
@@ -7928,7 +8272,7 @@ bool editorProcessKeypress(void) {
           E.move_only = true;
           return false;
 
-        case '.':
+        case '.': //dot
           editorDoRepeat();
           E.command[0] = '\0';
           return true;
