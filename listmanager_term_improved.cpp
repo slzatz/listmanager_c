@@ -668,6 +668,12 @@ inline void f_0(int);
 inline void f_$(int);
 
 bool e_i(int);
+bool e_I(int);
+bool e_a(int);
+bool e_A(int);
+bool e_o(int);
+bool e_O(int);
+bool e_x(int);
 //void generate_pdf(void);
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
@@ -738,6 +744,12 @@ static std::unordered_map<std::string, efunc> e_lookup {
       //lookup(command) --> concatentate or J_function
 
   {"i", e_i},
+  {"I", e_I},
+  {"a", e_a},
+  {"A", e_A},
+  {"o", e_o},
+  {"O", e_O},
+  {"x", e_x},
   //{"I", insert_functions},
   //{"a", insert_functions},
   //{"A", insert_functions},
@@ -4149,6 +4161,7 @@ void f_$(int repeat) {
 // returns whether need redraw
 bool e_i(int repeat) {
   editorCreateSnapshot();
+ // f_i(repeat); //does nothing
   E.mode = INSERT;
   editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
   E.last_repeat = E.repeat;
@@ -4157,6 +4170,89 @@ bool e_i(int repeat) {
   E.command[0] = '\0';
   E.repeat = 0;
   //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_I(int repeat) {
+  editorCreateSnapshot();
+  f_I(repeat);
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'i';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_a(int repeat) {
+  editorCreateSnapshot();
+  f_a(repeat);
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'i';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_A(int repeat) {
+  editorCreateSnapshot();
+  f_A(repeat);
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'i';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_o(int repeat) {
+  editorCreateSnapshot();
+  E.last_typed.clear();
+  f_o(1);
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'o';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_O(int repeat) {
+  editorCreateSnapshot();
+  E.last_typed.clear();
+  f_O(1);
+  E.mode = INSERT;
+  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'O';
+  E.command[0] = '\0';
+  E.repeat = 0;
+  //editorSetMessage("command = %d", command);
+  return true;
+}
+
+bool e_x(int repeat) {
+  editorCreateSnapshot();
+  f_x(repeat);
+  E.last_repeat = E.repeat;
+  E.last_typed.clear();
+  E.last_command = 'O';
+  E.command[0] = '\0';
+  E.repeat = 0;
   return true;
 }
 
@@ -8088,7 +8184,8 @@ bool editorProcessKeypress(void) {
       //lookup(command) --> concatentate or J_function
 
 
-        case 'I': case 'a': case 'A': //case 'i'
+        /*
+        case 'i': case 'I': case 'a': case 'A': 
           editorCreateSnapshot();
           cmd_map1[command](E.repeat);
           E.mode = INSERT;
@@ -8102,8 +8199,9 @@ bool editorProcessKeypress(void) {
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
+        */
 
-        case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+        case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$: //case x:
           editorCreateSnapshot();
           cmd_map3[command](E.repeat);
           break;
