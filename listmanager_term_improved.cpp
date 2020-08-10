@@ -690,9 +690,19 @@ inline void f_tilde(int);
 void e_o(int);
 void e_O(int);
 void e_replace(int);
+void f_next_misspelling(int);
+void f_prev_misspelling(int);
+void f_change2command_line(int);
+void f_change2visual_line(int);
+void f_change2visual(int);
+void f_change2visual_block(int);
+void f_paste(int);
+void f_find(int);
+void f_find_next_word(int);
+void f_undo(int);
 
 static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "cw", "caw"};
-static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$"};
+static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n"};
 
 static std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -737,6 +747,7 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"keywords", F_keywords},
 };
 
+/* the commands available in OUTLINE NORMAL mode */
 static std::unordered_map<std::string, zfunc> n_lookup {
   {"\r", return_N},
   {"i", insert_N},
@@ -777,19 +788,14 @@ static std::unordered_map<std::string, zfunc> n_lookup {
   {"u", u_N},
   {"dd", dd_N},
   {{0x4}, dd_N}, //ctrl-d
-  {{0x2}, star_N}, //ctrl-b
+  {{0x2}, star_N}, //ctrl-b -probably want this go backwards (unimplemented) and use ctrl-e for this
   {{0x18}, completed_N}, //ctrl-x
   {"^", caret_N},
 
 };
 
+/* EDITOR NORMAL mode lookup */
 static std::unordered_map<std::string, pfunc> e_lookup {
-      //lookup(command) --> insert_functions
-      //lookup(command) --> oO_functions
-      //lookup(command) --> delete_functions
-      //lookup(command) --> change_functions
-      //lookup(command) --> tilde_f
-      //lookup(command) --> concatentate or J_function
 
   {"i", f_i},
   {"I", f_I},
@@ -813,7 +819,18 @@ static std::unordered_map<std::string, pfunc> e_lookup {
   {"0", f_0},
   {"$", f_$},
   {"r", e_replace},
+  {"[s", f_next_misspelling},
+  {"]s", f_prev_misspelling},
+  {":", f_change2command_line},
+  {"V", f_change2visual_line},
+  {"v", f_change2visual},
+  {{0x16}, f_change2visual_block},
+  {"p", f_paste},
+  {"*", f_find},
+  {"n", f_find_next_word},
+  {"u", f_undo},
 };
+
 // config struct for reading db.ini file
 struct config {
   std::string user;
@@ -4422,6 +4439,91 @@ void e_replace(int repeat) {
   editorSetMessage("Howdy");
 }
 
+void f_next_misspelling(int repeat) {
+  if (!E.spellcheck || pos_mispelled_words.empty()) {
+    editorSetMessage("Spellcheck is off or no words mispelled");
+    return;
+  }
+  auto &z = pos_mispelled_words;
+  auto it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second > E.fc);});
+  if (it == z.end()) {
+    it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first > E.fr);});
+    if (it == z.end()) {E.fr = z[0].first; E.fc = z[0].second;
+    } else {E.fr = it->first; E.fc = it->second;} 
+  } else {E.fc = it->second;}
+  editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
+}
+
+void f_prev_misspelling(int repeat) {
+  if (!E.spellcheck || pos_mispelled_words.empty()) {
+    editorSetMessage("Spellcheck is off or no words mispelled");
+  return;
+  }
+  auto &z = pos_mispelled_words;
+  auto it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second < E.fc);});
+  if (it == z.rend()) {
+    it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first < E.fr);});
+    if (it == z.rend()) {E.fr = z.back().first; E.fc = z.back().second;
+    } else {E.fr = it->first; E.fc = it->second;} 
+  } else {E.fc = it->second;}
+  editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
+}
+
+void f_change2command_line(int repeat) {
+  editorSetMessage(":");
+  E.command_line.clear();
+  E.mode = COMMAND_LINE;
+}
+
+//case 'V':
+void f_change2visual_line(int repeat) {
+  E.mode = VISUAL_LINE;
+  E.highlight[0] = E.highlight[1] = E.fr;
+  editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
+}
+
+//case 'v':
+void f_change2visual(int repeat) {
+  E.mode = VISUAL;
+  E.highlight[0] = E.highlight[1] = E.fc;
+  editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
+}
+
+//case CTRL_KEY('v'):
+void f_change2visual_block(int repeat) {
+  E.mode = VISUAL_BLOCK;
+  E.vb0[0] = E.fc;
+  E.vb0[1] = E.fr;
+  editorSetMessage("\x1b[1m-- VISUAL BLOCK --\x1b[0m");
+}
+
+//case 'p':  
+void f_paste(int repeat) {
+  if (!string_buffer.empty()) editorPasteString();
+  else editorPasteLine();
+}
+
+//case '*':  
+void f_find(int repeat) {
+  // does not clear dot
+  search_string = editorGetWordUnderCursor();
+  editorFindNextWord();
+  editorSetMessage("\x1b[1m-- FINDING ... --\x1b[0m");
+}
+
+//case 'n':
+void f_find_next_word(int repeat) {
+  // n does not clear dot
+  editorFindNextWord(); //does not work
+  // in vim the repeat does work with n - it skips that many words
+  // not a dot command so should leave E.last_repeat alone
+  editorSetMessage("\x1b[1m-- FINDING NEXT WORD... --\x1b[0m");
+}
+
+//case 'u':
+void f_undo(int repeat) {
+  editorRestoreSnapshot();
+}
 /* this is dot */
 void editorDoRepeat(void) {
 
@@ -5498,16 +5600,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         O.repeat = 0;
         return;
       }
-      // arrow keys are mapped above ascii range (start at 1000) so
-      // can't just have below be keyfromstring return command[0]
-      //probably also faster to check if n=0 and just return c as below
-      //also means that any key sequence ending in arrow key will move cursor
 
-      //command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
+      //also means that any key sequence ending in something
+      //that matches below will perform command
 
       if (navigation.count(c)) {
           for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
-          O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          O.command[0] = '\0'; 
           O.repeat = 0;
           return;
       }
@@ -5519,41 +5618,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         return;
       }
         
-     /*
-      switch(command) {  
-
-
-        //Tab cycles between OUTLINE and DATABASE modes
-        case '\t':
-          O.fc = 0; //intentionally leave O.fr wherever it is
-          O.mode = DATABASE;
-          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id);
-          outlineShowMessage("");
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        //SHIFT_Tab cycles between OUTLINE and SEARCH modes
-        case SHIFT_TAB:
-          if (O.taskview == BY_SEARCH) {
-            O.fc = 0; //intentionally leave O.fr wherever it is
-            O.mode = SEARCH;
-            O.command[0] = '\0';
-            O.repeat = 0;
-            outlineShowMessage("");
-          }
-          return;
-
-        default:
-          // if a single char or sequence of chars doesn't match then
-          // do nothing - the next char may generate a match
-          return;
-
-      } //end of keyfromstring switch under case NORMAL 
-      */
-
-      return; // end of case NORMAL (don't think it can be reached) now can be reached!!!
+      return; // end of case NORMAL 
 
     case COMMAND_LINE:
 
@@ -7981,149 +8046,8 @@ bool editorProcessKeypress(void) {
 
 
       switch (command) {
+
         /*
-        case 'i': case 'I': case 'a': case 'A': 
-          editorCreateSnapshot();
-          cmd_map1[command](E.repeat);
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case 'o': case 'O':
-          editorCreateSnapshot();
-          E.last_typed.clear(); //this is necessary
-          cmd_map2[command](1); //note this is ! not e.repeat
-          E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$: //case x:
-          editorCreateSnapshot();
-          cmd_map3[command](E.repeat);
-          break;
-
-        case C_cw: case C_caw: case 's':
-          editorCreateSnapshot();
-          cmd_map4[command](E.repeat);
-          E.mode = INSERT; 
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          break;
-
-        case '~':
-          editorCreateSnapshot();
-          f_change_case(E.repeat);
-          break;
-
-        case 'J':
-          //1J and 2J are same in vim
-            editorCreateSnapshot();
-            E.fc = E.rows.at(E.fr).size();
-            E.repeat = (E.repeat == 1) ? 2 : E.repeat;
-            for (i=1; i<E.repeat; i++) { 
-              if (E.fr == E.rows.size()- 1) break;
-              E.rows.at(E.fr) += " " + E.rows.at(E.fr+1);
-              editorDelRow(E.fr+1); 
-            }  
-            E.command[0] = '\0';
-            E.repeat = 0;
-          //}  
-          return true;
-
-        case 'w': case 'e': case 'b': case '0': case '$':
-          cmd_map5[command](E.repeat);
-          E.move_only = true;// still need to draw status line, message and cursor
-          break;
-
-        case 'r':
-          // editing cmd: can be dotted and does repeat
-          //f_r exists for dot
-          editorCreateSnapshot();
-          E.mode = REPLACE;
-          return false; //? true or handled in REPLACE mode
-        */
-
-        /*  
-        case SHIFT_TAB:
-          editor_mode = false;
-          E.fc = E.fr = E.cy = E.cx = E.line_offset = 0;
-          return false;
-        */
-
-    
-        case C_next_mispelling:
-          {
-          if (!E.spellcheck || pos_mispelled_words.empty()) {
-            editorSetMessage("Spellcheck is off or no words mispelled");
-            E.command[0] = '\0';
-            E.repeat = 0;
-            return false;
-          }
-          auto &z = pos_mispelled_words;
-          auto it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second > E.fc);});
-          if (it == z.end()) {
-            it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first > E.fr);});
-            if (it == z.end()) {E.fr = z[0].first; E.fc = z[0].second;
-            } else {E.fr = it->first; E.fc = it->second;} 
-          } else {E.fc = it->second;}
-          E.command[0] = '\0';
-          E.repeat = 0;
-          editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
-          return true;
-          }
-
-        case C_previous_mispelling:
-          {
-          if (!E.spellcheck || pos_mispelled_words.empty()) {
-            editorSetMessage("Spellcheck is off or no words mispelled");
-          E.command[0] = '\0';
-          E.repeat = 0;
-            return false;
-          }
-          auto &z = pos_mispelled_words;
-          auto it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second < E.fc);});
-          if (it == z.rend()) {
-            it = find_if(z.rbegin(), z.rend(), [](const std::pair<int, int> &p) {return (p.first < E.fr);});
-            if (it == z.rend()) {E.fr = z.back().first; E.fc = z.back().second;
-            } else {E.fr = it->first; E.fc = it->second;} 
-          } else {E.fc = it->second;}
-          E.command[0] = '\0';
-          E.repeat = 0;
-          editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
-          return true;
-          }
-
-        case ':':
-          editorSetMessage(":");
-          E.command[0] = '\0';
-          E.command_line.clear();
-          E.mode = COMMAND_LINE;
-          return false;
-    
-        case 'V':
-          E.mode = VISUAL_LINE;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.highlight[0] = E.highlight[1] = E.fr;
-          editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
-          return true;
-    
-        case 'v':
-          E.mode = VISUAL;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.highlight[0] = E.highlight[1] = E.fc;
-          editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
-          return true; //want a redraw to highlight current char like vim does
-
-        case CTRL_KEY('v'):
-          E.mode = VISUAL_BLOCK;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.vb0[0] = E.fc;
-          E.vb0[1] = E.fr;
-          editorSetMessage("\x1b[1m-- VISUAL BLOCK --\x1b[0m");
-          return true; //want a redraw to highlight current char like vim does
-
         case 'p':  
           editorCreateSnapshot();
           if (!string_buffer.empty()) editorPasteString();
@@ -8155,7 +8079,8 @@ bool editorProcessKeypress(void) {
           editorRestoreSnapshot();
           E.command[0] = '\0';
           return true;
-    
+    */
+
         case '^':
           generate_persistent_html_file(O.rows.at(O.fr).id);
           outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
@@ -9470,6 +9395,7 @@ std::string editorGetWordUnderCursor(void) {
   //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
 }
 
+// does not work
 void editorFindNextWord(void) {
   if (E.rows.empty()) return;
   std::string& row = E.rows.at(E.fr);
