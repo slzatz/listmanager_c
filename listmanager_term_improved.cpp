@@ -448,7 +448,9 @@ void F_openfolder(int);
 void F_openkeyword(int);
 void F_deletekeywords(int); //int pos not used
 void F_addkeyword(int); 
+void F_keywords(int); 
 
+/* OUTLINE mode NORMAL functions */
 void return_N(void);
 void w_N(void);
 void insert_N(void);
@@ -473,6 +475,20 @@ void m_N(void);
 void n_N(void);
 void u_N(void);
 void caret_N(void);
+void dd_N(void);
+void star_N(void);
+void completed_N(void);
+void daw_N(void);
+void caw_N(void);
+void dw_N(void);
+void cw_N(void);
+void de_N(void);
+void d$_N(void);
+void gg_N(void);
+void gt_N(void);
+void edit_N(void);
+
+void navigate_hx(int direction);
 
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
@@ -535,7 +551,8 @@ void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
 void add_task_keyword(int, int);
 //void delete_task_keywords(void); -> F_deletekeywords
-void display_item_info(int);
+void display_item_info(int); 
+void display_item_info(void); //ctrl-i in NORMAL mode 0x9
 void display_item_info_pg(int);
 void display_container_info(int);
 int keyword_exists(std::string &);  
@@ -644,7 +661,7 @@ void editorReadFileIntoNote(const std::string &);
 
 void update_solr(void);
 
-/* experimenting with map of functions*/
+/* EDITOR mode NORMAL functions */
 inline void f_i(int);
 inline void f_I(int);
 inline void f_a(int);
@@ -666,15 +683,27 @@ inline void f_b(int);
 inline void f_e(int);
 inline void f_0(int);
 inline void f_$(int);
+inline void f_replace(int);
+inline void f_J(int);
+inline void f_tilde(int);
 
-bool e_i(int);
-bool e_I(int);
-bool e_a(int);
-bool e_A(int);
-bool e_o(int);
-bool e_O(int);
-bool e_x(int);
-//void generate_pdf(void);
+void e_o(int);
+void e_O(int);
+void e_replace(int);
+
+static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "cw", "caw"};
+static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$"};
+
+static std::unordered_set<int> navigation = {
+         ARROW_UP,
+         ARROW_DOWN,
+         ARROW_LEFT,
+         ARROW_RIGHT,
+         'h',
+         'j',
+         'k',
+         'l'
+};
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 typedef void (*pfunc)(int);
@@ -703,6 +732,9 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"addkeywords", F_addkeyword},
   {"addkw", F_addkeyword},
   {"addk", F_addkeyword},
+  {"k", F_keywords},
+  {"keywords", F_keywords},
+  {"keywords", F_keywords},
 };
 
 static std::unordered_map<std::string, zfunc> n_lookup {
@@ -716,6 +748,18 @@ static std::unordered_map<std::string, zfunc> n_lookup {
   {"x", x_N},
   {"w", w_N},
 
+  {"daw", daw_N},
+  {"dw", dw_N},
+  {"daw", caw_N},
+  {"dw", cw_N},
+  {"de", de_N},
+  {"d$", d$_N},
+
+  {"gg", gg_N},
+  {"gt", gt_N},
+
+  {{0x17,0x17}, edit_N},
+  {{0x9}, display_item_info},
 
   {"b", b_N},
   {"e", e_N},
@@ -731,11 +775,15 @@ static std::unordered_map<std::string, zfunc> n_lookup {
   {"m", m_N},
   {"n", n_N},
   {"u", u_N},
+  {"dd", dd_N},
+  {{0x4}, dd_N}, //ctrl-d
+  {{0x2}, star_N}, //ctrl-b
+  {{0x18}, completed_N}, //ctrl-x
   {"^", caret_N},
 
 };
 
-static std::unordered_map<std::string, efunc> e_lookup {
+static std::unordered_map<std::string, pfunc> e_lookup {
       //lookup(command) --> insert_functions
       //lookup(command) --> oO_functions
       //lookup(command) --> delete_functions
@@ -743,17 +791,28 @@ static std::unordered_map<std::string, efunc> e_lookup {
       //lookup(command) --> tilde_f
       //lookup(command) --> concatentate or J_function
 
-  {"i", e_i},
-  {"I", e_I},
-  {"a", e_a},
-  {"A", e_A},
+  {"i", f_i},
+  {"I", f_I},
+  {"a", f_a},
+  {"A", f_A},
   {"o", e_o},
   {"O", e_O},
-  {"x", e_x},
-  //{"I", insert_functions},
-  //{"a", insert_functions},
-  //{"A", insert_functions},
-
+  {"x", f_x},
+  {"dw", f_dw},
+  {"de", f_de},
+  {"dG", f_dG},
+  {"d$", f_d$},
+  {"cw", f_cw},
+  {"caw", f_caw},
+  {"s", f_s},
+  {"~", f_tilde},
+  {"J", f_J},
+  {"w", f_w},
+  {"e", f_e},
+  {"b", f_b},
+  {"0", f_0},
+  {"$", f_$},
+  {"r", e_replace},
 };
 // config struct for reading db.ini file
 struct config {
@@ -1988,6 +2047,23 @@ void display_item_info(int id) {
   if (!db_query(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg)) return;
 
   if (tid) display_item_info_pg(tid);
+}
+
+void display_item_info(void) {
+
+  if (O.rows.empty()) return;
+
+  int id = O.rows.at(O.fr).id;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  //int tid = 0;
+  int tid;
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
+  if (!db_query(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg)) return;
+
+  //if (tid) display_item_info_pg(tid); ////***** remember to remove this guard
 }
 
 int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
@@ -3665,6 +3741,41 @@ void F_addkeyword(int pos) {
   return;
 }
 
+void F_keywords (int pos) {
+  if (!pos) {
+    editorEraseScreen();
+    O.view = KEYWORD;
+    command_history.push_back(O.command_line); 
+    get_containers(); //O.mode = NORMAL is in get_containers
+    outlineShowMessage("Retrieved keywords");
+    return;
+  }  
+
+  // only do this if there was text after C_keywords
+  if (O.last_mode == NO_ROWS) return;
+
+  {
+  std::string keyword = O.command_line.substr(pos+1);
+  if (!keyword_exists(keyword)) {
+      O.mode = O.last_mode;
+      outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
+      return;
+  }
+
+  if (marked_entries.empty()) {
+    add_task_keyword(keyword, O.rows.at(O.fr).id);
+    outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
+  } else {
+    for (const auto& id : marked_entries) {
+      add_task_keyword(keyword, id);
+    }
+    outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
+  }
+  }
+  O.mode = O.last_mode;
+  if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+  return;
+}
 
 //case '\r':
 void return_N(void) {
@@ -3677,6 +3788,7 @@ void return_N(void) {
     O.command[0] = '\0'; //11-26-2019
     O.mode = NORMAL;
     if (O.fc > 0) O.fc--;
+    return;
     //outlineShowMessage("");
   }
 
@@ -3709,58 +3821,90 @@ void return_N(void) {
   marked_entries.clear();
 
   get_items(MAX);
-  O.command[0] = '\0';
-  O.mode = NORMAL;
 }
+
 //case 'i':
 void insert_N(void){
   O.mode = INSERT;
-  O.command[0] = '\0';
-  O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
 //case 's':
 void s_N(void){
-  //for (int i = 0; i < O.repeat; i++) outlineDelChar();
   orow& row = O.rows.at(O.fr);
   row.title.erase(O.fc, O.repeat);
   row.dirty = true;
-  O.command[0] = '\0';
-  O.repeat = 0;
   O.mode = INSERT;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
 }          
 
 //case 'x':
 void x_N(void){
-  //for (int i = 0; i < O.repeat; i++) outlineDelChar();
   orow& row = O.rows.at(O.fr);
   row.title.erase(O.fc, O.repeat);
   row.dirty = true;
-  O.command[0] = '\0';
-  O.repeat = 0;
 }        
 
+void daw_N(void) {
+  for (int i = 0; i < O.repeat; i++) outlineDelWord();
+}
+
+void caw_N(void) {
+  for (int i = 0; i < O.repeat; i++) outlineDelWord();
+  O.mode = INSERT;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+}
+
+void dw_N(void) {
+  for (int j = 0; j < O.repeat; j++) {
+    int start = O.fc;
+    outlineMoveEndWord2();
+    int end = O.fc;
+    O.fc = start;
+    orow& row = O.rows.at(O.fr);
+    row.title.erase(O.fc, end - start + 2);
+  }
+}
+
+void cw_N(void) {
+  for (int j = 0; j < O.repeat; j++) {
+    int start = O.fc;
+    outlineMoveEndWord2();
+    int end = O.fc;
+    O.fc = start;
+    orow& row = O.rows.at(O.fr);
+    row.title.erase(O.fc, end - start + 2);
+  }
+  O.mode = INSERT;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+}
+
+void de_N(void) {
+  int start = O.fc;
+  outlineMoveEndWord(); //correct one to use to emulate vim
+  int end = O.fc;
+  O.fc = start; 
+  for (int j = 0; j < end - start + 1; j++) outlineDelChar();
+  O.fc = (start < O.rows.at(O.fr).title.size()) ? start : O.rows.at(O.fr).title.size() -1;
+}
+
+void d$_N(void) {
+  outlineDeleteToEndOfLine();
+}
 //case 'r':
 void r_N(void) {
-  O.command[0] = '\0';
   O.mode = REPLACE;
 }
 
 //case '~'
 void tilde_N(void) {
   for (int i = 0; i < O.repeat; i++) outlineChangeCase();
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case 'a':
 void a_N(void){
   O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
   outlineMoveCursor(ARROW_RIGHT);
-  O.command[0] = '\0';
-  O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
@@ -3769,37 +3913,27 @@ void A_N(void) {
   outlineMoveCursorEOL();
   O.mode = INSERT; //needs to be here for movecursor to work at EOLs
   outlineMoveCursor(ARROW_RIGHT);
-  O.command[0] = '\0';
-  O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
 //case 'b':
 void b_N(void) {
   outlineMoveBeginningWord();
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case 'e':
 void e_N(void) {
   outlineMoveEndWord();
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case '0':
 void zero_N(void) {
   if (!O.rows.empty()) O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case '$':
 void dollar_N(void) {
   outlineMoveCursorEOL();
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case 'I':
@@ -3809,26 +3943,80 @@ void I_N(void) {
     O.mode = 1;
     outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   }
-  O.command[0] = '\0';
-  O.repeat = 0;
+}
+
+void gg_N(void) {
+  O.fc = O.rowoff = 0;
+  O.fr = O.repeat-1; //this needs to take into account O.rowoff
+  if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  else display_container_info(O.rows.at(O.fr).id);
 }
 
 //case 'G':
 void G_N(void) {
   O.fc = 0;
   O.fr = O.rows.size() - 1;
-  O.command[0] = '\0';
-  O.repeat = 0;
   if (O.view == TASK) get_note(O.rows.at(O.fr).id);
   else display_container_info(O.rows.at(O.fr).id);
 }
+
+void gt_N(void) {
+  std::map<std::string, int>::iterator it;
+
+  if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
+    if (!O.folder.empty()) {
+      it = folder_map.find(O.folder);
+      it++;
+      if (it == folder_map.end()) it = folder_map.begin();
+    } else {
+      it = folder_map.begin();
+    }
+    O.folder = it->first;
+    outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+  } else {
+    if (O.context.empty() || O.context == "search") {
+      it = context_map.begin();
+    } else {
+      it = context_map.find(O.context);
+      it++;
+      if (it == context_map.end()) it = context_map.begin();
+    }
+    O.context = it->first;
+    outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+  }
+  //EraseScreenRedrawLines(); //*****************************
+  get_items(MAX);
+          //editorRefreshScreen(); //in get_note
+}
+
+void edit_N(void) {
+  // can't edit note if rows_are_contexts
+  if (!(O.view == TASK)) {
+    O.command[0] = '\0';
+    O.mode = NORMAL;
+    outlineShowMessage("Contexts and Folders do not have notes to edit");
+    return;
+  }
+  int id = get_id();
+  if (id != -1) {
+    outlineShowMessage("Edit note %d", id);
+    outlineRefreshScreen();
+    //editor_mode needs go before get_note in case we retrieved item via a search
+    editor_mode = true;
+    get_note(id); //if id == -1 does not try to retrieve note
+    E.mode = NORMAL;
+    E.command[0] = '\0';
+  } else {
+    outlineShowMessage("You need to save item before you can "
+                           "create a note");
+  }
+}
+
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
   outlineInsertRow(0, "", true, false, false, BASE_DATE);
   O.fc = O.fr = O.rowoff = 0;
-  O.command[0] = '\0';
-  O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   editorEraseScreen(); //erases the note area
   O.mode = INSERT;
@@ -3837,7 +4025,6 @@ void O_N(void) {
 //case ':':
 void colon_N(void) {
   outlineShowMessage(":");
-  O.command[0] = '\0';
   O.command_line.clear();
   O.last_mode = O.mode;
   O.mode = COMMAND_LINE;
@@ -3846,8 +4033,6 @@ void colon_N(void) {
 //case 'v':
 void v_N(void) {
   O.mode = VISUAL;
-  O.command[0] = '\0';
-  O.repeat = 0;
   O.highlight[0] = O.highlight[1] = O.fc;
   outlineShowMessage("\x1b[1m-- VISUAL --\x1b[0m");
 }
@@ -3855,15 +4040,12 @@ void v_N(void) {
 //case 'p':  
 void p_N(void) {
   if (!string_buffer.empty()) outlinePasteString();
-  O.command[0] = '\0';
-  O.repeat = 0;
 }
 
 //case '*':  
 void asterisk_N(void) {
   outlineGetWordUnderCursor();
   outlineFindNextWord(); 
-  O.command[0] = '\0';
 }
 
 //case 'm':
@@ -3875,25 +4057,70 @@ void m_N(void) {
     marked_entries.erase(O.rows.at(O.fr).id);
   }  
   outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
-  O.command[0] = '\0';
 }
 
 //case 'n':
 void n_N(void) {
   outlineFindNextWord();
-  O.command[0] = '\0';
 }
 
 //case 'u':
 void u_N(void) {
   //could be used to update solr - would use U
-  O.command[0] = '\0';
 }
 
 //case '^':
 void caret_N(void) {
   generate_persistent_html_file(O.rows.at(O.fr).id);
-  O.command[0] = '\0';
+}
+
+//dd and 0x4 -> ctrl-d
+void dd_N(void) {
+  toggle_deleted();
+}
+
+//0x2 -> ctrl-b
+void star_N(void) {
+  toggle_star();
+}
+
+//0x18 -> ctrl-x
+void completed_N(void) {
+  toggle_completed();
+}
+
+void navigate_hx(int direction) {
+  if (page_history.size() == 1 && O.view == TASK) {
+    //O.mode = NORMAL;
+    //O.command[0] = '\0';
+    //O.command_line.clear();
+    return;
+  }
+  if (direction == PAGE_UP) {
+
+    // if O.view!=TASK and PAGE_UP - moves back to last page
+    if (O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
+
+      if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
+      else page_hx_idx--;
+    }
+
+  } else {
+    if (page_hx_idx == (page_history.size() - 1)) page_hx_idx = 0;
+    else page_hx_idx++;
+  }
+
+  /* go into COMMAND_LINE mode */
+  O.mode = COMMAND_LINE;
+  O.command_line = page_history.at(page_hx_idx);
+  outlineProcessKeypress('\r');
+  O.command_line.clear();
+
+  /* return to NORMAL mode */
+  O.mode = NORMAL;
+  page_history.erase(page_history.begin() + page_hx_idx);
+  page_hx_idx--;
+  outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
 }
 
 /*** outline operations ***/
@@ -4158,104 +4385,44 @@ void f_$(int repeat) {
   }
 }
 
-// returns whether need redraw
-bool e_i(int repeat) {
-  editorCreateSnapshot();
- // f_i(repeat); //does nothing
-  E.mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'i';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
+void f_tilde(int repeat) {
+  f_change_case(repeat);
 }
 
-bool e_I(int repeat) {
-  editorCreateSnapshot();
-  f_I(repeat);
-  E.mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'i';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
+void f_J(int repeat) {
+  E.fc = E.rows.at(E.fr).size();
+  E.repeat = (E.repeat == 1) ? 2 : E.repeat;
+  for (int i=1; i<E.repeat; i++) { 
+    if (E.fr == E.rows.size()- 1) return;
+    E.rows.at(E.fr) += " " + E.rows.at(E.fr+1);
+    editorDelRow(E.fr+1); 
+  }  
 }
 
-bool e_a(int repeat) {
-  editorCreateSnapshot();
-  f_a(repeat);
-  E.mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'i';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
-}
-
-bool e_A(int repeat) {
-  editorCreateSnapshot();
-  f_A(repeat);
-  E.mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'i';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
-}
-
-bool e_o(int repeat) {
+/* 'O' and 'o' need special handling for repeat*/
+void e_o(int repeat) {
   editorCreateSnapshot();
   E.last_typed.clear();
   f_o(1);
-  E.mode = INSERT;
+  //E.mode = INSERT;
   editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'o';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
 }
 
-bool e_O(int repeat) {
+void e_O(int repeat) {
   editorCreateSnapshot();
   E.last_typed.clear();
   f_O(1);
-  E.mode = INSERT;
+  //E.mode = INSERT;
   editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'O';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  //editorSetMessage("command = %d", command);
-  return true;
 }
 
-bool e_x(int repeat) {
-  editorCreateSnapshot();
-  f_x(repeat);
-  E.last_repeat = E.repeat;
-  E.last_typed.clear();
-  E.last_command = 'O';
-  E.command[0] = '\0';
-  E.repeat = 0;
-  return true;
+//needs to be special b/o count/repeat
+void e_replace(int repeat) {
+  E.mode = REPLACE;
+  editorSetMessage("Howdy");
 }
 
+/* this is dot */
 void editorDoRepeat(void) {
 
   editorCreateSnapshot();
@@ -5141,7 +5308,7 @@ void outlineMoveCursor(int key) {
 // depends on readKey()
 //void outlineProcessKeypress(void) {
 void outlineProcessKeypress(int c) { //prototype has int = 0  
-  int start, end, command;
+  int command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -5296,6 +5463,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case NORMAL:  
 
       if (c == '\x1b') {
+        if (O.view == TASK) get_note(O.rows.at(O.fr).id); //get out of display_item_info
         outlineShowMessage("");
         O.command[0] = '\0';
         O.repeat = 0;
@@ -5326,67 +5494,34 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       if (n_lookup.count(O.command)) {
         n_lookup.at(O.command)();
+        O.command[0] = '\0';
+        O.repeat = 0;
         return;
       }
       // arrow keys are mapped above ascii range (start at 1000) so
       // can't just have below be keyfromstring return command[0]
       //probably also faster to check if n=0 and just return c as below
       //also means that any key sequence ending in arrow key will move cursor
-      command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
+      //command = (n && c < 128) ? keyfromstringcpp(O.command) : c;
 
+      if (navigation.count(c)) {
+          for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
+          O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          O.repeat = 0;
+          return;
+      }
+
+      if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
+        navigate_hx(c);
+        O.command[0] = '\0';
+        O.repeat = 0;
+        return;
+      }
+        
+     /*
       switch(command) {  
 
-        /*
-        case '\r':
-          {
-          orow& row = O.rows.at(O.fr);
-
-          if(row.dirty){
-            if (O.view == TASK) update_row();
-            else if (O.view == CONTEXT || O.view == FOLDER) update_container();
-            else if (O.view == KEYWORD) update_keyword();
-            O.command[0] = '\0'; //11-26-2019
-            O.mode = NORMAL;
-            if (O.fc > 0) O.fc--;
-            //outlineShowMessage("");
-            return;
-          }
-
-          // return means retrieve items by context or folder
-          // do this in database mode
-          if (O.view == CONTEXT) {
-            O.context = row.title;
-            O.folder = "";
-            O.taskview = BY_CONTEXT;
-            outlineShowMessage("\'%s\' will be opened", O.context.c_str());
-            O.command_line = "o " + O.context;
-          } else if (O.view == FOLDER) {
-            O.folder = row.title;
-            O.context = "";
-            O.taskview = BY_FOLDER;
-            outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-            O.command_line = "o " + O.folder;
-          } else if (O.view == KEYWORD) {
-            O.keyword = row.title;
-            O.folder = "";
-            O.context = "";
-            O.taskview = BY_KEYWORD;
-            outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-            O.command_line = "ok " + O.keyword;
-          }
-          }
-
-          command_history.push_back(O.command_line);
-          page_hx_idx++;
-          page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
-          marked_entries.clear();
-
-          get_items(MAX);
-          O.command[0] = '\0';
-          O.mode = NORMAL;
-          return;
-        */
 
         //Tab cycles between OUTLINE and DATABASE modes
         case '\t':
@@ -5410,368 +5545,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
           return;
 
-        /*  
-        case 'i':
-          O.mode = INSERT;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-
-        case 's':
-          for (int i = 0; i < O.repeat; i++) outlineDelChar();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.mode = INSERT;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
-          return;
-
-        case 'x':
-          for (int i = 0; i < O.repeat; i++) outlineDelChar();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'r':
-          O.command[0] = '\0';
-          O.mode = REPLACE;
-          return;
-
-        case '~':
-          for (int i = 0; i < O.repeat; i++) outlineChangeCase();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'a':
-          O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
-          outlineMoveCursor(ARROW_RIGHT);
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-
-        case 'A':
-          outlineMoveCursorEOL();
-          O.mode = INSERT; //needs to be here for movecursor to work at EOLs
-          outlineMoveCursor(ARROW_RIGHT);
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-
-        case 'w':
-          outlineMoveNextWord();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'b':
-          outlineMoveBeginningWord();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'e':
-          outlineMoveEndWord();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case '0':
-          if (!O.rows.empty()) O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case '$':
-          outlineMoveCursorEOL();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'I':
-          if (!O.rows.empty()) {
-            O.fc = 0;
-            O.mode = 1;
-            outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          }
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case 'G':
-          O.fc = 0;
-          O.fr = O.rows.size() - 1;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id);
-          return;
-      
-        case 'O': //Same as C_new in COMMAND_LINE mode
-          outlineInsertRow(0, "", true, false, false, BASE_DATE);
-          O.fc = O.fr = O.rowoff = 0;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          editorEraseScreen(); //erases the note area
-          O.mode = INSERT;
-          return;
-
-        case ':':
-          outlineShowMessage(":");
-          O.command[0] = '\0';
-          O.command_line.clear();
-          O.last_mode = O.mode;
-          O.mode = COMMAND_LINE;
-          return;
-
-        case 'v':
-          O.mode = VISUAL;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.highlight[0] = O.highlight[1] = O.fc;
-          outlineShowMessage("\x1b[1m-- VISUAL --\x1b[0m");
-          return;
-
-        case 'p':  
-          if (!string_buffer.empty()) outlinePasteString();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case '*':  
-          outlineGetWordUnderCursor();
-          outlineFindNextWord(); 
-          O.command[0] = '\0';
-          return;
-
-        case 'm':
-          O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
-          if (O.rows.at(O.fr).mark) {
-            marked_entries.insert(O.rows.at(O.fr).id);
-          } else {
-            marked_entries.erase(O.rows.at(O.fr).id);
-          }  
-          outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
-          O.command[0] = '\0';
-          return;
-
-        case 'n':
-          outlineFindNextWord();
-          O.command[0] = '\0';
-          return;
-
-        case 'u':
-          //could be used to update solr - would use U
-          O.command[0] = '\0';
-          return;
-
-        case '^':
-          generate_persistent_html_file(O.rows.at(O.fr).id);
-          O.command[0] = '\0';
-          return;
-        */
-
-        case PAGE_UP:
-        case PAGE_DOWN:  
-          if (page_history.size() == 1 && O.view == TASK) {
-            O.mode = NORMAL;
-            O.command[0] = '\0';
-            O.command_line.clear();
-            return;
-          }
-          {
-          //size_t temp;  
-          O.mode = COMMAND_LINE;
-          if (c == PAGE_UP) {
-
-            // if O.view!=TASK and PAGE_UP - moves back to last page
-            if (O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
-
-              if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
-              else page_hx_idx--;
-            }
-
-          } else {
-            if (page_hx_idx == (page_history.size() - 1)) page_hx_idx = 0;
-            else page_hx_idx++;
-          }
-
-          //temp = page_hx_idx;
-          //outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
-          O.command_line = page_history.at(page_hx_idx);
-          outlineProcessKeypress('\r');
-          O.mode = NORMAL;
-          O.command[0] = '\0';
-          O.command_line.clear();
-          //page_history.pop_back();
-          page_history.erase(page_history.begin() + page_hx_idx);
-          //page_hx_idx = temp;
-          page_hx_idx--;
-          outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
-          }
-          return;
-
-        case ARROW_UP:
-        case ARROW_DOWN:
-        case ARROW_LEFT:
-        case ARROW_RIGHT:
-        case 'h':
-        case 'j':
-        case 'k':
-        case 'l':
-          for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
-          O.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-          O.repeat = 0;
-          return;
-
-        /* now using simpler links but preserving the code for a while
-        case CTRL_KEY('h'):
-          editorMarkupLink(); 
-          update_note(); 
-          O.command[0] = '\0';
-          return;
-        */  
-
-        case C_daw:
-          for (int i = 0; i < O.repeat; i++) outlineDelWord();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case C_dw:
-          for (int j = 0; j < O.repeat; j++) {
-            start = O.fc;
-            outlineMoveEndWord2();
-            end = O.fc;
-            O.fc = start;
-            for (int j = 0; j < end - start + 2; j++) outlineDelChar();
-          }
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case C_de:
-          start = O.fc;
-          outlineMoveEndWord(); //correct one to use to emulate vim
-          end = O.fc;
-          O.fc = start; 
-          for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          O.fc = (start < O.rows.at(O.fr).title.size()) ? start : O.rows.at(O.fr).title.size() -1;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        case C_d$:
-        case C_dd: //note not standard definition but seems right for outline
-          outlineDeleteToEndOfLine();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          return;
-
-        //tested with repeat on one line
-        case C_cw:
-          for (int j = 0; j < O.repeat; j++) {
-            start = O.fc;
-            outlineMoveEndWord();
-            end = O.fc;
-            O.fc = start;
-            for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-          }
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.mode = INSERT;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-
-        //tested with repeat on one line
-        case C_caw:
-          for (int i = 0; i < O.repeat; i++) outlineDelWord();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.mode = INSERT;
-          outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          return;
-
-        case C_gg:
-          O.fc = O.rowoff = 0;
-          O.fr = O.repeat-1; //this needs to take into account O.rowoff
-          O.command[0] = '\0';
-          O.repeat = 0;
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id);
-          return;
-
-        case C_gt:
-          // may actually work in context_mode
-          {
-          std::map<std::string, int>::iterator it;
-
-          if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
-            if (!O.folder.empty()) {
-              it = folder_map.find(O.folder);
-              it++;
-              if (it == folder_map.end()) it = folder_map.begin();
-            } else {
-              it = folder_map.begin();
-            }
-            O.folder = it->first;
-            outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-          } else {
-            if (O.context.empty() || O.context == "search") {
-              it = context_map.begin();
-            } else {
-              it = context_map.find(O.context);
-              it++;
-              if (it == context_map.end()) it = context_map.begin();
-            }
-            O.context = it->first;
-            outlineShowMessage("\'%s\' will be opened", O.context.c_str());
-          }
-          //EraseScreenRedrawLines(); //*****************************
-          get_items(MAX);
-          //editorRefreshScreen(); //in get_note
-          O.command[0] = '\0';
-          return;
-          }
-
-        case C_edit: //CTRL-W,CTRL-W
-          // can't edit note if rows_are_contexts
-          if (!(O.view == TASK)) {
-            O.command[0] = '\0';
-            O.mode = NORMAL;
-            outlineShowMessage("Contexts and Folders do not have notes to edit");
-            return;
-          }
-          {
-          int id = get_id();
-          if (id != -1) {
-            outlineShowMessage("Edit note %d", id);
-            outlineRefreshScreen();
-            //editor_mode needs go before get_note in case we retrieved item via a search
-            editor_mode = true;
-            get_note(id); //if id == -1 does not try to retrieve note
-            E.mode = NORMAL;
-            E.command[0] = '\0';
-          } else {
-            outlineShowMessage("You need to save item before you can "
-                                   "create a note");
-          }
-          O.command[0] = '\0';
-          O.mode = NORMAL;
-          return;
-          }
-
         default:
           // if a single char or sequence of chars doesn't match then
           // do nothing - the next char may generate a match
           return;
 
       } //end of keyfromstring switch under case NORMAL 
+      */
 
-      //return; // end of case NORMAL (don't think it can be reached)
+      return; // end of case NORMAL (don't think it can be reached) now can be reached!!!
 
     case COMMAND_LINE:
 
@@ -6092,6 +5874,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                 return;
                }
 
+            /*  
             case 'k':
             case C_keywords: //catches keyword, keywords, kw and k
               if (!pos) {
@@ -6127,6 +5910,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.mode = O.last_mode;
               if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
               return;
+             */
 
             case C_updatefolder:
             case C_updatecontext:
@@ -8162,28 +7946,41 @@ bool editorProcessKeypress(void) {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
-
-
-      if (e_lookup.count(E.command)) {
-        return e_lookup.at(E.command)(E.repeat);
-      }
-
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
       E.move_only = false; /////////this needs to get into master
+      //E.last_typed.clear(); ///not sure this will work / not needed by all commands but definitely needed by O and o
+
+      if (e_lookup.count(E.command)) {
+        if (!move_only.count(E.command)) editorCreateSnapshot(); 
+        else E.move_only = true;
+        e_lookup.at(E.command)(E.repeat);
+        if (insert_cmds.count(E.command)) {
+          E.mode = INSERT;
+          editorSetMessage("\x1b[1m-- INSERT STEVE --\x1b[0m");
+        }
+        //return e_lookup.at(E.command)(E.repeat);
+        if(E.move_only) {
+          E.command[0] = '\0';
+          E.repeat = 0;
+          //editorSetMessage("command = %d", command);
+          return false;
+        } else {
+          E.last_repeat = E.repeat;
+          E.last_command = command; //will need to change
+          E.command[0] = '\0';
+          E.repeat = 0;
+          //editorSetMessage("command = %d", command);
+          return true;
+      }    
+      }
+
+      //command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
+      //E.move_only = false; /////////this needs to get into master
 
 
       switch (command) {
-
-      //lookup(command) --> insert_functions
-      //lookup(command) --> oO_functions
-      //lookup(command) --> delete_functions
-      //lookup(command) --> change_functions
-      //lookup(command) --> tilde_f
-      //lookup(command) --> concatentate or J_function
-
-
         /*
         case 'i': case 'I': case 'a': case 'A': 
           editorCreateSnapshot();
@@ -8199,7 +7996,6 @@ bool editorProcessKeypress(void) {
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           break;
-        */
 
         case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$: //case x:
           editorCreateSnapshot();
@@ -8238,6 +8034,14 @@ bool editorProcessKeypress(void) {
           E.move_only = true;// still need to draw status line, message and cursor
           break;
 
+        case 'r':
+          // editing cmd: can be dotted and does repeat
+          //f_r exists for dot
+          editorCreateSnapshot();
+          E.mode = REPLACE;
+          return false; //? true or handled in REPLACE mode
+        */
+
         /*  
         case SHIFT_TAB:
           editor_mode = false;
@@ -8245,12 +8049,6 @@ bool editorProcessKeypress(void) {
           return false;
         */
 
-        case 'r':
-          // editing cmd: can be dotted and does repeat
-          //f_r exists for dot
-          editorCreateSnapshot();
-          E.mode = REPLACE;
-          return false; //? true or handled in REPLACE mode
     
         case C_next_mispelling:
           {
@@ -8928,15 +8726,16 @@ bool editorProcessKeypress(void) {
         return true;
       }
 
-      editorCreateSnapshot();
-      for (int i = 0; i < E.repeat; i++) {
+      //editorCreateSnapshot();
+      for (int i = 0; i < E.last_repeat; i++) {
         editorDelChar();
         editorInsertChar(c);
         E.last_typed.clear();
         E.last_typed += c;
       }
+      //other than E.mode = NORMAL - all should go
       E.last_command = 'r';
-      E.last_repeat = E.repeat;
+      //E.last_repeat = E.repeat;
       E.repeat = 0;
       E.command[0] = '\0';
       E.mode = NORMAL;
