@@ -424,7 +424,6 @@ struct editorConfig {
   int first_visible_row;
   int last_visible_row;
   bool spellcheck;
-  bool move_only;
   bool highlight_syntax;
 };
 
@@ -640,6 +639,8 @@ void editorInsertChar(int);
 void editorDisplayFile(void);
 void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 void editorInsertNewline(int);
+void editorSpellingSuggestions(void);
+void editorDotRepeat(int);
 
 void editorHighlightWordsByPosition(void);
 void editorSpellCheck(void);
@@ -686,12 +687,22 @@ inline void f_$(int);
 inline void f_replace(int);
 inline void f_J(int);
 inline void f_tilde(int);
+inline void f_indent(int);
+inline void f_unindent(int);
+inline void f_bold(int);
+inline void f_emphasis(int);
+inline void f_italic(int);
+inline void f_gg(int);
+inline void f_G(int);
+inline void f_toggle_smartindent(int);
+inline void f_save_note(int);
 
 void e_o(int);
 void e_O(int);
 void e_replace(int);
 void f_next_misspelling(int);
 void f_prev_misspelling(int);
+void f_suggestions(int);
 void f_change2command_line(int);
 void f_change2visual_line(int);
 void f_change2visual(int);
@@ -701,8 +712,8 @@ void f_find(int);
 void f_find_next_word(int);
 void f_undo(int);
 
-static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "cw", "caw"};
-static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n"};
+static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
+static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"};
 
 static std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -808,6 +819,7 @@ static std::unordered_map<std::string, pfunc> e_lookup {
   {"de", f_de},
   {"dG", f_dG},
   {"d$", f_d$},
+  {"dd", f_dd},
   {"cw", f_cw},
   {"caw", f_caw},
   {"s", f_s},
@@ -821,6 +833,7 @@ static std::unordered_map<std::string, pfunc> e_lookup {
   {"r", e_replace},
   {"[s", f_next_misspelling},
   {"]s", f_prev_misspelling},
+  {"z=", f_suggestions},
   {":", f_change2command_line},
   {"V", f_change2visual_line},
   {"v", f_change2visual},
@@ -829,6 +842,17 @@ static std::unordered_map<std::string, pfunc> e_lookup {
   {"*", f_find},
   {"n", f_find_next_word},
   {"u", f_undo},
+  {".", editorDotRepeat},
+  {">>", f_indent},
+  {"<<", f_unindent},
+  {{0x2}, f_bold},
+  {{0x5}, f_emphasis},
+  {{0x9}, f_italic},
+  {"yy", editorYankLine},
+  {"gg", f_gg},
+  {"G", f_G},
+  {{0x1A}, f_toggle_smartindent},
+  {{0x13}, f_save_note},
 };
 
 // config struct for reading db.ini file
@@ -4307,7 +4331,8 @@ void f_dd(int repeat) {
   int r = E.rows.size() - E.fr;
   repeat = (r >= repeat) ? repeat : r ;
   editorYankLine(repeat);
-  for (int i = 0; i < repeat ; i++) editorDelRow(E.fr);
+  for (int i=0; i<repeat ; i++) editorDelRow(E.fr);
+  editorSetMessage("Howdy");
 }
 
 void f_d$(int repeat) {
@@ -4469,6 +4494,10 @@ void f_prev_misspelling(int repeat) {
   editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
 }
 
+void f_suggestions(int repeat) {
+  editorSpellingSuggestions();
+}
+
 void f_change2command_line(int repeat) {
   editorSetMessage(":");
   E.command_line.clear();
@@ -4524,10 +4553,162 @@ void f_find_next_word(int repeat) {
 void f_undo(int repeat) {
   editorRestoreSnapshot();
 }
-/* this is dot */
-void editorDoRepeat(void) {
 
-  editorCreateSnapshot();
+void f_indent(int repeat) {
+  int i;
+  for (i = 0; i < repeat; i++) { 
+    editorIndentRow();
+    E.fr++;
+    if (E.fr == (int)E.rows.size() - 1) break;
+  }
+  E.fr -= i;
+}
+
+void f_unindent(int repeat) {
+  int i;
+  for (i = 0; i < repeat; i++) {
+    editorUnIndentRow();
+    E.fr++;
+    if (E.fr == (int)E.rows.size() - 1) break;
+  }
+  E.fr -= i;
+}
+
+void f_gg(int repeat) {
+  E.fc = E.line_offset = 0;
+  E.fr = repeat - 1;
+}
+
+void f_G(int repeat) {
+  E.fc = 0;
+  E.fr = E.rows.size() - 1;
+}
+
+void f_toggle_smartindent(int repeat) {
+  E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
+  editorSetMessage("E.smartindent = %d", E.smartindent);
+}
+
+void f_save_note(int repeat) {
+  editorSaveNoteToFile("lm_temp");
+}
+
+void f_bold(int repeat) {
+  std::string& row = E.rows.at(E.fr);
+  if (row.at(E.fc) == ' ') return;
+
+  //find beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  //find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (row.substr(beg, 2) == "**") {
+    row.erase(beg, 2);
+    end -= 4;
+    row.erase(end, 2);
+    E.fc -=2;
+    return;
+  } else if (row.at(beg) == '*' || row.at(beg) == '`') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+  }
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  row.insert(beg, "**");
+  row.insert(end+2, "**"); //
+  E.fc +=2;
+}
+
+void f_emphasis(int repeat) {
+  std::string& row = E.rows.at(E.fr);
+  if (row.at(E.fc) == ' ') return;
+
+  //find beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  //find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (row.substr(beg, 2) == "**") {
+    row.erase(beg, 2);
+    end -= 4;
+    row.erase(end, 2);
+    E.fc -=2;
+  } else if (row.at(beg) == '*') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+  } else if (row.at(beg) == '`') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+    return;
+  }
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  row.insert(beg, "`");
+  row.insert(end+1 , "`");
+  E.fc++;
+}
+
+void f_italic(int repeat) {
+  std::string& row = E.rows.at(E.fr);
+  if (row.at(E.fc) == ' ') return;
+
+  //find beginning of word
+  auto beg = row.find_last_of(' ', E.fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  //find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (row.substr(beg, 2) == "**") {
+    row.erase(beg, 2);
+    end -= 4;
+    row.erase(end, 2);
+    E.fc -=2;
+  } else if (row.at(beg) == '*') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+    return;
+  } else if (row.at(beg) == '`') {
+    row.erase(beg, 1);
+    end -= 2;
+    E.fc -= 1;
+    row.erase(end, 1);
+  }
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  row.insert(beg, "*");
+  row.insert(end+1 , "*");
+  E.fc++;
+}
+
+/* this is dot */
+void editorDotRepeat(int repeat) {
+
+  //repeate not implemented
 
   switch (E.last_command) {
 
@@ -7982,8 +8163,6 @@ bool editorProcessKeypress(void) {
 
     case NORMAL: 
  
-      // could be fixed but as code is now all escapes if E.command already
-      // had characters would not fall through
       if (c == '\x1b') {
         E.command[0] = '\0';
         E.repeat = 0;
@@ -8014,192 +8193,46 @@ bool editorProcessKeypress(void) {
       command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
-      E.move_only = false; /////////this needs to get into master
-      //E.last_typed.clear(); ///not sure this will work / not needed by all commands but definitely needed by O and o
-
       if (e_lookup.count(E.command)) {
         if (!move_only.count(E.command)) editorCreateSnapshot(); 
-        else E.move_only = true;
-        e_lookup.at(E.command)(E.repeat);
+
+        e_lookup.at(E.command)(E.repeat); //money shot
+
         if (insert_cmds.count(E.command)) {
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT STEVE --\x1b[0m");
         }
-        //return e_lookup.at(E.command)(E.repeat);
-        if(E.move_only) {
+
+        if (move_only.count(E.command)) {
           E.command[0] = '\0';
           E.repeat = 0;
-          //editorSetMessage("command = %d", command);
-          return false;
+          return false; //note text did not change
         } else {
-          E.last_repeat = E.repeat;
-          E.last_command = command; //will need to change
+          if (E.command[0] != '.') {
+            E.last_repeat = E.repeat;
+            E.last_command = command; //will need to change
+          }
           E.command[0] = '\0';
           E.repeat = 0;
-          //editorSetMessage("command = %d", command);
-          return true;
-      }    
+          return true; //note text changed
+        }    
       }
 
-      //command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
-      //E.move_only = false; /////////this needs to get into master
-
-
-      switch (command) {
-
-        /*
-        case 'p':  
-          editorCreateSnapshot();
-          if (!string_buffer.empty()) editorPasteString();
-          else editorPasteLine();
+      if (navigation.count(c)) {
+          for (int j=0; j<E.repeat; j++) editorMoveCursor(c);
           E.command[0] = '\0';
           E.repeat = 0;
-          return true;
-    
-        case '*':  
-          // does not clear dot
-          editorGetWordUnderCursor();
-          editorFindNextWord();
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0; // prob not necessary but doesn't hurt
-          E.move_only = true;
           return false;
-    
-        case 'n':
-          // n does not clear dot
-          editorFindNextWord();
-          // in vim the repeat does work with n - it skips that many words
-          // not a dot command so should leave E.last_repeat alone
-          E.command[0] = '\0';
-          E.repeat = 0; // prob not necessary but doesn't hurt
-          E.move_only = true;
-          return false;
-    
-        case 'u':
-          editorRestoreSnapshot();
-          E.command[0] = '\0';
-          return true;
-    */
+      }
 
-        case '^':
-          generate_persistent_html_file(O.rows.at(O.fr).id);
-          outlineRefreshScreen(); //to get outline message updated (could just update that last row??)
-          O.command[0] = '\0';
-          return false;
-
-        case C_suggestions:
-          editorSpellingSuggestions();
-          E.command[0] = '\0';
-          E.move_only = true;
-          return false;
-
-        case '.': //dot
-          editorDoRepeat();
-          E.command[0] = '\0';
-          return true;
-
-        case CTRL_KEY('z'):
-          E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
-          editorSetMessage("E.smartindent = %d", E.smartindent);
-          return false;
-
-        case CTRL_KEY('b'):
-        case CTRL_KEY('i'):
-        case CTRL_KEY('e'):
-          editorCreateSnapshot();
-          editorDecorateWord(c);
-
-          break;
-
-        case CTRL_KEY('s'):
-          editorSaveNoteToFile("lm_temp");
-          return false;
-
-        /*  
-        case CTRL_KEY('h'):
-          editorMarkupLink(); 
-          return true;
-        */
-
-        case C_indent:
-          editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) { 
-            editorIndentRow();
-            E.fr++;
-            if (E.fr == E.rows.size() - 1) break;
-          }
-          E.fr-=i;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return true;
-    
-        case C_unindent:
-          editorCreateSnapshot();
-          for ( i = 0; i < E.repeat; i++ ) {
-            editorUnIndentRow();
-            E.fr++;}
-          E.fr-=i;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          return true;
-    
-       case C_yy:  
-         editorYankLine(E.repeat);
-         E.command[0] = '\0';
-         E.repeat = 0;
-         return false;
-
-        case PAGE_UP: case PAGE_DOWN:
+      if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
           editorPageUpDown(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.repeat = 0;
-          return false; //there is a check if editorscroll == true
-
-        case ARROW_UP: case ARROW_DOWN: case ARROW_LEFT: case ARROW_RIGHT:
-        case 'h': case 'j': case 'k': case 'l':
-          editorMoveCursor(c);
-          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-          E.move_only = true;
-          E.repeat = 0;
-          return false; //there is a check if editorscroll == true
-
-        case C_gg:
-          // navigation: does not clear dot
-          E.fc = E.line_offset = 0;
-          E.fr = E.repeat - 1;
-          E.move_only = true;
-          break; //see code after switch
-
-        case 'G':
-          // navigation: can't be dotted and doesn't repeat
-          // navigation doesn't clear last dotted command
-          E.fc = 0;
-          E.fr = E.rows.size() - 1;
-          E.move_only = true;
-         break; //see code after switch
-
-       default:
-          /* return false when no need to redraw rows like when command is not matched yet*/
           return false;
-    
-      } // end of keyfromstring switch under case NORMAL 
+      }
 
-      if(E.move_only) {
-        E.command[0] = '\0';
-        E.repeat = 0;
-        editorSetMessage("command = %d", command);
-        return false;
-      } else {
-        E.last_repeat = E.repeat;
-        E.last_typed.clear();
-        E.last_command = command;
-        E.command[0] = '\0';
-        E.repeat = 0;
-        editorSetMessage("command = %d", command);
-        return true;
-      }    
-
-      // end of case NORMAL - there are breaks that can get to code above
+      return true// end of case NORMAL - there are breaks that can get to code above
 
     case COMMAND_LINE:
 
@@ -9584,7 +9617,6 @@ void initEditor(void) {
   E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
   E.first_visible_row = 0;
   E.spellcheck = false;
-  E.move_only = false;
   E.highlight_syntax = true; // should only apply to code
 
   // ? whether the screen-related stuff should be in one place
