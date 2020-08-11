@@ -102,7 +102,7 @@ static std::unordered_set<int> marked_entries;
 
 enum outlineKey {
   BACKSPACE = 127,
-  ARROW_LEFT = 1000,
+  ARROW_LEFT = 1000 //would have to be < 127 to be chars
   ARROW_RIGHT,
   ARROW_UP,
   ARROW_DOWN,
@@ -696,6 +696,11 @@ void f_find_next_word(int);
 void f_undo(int);
 
 static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
+
+//these are not just move only but commands to don't require redrawing text
+//although the cursor and the message line will still be redrawn
+//more accurate would be something like no_redraw
+//will still redraw if page needs scrolling
 static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"};
 
 static std::unordered_set<int> navigation = {
@@ -709,8 +714,7 @@ static std::unordered_set<int> navigation = {
          'l'
 };
 
-static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
-static const std::set<std::string> cmd_set1a = {"I", "i", "A", "a"};
+//static const std::set<std::string> cmd_set1a = {"I", "i", "A", "a"};
 
 typedef void (*pfunc)(int);
 typedef void (*zfunc)(void);
@@ -718,15 +722,22 @@ typedef bool (*efunc)(int);
 pfunc funcfromstring(const std::string&);
 pfunc commandfromstring(const std::string&, std::size_t&);
 
-static std::unordered_map<std::string, pfunc> cmd_map1a = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
-static std::unordered_map<std::string, pfunc> cmd_map2a = {{"o", f_o}, {"O", f_O}};
-static std::unordered_map<std::string, pfunc> cmd_map3a = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
-static std::unordered_map<std::string, pfunc> cmd_map4a = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
-static std::unordered_map<std::string, pfunc> cmd_map5a = {{"w", f_w}, {"b", f_b}, {"e", f_e}, {"0", f_0}, {"$", f_$}};
+/* note that if the key to the unordered_maps was an array
+ * I'd have to implement the hash function whereas 
+ * std::string has a hash function implemented
+ */
+
+static std::unordered_map<std::string, pfunc> cmd_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
+static std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
+static std::unordered_map<std::string, pfunc> cmd_map3 = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
+static std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
+
+// not in use right nowa - ? if has use
+//static std::unordered_map<std::string, pfunc> cmd_map5 = {{"w", f_w}, {"b", f_b}, {"e", f_e}, {"0", f_0}, {"$", f_$}};
 
 /* OUTLINE COMMAND_LINE mode command lookup */
 static std::unordered_map<std::string, pfunc> cmd_lookup {
-  {"open", F_open},
+  {"open", F_open}, //open_O
   {"o", F_open},
   {"openfolder", F_openfolder},
   {"of", F_openfolder},
@@ -745,7 +756,7 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
 
 /* OUTLINE NORMAL mode command lookup */
 static std::unordered_map<std::string, zfunc> n_lookup {
-  {"\r", return_N},
+  {"\r", return_N}, //return_O
   {"i", insert_N},
   {"s", s_N},
   {"~", tilde_N},
@@ -763,6 +774,7 @@ static std::unordered_map<std::string, zfunc> n_lookup {
   {"d$", d$_N},
 
   {"gg", gg_N},
+
   {"gt", gt_N},
 
   {{0x17,0x17}, edit_N},
@@ -793,7 +805,7 @@ static std::unordered_map<std::string, zfunc> n_lookup {
 /* EDITOR NORMAL mode command lookup */
 static std::unordered_map<std::string, pfunc> e_lookup {
 
-  {"i", f_i},
+  {"i", f_i}, //i_E
   {"I", f_I},
   {"a", f_a},
   {"A", f_A},
@@ -4696,8 +4708,8 @@ void editorDotRepeat(int repeat) {
   //repeat not implemented
 
   //case 'i': case 'I': case 'a': case 'A': 
-  if (cmd_map1a.count(E.last_command)) {
-    cmd_map1a[E.last_command](E.last_repeat);
+  if (cmd_map1.count(E.last_command)) {
+    cmd_map1[E.last_command](E.last_repeat);
 
     for (int n=0; n<E.last_repeat; n++) {
       for (char const &c : E.last_typed) {
@@ -4709,20 +4721,20 @@ void editorDotRepeat(int repeat) {
   }
 
   //case 'o': case 'O':
-  if (cmd_map2a.count(E.last_command)) {
-    cmd_map2a[E.last_command](E.last_repeat);
+  if (cmd_map2.count(E.last_command)) {
+    cmd_map2[E.last_command](E.last_repeat);
     return;
   }
 
   //case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
-  if (cmd_map3a.count(E.last_command)) {
-    cmd_map3a[E.last_command](E.last_repeat);
+  if (cmd_map3.count(E.last_command)) {
+    cmd_map3[E.last_command](E.last_repeat);
     return;
   }
 
   //case C_cw: case C_caw: case 's':
-  if (cmd_map4a.count(E.last_command)) {
-      cmd_map4a[E.last_command](E.last_repeat);
+  if (cmd_map4.count(E.last_command)) {
+      cmd_map4[E.last_command](E.last_repeat);
 
     for (char const &c : E.last_typed) {
       if (c == '\r') editorInsertReturn();
@@ -5738,6 +5750,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       //also means that any key sequence ending in something
       //that matches below will perform command
+
+      //might be able to put these into hex ?
 
       if (navigation.count(c)) {
           for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
@@ -8029,13 +8043,14 @@ bool editorProcessKeypress(void) {
            */
 
           /****************************************************/
-          if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
+          //if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
+          if(cmd_map1.count(E.last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
           }
 
-          if (cmd_map2a.count(E.last_command)) cmd_map2a[E.last_command](E.last_repeat - 1);
+          if (cmd_map2.count(E.last_command)) cmd_map2[E.last_command](E.last_repeat - 1);
           /****************************************************/
 
           //'I' in VISUAL BLOCK mode
@@ -8153,7 +8168,7 @@ bool editorProcessKeypress(void) {
 
         if (insert_cmds.count(E.command)) {
           E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT STEVE --\x1b[0m");
+          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
         }
 
         if (move_only.count(E.command)) {
