@@ -80,7 +80,6 @@ static std::vector<std::string> command_history; // the history of commands to m
 static std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
 static size_t cmd_hx_idx = 0;
 static size_t page_hx_idx = 0;
-//static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
 static std::map<int, std::string> html_files;
 static bool lm_browser = true;
 
@@ -169,25 +168,8 @@ static const std::string mode_text[] = {
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
 
 enum Command {
-  C_caw = 2000,
-  C_cw,
-  C_daw,
-  C_dw,
-  C_de,
-  C_d$,
-  C_dd,//could just toggle deleted
-  C_dG,
-  C_indent,
-  C_unindent,
-  C_c$,
-  C_gg,
-  C_gt,
+  C_gt, 
 
-  C_yy,
-
-  //C_open,
-  //C_openfolder,
-  //C_openkeyword,
   C_join,
 
   C_sort,
@@ -256,19 +238,19 @@ enum Command {
 };
 
 static const std::unordered_map<std::string, int> lookuptablemap {
-  {"caw", C_caw},
-  {"cw", C_cw},
-  {"daw", C_daw},
-  {"dw", C_dw},
-  {"de", C_de},
-  {"dd", C_dd},
-  {"dG", C_dG},
-  {">>", C_indent},
-  {"<<", C_unindent},
-  {"gg", C_gg},
+  //{"caw", C_caw},
+  //{"cw", C_cw},
+  //{"daw", C_daw},
+  //{"dw", C_dw},
+  //{"de", C_de},
+  //{"dd", C_dd},
+  //{"dG", C_dG},
+  //{">>", C_indent},
+  //{"<<", C_unindent},
+  //{"gg", C_gg},
   {"gt", C_gt},
-  {"yy", C_yy},
-  {"d$", C_d$},
+  //{"yy", C_yy},
+  //{"d$", C_d$},
 
   {"help", C_help},
   {"h", C_help}, //need because this is command line command with a target word
@@ -415,7 +397,8 @@ struct editorConfig {
   // probably OK that command is a char[] and not a std::string
   char command[10]; // right now includes normal mode commands and command line commands
   std::string command_line; //for commands on the command line; string doesn't include ':'
-  int last_command; //will use the number equivalent of the command
+  //int last_command; //will use the number equivalent of the command
+  std::string last_command; 
   int last_repeat;
   std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
   int repeat;
@@ -727,19 +710,21 @@ static std::unordered_set<int> navigation = {
 };
 
 static const std::set<int> cmd_set1 = {'I', 'i', 'A', 'a'};
+static const std::set<std::string> cmd_set1a = {"I", "i", "A", "a"};
+
 typedef void (*pfunc)(int);
 typedef void (*zfunc)(void);
 typedef bool (*efunc)(int);
 pfunc funcfromstring(const std::string&);
 pfunc commandfromstring(const std::string&, std::size_t&);
-//static std::map<int, int> cmd_map0 = {{'a', 1}, {'A', 1}, {C_caw, 4}, {C_cw, 4}, {C_daw, 3}, {C_dw, 3}, {'o', 2}, {'O', 2}, {'s', 4}, {'x', 3}, {'I', 1}, {'i', 1}};
-static std::unordered_map<int, pfunc> cmd_map1 = {{'i', f_i}, {'I', f_I}, {'a', f_a}, {'A', f_A}};
-static std::unordered_map<int, pfunc> cmd_map2 = {{'o', f_o}, {'O', f_O}};
-static std::unordered_map<int, pfunc> cmd_map3 = {{'x', f_x}, {C_dw, f_dw}, {C_daw, f_daw}, {C_dd, f_dd}, {C_d$, f_d$}, {C_de, f_de}, {C_dG, f_dG}};
-static std::unordered_map<int, pfunc> cmd_map4 = {{C_cw, f_cw}, {C_caw, f_caw}, {'s', f_s}};
-static std::unordered_map<int, pfunc> cmd_map5 = {{'w', f_w}, {'b', f_b}, {'e', f_e}, {'0', f_0}, {'$', f_$}};
-/*************************************/
 
+static std::unordered_map<std::string, pfunc> cmd_map1a = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
+static std::unordered_map<std::string, pfunc> cmd_map2a = {{"o", f_o}, {"O", f_O}};
+static std::unordered_map<std::string, pfunc> cmd_map3a = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
+static std::unordered_map<std::string, pfunc> cmd_map4a = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
+static std::unordered_map<std::string, pfunc> cmd_map5a = {{"w", f_w}, {"b", f_b}, {"e", f_e}, {"0", f_0}, {"$", f_$}};
+
+/* OUTLINE COMMAND_LINE mode command lookup */
 static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open},
   {"o", F_open},
@@ -758,7 +743,7 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"keywords", F_keywords},
 };
 
-/* the commands available in OUTLINE NORMAL mode */
+/* OUTLINE NORMAL mode command lookup */
 static std::unordered_map<std::string, zfunc> n_lookup {
   {"\r", return_N},
   {"i", insert_N},
@@ -805,7 +790,7 @@ static std::unordered_map<std::string, zfunc> n_lookup {
 
 };
 
-/* EDITOR NORMAL mode lookup */
+/* EDITOR NORMAL mode command lookup */
 static std::unordered_map<std::string, pfunc> e_lookup {
 
   {"i", f_i},
@@ -4708,50 +4693,54 @@ void f_italic(int repeat) {
 /* this is dot */
 void editorDotRepeat(int repeat) {
 
-  //repeate not implemented
+  //repeat not implemented
 
-  switch (E.last_command) {
+  //case 'i': case 'I': case 'a': case 'A': 
+  if (cmd_map1a.count(E.last_command)) {
+    cmd_map1a[E.last_command](E.last_repeat);
 
-    case 'i': case 'I': case 'a': case 'A': 
-      cmd_map1[E.last_command](E.last_repeat);
-
-      for (int n=0; n<E.last_repeat; n++) {
-        for (char const &c : E.last_typed) {
-          if (c == '\r') editorInsertReturn();
-          else editorInsertChar(c);
-        }
-      }
-      return;
-
-    case 'o': case 'O':
-      cmd_map2[E.last_command](E.last_repeat);
-      return;
-
-    case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
-      cmd_map3[E.last_command](E.last_repeat);
-      return;
-
-    case C_cw: case C_caw: case 's':
-      cmd_map4[E.last_command](E.last_repeat);
-
+    for (int n=0; n<E.last_repeat; n++) {
       for (char const &c : E.last_typed) {
         if (c == '\r') editorInsertReturn();
         else editorInsertChar(c);
       }
-      return;
-
-    case '~':
-      f_change_case(E.last_repeat);
-      return;
-
-    case 'r':
-      f_replace(E.last_repeat);
-      return;
-
-    default:
-      editorSetMessage("You tried to repeat a command that doesn't repeat; Last command = %d", E.last_command);
-      return;
+    }
+    return;
   }
+
+  //case 'o': case 'O':
+  if (cmd_map2a.count(E.last_command)) {
+    cmd_map2a[E.last_command](E.last_repeat);
+    return;
+  }
+
+  //case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+  if (cmd_map3a.count(E.last_command)) {
+    cmd_map3a[E.last_command](E.last_repeat);
+    return;
+  }
+
+  //case C_cw: case C_caw: case 's':
+  if (cmd_map4a.count(E.last_command)) {
+      cmd_map4a[E.last_command](E.last_repeat);
+
+    for (char const &c : E.last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+    return;
+  }
+
+  if (E.last_command == "~") {
+    f_change_case(E.last_repeat);
+    return;
+  }
+
+  if (E.last_command == "r") {
+    f_replace(E.last_repeat);
+    return;
+  }
+
 }
 
 // used by numerous other functions to sometimes insert zero length rows
@@ -5638,41 +5627,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           editorEraseScreen(); //erases the note area
           O.mode = INSERT;
           return;
-      }
-
-      n = strlen(O.command);
-      O.command[n] = c;
-      O.command[n+1] = '\0';
-
-      //C_gt
-      if (keyfromstringcpp(O.command) == C_gt) {
-        std::map<std::string, int>::iterator it;
-
-        if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
-          if (!O.folder.empty()) {
-            it = folder_map.find(O.folder);
-            it++;
-            if (it == folder_map.end()) it = folder_map.begin();
-          } else {
-            it = folder_map.begin();
-          }
-          O.folder = it->first;
-          outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-        } else {
-          if (O.context.empty() || O.taskview == BY_SEARCH) {
-            it = context_map.begin();
-          } else {
-            it = context_map.find(O.context);
-            it++;
-            if (it == context_map.end()) it = context_map.begin();
-          }
-          O.context = it->first;
-          outlineShowMessage("\'%s\' will be opened", O.context.c_str());
-        }
-        //EraseScreenRedrawLines(); //*****************************
-        get_items(MAX);
-        O.command[0] = '\0';
-        return;
       }
 
       return; //in NO_ROWS - do nothing if no command match
@@ -8075,23 +8029,22 @@ bool editorProcessKeypress(void) {
            */
 
           /****************************************************/
-          if(cmd_set1.count(E.last_command)) { //nuspell needed gcc+17 so no contains
+          if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
           }
 
-          if (cmd_map2.count(E.last_command)) cmd_map2[E.last_command](E.last_repeat - 1);
-          //if (E.last_command == 'o') f_o(E.last_repeat-1);
-          //else if (E.last_command == 'O') f_O(E.last_repeat-1);
+          if (cmd_map2a.count(E.last_command)) cmd_map2a[E.last_command](E.last_repeat - 1);
           /****************************************************/
 
           //'I' in VISUAL BLOCK mode
-          if (E.last_command == -1) {
+          //if (E.last_command == -1) {
+          if (E.last_command == "VBI") {
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
             }
-            {
+            //{
             int temp = E.fr;
 
             for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
@@ -8102,11 +8055,12 @@ bool editorProcessKeypress(void) {
             }
             E.fr = temp;
             E.fc = E.vb0[0];
-          }
+          //}
           }
 
           //'A' in VISUAL BLOCK mode
-          if (E.last_command == -2) {
+          //if (E.last_command == -2) {
+          if (E.last_command == "VBA") {
             //E.fc++;a doesn't go here
             for (int n=0; n<E.last_repeat-1; n++) {
               for (char const &c : E.last_typed) {editorInsertChar(c);}
@@ -8190,7 +8144,6 @@ bool editorProcessKeypress(void) {
       int n = strlen(E.command);
       E.command[n] = c;
       E.command[n+1] = '\0';
-      command = (n && c < 128) ? keyfromstringcpp(E.command) : c;
       }
 
       if (e_lookup.count(E.command)) {
@@ -8210,7 +8163,7 @@ bool editorProcessKeypress(void) {
         } else {
           if (E.command[0] != '.') {
             E.last_repeat = E.repeat;
-            E.last_command = command; //will need to change
+            E.last_command = E.command; //E.last_command must be a string
           }
           E.command[0] = '\0';
           E.repeat = 0;
@@ -8232,7 +8185,7 @@ bool editorProcessKeypress(void) {
           return false;
       }
 
-      return true// end of case NORMAL - there are breaks that can get to code above
+      return true;// end of case NORMAL - there are breaks that can get to code above
 
     case COMMAND_LINE:
 
@@ -8543,7 +8496,7 @@ bool editorProcessKeypress(void) {
           E.fr = E.vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
           E.vb0[1] = temp; // resets E.vb0 to last cursor Y position - this could just be E.vb0[2]
           //cmd_map1[c](E.repeat);
-          command = -1;
+          //command = -1;
           E.repeat = 1;
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -8553,10 +8506,11 @@ bool editorProcessKeypress(void) {
 
           E.last_repeat = E.repeat;
           E.last_typed.clear();
-          E.last_command = command;
+          //E.last_command = command;
+          E.last_command = std::string_view("VBI");
           E.command[0] = '\0';
           E.repeat = 0;
-          editorSetMessage("command = %d", command);
+          //editorSetMessage("command = %d", command);
           return true;
 
         case 'A':
@@ -8574,7 +8528,7 @@ bool editorProcessKeypress(void) {
           int first_row_size = E.rows.at(E.fr).size();
           if (E.vb0[2] > first_row_size) E.rows.at(E.fr).insert(first_row_size, E.vb0[2]-first_row_size, ' ');
           //cmd_map1[c](E.repeat);
-          command = -2;
+          //command = -2;
           E.repeat = 1;
           E.mode = INSERT;
           editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -8584,10 +8538,11 @@ bool editorProcessKeypress(void) {
 
           E.last_repeat = E.repeat;
           E.last_typed.clear();
-          E.last_command = command;
+          //E.last_command = command;
+          E.last_command = std::string_view("VBA");
           E.command[0] = '\0';
           E.repeat = 0;
-          editorSetMessage("command = %d", command);
+          //editorSetMessage("command = %d", command);
           return true;
 
         case '\x1b':
@@ -8678,7 +8633,7 @@ bool editorProcessKeypress(void) {
       if (c == '\x1b') {
         E.command[0] = '\0';
         E.repeat = E.last_repeat = 0;
-        E.last_command = 0;
+        E.last_command = "";
         E.last_typed.clear();
         E.mode = NORMAL;
         return true;
@@ -8692,7 +8647,7 @@ bool editorProcessKeypress(void) {
         E.last_typed += c;
       }
       //other than E.mode = NORMAL - all should go
-      E.last_command = 'r';
+      E.last_command = "r";
       //E.last_repeat = E.repeat;
       E.repeat = 0;
       E.command[0] = '\0';
