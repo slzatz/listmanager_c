@@ -102,7 +102,7 @@ static std::unordered_set<int> marked_entries;
 
 enum outlineKey {
   BACKSPACE = 127,
-  ARROW_LEFT = 1000 //would have to be < 127 to be chars
+  ARROW_LEFT = 1000, //would have to be < 127 to be chars
   ARROW_RIGHT,
   ARROW_UP,
   ARROW_DOWN,
@@ -431,6 +431,30 @@ void F_openkeyword(int);
 void F_deletekeywords(int); //int pos not used
 void F_addkeyword(int); 
 void F_keywords(int); 
+void F_write(int);
+void F_x(int);
+void F_refresh(int);
+void F_new(int);
+void F_edit(int);
+void F_folders(int); 
+void F_contexts(int); 
+void F_recent(int); 
+void F_linked(int); 
+void F_find(int); 
+void F_sync(int);
+void F_sync_test(int);
+void F_updatefolder(int);
+void F_updatecontext(int);
+void F_delmarks(int);
+void F_savefile(int);
+void F_sort(int);
+void F_showall(int);
+void F_syntax(int);
+void F_set(int);
+void F_open_in_vim(int);
+void F_join(int);
+void F_readfile(int pos);
+void F_valgrind(int pos);
 
 /* OUTLINE mode NORMAL functions */
 void return_N(void);
@@ -643,7 +667,8 @@ void editorSaveNoteToFile(const std::string &);
 void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
 
-void update_solr(void);
+void update_solr(void); //works but not in use
+void open_in_vim(void);
 
 /* EDITOR mode NORMAL functions */
 inline void f_i(int);
@@ -718,9 +743,6 @@ static std::unordered_set<int> navigation = {
 
 typedef void (*pfunc)(int);
 typedef void (*zfunc)(void);
-typedef bool (*efunc)(int);
-pfunc funcfromstring(const std::string&);
-pfunc commandfromstring(const std::string&, std::size_t&);
 
 /* note that if the key to the unordered_maps was an array
  * I'd have to implement the hash function whereas 
@@ -750,8 +772,50 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"addkw", F_addkeyword},
   {"addk", F_addkeyword},
   {"k", F_keywords},
+  {"keyword", F_keywords},
   {"keywords", F_keywords},
-  {"keywords", F_keywords},
+  {"write", F_write},
+  {"w", F_write},
+  {"x", F_x},
+  {"refresh", F_refresh},
+  {"r", F_refresh},
+  {"n", F_new},
+  {"new", F_new},
+  {"e", F_edit},
+  {"edit", F_edit},
+  {"contexts", F_contexts},
+  {"context", F_contexts},
+  {"c", F_contexts},
+  {"folders", F_folders},
+  {"folder", F_folders},
+  {"f", F_folders},
+  {"recent", F_recent},
+  {"linked", F_linked},
+  {"l", F_linked},
+  {"related", F_linked},
+  {"find", F_find},
+  {"fin", F_find},
+  {"search", F_find},
+  {"sync", F_sync},
+  {"test", F_sync_test},
+  {"updatefolder", F_updatefolder},
+  {"uf", F_updatefolder},
+  {"updatecontext", F_updatecontext},
+  {"uc", F_updatecontext},
+  {"delmarks", F_delmarks},
+  {"delm", F_delmarks},
+  {"save", F_savefile},
+  {"sort", F_sort},
+  {"show", F_showall},
+  {"showall", F_showall},
+  {"set", F_set},
+  {"syntax", F_syntax},
+  {"vim", F_open_in_vim},
+  {"join", F_join},
+  {"readfile", F_readfile},
+  {"read", F_readfile},
+  {"valgrind", F_valgrind},
+
 };
 
 /* OUTLINE NORMAL mode command lookup */
@@ -3468,17 +3532,6 @@ int keyfromstringcpp(const std::string& key) {
     return -1;
 }
 
-//this is so short should just incorporate in new commandfromstring
-pfunc funcfromstring(const std::string& key) {
-
-  // c++20 has a member function 'contains' on associate containers
-  //if (lookuptablemap.contains(key))
-  if (cmd_lookup.count(key))
-    return cmd_lookup.at(key); //note can't use [] on const unordered map since it could change map
-  else
-    return nullptr;
-}
-
 int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
 
   // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
@@ -3495,18 +3548,6 @@ int commandfromstringcpp(const std::string& key, std::size_t& found) { //for com
   } else {
     found = 0;
     return keyfromstringcpp(key);
-  }
-}
-
-// new one
-pfunc commandfromstring(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
-
-  found = key.find(' ');
-  if (found != std::string::npos) {
-    return funcfromstring(key.substr(0, found));
-  } else {
-    found = 0;
-    return funcfromstring(key);
   }
 }
 
@@ -3653,11 +3694,13 @@ void F_open(int pos) { //C_open - by context
         break;
       }
     }
+
     if (!success) {
       outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
       O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
       return;
     }
+
   } else {
     outlineShowMessage("You did not provide a context!");
     O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
@@ -3779,7 +3822,7 @@ void F_addkeyword(int pos) {
   return;
 }
 
-void F_keywords (int pos) {
+void F_keywords(int pos) {
   if (!pos) {
     editorEraseScreen();
     O.view = KEYWORD;
@@ -3815,7 +3858,417 @@ void F_keywords (int pos) {
   return;
 }
 
-//case '\r':
+void F_write(int pos) {
+  if (O.view == TASK) update_rows();
+  O.mode = O.last_mode;
+  O.command_line.clear();
+}
+
+void F_x(int pos) {
+  if (O.view == TASK) update_rows();
+  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+  write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
+  exit(0);
+}
+
+void F_refresh(int pos) {
+  if (O.view == TASK) {
+    outlineShowMessage("Steve, tasks will be refreshed");
+    if (O.taskview == BY_SEARCH)
+      ;//search_db();
+    else
+      get_items(MAX);
+  } else {
+    outlineShowMessage("contexts/folders will be refreshed");
+    get_containers();
+  }
+  O.mode = O.last_mode;
+}
+
+void F_new(int pos) {
+  outlineInsertRow(0, "", true, false, false, BASE_DATE);
+  O.fc = O.fr = O.rowoff = 0;
+  O.command[0] = '\0';
+  O.repeat = 0;
+  outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
+  editorEraseScreen(); //erases the note area
+  O.mode = INSERT;
+
+  int fd;
+  std::string fn = "assets/" + CURRENT_NOTE_FILE;
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, " ", 1);
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else outlineShowMessage("Couldn't lock file");
+  } else outlineShowMessage("Couldn't open file");
+}
+
+void F_edit(int pos) {
+  if (!(O.view == TASK)) {
+    O.command[0] = '\0';
+    O.mode = NORMAL;
+    outlineShowMessage("Only tasks have notes to edit!");
+    return;
+  }
+  int id = get_id();
+  if (id != -1) {
+    outlineShowMessage("Edit note %d", id);
+    outlineRefreshScreen();
+    //editor_mode needs go before get_note in case we retrieved item via a search
+    editor_mode = true;
+    get_note(id); //if id == -1 does not try to retrieve note
+    //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
+    if (E.rows.empty()) {
+      E.mode = INSERT;
+      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      editorRefreshScreen(false);
+    } else E.mode = NORMAL;
+    //E.mode = (E.rows.empty()) ? INSERT : NORMAL;
+    //E.mode = NORMAL;
+    E.command[0] = '\0';
+  } else {
+    outlineShowMessage("You need to save item before you can "
+                      "create a note");
+  }
+  O.command[0] = '\0';
+  O.mode = NORMAL;
+}
+
+void F_contexts(int pos) {
+  if (!pos) {
+    editorEraseScreen();
+    O.view = CONTEXT;
+    command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+    get_containers();
+    O.mode = NORMAL;
+    outlineShowMessage("Retrieved contexts");
+    return;
+  } else {
+
+    std::string new_context;
+    bool success = false;
+    if (O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
+      // structured bindings
+      for (const auto & [k,v] : context_map) {
+        if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+          new_context = k;
+          success = true;
+          break;
+        }
+      }
+      if (!success) {
+        outlineShowMessage("What you typed did not match any context");
+        O.mode = NORMAL;
+        return;
+      }
+
+    } else {
+      outlineShowMessage("You need to provide at least 3 characters "
+                        "that match a context!");
+
+      O.mode = NORMAL;
+      return;
+    }
+    success = false;
+    for (const auto& it : O.rows) {
+      if (it.mark) {
+        update_task_context(new_context, it.id);
+        success = true;
+      }
+    }
+
+    if (success) {
+      outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
+    } else {
+      update_task_context(new_context, O.rows.at(O.fr).id);
+      outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
+    }
+    O.mode = O.last_mode;
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    //O.command_line.clear(); //calling : in all modes should clear command_line
+    return;
+  }
+}
+
+void F_folders(int pos) {
+  if (!pos) {
+    editorEraseScreen();
+    O.view = FOLDER;
+    command_history.push_back(O.command_line); 
+    get_containers();
+    O.mode = NORMAL;
+    outlineShowMessage("Retrieved folders");
+    return;
+  } else {
+
+    std::string new_folder;
+    bool success = false;
+    if (O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
+      // structured bindings
+      for (const auto & [k,v] : folder_map) {
+        if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+          new_folder = k;
+          success = true;
+          break;
+        }
+      }
+      if (!success) {
+        outlineShowMessage("What you typed did not match any folder");
+        O.mode = NORMAL;
+        return;
+      }
+
+    } else {
+      outlineShowMessage("You need to provide at least 3 characters "
+                        "that match a folder!");
+
+      O.mode = NORMAL;
+      return;
+    }
+    success = false;
+    for (const auto& it : O.rows) {
+      if (it.mark) {
+        update_task_folder(new_folder, it.id);
+        success = true;
+      }
+    }
+
+    if (success) {
+      outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
+    } else {
+      update_task_folder(new_folder, O.rows.at(O.fr).id);
+      outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
+    }
+    O.mode = O.last_mode;
+    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+    return;
+  }
+}
+
+void F_recent(int pos) {
+  outlineShowMessage("Will retrieve recent items");
+  command_history.push_back(O.command_line);
+  page_history.push_back(O.command_line);
+  page_hx_idx = page_history.size() - 1;
+  marked_entries.clear();
+  O.context = "No Context";
+  O.taskview = BY_RECENT;
+  O.folder = "No Folder";
+  get_items(MAX);
+}
+
+void F_linked(int pos) {
+  std::string keywords = get_task_keywords().first;
+  if (keywords.empty()) {
+    outlineShowMessage("The current entry has no keywords");
+  } else {
+    O.keyword = keywords;
+    O.context = "No Context";
+    O.folder = "No Folder";
+    O.taskview = BY_KEYWORD;
+    get_linked_items(MAX);
+    command_history.push_back("ok " + keywords); 
+  }
+}
+
+void F_find(int pos) {
+  if (O.command_line.size() < 6) {
+    outlineShowMessage("You need more characters");
+    return;
+  }  
+  O.context = "";
+  O.folder = "";
+  O.taskview = BY_SEARCH;
+  //O.mode = SEARCH; ////// it's in get_items_by_id
+  search_terms = O.command_line.substr(pos+1);
+  std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
+  command_history.push_back(O.command_line); 
+  page_hx_idx++;
+  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  outlineShowMessage("Searching for %s", search_terms.c_str());
+  search_db(search_terms);
+}
+
+void F_sync(int pos) {
+  synchronize(0); // do actual sync
+  map_context_titles();
+  map_folder_titles();
+  initial_file_row = 0; //for arrowing or displaying files
+  O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+  outlineShowMessage("Synching local db and server and displaying results");
+  editorReadFile("log");
+  editorDisplayFile();//put them in the command mode case synch
+}
+
+void F_sync_test(int pos) {
+  synchronize(1); //1 -> report_only
+  initial_file_row = 0; //for arrowing or displaying files
+  O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+  outlineShowMessage("Testing synching local db and server and displaying results");
+  editorReadFile("log");
+  editorDisplayFile();//put them in the command mode case synch
+}
+
+void F_updatecontext(int pos) {
+  current_task_id = O.rows.at(O.fr).id;
+  editorEraseScreen();
+  O.view = CONTEXT;
+  command_history.push_back(O.command_line); 
+  get_containers(); //O.mode = NORMAL is in get_containers
+  O.mode = ADD_KEYWORD; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  outlineShowMessage("Select context to add to marked or current entry");
+}
+
+void F_updatefolder(int pos) {
+  current_task_id = O.rows.at(O.fr).id;
+  editorEraseScreen();
+  O.view = FOLDER;
+  command_history.push_back(O.command_line); 
+  get_containers(); //O.mode = NORMAL is in get_containers
+  O.mode = ADD_KEYWORD; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  outlineShowMessage("Select context to add to marked or current entry");
+}
+
+void F_delmarks(int pos) {
+  for (auto& it : O.rows) {
+    it.mark = false;}
+  if (O.view == TASK) marked_entries.clear(); //why the if??
+  O.mode = O.last_mode;
+  outlineShowMessage("Marks all deleted");
+}
+
+void F_savefile(int pos) {
+  command_history.push_back(O.command_line);
+  std::string filename;
+  if (pos) filename = O.command_line.substr(pos+1);
+  else filename = "example.cpp";
+  editorSaveNoteToFile(filename);
+  outlineShowMessage("Note saved to file: %s", filename.c_str());
+  O.mode = NORMAL;
+}
+
+//this really needs work - needs to be picked like keywords, folders etc.
+void F_sort(int pos) { 
+  if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
+    O.sort = O.command_line.substr(pos + 1);
+    get_items(MAX);
+    outlineShowMessage("sorted by \'%s\'", O.sort.c_str());
+  } else {
+    outlineShowMessage("Currently can't sort search, which is sorted on best match");
+  }
+}
+
+void  F_showall(int pos) {
+  if (O.view == TASK) {
+    O.show_deleted = !O.show_deleted;
+    O.show_completed = !O.show_completed;
+    if (O.taskview == BY_SEARCH)
+      ; //search_db();
+    else
+      get_items(MAX);
+  }
+  outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
+}
+
+
+// does not seem to work
+void F_syntax(int pos) {
+  if (pos) {
+    std::string action = O.command_line.substr(pos + 1);
+    if (action == "on") {
+      E.highlight_syntax = true;
+      outlineShowMessage("Syntax highlighting will be turned on");
+    } else if (action == "off") {
+      E.highlight_syntax = false;
+      outlineShowMessage("Syntax highlighting will be turned off");
+    } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
+  } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
+  editorRefreshScreen(true);
+  O.mode = NORMAL;
+}
+
+// set spell | set nospell
+void F_set(int pos) {
+  std::string action = O.command_line.substr(pos + 1);
+  if (pos) {
+    if (action == "spell") {
+      E.spellcheck = true;
+      outlineShowMessage("Spellcheck active");
+    } else if (action == "nospell") {
+      E.spellcheck = false;
+      outlineShowMessage("Spellcheck off");
+    } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
+  } else {outlineShowMessage("Unknown option: %s", action.c_str());}
+  editorRefreshScreen(true);
+  O.mode = NORMAL;
+}
+
+void F_open_in_vim(int pos) {
+  open_in_vim(); //send you into editor mode
+  //O.command[0] = '\0';
+  //O.repeat = 0;
+  //O.mode = NORMAL;
+}
+
+void F_join(int pos) {
+  if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
+    outlineShowMessage("You are either in a view where you can't join or provided no join container");
+    O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+    O.mode = O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+    return;
+  }
+  bool success = false;
+
+  if (O.taskview == BY_CONTEXT) {
+    for (const auto & [k,v] : folder_map) {
+      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        O.folder = k;
+        success = true;
+        break;
+      }
+    }
+  } else if (O.taskview == BY_FOLDER) {
+    for (const auto & [k,v] : context_map) {
+      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        O.context = k;
+        success = true;
+        break;
+      }
+    }
+  }
+  if (!success) {
+    outlineShowMessage("You did not provide a valid folder or context to join!");
+    O.command_line.resize(1);
+    return;
+  }
+
+  outlineShowMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
+  O.taskview = BY_JOIN;
+  get_items(MAX);
+  return;
+}
+
+//case C_readfile:
+void F_readfile(int pos) {
+  std::string filename;
+  if (pos) filename = O.command_line.substr(pos+1);
+  else filename = "example.cpp";
+  editorReadFileIntoNote(filename);
+  outlineShowMessage("Note generated from file: %s", filename.c_str());
+  O.mode = NORMAL;
+}
+
+void F_valgrind(int pos) {
+  initial_file_row = 0; //for arrowing or displaying files
+  editorReadFile("valgrind_log_file");
+  editorDisplayFile();//put them in the command mode case synch
+  O.last_mode = O.mode;
+  O.mode = FILE_DISPLAY;
+}
+
 void return_N(void) {
   orow& row = O.rows.at(O.fr);
 
@@ -5797,704 +6250,24 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         case '\r':
+
+          // holds the position of the blank in the command
           std::size_t pos;
 
-          // passes back position of space (if there is one) in var pos
-          //auto f = commandfromstring(O.command_line, pos); 
-          if (auto f = commandfromstring(O.command_line, pos);f) {
-            f(pos);
+          {
+          pos = O.command_line.find(' ');
+          std::string cmd = O.command_line.substr(0, pos);
+          if (cmd_lookup.count(cmd)) {
+            if (pos == std::string::npos) pos = 0;
+            cmd_lookup.at(cmd)(pos);
             return;
           }
-          /*
-          command = commandfromstringcpp(O.command_line, pos); 
-          if (auto it = cmd_map.find(command);it != cmd_map.end()) {
-            it->second(pos);
-            return;
           }
-         */
 
           command = commandfromstringcpp(O.command_line, pos); 
           switch(command) {
 
-            case 'w':
-            case C_write:  
-              if (O.view == TASK) update_rows();
-              O.mode = O.last_mode;
-              O.command_line.clear();
-              return;
-
-            case 'x':
-              if (O.view == TASK) update_rows();
-              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-              write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
-              exit(0);
-              //return;
-
-            case 'r':
-            case C_refresh:
-              //EraseScreenRedrawLines(); //doesn't seem necessary ****11162019*************************
-
-              if (O.view == TASK) {
-                outlineShowMessage("Tasks will be refreshed");
-                if (O.taskview == BY_SEARCH)
-                  ;//search_db();
-                else
-                  get_items(MAX);
-              } else {
-                outlineShowMessage("contexts/folders will be refreshed");
-                get_containers();
-              }
-              O.mode = O.last_mode;
-              return;
-
-            //in vim create new window and edit a file in it - here creates new item
-            case 'n':
-            case C_new: 
-              outlineInsertRow(0, "", true, false, false, BASE_DATE);
-              O.fc = O.fr = O.rowoff = 0;
-              O.command[0] = '\0';
-              O.repeat = 0;
-              outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-              editorEraseScreen(); //erases the note area
-              O.mode = INSERT;
-
-              {
-              int fd;
-              std::string fn = "assets/" + CURRENT_NOTE_FILE;
-              if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-                lock.l_type = F_WRLCK;  
-                if (fcntl(fd, F_SETLK, &lock) != -1) {
-                write(fd, " ", 1);
-                lock.l_type = F_UNLCK;
-                fcntl(fd, F_SETLK, &lock);
-                } else outlineShowMessage("Couldn't lock file");
-              } else outlineShowMessage("Couldn't open file");
-              }
-
-              return;
-
-            case 'e':
-            case C_edit: //edit the note of the current item
-              if (!(O.view == TASK)) {
-                O.command[0] = '\0';
-                O.mode = NORMAL;
-                outlineShowMessage("Only tasks have notes to edit!");
-                return;
-              }
-              {
-              int id = get_id();
-              if (id != -1) {
-                outlineShowMessage("Edit note %d", id);
-                outlineRefreshScreen();
-                //editor_mode needs go before get_note in case we retrieved item via a search
-                editor_mode = true;
-                get_note(id); //if id == -1 does not try to retrieve note
-                //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
-                if (E.rows.empty()) {
-                  E.mode = INSERT;
-                  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-                  editorRefreshScreen(false);
-                } else E.mode = NORMAL;
-                //E.mode = (E.rows.empty()) ? INSERT : NORMAL;
-                //E.mode = NORMAL;
-                E.command[0] = '\0';
-              } else {
-                outlineShowMessage("You need to save item before you can "
-                                  "create a note");
-              }
-              O.command[0] = '\0';
-              O.mode = NORMAL;
-              return;
-              }
-
-            case 'l':  
-            case C_linked: //linked, related, l
-              {
-              std::string keywords = get_task_keywords().first;
-              if (keywords.empty()) {
-                outlineShowMessage("The current entry has no keywords");
-              } else {
-                O.keyword = keywords;
-                O.context = "No Context";
-                O.folder = "No Folder";
-                O.taskview = BY_KEYWORD;
-                get_linked_items(MAX);
-                command_history.push_back("ok " + keywords); ///////////////////////////////////////////////////////
-              }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-              }
-              return;
-
-            case C_find: //catches 'fin' and 'find' 
-              
-              if (O.command_line.size() < 6) {
-                outlineShowMessage("You need more characters");
-                return;
-              }  
-              {
-              O.context = "";
-              O.folder = "";
-              O.taskview = BY_SEARCH;
-              //O.mode = SEARCH; ////// it's in get_items_by_id
-              search_terms = O.command_line.substr(pos+1);
-              std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-              command_history.push_back(O.command_line); 
-
-             // page_history.push_back(O.command_line); 
-             // page_hx_idx = page_history.size() - 1;
-
-              page_hx_idx++;
-              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
-
-
-              outlineShowMessage("Searching for %s", search_terms.c_str());
-              search_db(search_terms);
-              }
-              return;
-
-            case C_fts: 
-              {
-              std::string s;
-              if (O.command_line.size() < 6) {
-                outlineShowMessage("You need more characters");
-                return;
-              }  
-
-              //EraseScreenRedrawLines(); //*****************************
-              O.context = "search";
-              s = O.command_line.substr(pos+1);
-              search_db(s); //fts5_sqlite(s);
-              //std::istringstream iss(s);
-              //for(std::string ss; iss >> s; ) search_terms2.push_back(ss);
-              if (O.mode != NO_ROWS) {
-                //O.mode = SEARCH;
-                get_note(get_id());
-              } else {
-                outlineRefreshScreen();
-              }
-              }
-              return;
-
-            case C_update: //update solr
-              update_solr();
-              O.mode = NORMAL;
-              return;
-
-            case 'c':
-            case C_contexts: //catches context, contexts and c
-              if (!pos) {
-                editorEraseScreen();
-                O.view = CONTEXT;
-                command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
-                get_containers();
-                O.mode = NORMAL;
-                outlineShowMessage("Retrieved contexts");
-                return;
-              } else {
-
-                std::string new_context;
-                bool success = false;
-                if (O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
-                  // structured bindings
-                  for (const auto & [k,v] : context_map) {
-                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                      new_context = k;
-                      success = true;
-                      break;
-                    }
-                  }
-                  if (!success) {
-                    outlineShowMessage("What you typed did not match any context");
-                    return;
-                  }
-
-                } else {
-                  outlineShowMessage("You need to provide at least 3 characters "
-                                    "that match a context!");
-
-                  O.command_line.clear();
-                  return;
-                }
-                success = false;
-                for (const auto& it : O.rows) {
-                  if (it.mark) {
-                    update_task_context(new_context, it.id);
-                    success = true;
-                  }
-                }
-
-                if (success) {
-                  outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
-                } else {
-                  update_task_context(new_context, O.rows.at(O.fr).id);
-                  outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
-                }
-                O.mode = O.last_mode;
-                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-                //O.command_line.clear(); //calling : in all modes should clear command_line
-                return;
-                }
-
-            case 'f':
-            case C_folders: //catches folder, folders and f
-              if (!pos) {
-                editorEraseScreen();
-                O.view = FOLDER;
-                command_history.push_back(O.command_line); 
-                get_containers();
-                O.mode = NORMAL;
-                outlineShowMessage("Retrieved folders");
-                return;
-              } else {
-
-                std::string new_folder;
-                bool success = false;
-                if (O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
-                  // structured bindings
-                  for (const auto & [k,v] : folder_map) {
-                    if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                      new_folder = k;
-                      success = true;
-                      break;
-                    }
-                  }
-                  if (!success) {
-                    outlineShowMessage("What you typed did not match any folder");
-                    return;
-                  }
-
-                } else {
-                  outlineShowMessage("You need to provide at least 3 characters "
-                                    "that match a folder!");
-
-                  O.command_line.clear();
-                  return;
-                }
-                success = false;
-                for (const auto& it : O.rows) {
-                  if (it.mark) {
-                    update_task_folder(new_folder, it.id);
-                    success = true;
-                  }
-                }
-
-                if (success) {
-                  outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
-                } else {
-                  update_task_folder(new_folder, O.rows.at(O.fr).id);
-                  outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
-                }
-                O.mode = O.last_mode;
-                if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-                return;
-               }
-
-            /*  
-            case 'k':
-            case C_keywords: //catches keyword, keywords, kw and k
-              if (!pos) {
-                editorEraseScreen();
-                O.view = KEYWORD;
-                command_history.push_back(O.command_line); 
-                get_containers(); //O.mode = NORMAL is in get_containers
-                outlineShowMessage("Retrieved keywords");
-                return;
-              }  
-
-              // only do this if there was text after C_keywords
-              if (O.last_mode == NO_ROWS) return;
-
-              {
-              std::string keyword = O.command_line.substr(pos+1);
-              if (!keyword_exists(keyword)) {
-                  O.mode = O.last_mode;
-                  outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
-                  return;
-              }
-
-              if (marked_entries.empty()) {
-                add_task_keyword(keyword, O.rows.at(O.fr).id);
-                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
-              } else {
-                for (const auto& id : marked_entries) {
-                  add_task_keyword(keyword, id);
-                }
-                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
-              }
-              }
-              O.mode = O.last_mode;
-              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-              return;
-             */
-
-            case C_updatefolder:
-            case C_updatecontext:
-              if (!pos) {
-                current_task_id = O.rows.at(O.fr).id;
-                editorEraseScreen();
-                if (command == C_updatefolder) O.view = FOLDER;
-                else O.view = CONTEXT;
-                command_history.push_back(O.command_line); 
-                get_containers(); //O.mode = NORMAL is in get_containers
-                O.mode = ADD_KEYWORD;
-                outlineShowMessage("Select keyword to add to marked or current entry");
-              }  
-              return;
             /*
-            case C_addkeyword: //catches addkeyword, addkw 
-              if (!pos) {
-                current_task_id = O.rows.at(O.fr).id;
-                editorEraseScreen();
-                O.view = KEYWORD;
-                command_history.push_back(O.command_line); 
-                get_containers(); //O.mode = NORMAL is in get_containers
-                O.mode = ADD_KEYWORD;
-                outlineShowMessage("Select keyword to add to marked or current entry");
-                return;
-              }  
-
-              // only do this if there was text after C_addkeyword
-              if (O.last_mode == NO_ROWS) return;
-
-              {
-              std::string keyword = O.command_line.substr(pos+1);
-              if (!keyword_exists(keyword)) {
-                  O.mode = O.last_mode;
-                  outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
-                  return;
-              }
-
-              if (marked_entries.empty()) {
-                add_task_keyword(keyword, O.rows.at(O.fr).id);
-                outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
-              } else {
-                for (const auto& id : marked_entries) {
-                  add_task_keyword(keyword, id);
-                }
-                outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
-              }
-              }
-              O.mode = O.last_mode;
-              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-              return;
-             */
-
-            case C_movetocontext:
-              {
-              std::string new_context;
-              bool success = false;
-              if (O.command_line.size() > 5) {
-                // structured bindings
-                for (const auto & [k,v] : context_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    new_context = k;
-                    success = true;
-                    break;
-                  }
-                }
-                if (!success) {
-                  outlineShowMessage("What you typed did not match any context");
-                  return;
-                }
-
-              } else {
-                outlineShowMessage("You need to provide at least 3 characters "
-                                  "that match a context!");
-
-                O.command_line.clear();
-                return;
-              }
-              success = false;
-              for (const auto& it : O.rows) {
-                if (it.mark) {
-                  update_task_context(new_context, it.id);
-                  success = true;
-                }
-              }
-
-              if (success) {
-                outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
-              } else {
-                update_task_context(new_context, O.rows.at(O.fr).id);
-                outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
-              }
-              O.mode = O.last_mode;
-              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-              //O.command_line.clear(); //calling : in all modes should clear command_line
-              return;
-              }
-
-            case C_movetofolder:
-              {
-              std::string new_folder;
-              bool success = false;
-              if (O.command_line.size() > 5) {
-                // structured bindings
-                for (const auto & [k,v] : folder_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    new_folder = k;
-                    success = true;
-                    break;
-                  }
-                }
-                if (!success) {
-                  outlineShowMessage("What you typed did not match any folder");
-                  return;
-                }
-
-              } else {
-                outlineShowMessage("You need to provide at least 3 characters "
-                                  "that match a folder!");
-
-                O.command_line.clear();
-                return;
-              }
-              success = false;
-              for (const auto& it : O.rows) {
-                if (it.mark) {
-                  update_task_folder(new_folder, it.id);
-                  success = true;
-                }
-              }
-
-              if (success) {
-                outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
-              } else {
-                update_task_folder(new_folder, O.rows.at(O.fr).id);
-                outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
-              }
-              O.mode = O.last_mode;
-              if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-              return;
-              }
-
-              /*
-            case C_deletekeywords:
-              outlineShowMessage("Keyword(s) for task %d will be deleted and fts updated if sqlite", O.rows.at(O.fr).id);
-              delete_task_keywords();
-              O.mode = O.last_mode;
-              return;
-
-            //case 'o': //klugy since commandfromstring doesn't connect single letters to commands;note that this will notify user of error if no context given  
-            case C_open: //by context
-              F_open(pos);
-              return;
-              {
-              std::string new_context;
-              if (pos) {
-                bool success = false;
-                //structured bindings
-                for (const auto & [k,v] : context_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    new_context = k;
-                    success = true;
-                    break;
-                  }
-                }
-                if (!success) {
-                  outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
-                  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-                  return;
-                }
-              } else {
-                outlineShowMessage("You did not provide a context!");
-                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-                return;
-              }
-              //EraseScreenRedrawLines(); //////////
-              outlineShowMessage("\'%s\' will be opened", new_context.c_str());
-              command_history.push_back(O.command_line);
-              page_hx_idx++;
-              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
-
-              marked_entries.clear();
-              O.context = new_context;
-              O.folder = "";
-              O.taskview = BY_CONTEXT;
-              get_items(MAX);
-              //O.mode = O.last_mode;
-              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-              return;
-              }
-
-            case C_openfolder:
-              if (pos) {
-                bool success = false;
-                for (const auto & [k,v] : folder_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    O.folder = k;
-                    success = true;
-                    break;
-                  }
-                }
-                if (!success) {
-                  outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
-                  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-                  return;
-                }
-
-              } else {
-                outlineShowMessage("You did not provide a folder!");
-                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-                return;
-              }
-              outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-              command_history.push_back(O.command_line);
-              page_hx_idx++;
-              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
-              marked_entries.clear();
-              O.context = "";
-              O.taskview = BY_FOLDER;
-              get_items(MAX);
-              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-              return;
-
-            case C_openkeyword:
-
-              if (!pos) {
-                outlineShowMessage("You need to provide a keyword");
-                O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-                return;
-              }
-
-              O.keyword = O.command_line.substr(pos+1);
-              outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-              command_history.push_back(O.command_line);
-              page_hx_idx++;
-              page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
-              marked_entries.clear();
-              O.context = "";
-              O.folder = "";
-              O.taskview = BY_KEYWORD;
-              get_items(MAX);
-              //editorRefreshScreen(); //in get_note
-              O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-              return;
-              */
-
-
-            case C_join:
-              {
-              if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
-                outlineShowMessage("You are either in a view where you can't join or provided no join container");
-                O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
-                O.mode = O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
-                return;
-              }
-              bool success = false;
-
-              if (O.taskview == BY_CONTEXT) {
-                for (const auto & [k,v] : folder_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    O.folder = k;
-                    success = true;
-                    break;
-                  }
-                }
-              } else if (O.taskview == BY_FOLDER) {
-                for (const auto & [k,v] : context_map) {
-                  if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-                    O.context = k;
-                    success = true;
-                    break;
-                  }
-                }
-              }
-
-              if (!success) {
-                outlineShowMessage("You did not provide a valid folder or context to join!");
-                O.command_line.resize(1);
-                return;
-              }
-
-               outlineShowMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
-               O.taskview = BY_JOIN;
-               get_items(MAX);
-               return;
-               }
-
-            case C_sort:
-              if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
-                O.sort = O.command_line.substr(pos + 1);
-                get_items(MAX);
-                outlineShowMessage("sorted by \'%s\'", O.sort.c_str());
-              } else {
-                outlineShowMessage("Currently can't sort search, which is sorted on best match");
-              }
-              return;
-
-            case C_recent:
-              outlineShowMessage("Will retrieve recent items");
-              command_history.push_back(O.command_line);
-              page_history.push_back(O.command_line);
-              page_hx_idx = page_history.size() - 1;
-              marked_entries.clear();
-              O.context = "No Context";
-              O.taskview = BY_RECENT;
-              O.folder = "No Folder";
-              get_items(MAX);
-              //editorRefreshScreen(); //in get_note
-              return;
-
-            case 's':
-            case C_showall:
-              if (O.view == TASK) {
-                O.show_deleted = !O.show_deleted;
-                O.show_completed = !O.show_completed;
-                if (O.taskview == BY_SEARCH)
-                  ; //search_db();
-                else
-                  get_items(MAX);
-              }
-              outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
-              return;
-
-            case C_synch:
-              synchronize(0); // do actual sync
-              map_context_titles();
-              map_folder_titles();
-              initial_file_row = 0; //for arrowing or displaying files
-              O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
-              outlineShowMessage("Synching local db and server and displaying results");
-              editorReadFile("log");
-              editorDisplayFile();//put them in the command mode case synch
-              return;
-
-            case C_synch_test:
-              synchronize(1); //1 -> report_only
-
-              initial_file_row = 0; //for arrowing or displaying files
-              O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
-              outlineShowMessage("Testing synching local db and server and displaying results");
-              editorReadFile("log");
-              editorDisplayFile();//put them in the command mode case synch
-              return;
-
-            case C_readfile:
-              {
-              std::string filename;
-              if (pos) filename = O.command_line.substr(pos+1);
-              else filename = "example.cpp";
-              editorReadFileIntoNote(filename);
-              outlineShowMessage("Note generated from file: %s", filename.c_str());
-              }
-              //O.mode = O.last_mode; editorReadfile puts in editor mode but probably shouldn't
-              O.command[0] = '\0';
-              return;
-             
-
-            //case CTRL_KEY('s'):
-            case C_savefile:  
-              command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
-              {
-              std::string filename;
-              if (pos) filename = O.command_line.substr(pos+1);
-              else filename = "example.cpp";
-              editorSaveNoteToFile(filename);
-              O.mode = O.last_mode;
-              outlineShowMessage("Note saved to file: %s", filename.c_str());
-              }
-              return;
-
             case C_valgrind:
               initial_file_row = 0; //for arrowing or displaying files
               editorReadFile("valgrind_log_file");
@@ -6502,28 +6275,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               O.last_mode = O.mode;
               O.mode = FILE_DISPLAY;
               return;
-
-            case C_delmarks:
-              for (auto& it : O.rows) {
-                it.mark = false;}
-              if (O.view == TASK) marked_entries.clear();
-              O.mode = O.last_mode;
-              outlineShowMessage("Marks all deleted");
-              return;
-
-            case C_database:
-              O.mode = DATABASE;
-              O.command[0] = '\0';
-              O.repeat = 0;
-              return;
-
-            case C_search:
-              if (O.taskview == BY_SEARCH) {
-                O.mode = SEARCH;
-                O.command[0] = '\0';
-                O.repeat = 0;
-              }
-              return;
+             */
 
             case C_saveoutline: //saveoutline, so
               if (pos) {
@@ -6534,13 +6286,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               } else {
                 outlineShowMessage("You didn't provide a file name!");
               }
-              return;
-
-            case C_vim:
-              open_in_vim();
-              O.command[0] = '\0';
-              O.repeat = 0;
-              O.mode = NORMAL;
               return;
 
             case C_merge:
@@ -6636,56 +6381,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               editorHighlightWordsByPosition();
               O.mode = O.last_mode;
               outlineShowMessage("%s highlighted", search_terms.c_str());
-              return;
-
-            case C_syntax:
-              if (pos) {
-                std::string action = O.command_line.substr(pos + 1);
-                if (action == "on") {
-                  E.highlight_syntax = true;
-                  outlineShowMessage("Syntax highlighting will be turned on");
-                } else if (action == "off") {
-                  E.highlight_syntax = false;
-                  outlineShowMessage("Syntax highlighting will be turned off");
-                } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
-              } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
-              editorRefreshScreen(true);
-              O.mode = O.last_mode;
-              //O.command[0] = '\0';
-              //O.command_line.clear();
-              //O.repeat = 0;
-              return;
-
-            case C_set:
-              {
-              std::string action = O.command_line.substr(pos + 1);
-              if (pos) {
-                if (action == "spell") {
-                  E.spellcheck = true;
-                  outlineShowMessage("Spellcheck active");
-                } else if (action == "nospell") {
-                  E.spellcheck = false;
-                  outlineShowMessage("Spellcheck off");
-                } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
-              } else {outlineShowMessage("Unknown option: %s", action.c_str());}
-              editorRefreshScreen(true);
-              O.mode = O.last_mode;
-              //O.command[0] = '\0';
-              //O.command_line.clear();
-              //O.repeat = 0;
-              }
-              return;
-
-            case C_spellcheck:
-              E.spellcheck = !E.spellcheck;
-              if (E.spellcheck) editorSpellCheck();
-              else editorRefreshScreen(true);
-              O.mode = O.last_mode;
-              outlineShowMessage("Spellcheck");
-              return;
-
-            case C_pdf:
-              //generate_pdf();
               return;
 
             case 'b':
@@ -9597,10 +9292,6 @@ void initEditor(void) {
 
 int main(int argc, char** argv) { 
 
-  //outline_normal_map[ARROW_UP] = move_up;
-  //outline_normal_map['k'] = move_up;
-  //zmq::context_t context (1);
-  //zmq::socket_t publisher (context, ZMQ_PUB);
   publisher.bind("tcp://*:5556");
   publisher.bind("ipc://scroll.ipc"); 
 
@@ -9615,7 +9306,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
   db_open();
-  //get_conn(); //pg
+  get_conn(); //pg
   load_meta(); 
 
   which_db = SQLITE;
