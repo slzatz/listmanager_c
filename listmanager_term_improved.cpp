@@ -455,6 +455,21 @@ void F_open_in_vim(int);
 void F_join(int);
 void F_readfile(int pos);
 void F_valgrind(int pos);
+void F_quit_app(int pos);
+void F_quit_app_ex(int pos);
+void F_merge(int pos);
+void F_help(int pos);
+void F_persist(int pos);
+void F_clear(int pos);
+
+/* EDITOR COMMAND_LINE functions */
+void E_write_C(void);
+void E_write_close_C(void);
+void E_quit_C(void);
+void E_quit0_C(void);
+void E_open_in_vim_C(void);
+void E_spellcheck_C(void);
+void E_persist_C(void);
 
 /* OUTLINE mode NORMAL functions */
 void return_N(void);
@@ -494,7 +509,8 @@ void gg_N(void);
 void gt_N(void);
 void edit_N(void);
 
-void navigate_hx(int direction);
+void navigate_page_hx(int direction);
+void navigate_cmd_hx(int direction);
 
 //Outline Prototypes
 void outlineShowMessage(const char *fmt, ...);
@@ -815,7 +831,30 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"readfile", F_readfile},
   {"read", F_readfile},
   {"valgrind", F_valgrind},
+  {"quit", F_quit_app},
+  {"q", F_quit_app},
+  {"quit!", F_quit_app_ex},
+  {"q!", F_quit_app_ex},
+  {"merge", F_merge},
+  {"help", F_help},
+  {"h", F_help},
+  {"persist", F_persist},
+  {"clear", F_clear},
 
+};
+
+static std::unordered_map<std::string, zfunc> E_lookup_C {
+  {"write", E_write_C},
+  {"w", E_write_C},
+  {"x", E_write_close_C},
+  {"quit", E_quit_C},
+  {"q", E_quit_C},
+  {"quit!", E_quit0_C},
+  {"q!", E_quit0_C},
+  {"vim", E_open_in_vim_C},
+  {"spell", E_spellcheck_C},
+  {"spellcheck", E_spellcheck_C},
+  {"persist", E_persist_C},
 };
 
 /* OUTLINE NORMAL mode command lookup */
@@ -4208,6 +4247,7 @@ void F_set(int pos) {
 
 void F_open_in_vim(int pos) {
   open_in_vim(); //send you into editor mode
+  E.mode = NORMAL;
   //O.command[0] = '\0';
   //O.repeat = 0;
   //O.mode = NORMAL;
@@ -4251,6 +4291,17 @@ void F_join(int pos) {
   return;
 }
 
+void F_saveoutline(int pos) { 
+  if (pos) {
+    std::string fname = O.command_line.substr(pos + 1);
+    outlineSave(fname);
+    O.mode = NORMAL;
+    outlineShowMessage("Saved outline to %s", fname.c_str());
+  } else {
+    outlineShowMessage("You didn't provide a file name!");
+  }
+}
+
 //case C_readfile:
 void F_readfile(int pos) {
   std::string filename;
@@ -4258,6 +4309,11 @@ void F_readfile(int pos) {
   else filename = "example.cpp";
   editorReadFileIntoNote(filename);
   outlineShowMessage("Note generated from file: %s", filename.c_str());
+  O.mode = NORMAL;
+}
+
+void F_persist(int pos) {
+  generate_persistent_html_file(O.rows.at(O.fr).id);
   O.mode = NORMAL;
 }
 
@@ -4269,6 +4325,176 @@ void F_valgrind(int pos) {
   O.mode = FILE_DISPLAY;
 }
 
+void F_merge(int pos) {
+  int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
+  if (count < 2) {
+    outlineShowMessage("Number of marked items = %d", count);
+    O.mode = O.last_mode;
+    return;
+  }
+  outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
+  insert_row(O.rows.at(0)); 
+  E.rows.clear();
+  
+  int n = 0;
+  auto it = O.rows.begin();
+  for(;;) {
+    it = find_if(it+1, O.rows.end(), [](const orow &row){return row.mark;});
+    if (it != O.rows.end()) merge_note(it->id);
+    else break;
+    n++;
+  }
+  outlineShowMessage("Number of notes merged = %d", n);
+  O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
+  editorRefreshScreen(true);
+  update_note();
+  O.command[0] = '\0';
+  O.repeat = 0;
+  O.mode = NORMAL;
+}
+
+void F_help(int pos) {
+  if (!pos) {             
+    /*This needs to be changed to show database text not ext file*/
+    initial_file_row = 0;
+    O.last_mode = O.mode;
+    O.mode = FILE_DISPLAY;
+    outlineShowMessage("Displaying help file");
+    editorReadFile("listmanager_commands");
+    editorDisplayFile();
+  } else {
+    search_terms = O.command_line.substr(pos+1);
+    O.context = "";
+    O.folder = "";
+    O.taskview = BY_SEARCH;
+    //O.mode = SEARCH; ////// it's in get_items_by_id
+    std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
+    command_history.push_back(O.command_line); 
+    search_db2(search_terms);
+    outlineShowMessage("Will look for help on %s", search_terms.c_str());
+    //O.mode = NORMAL;
+  }  
+}
+
+//case C_quit:
+//case 'q':
+void F_quit_app(int pos) {
+  bool unsaved_changes = false;
+  for (auto it : O.rows) {
+    if (it.dirty) {
+      unsaved_changes = true;
+      break;
+    }
+  }
+  if (unsaved_changes) {
+    O.mode = NORMAL;
+    outlineShowMessage("No db write since last change");
+  } else {
+    write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+    write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+    Py_FinalizeEx();
+    if (which_db == SQLITE) sqlite3_close(S.db);
+    else PQfinish(conn);
+    exit(0);
+  }
+}
+
+//case C_quit0: //catches both :q! and :quit!
+void F_quit_app_ex(int pos) {
+  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+  Py_FinalizeEx();
+  exit(0);
+}
+
+/* need to look at this */
+void F_clear(int pos) {
+  html_files.clear();
+  E.mode = NORMAL;
+  E.command[0] = '\0';
+  E.command_line.clear();
+  editorSetMessage("");
+}
+
+/* EDITOR COMMAND_LINE mode functions */
+void E_write_C(void) {
+  update_note();
+  E.mode = NORMAL;
+  E.command[0] = '\0';
+  E.command_line.clear();
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  }   
+  auto it = html_files.find(O.rows.at(O.fr).id);
+  if (it != html_files.end()) update_html_file("assets/" + it->second);
+  editorSetMessage("");
+}
+
+void E_write_close_C(void) {
+  update_note();
+  E.mode = NORMAL;
+  E.command[0] = '\0';
+  E.command_line.clear();
+  editor_mode = false;
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  }   
+  auto it = html_files.find(O.rows.at(O.fr).id);
+  if (it != html_files.end()) update_html_file("assets/" + it->second);
+  editorSetMessage("");
+}
+
+//case C_quit:
+//case 'q':
+void E_quit_C(void) {
+  if (E.dirty) {
+      E.mode = NORMAL;
+      E.command[0] = '\0';
+      E.command_line.clear();
+      editorSetMessage("No write since last change");
+  } else {
+    editorSetMessage("");
+    E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
+    editor_mode = false;
+  }
+  editorRefreshScreen(false); // don't need to redraw rows
+}
+
+//case C_quit0:
+void E_quit0_C(void) {
+  E.mode = NORMAL;
+  E.command[0] = '\0';
+  E.command_line.clear();
+  editor_mode = false;
+}
+
+void E_open_in_vim_C(void) {
+  open_in_vim(); //send you into editor mode
+  E.mode = NORMAL;
+}
+
+void E_spellcheck_C(void) {
+  E.spellcheck = !E.spellcheck;
+  if (E.spellcheck) editorSpellCheck();
+  else editorRefreshScreen(true);
+  E.mode = NORMAL;
+  E.command[0] = '\0';
+  E.command_line.clear();
+  editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
+}
+
+void E_persist_C(void) {
+  generate_persistent_html_file(O.rows.at(O.fr).id);
+  //E.command[0] = '\0';
+  //E.command_line.clear();
+  E.mode = NORMAL;
+}
+
+/* OUTLINE NORMAL mode functions */
 void return_N(void) {
   orow& row = O.rows.at(O.fr);
 
@@ -4580,13 +4806,9 @@ void completed_N(void) {
   toggle_completed();
 }
 
-void navigate_hx(int direction) {
-  if (page_history.size() == 1 && O.view == TASK) {
-    //O.mode = NORMAL;
-    //O.command[0] = '\0';
-    //O.command_line.clear();
-    return;
-  }
+void navigate_page_hx(int direction) {
+  if (page_history.size() == 1 && O.view == TASK) return;
+
   if (direction == PAGE_UP) {
 
     // if O.view!=TASK and PAGE_UP - moves back to last page
@@ -4612,6 +4834,20 @@ void navigate_hx(int direction) {
   page_history.erase(page_history.begin() + page_hx_idx);
   page_hx_idx--;
   outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
+}
+
+void navigate_cmd_hx(int direction) {
+  if (command_history.empty()) return;
+
+  if (direction == ARROW_UP) {
+    if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() - 1;
+    else cmd_hx_idx--;
+  } else {
+    if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
+    else cmd_hx_idx++;
+  }
+  outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
+  O.command_line = command_history.at(cmd_hx_idx);
 }
 
 /*** outline operations ***/
@@ -6045,7 +6281,6 @@ void outlineMoveCursor(int key) {
 // depends on readKey()
 //void outlineProcessKeypress(void) {
 void outlineProcessKeypress(int c) { //prototype has int = 0  
-  int command;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -6204,7 +6439,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       //also means that any key sequence ending in something
       //that matches below will perform command
 
-      //might be able to put these into hex ?
+      //might be able to put these into hex char - nope too large
 
       if (navigation.count(c)) {
           for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
@@ -6214,7 +6449,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
-        navigate_hx(c);
+        navigate_page_hx(c);
         O.command[0] = '\0';
         O.repeat = 0;
         return;
@@ -6224,194 +6459,39 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
     case COMMAND_LINE:
 
-      switch(c) {
-
-        case '\x1b': 
+      if (c == '\x1b') {
           O.mode = NORMAL;
           outlineShowMessage(""); 
           return;
+      }
 
-        case ARROW_UP:
-          if (command_history.empty()) return;
-          if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() - 1;
-          else cmd_hx_idx--;
-          //cmd_hx_idx = (cmd_hx_idx == 0) ? command_history.size() - 1 : --cmd_hx_idx;
-          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
-          O.command_line = command_history.at(cmd_hx_idx);
+      if ((c == ARROW_UP) || (c == ARROW_DOWN)) {
+        navigate_cmd_hx(c);
+        return;
+      }  
+
+      if (c == '\r') {
+        std::size_t pos = O.command_line.find(' ');
+        std::string cmd = O.command_line.substr(0, pos);
+        if (cmd_lookup.count(cmd)) {
+          if (pos == std::string::npos) pos = 0;
+          cmd_lookup.at(cmd)(pos);
           return;
+        }
 
-        case ARROW_DOWN:
-          if (command_history.empty()) return;
-          if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
-          else cmd_hx_idx++;
-          //cmd_hx_idx = (cmd_hx_idx == (command_history.size() - 1)) ? 0 : ++cmd_hx_idx;
-          outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
-          O.command_line = command_history.at(cmd_hx_idx);
-          return;
+        outlineShowMessage("\x1b[41mNot an outline command: %s\x1b[0m", cmd.c_str());
+        O.mode = NORMAL;
+        return;
+      }
 
-        case '\r':
+      if (c == DEL_KEY || c == BACKSPACE) {
+        if (!O.command_line.empty()) O.command_line.pop_back();
+      } else {
+        O.command_line.push_back(c);
+      }
 
-          // holds the position of the blank in the command
-          std::size_t pos;
-
-          {
-          pos = O.command_line.find(' ');
-          std::string cmd = O.command_line.substr(0, pos);
-          if (cmd_lookup.count(cmd)) {
-            if (pos == std::string::npos) pos = 0;
-            cmd_lookup.at(cmd)(pos);
-            return;
-          }
-          }
-
-          command = commandfromstringcpp(O.command_line, pos); 
-          switch(command) {
-
-            /*
-            case C_valgrind:
-              initial_file_row = 0; //for arrowing or displaying files
-              editorReadFile("valgrind_log_file");
-              editorDisplayFile();//put them in the command mode case synch
-              O.last_mode = O.mode;
-              O.mode = FILE_DISPLAY;
-              return;
-             */
-
-            case C_saveoutline: //saveoutline, so
-              if (pos) {
-                std::string fname = O.command_line.substr(pos + 1);
-                outlineSave(fname);
-                O.mode = NORMAL;
-                outlineShowMessage("Saved outline to %s", fname.c_str());
-              } else {
-                outlineShowMessage("You didn't provide a file name!");
-              }
-              return;
-
-            case C_merge:
-              {
-
-              int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
-              if (count < 2) {
-                outlineShowMessage("Number of marked items = %d", count);
-                O.mode = O.last_mode;
-                return;
-              }
-              outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
-              insert_row(O.rows.at(0)); 
-              E.rows.clear();
-              
-              int n = 0;
-              auto it = O.rows.begin();
-              for(;;) {
-                it = find_if(it+1, O.rows.end(), [](const orow &row){return row.mark;});
-                if (it != O.rows.end()) merge_note(it->id);
-                else break;
-                n++;
-              }
-              outlineShowMessage("Number of notes merged = %d", n);
-              }
-              //outlineRefreshScreen(); 
-              O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
-              editorRefreshScreen(true);
-              update_note();
-              //E.dirty = 1;
-              O.command[0] = '\0';
-              O.repeat = 0;
-              O.mode = NORMAL;
-              return;
-
-            case C_quit:
-            case 'q':
-              {
-              bool unsaved_changes = false;
-              for (auto it : O.rows) {
-                if (it.dirty) {
-                  unsaved_changes = true;
-                  break;
-                }
-              }
-              if (unsaved_changes) {
-                O.mode = NORMAL;
-                outlineShowMessage("No db write since last change");
-           
-              } else {
-                write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-                write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-                Py_FinalizeEx();
-                if (which_db == SQLITE) sqlite3_close(S.db);
-                else PQfinish(conn);
-                exit(0);
-              }
-              return;
-              }
-
-            case C_quit0: //catches both :q! and :quit!
-              write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-              write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-              Py_FinalizeEx();
-              exit(0);
-
-            case 'h':
-            case C_help:
-              if (!pos) {             
-                /*This needs to be changed to show database text not ext file*/
-                initial_file_row = 0;
-                O.last_mode = O.mode;
-                O.mode = FILE_DISPLAY;
-                outlineShowMessage("Displaying help file");
-                editorReadFile("listmanager_commands");
-                editorDisplayFile();
-              } else {
-                //std::string help_topic = O.command_line.substr(pos+1);
-                search_terms = O.command_line.substr(pos+1);
-                O.context = "";
-                O.folder = "";
-                O.taskview = BY_SEARCH;
-                //O.mode = SEARCH; ////// it's in get_items_by_id
-                std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-                command_history.push_back(O.command_line); 
-                search_db2(search_terms);
-                outlineShowMessage("Will look for help on %s", search_terms.c_str());
-                //O.mode = NORMAL;
-              }  
-              return;
-
-            case C_highlight:
-              editorHighlightWordsByPosition();
-              O.mode = O.last_mode;
-              outlineShowMessage("%s highlighted", search_terms.c_str());
-              return;
-
-            case 'b':
-            case C_browser:
-              generate_persistent_html_file(O.rows.at(O.fr).id);
-              O.command[0] = '\0';
-              O.mode = O.last_mode;
-              return;
-
-            default: // default for commandfromstring
-
-              //\x1b[41m => red background
-              outlineShowMessage("\x1b[41mNot an outline command: %s\x1b[0m", O.command_line.c_str());
-              O.mode = NORMAL;
-              return;
-
-          // command_history.push_back()    
-
-          } //end of commandfromstring switch within '\r' of case COMMAND_LINE
-
-        default: //default for switch 'c' in case COMMAND_LINE
-          if (c == DEL_KEY || c == BACKSPACE) {
-            if (!O.command_line.empty()) O.command_line.pop_back();
-          } else {
-            O.command_line.push_back(c);
-          }
-          outlineShowMessage(":%s", O.command_line.c_str());
-
-        } // end of 'c' switch within case COMMAND_LINE
-
-      return; //end of outer case COMMAND_LINE
+      outlineShowMessage(":%s", O.command_line.c_str());
+      return; //end of case COMMAND_LINE
 
     // note database mode always deals with current character regardless of previously typed char
     // since all commands are one char.
@@ -7638,7 +7718,7 @@ void editorPageUpDown(int key) {
 // calls readKey()
 bool editorProcessKeypress(void) {
   //int start, end;
-  int i, command;
+  int i;
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
@@ -7899,174 +7979,32 @@ bool editorProcessKeypress(void) {
 
     case COMMAND_LINE:
 
-      switch (c) {
+      if (c == '\x1b') {
+        E.mode = NORMAL;
+        E.command[0] = '\0';
+        E.repeat = E.last_repeat = 0;
+        editorSetMessage(""); 
+        return false;
+      }
 
-        case '\x1b':
-
-          E.mode = NORMAL;
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0;
-          editorSetMessage(""); 
+      if (c == '\r') {
+        if (E_lookup_C.count(E.command_line)) {
+          E_lookup_C.at(E.command_line)();
           return false;
-  
-        case '\r':
+        }
 
-          std::size_t pos;
+        editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
+        E.mode = NORMAL;
+        return false;
+      }
 
-          // passes back position of space (if there is one) in var pos
-          command = commandfromstringcpp(E.command_line, pos); //assume pos paramter is now a reference but should check
+      if (c == DEL_KEY || c == BACKSPACE) {
+        if (!E.command_line.empty()) E.command_line.pop_back();
+      } else {
+        E.command_line.push_back(c);
+      }
 
-          switch (command) {
-
-            case C_write:
-            case 'w':
-              update_note();
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-              if (lm_browser) {
-                if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-                else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-              }   
-              {
-              auto it = html_files.find(O.rows.at(O.fr).id);
-              if (it != html_files.end()) update_html_file("assets/" + it->second);
-              }
-              editorSetMessage("");
-              return false;
-  
-            case C_clear:
-              html_files.clear();
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              editorSetMessage("");
-              return false;
-
-            case 'x':
-              update_note();
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              editor_mode = false;
-              //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-              if (lm_browser) {
-                if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-                else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-              }   
-              {
-              auto it = html_files.find(O.rows.at(O.fr).id);
-              if (it != html_files.end()) update_html_file("assets/" + it->second);
-              }
-              editorSetMessage("");
-              return false;
-  
-            case C_quit:
-            case 'q':
-              if (E.dirty) {
-                  E.mode = NORMAL;
-                  E.command[0] = '\0';
-                  E.command_line.clear();
-                  editorSetMessage("No write since last change");
-              } else {
-                editorSetMessage("");
-                E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
-                editor_mode = false;
-              }
-              editorRefreshScreen(false); // don't need to redraw rows
-              return false;
-
-            case C_quit0:
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              editor_mode = false;
-              return false;
-
-            case C_spellcheck:
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              E.spellcheck = !E.spellcheck;
-              if (E.spellcheck) editorSpellCheck();
-              else editorRefreshScreen(true);
-              editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
-              return false;
-
-            case C_next_mispelling:
-              {
-              if (!E.spellcheck || pos_mispelled_words.empty()) {
-                editorSetMessage("Spellcheck is off or no words mispelled");
-                return false;
-              }
-              auto &z = pos_mispelled_words;
-              auto it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first == E.fr && p.second > E.fc);});
-              if (it == z.end()) {
-                it = find_if(z.begin(), z.end(), [](const std::pair<int, int> &p) {return (p.first > E.fr);});
-                if (it == z.end()) {E.fr = z[0].first; E.fc = z[0].second;}
-              } else {E.fr = it->first; E.fc = it->second;}
-              editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
-              return true;
-              }
-
-            case C_refresh:
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              return true;
-
-            case C_syntax:
-              if (pos) {
-                std::string action = E.command_line.substr(pos + 1);
-                if (action == "on") {
-                  E.highlight_syntax = true;
-                  editorSetMessage("Syntax highlighting will be turned on");
-                } else if (action == "off") {
-                  E.highlight_syntax = false;
-                  editorSetMessage("Syntax highlighting will be turned off");
-                } else {editorSetMessage("The syntax is 'sh on' or 'sh off'"); }
-              } else {editorSetMessage("The syntax is 'sh on' or 'sh off'");}
-
-              E.mode = NORMAL;
-              E.command[0] = '\0';
-              E.command_line.clear();
-              return true;
-
-            case C_vim:
-              open_in_vim();
-              E.command[0] = '\0';
-              E.command_line.clear();
-              E.mode = NORMAL;
-              return true;
-
-            case 'b':
-            case C_browser:
-              generate_persistent_html_file(O.rows.at(O.fr).id);
-              E.command[0] = '\0';
-              E.command_line.clear();
-              E.mode = NORMAL;
-              return false;
-
-            default: // default for switch (command)
-              editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
-              E.mode = NORMAL;
-              return false;
-
-          } // end of case '\r' switch (command)
-     
-          return false;
-  
-        default: //default for switch 'c' in case COMMAND_LINE
-          if (c == DEL_KEY || c == BACKSPACE) {
-            if (!E.command_line.empty()) E.command_line.pop_back();
-          } else {
-            E.command_line.push_back(c);
-          }
-          editorSetMessage(":%s", E.command_line.c_str());
-
-      } // end of COMMAND_LINE switch (c)
-  
+      editorSetMessage(":%s", E.command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
