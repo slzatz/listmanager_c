@@ -167,166 +167,6 @@ static const std::string mode_text[] = {
 
 static constexpr char BASE_DATE[] = "1970-01-01 00:00";
 
-enum Command {
-  C_gt, 
-
-  C_join,
-
-  C_sort,
-
-  C_clear,
-  C_find,
-  C_search,
-  C_fts,
-  C_linked,
-
-  C_refresh,
-
-  C_new, //create a new item/entry
-
-  C_contexts, //change O.view to CONTEXTs :c
-  C_folders,  //change O.view to FOLDERs :f
-  C_keywords,
-  //C_addkeyword,
-  C_movetocontext,
-  C_movetofolder,
-  C_updatecontext,
-  C_updatefolder,
-  //C_deletekeywords,
-
-  C_delmarks,
-  C_showall,
-
-  C_update, //update solr db
-
-  C_synch, // synchronixe sqlite and postgres dbs
-  C_synch_test,//show what sync would do but don't do it 
-
-  C_highlight,
-  C_spellcheck,
-  C_set, // [spell/nospell]
-  C_suggestions, // [spell/nospell]
-  C_next_mispelling,
-  C_previous_mispelling,
-
-  C_quit,
-  C_quit0,
-
-  C_recent,
-
-  C_help,
-  C_readfile,
-  C_savefile,
-
-  C_edit,
-
-  C_database,
-  //C_search,
-
-  C_saveoutline,
-  C_syntax,
-
-  C_merge,
-
-  C_vim,
-  C_valgrind,
-  C_write,
-
-  C_browser,
-
-  C_pdf
-};
-
-static const std::unordered_map<std::string, int> lookuptablemap {
-  //{"caw", C_caw},
-  //{"cw", C_cw},
-  //{"daw", C_daw},
-  //{"dw", C_dw},
-  //{"de", C_de},
-  //{"dd", C_dd},
-  //{"dG", C_dG},
-  //{">>", C_indent},
-  //{"<<", C_unindent},
-  //{"gg", C_gg},
-  {"gt", C_gt},
-  //{"yy", C_yy},
-  //{"d$", C_d$},
-
-  {"help", C_help},
-  {"h", C_help}, //need because this is command line command with a target word
-  //{"open", C_open},
-  //{"o", C_open}, //need because this is command line command with a target word
-  //{"of", C_openfolder}, //need because this is command line command with a target word
-  //{"ok", C_openkeyword}, //need because this is command line command with a target word
-  {"join", C_join}, //need because this is command line command with a target word
-  {"filter", C_join}, //need because this is command line command with a target word
-  {"fin", C_find},
-  {"find", C_find},
-  {"search", C_find},
-  {"linked", C_linked}, // also 'l' in COMMAND_LINE
-  {"related", C_linked}, // also 'l' in COMMAND_LINE
-  {"fts", C_fts},
-  {"refresh", C_refresh},
-  {"new", C_new}, //don't need "n" because there is no target
-  {"contexts", C_contexts},
-  {"c", C_contexts},
-  {"folders", C_folders},
-  {"f", C_folders},
-  {"keywords", C_keywords},
-  {"k", C_keywords},
-  {"mtc", C_movetocontext}, //need because this is command line command with a target word
-  {"movetocontext", C_movetocontext},
-  {"mtf", C_movetofolder}, //need because this is command line command with a target word
-  {"movetofolder", C_movetofolder},
-  {"updatefolder", C_updatefolder},
-  {"updatecontext", C_updatecontext},
-  //{"addkeyword", C_addkeyword},
-  //{"addkw", C_addkeyword},
-  //{"delkeywords", C_deletekeywords},
-  //{"delk", C_deletekeywords},
-  {"delmarks", C_delmarks},
-  {"delm", C_delmarks},
-  {"update", C_update},
-  {"sort", C_sort},
-  {"sync", C_synch},
-  {"synchronize", C_synch},
-  {"test", C_synch_test},
-  {"showall", C_showall},
-  {"show", C_showall},
-  {"write", C_write},
-  {"synchtest", C_synch_test},
-  {"synch_test", C_synch_test},
-  {"quit", C_quit},
-  {"quit!", C_quit0},
-  {"q!", C_quit0},
-  {"edit", C_edit},
-  {{0x17,0x17}, C_edit}, //CTRL-W,CTRL-W; = dec 23; hex 17
-  {"rec", C_recent},
-  {"recent", C_recent},
-  {"val", C_valgrind},
-  {"database", C_database},
-  {"db", C_database},
-  //{"search", C_search},
-  {"set", C_set},
-  {"z=", C_suggestions},
-  {"savefile", C_savefile},
-  {"save", C_savefile},
-  {"saveoutline", C_saveoutline},
-  {"so", C_saveoutline},
-  {"highlight", C_highlight},
-  {"spellcheck", C_spellcheck},
-  {"[s", C_next_mispelling},
-  {"]s", C_previous_mispelling},
-  {"readfile", C_readfile},
-  {"read", C_readfile},
-  {"vim", C_vim},
-  {"merge", C_merge},
-  {"syntax", C_syntax},
-  {"clear", C_clear},
-  {"browser", C_browser},
-  {"pdf", C_pdf}
-};
-
 struct sqlite_db {
   sqlite3 *db;
   char *err_msg;
@@ -669,8 +509,6 @@ void editorHighlightWordsByPosition(void);
 void editorSpellCheck(void);
 void editorHighlightWord(int, int, int);
 
-int keyfromstringcpp(const std::string&);
-int commandfromstringcpp(const std::string&, std::size_t&);
 
 std::string editorRowsToString(void);
 std::string generate_html(void);
@@ -1950,7 +1788,7 @@ void get_note(int id) {
 
   word_positions.clear();
   E.rows.clear();
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; // 11-18-2019 commented out because in C_edit but a problem if you leave editor mode
+  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; 
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -3561,35 +3399,6 @@ void update_solr(void) {
   outlineShowMessage("%d items were added/updated to solr db", num);
 }
 
-int keyfromstringcpp(const std::string& key) {
-
-  // c++20 = c++2a contains on associate containers
-  //if (lookuptablemap.contains(key))
-  if (lookuptablemap.count(key))
-    return lookuptablemap.at(key); //note can't use [] on const unordered map since it could change map
-  else
-    return -1;
-}
-
-int commandfromstringcpp(const std::string& key, std::size_t& found) { //for commands like find nemo - that consist of a command a space and further info
-
-  // seems faster to do this but less general and forces to have 'case k:' explicitly, whereas would not need to if removed
-  // should probably just drop this if entirely 08052020
-  if (key.size() == 1) {
-    found = 0;
-    return key[0]; //? return keyfromstring[key] or just drop this if entirely
-  }
-
-  found = key.find(' ');
-  if (found != std::string::npos) {
-    std::string command = key.substr(0, found);
-    return keyfromstringcpp(command);
-  } else {
-    found = 0;
-    return keyfromstringcpp(key);
-  }
-}
-
 [[ noreturn]] void die(const char *s) {
   // write is from <unistd.h> 
   //ssize_t write(int fildes, const void *buf, size_t nbytes);
@@ -4302,7 +4111,6 @@ void F_saveoutline(int pos) {
   }
 }
 
-//case C_readfile:
 void F_readfile(int pos) {
   std::string filename;
   if (pos) filename = O.command_line.substr(pos+1);
@@ -4376,7 +4184,6 @@ void F_help(int pos) {
   }  
 }
 
-//case C_quit:
 //case 'q':
 void F_quit_app(int pos) {
   bool unsaved_changes = false;
@@ -4399,7 +4206,6 @@ void F_quit_app(int pos) {
   }
 }
 
-//case C_quit0: //catches both :q! and :quit!
 void F_quit_app_ex(int pos) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
@@ -4448,7 +4254,6 @@ void E_write_close_C(void) {
   editorSetMessage("");
 }
 
-//case C_quit:
 //case 'q':
 void E_quit_C(void) {
   if (E.dirty) {
@@ -4464,7 +4269,6 @@ void E_quit_C(void) {
   editorRefreshScreen(false); // don't need to redraw rows
 }
 
-//case C_quit0:
 void E_quit0_C(void) {
   E.mode = NORMAL;
   E.command[0] = '\0';
