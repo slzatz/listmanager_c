@@ -265,42 +265,44 @@ void EraseScreenRedrawLines(void);
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 
+/* OUTLINE COMMAND_LINE functions */
 void F_open(int);
 void F_openfolder(int);
 void F_openkeyword(int);
-void F_deletekeywords(int); //int pos not used
+void F_deletekeywords(int); // pos not used
 void F_addkeyword(int); 
 void F_keywords(int); 
-void F_write(int);
-void F_x(int);
-void F_refresh(int);
-void F_new(int);
-void F_edit(int);
+void F_write(int); // pos not used
+void F_x(int); // pos not used
+void F_refresh(int); // pos not used
+void F_new(int); // pos not used
+void F_edit(int); // pos not used
 void F_folders(int); 
 void F_contexts(int); 
-void F_recent(int); 
-void F_linked(int); 
+void F_recent(int); // pos not used
+void F_linked(int); // pos not used
 void F_find(int); 
-void F_sync(int);
-void F_sync_test(int);
-void F_updatefolder(int);
-void F_updatecontext(int);
-void F_delmarks(int);
+void F_sync(int); // pos not used
+void F_sync_test(int); // pos not used
+void F_updatefolder(int); // pos not used
+void F_updatecontext(int); // pos not used
+void F_delmarks(int); // pos not used
 void F_savefile(int);
 void F_sort(int);
-void F_showall(int);
+void F_showall(int); // pos not used
 void F_syntax(int);
 void F_set(int);
-void F_open_in_vim(int);
+void F_open_in_vim(int); // pos not used
 void F_join(int);
+void F_saveoutline(int);
 void F_readfile(int pos);
-void F_valgrind(int pos);
-void F_quit_app(int pos);
-void F_quit_app_ex(int pos);
-void F_merge(int pos);
+void F_valgrind(int pos); // pos not used
+void F_quit_app(int pos); // pos not used
+void F_quit_app_ex(int pos); // pos not used
+void F_merge(int pos); // pos not used
 void F_help(int pos);
-void F_persist(int pos);
-void F_clear(int pos);
+void F_persist(int pos); // pos not used
+void F_clear(int pos); // pos not used
 
 /* EDITOR COMMAND_LINE functions */
 void E_write_C(void);
@@ -666,6 +668,7 @@ static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"syntax", F_syntax},
   {"vim", F_open_in_vim},
   {"join", F_join},
+  {"saveoutline", F_saveoutline},
   {"readfile", F_readfile},
   {"read", F_readfile},
   {"valgrind", F_valgrind},
@@ -1476,7 +1479,7 @@ int container_id_callback(void *container_id, int argc, char **argv, char **azCo
   return 0;
 }
 //void delete_task_keywords(void) {
-void F_deletekeywords(int pos) {
+void F_deletekeywords(int) {
 
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
@@ -3706,20 +3709,20 @@ void F_keywords(int pos) {
   return;
 }
 
-void F_write(int pos) {
+void F_write(int) {
   if (O.view == TASK) update_rows();
   O.mode = O.last_mode;
   O.command_line.clear();
 }
 
-void F_x(int pos) {
+void F_x(int) {
   if (O.view == TASK) update_rows();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
   exit(0);
 }
 
-void F_refresh(int pos) {
+void F_refresh(int) {
   if (O.view == TASK) {
     outlineShowMessage("Steve, tasks will be refreshed");
     if (O.taskview == BY_SEARCH)
@@ -3733,7 +3736,7 @@ void F_refresh(int pos) {
   O.mode = O.last_mode;
 }
 
-void F_new(int pos) {
+void F_new(int) {
   outlineInsertRow(0, "", true, false, false, BASE_DATE);
   O.fc = O.fr = O.rowoff = 0;
   O.command[0] = '\0';
@@ -3754,7 +3757,7 @@ void F_new(int pos) {
   } else outlineShowMessage("Couldn't open file");
 }
 
-void F_edit(int pos) {
+void F_edit(int) {
   if (!(O.view == TASK)) {
     O.command[0] = '\0';
     O.mode = NORMAL;
@@ -3896,7 +3899,7 @@ void F_folders(int pos) {
   }
 }
 
-void F_recent(int pos) {
+void F_recent(int) {
   outlineShowMessage("Will retrieve recent items");
   command_history.push_back(O.command_line);
   page_history.push_back(O.command_line);
@@ -3908,7 +3911,7 @@ void F_recent(int pos) {
   get_items(MAX);
 }
 
-void F_linked(int pos) {
+void F_linked(int) {
   std::string keywords = get_task_keywords().first;
   if (keywords.empty()) {
     outlineShowMessage("The current entry has no keywords");
@@ -3940,7 +3943,7 @@ void F_find(int pos) {
   search_db(search_terms);
 }
 
-void F_sync(int pos) {
+void F_sync(int) {
   synchronize(0); // do actual sync
   map_context_titles();
   map_folder_titles();
@@ -3951,7 +3954,7 @@ void F_sync(int pos) {
   editorDisplayFile();//put them in the command mode case synch
 }
 
-void F_sync_test(int pos) {
+void F_sync_test(int) {
   synchronize(1); //1 -> report_only
   initial_file_row = 0; //for arrowing or displaying files
   O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
@@ -3960,7 +3963,7 @@ void F_sync_test(int pos) {
   editorDisplayFile();//put them in the command mode case synch
 }
 
-void F_updatecontext(int pos) {
+void F_updatecontext(int) {
   current_task_id = O.rows.at(O.fr).id;
   editorEraseScreen();
   O.view = CONTEXT;
@@ -3970,7 +3973,7 @@ void F_updatecontext(int pos) {
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
-void F_updatefolder(int pos) {
+void F_updatefolder(int) {
   current_task_id = O.rows.at(O.fr).id;
   editorEraseScreen();
   O.view = FOLDER;
@@ -3980,7 +3983,7 @@ void F_updatefolder(int pos) {
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
-void F_delmarks(int pos) {
+void F_delmarks(int) {
   for (auto& it : O.rows) {
     it.mark = false;}
   if (O.view == TASK) marked_entries.clear(); //why the if??
@@ -4009,7 +4012,7 @@ void F_sort(int pos) {
   }
 }
 
-void  F_showall(int pos) {
+void  F_showall(int) {
   if (O.view == TASK) {
     O.show_deleted = !O.show_deleted;
     O.show_completed = !O.show_completed;
@@ -4054,7 +4057,7 @@ void F_set(int pos) {
   O.mode = NORMAL;
 }
 
-void F_open_in_vim(int pos) {
+void F_open_in_vim(int) {
   open_in_vim(); //send you into editor mode
   E.mode = NORMAL;
   //O.command[0] = '\0';
@@ -4125,7 +4128,7 @@ void F_persist(int pos) {
   O.mode = NORMAL;
 }
 
-void F_valgrind(int pos) {
+void F_valgrind(int) {
   initial_file_row = 0; //for arrowing or displaying files
   editorReadFile("valgrind_log_file");
   editorDisplayFile();//put them in the command mode case synch
@@ -4133,7 +4136,7 @@ void F_valgrind(int pos) {
   O.mode = FILE_DISPLAY;
 }
 
-void F_merge(int pos) {
+void F_merge(int) {
   int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
   if (count < 2) {
     outlineShowMessage("Number of marked items = %d", count);
@@ -4185,7 +4188,7 @@ void F_help(int pos) {
 }
 
 //case 'q':
-void F_quit_app(int pos) {
+void F_quit_app(int) {
   bool unsaved_changes = false;
   for (auto it : O.rows) {
     if (it.dirty) {
@@ -4206,7 +4209,7 @@ void F_quit_app(int pos) {
   }
 }
 
-void F_quit_app_ex(int pos) {
+void F_quit_app_ex(int) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
@@ -4214,7 +4217,7 @@ void F_quit_app_ex(int pos) {
 }
 
 /* need to look at this */
-void F_clear(int pos) {
+void F_clear(int) {
   html_files.clear();
   E.mode = NORMAL;
   E.command[0] = '\0';
