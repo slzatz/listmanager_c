@@ -34,8 +34,13 @@
 #include <sstream>
 #include <fstream>
 #include <set>
-#include <nuspell/dictionary.hxx>
-#include <nuspell/finder.hxx>
+
+#if __has_include (<nuspell/dictionary.hxx>)
+  #include <nuspell/dictionary.hxx>
+  #include <nuspell/finder.hxx>
+  #define NUSPELL
+#endif
+
 #include <zmq.hpp>
 
 #include <memory>
@@ -4284,6 +4289,7 @@ void E_open_in_vim_C(void) {
   E.mode = NORMAL;
 }
 
+#ifdef NUSPELL
 void E_spellcheck_C(void) {
   E.spellcheck = !E.spellcheck;
   if (E.spellcheck) editorSpellCheck();
@@ -4293,6 +4299,11 @@ void E_spellcheck_C(void) {
   E.command_line.clear();
   editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
 }
+#else
+void E_spellcheck_C(void) {
+  editorSetMessage("Nuspell is not available in this build");
+}
+#endif
 
 void E_persist_C(void) {
   generate_persistent_html_file(O.rows.at(O.fr).id);
