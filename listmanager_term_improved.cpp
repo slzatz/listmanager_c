@@ -88,13 +88,13 @@ static size_t page_hx_idx = 0;
 static std::map<int, std::string> html_files;
 static bool lm_browser = true;
 
-const std::string COLOR_1 = "\x1b[0;31m";
-const std::string COLOR_2 = "\x1b[0;32m";
-const std::string COLOR_3 = "\x1b[0;33m";
-const std::string COLOR_4 = "\x1b[0;34m";
-const std::string COLOR_5 = "\x1b[0;35m";
-const std::string COLOR_6 = "\x1b[0;36m";
-const std::string COLOR_7 = "\x1b[0;37m";
+const std::string COLOR_1 = "\x1b[0;31m"; //red
+const std::string COLOR_2 = "\x1b[0;32m"; //green
+const std::string COLOR_3 = "\x1b[0;33m"; //yellow
+const std::string COLOR_4 = "\x1b[0;34m"; //blue
+const std::string COLOR_5 = "\x1b[0;35m"; //magenta
+const std::string COLOR_6 = "\x1b[0;36m"; //cyan
+const std::string COLOR_7 = "\x1b[0;37m"; //White
 
 static int SMARTINDENT = 4; //should be in config
 static int temporary_tid = 99999;
