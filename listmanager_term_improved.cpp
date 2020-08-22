@@ -1,3 +1,4 @@
+/*
 #define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits
 #define OUTLINE_LEFT_MARGIN 2
 #define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
@@ -257,11 +258,12 @@ struct editorConfig {
 
 static struct editorConfig E;
 
+
 struct flock lock;
 
-/* note that you can call these either through explicit dereference: (*get_note)(4328)
- * or through implicit dereference: get_note(4328)
-*/
+// note that you can call these either through explicit dereference: (*get_note)(4328)
+// or through implicit dereference: get_note(4328)
+
 int getWindowSize(int *, int *);
 
 // I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
@@ -270,7 +272,7 @@ void EraseScreenRedrawLines(void);
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 
-/* OUTLINE COMMAND_LINE functions */
+// OUTLINE COMMAND_LINE functions 
 void F_open(int);
 void F_openfolder(int);
 void F_openkeyword(int);
@@ -309,7 +311,7 @@ void F_help(int pos);
 void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used
 
-/* EDITOR COMMAND_LINE functions */
+// EDITOR COMMAND_LINE functions 
 void E_write_C(void);
 void E_write_close_C(void);
 void E_quit_C(void);
@@ -318,7 +320,7 @@ void E_open_in_vim_C(void);
 void E_spellcheck_C(void);
 void E_persist_C(void);
 
-/* OUTLINE mode NORMAL functions */
+// OUTLINE mode NORMAL functions 
 void return_N(void);
 void w_N(void);
 void insert_N(void);
@@ -531,7 +533,7 @@ void editorReadFileIntoNote(const std::string &);
 void update_solr(void); //works but not in use
 void open_in_vim(void);
 
-/* EDITOR mode NORMAL functions */
+// EDITOR mode NORMAL functions 
 inline void f_i(int);
 inline void f_I(int);
 inline void f_a(int);
@@ -605,10 +607,9 @@ static std::unordered_set<int> navigation = {
 typedef void (*pfunc)(int);
 typedef void (*zfunc)(void);
 
-/* note that if the key to the unordered_maps was an array
- * I'd have to implement the hash function whereas 
- * std::string has a hash function implemented
- */
+// note that if the key to the unordered_maps was an array
+// I'd have to implement the hash function whereas 
+// std::string has a hash function implemented
 
 static std::unordered_map<std::string, pfunc> cmd_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
 static std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
@@ -618,7 +619,7 @@ static std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", 
 // not in use right nowa - ? if has use
 //static std::unordered_map<std::string, pfunc> cmd_map5 = {{"w", f_w}, {"b", f_b}, {"e", f_e}, {"0", f_0}, {"$", f_$}};
 
-/* OUTLINE COMMAND_LINE mode command lookup */
+// OUTLINE COMMAND_LINE mode command lookup 
 static std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open}, //open_O
   {"o", F_open},
@@ -703,7 +704,7 @@ static std::unordered_map<std::string, zfunc> E_lookup_C {
   {"persist", E_persist_C},
 };
 
-/* OUTLINE NORMAL mode command lookup */
+// OUTLINE NORMAL mode command lookup
 static std::unordered_map<std::string, zfunc> n_lookup {
   {"\r", return_N}, //return_O
   {"i", insert_N},
@@ -751,7 +752,7 @@ static std::unordered_map<std::string, zfunc> n_lookup {
 
 };
 
-/* EDITOR NORMAL mode command lookup */
+// EDITOR NORMAL mode command lookup
 static std::unordered_map<std::string, pfunc> e_lookup {
 
   {"i", f_i}, //i_E
@@ -815,6 +816,93 @@ zmq::context_t context (1);
 zmq::socket_t publisher (context, ZMQ_PUB);
 
 PGconn *conn = nullptr;
+*/
+
+#include "listmanager.h"
+#include "listmanager_vars.h"
+#include "Editor.h"
+
+//Editor E();
+Editor E; //this instantiates it
+Editor *p;
+//p = &E;
+//p = &E;
+bool editor_mode = false; ////////////////////EXTERNS//////////////////////////////////////////
+bool lm_browser = true; //////////////////////////////////////////////////////////////
+struct outlineConfig O; /////////////////////////////////////////////////////////////
+std::map<int, std::string> html_files; //////////////////////////////////////////
+typedef void (Editor::*efunc)(void);
+typedef void (Editor::*eefunc)(int);
+
+/* EDITOR COMMAND_LINE mode lookup */
+std::unordered_map<std::string, efunc> E_lookup_C {
+  {"write", &Editor::E_write_C},
+  {"w", &Editor::E_write_C},
+  {"x", &Editor::E_write_close_C},
+  {"quit", &Editor::E_quit_C},
+  {"q",&Editor:: E_quit_C},
+  {"quit!", &Editor::E_quit0_C},
+  {"q!", &Editor::E_quit0_C},
+  {"vim", &Editor::E_open_in_vim_C},
+  {"spell",&Editor:: E_spellcheck_C},
+  {"spellcheck", &Editor::E_spellcheck_C},
+  {"persist", &Editor::E_persist_C},
+};
+
+/* EDITOR NORMAL mode command lookup */
+std::unordered_map<std::string, eefunc> e_lookup {
+
+  {"i", &Editor::E_i}, //i_E
+  {"I", &Editor::E_I},
+  {"a", &Editor::E_a},
+  {"A", &Editor::E_A},
+  {"o", &Editor::e_o},
+  {"O", &Editor::e_O},
+  {"x", &Editor::E_x},
+  {"dw", &Editor::E_dw},
+  {"de", &Editor::E_de},
+  {"dG", &Editor::E_dG},
+  {"d$", &Editor::E_d$},
+  {"dd", &Editor::E_dd},
+  {"cw", &Editor::E_cw},
+  {"caw", &Editor::E_caw},
+  {"s", &Editor::E_s},
+  {"~", &Editor::E_tilde},
+  {"J", &Editor::E_J},
+  {"w", &Editor::E_w},
+  {"e", &Editor::E_e},
+  {"b", &Editor::E_b},
+  {"0", &Editor::E_0},
+  {"$", &Editor::E_$},
+  {"r", &Editor::e_replace},
+  {"[s", &Editor::E_next_misspelling},
+  {"]s", &Editor::E_prev_misspelling},
+  {"z=", &Editor::E_suggestions},
+  {":", &Editor::E_change2command_line},
+  {"V", &Editor::E_change2visual_line},
+  {"v", &Editor::E_change2visual},
+  {{0x16}, &Editor::E_change2visual_block},
+  {"p", &Editor::E_paste},
+  {"*", &Editor::E_find},
+  {"n", &Editor::E_find_next_word},
+  {"u", &Editor::E_undo},
+  //{".", editorDotRepeat},
+  {">>", &Editor::E_indent},
+  {"<<", &Editor::E_unindent},
+  {{0x2}, &Editor::E_bold},
+  {{0x5}, &Editor::E_emphasis},
+  {{0x9}, &Editor::E_italic},
+ // {"yy", editorYankLine},
+  {"gg", &Editor::E_gg},
+  {"G", &Editor::E_G},
+  {{0x1A}, &Editor::E_toggle_smartindent},
+  {{0x13}, &Editor::E_save_note},
+};
+
+std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
+std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o}, {"O", &Editor::E_O}};
+std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
+std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -4744,8 +4832,9 @@ void outlineSave(const std::string& fname) {
 
 /*** editor row operations ***/
 //#include "editor_functions.h"
-
-void f_cw(int repeat) {
+/*
+// EDITOR NORMAL mode functions
+void E_cw(int repeat) {
   for (int j = 0; j < repeat; j++) {
     int start = E.fc;
     editorMoveEndWord();
@@ -4756,12 +4845,12 @@ void f_cw(int repeat) {
   }
 }
 
-void f_caw(int repeat) {
+void E_caw(int repeat) {
    for (int i=0; i < repeat; i++)  editorDelWord();
     // text repeats once
 }
 
-void f_de(int repeat) {
+void E_de(int repeat) {
   // should this use editorDelWord?
   for (int j = 0; j < repeat; j++) {
     if (E.fc == E.rows.at(E.fr).size() - 1) {
@@ -4777,7 +4866,7 @@ void f_de(int repeat) {
   }
 }
 
-void f_dw(int repeat) {
+void E_dw(int repeat) {
   // should this use editorDelWord?
   for (int j = 0; j < repeat; j++) {
     //start = E.fc;
@@ -4804,11 +4893,11 @@ void f_dw(int repeat) {
   //E.fc = start; 
 }
 
-void f_daw(int repeat) {
+void E_daw(int repeat) {
    for (int i=0; i < repeat; i++) editorDelWord();
 }
 
-void f_dG(int repeat) {
+void E_dG(int repeat) {
   if (E.rows.empty()) return;
   E.rows.erase(E.rows.begin() + E.fr, E.rows.end());
   if (E.rows.empty()) {
@@ -4820,17 +4909,17 @@ void f_dG(int repeat) {
   }
 }
 
-void f_s(int repeat) {
+void E_s(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
-void f_x(int repeat) {
+void E_x(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorDelChar();
 }
 
-void f_dd(int repeat) {
+void E_dd(int repeat) {
   //editorCreateSnapshot();
   int r = E.rows.size() - E.fr;
   repeat = (r >= repeat) ? repeat : r ;
@@ -4839,7 +4928,7 @@ void f_dd(int repeat) {
   editorSetMessage("Howdy");
 }
 
-void f_d$(int repeat) {
+void E_d$(int repeat) {
   editorDeleteToEndOfLine();
   if (!E.rows.empty()) {
     int r = E.rows.size() - E.fr;
@@ -4850,35 +4939,35 @@ void f_d$(int repeat) {
     }
 }
 
-void f_change_case(int repeat) {
+void E_change_case(int repeat) {
   //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorChangeCase();
 }
 
-void f_replace(int repeat) {
+void E_replace(int repeat) {
   for (int i = 0; i < repeat; i++) {
     editorDelChar();
     editorInsertChar(E.last_typed[0]);
   }
 }
 
-void f_i(int repeat) {}
+void E_i(int repeat) {}
 
-void f_I(int repeat) {
+void E_I(int repeat) {
   editorMoveCursorBOL();
   E.fc = editorIndentAmount(E.fr);
 }
 
-void f_a(int repeat) {
+void E_a(int repeat) {
   editorMoveCursor(ARROW_RIGHT);
 }
 
-void f_A(int repeat) {
+void E_A(int repeat) {
   editorMoveCursorEOL();
   editorMoveCursor(ARROW_RIGHT); //works even though not in INSERT mode
 }
 
-void f_o(int repeat) {
+void E_o(int repeat) {
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(1);
     for (char const &c : E.last_typed) {
@@ -4888,7 +4977,7 @@ void f_o(int repeat) {
   }
 }
 
-void f_O(int repeat) {
+void E_O(int repeat) {
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(0);
     for (char const &c : E.last_typed) {
@@ -4899,29 +4988,29 @@ void f_O(int repeat) {
 }
 
 //lands on punctuation, lands on blank lines ...
-void f_w(int repeat) {
+void E_w(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveNextWord();
   }
 }
 
-void f_b(int repeat) {
+void E_b(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveBeginningWord();
   }
 }
 
-void f_e(int repeat) {
+void E_e(int repeat) {
   for (int i=0; i<repeat; i++) {
      editorMoveEndWord();
   }
 }
 
-void f_0(int repeat) {
+void E_0(int repeat) {
   editorMoveCursorBOL();
 }
 
-void f_$(int repeat) {
+void E_$(int repeat) {
   editorMoveCursorEOL();
   for (int i=0; i<repeat-1; i++) {
     if (E.fr < E.rows.size() - 1) {
@@ -4931,11 +5020,11 @@ void f_$(int repeat) {
   }
 }
 
-void f_tilde(int repeat) {
-  f_change_case(repeat);
+void E_tilde(int repeat) {
+  E_change_case(repeat);
 }
 
-void f_J(int repeat) {
+void E_J(int repeat) {
   E.fc = E.rows.at(E.fr).size();
   E.repeat = (E.repeat == 1) ? 2 : E.repeat;
   for (int i=1; i<E.repeat; i++) { 
@@ -4945,11 +5034,11 @@ void f_J(int repeat) {
   }  
 }
 
-/* 'O' and 'o' need special handling for repeat*/
+// 'O' and 'o' need special handling for repeat
 void e_o(int repeat) {
   editorCreateSnapshot();
   E.last_typed.clear();
-  f_o(1);
+  E_o(1);
   //E.mode = INSERT;
   editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
@@ -4957,7 +5046,7 @@ void e_o(int repeat) {
 void e_O(int repeat) {
   editorCreateSnapshot();
   E.last_typed.clear();
-  f_O(1);
+  E_O(1);
   //E.mode = INSERT;
   editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
@@ -4968,7 +5057,7 @@ void e_replace(int repeat) {
   editorSetMessage("Howdy");
 }
 
-void f_next_misspelling(int repeat) {
+void E_next_misspelling(int repeat) {
   if (!E.spellcheck || pos_mispelled_words.empty()) {
     editorSetMessage("Spellcheck is off or no words mispelled");
     return;
@@ -4983,7 +5072,7 @@ void f_next_misspelling(int repeat) {
   editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
 }
 
-void f_prev_misspelling(int repeat) {
+void E_prev_misspelling(int repeat) {
   if (!E.spellcheck || pos_mispelled_words.empty()) {
     editorSetMessage("Spellcheck is off or no words mispelled");
   return;
@@ -4998,32 +5087,32 @@ void f_prev_misspelling(int repeat) {
   editorSetMessage("E.fr = %d, E.fc = %d", E.fr, E.fc);
 }
 
-void f_suggestions(int repeat) {
+void E_suggestions(int repeat) {
   editorSpellingSuggestions();
 }
 
-void f_change2command_line(int repeat) {
+void E_change2command_line(int repeat) {
   editorSetMessage(":");
   E.command_line.clear();
   E.mode = COMMAND_LINE;
 }
 
 //case 'V':
-void f_change2visual_line(int repeat) {
+void E_change2visual_line(int repeat) {
   E.mode = VISUAL_LINE;
   E.highlight[0] = E.highlight[1] = E.fr;
   editorSetMessage("\x1b[1m-- VISUAL LINE --\x1b[0m");
 }
 
 //case 'v':
-void f_change2visual(int repeat) {
+void E_change2visual(int repeat) {
   E.mode = VISUAL;
   E.highlight[0] = E.highlight[1] = E.fc;
   editorSetMessage("\x1b[1m-- VISUAL --\x1b[0m");
 }
 
 //case CTRL_KEY('v'):
-void f_change2visual_block(int repeat) {
+void E_change2visual_block(int repeat) {
   E.mode = VISUAL_BLOCK;
   E.vb0[0] = E.fc;
   E.vb0[1] = E.fr;
@@ -5031,13 +5120,13 @@ void f_change2visual_block(int repeat) {
 }
 
 //case 'p':  
-void f_paste(int repeat) {
+void E_paste(int repeat) {
   if (!string_buffer.empty()) editorPasteString();
   else editorPasteLine();
 }
 
 //case '*':  
-void f_find(int repeat) {
+void E_find(int repeat) {
   // does not clear dot
   search_string = editorGetWordUnderCursor();
   editorFindNextWord();
@@ -5045,7 +5134,7 @@ void f_find(int repeat) {
 }
 
 //case 'n':
-void f_find_next_word(int repeat) {
+void E_find_next_word(int repeat) {
   // n does not clear dot
   editorFindNextWord(); //does not work
   // in vim the repeat does work with n - it skips that many words
@@ -5054,11 +5143,11 @@ void f_find_next_word(int repeat) {
 }
 
 //case 'u':
-void f_undo(int repeat) {
+void E_undo(int repeat) {
   editorRestoreSnapshot();
 }
 
-void f_indent(int repeat) {
+void E_indent(int repeat) {
   int i;
   for (i = 0; i < repeat; i++) { 
     editorIndentRow();
@@ -5068,7 +5157,7 @@ void f_indent(int repeat) {
   E.fr -= i;
 }
 
-void f_unindent(int repeat) {
+void E_unindent(int repeat) {
   int i;
   for (i = 0; i < repeat; i++) {
     editorUnIndentRow();
@@ -5078,26 +5167,26 @@ void f_unindent(int repeat) {
   E.fr -= i;
 }
 
-void f_gg(int repeat) {
+void E_gg(int repeat) {
   E.fc = E.line_offset = 0;
   E.fr = repeat - 1;
 }
 
-void f_G(int repeat) {
+void E_G(int repeat) {
   E.fc = 0;
   E.fr = E.rows.size() - 1;
 }
 
-void f_toggle_smartindent(int repeat) {
+void E_toggle_smartindent(int repeat) {
   E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
   editorSetMessage("E.smartindent = %d", E.smartindent);
 }
 
-void f_save_note(int repeat) {
+void E_save_note(int repeat) {
   editorSaveNoteToFile("lm_temp");
 }
 
-void f_bold(int repeat) {
+void E_bold(int repeat) {
   std::string& row = E.rows.at(E.fr);
   if (row.at(E.fc) == ' ') return;
 
@@ -5131,7 +5220,7 @@ void f_bold(int repeat) {
   E.fc +=2;
 }
 
-void f_emphasis(int repeat) {
+void E_emphasis(int repeat) {
   std::string& row = E.rows.at(E.fr);
   if (row.at(E.fc) == ' ') return;
 
@@ -5170,7 +5259,7 @@ void f_emphasis(int repeat) {
   E.fc++;
 }
 
-void f_italic(int repeat) {
+void E_italic(int repeat) {
   std::string& row = E.rows.at(E.fr);
   if (row.at(E.fc) == ' ') return;
 
@@ -5208,7 +5297,7 @@ void f_italic(int repeat) {
   row.insert(end+1 , "*");
   E.fc++;
 }
-
+*/
 /* this is dot */
 void editorDotRepeat(int repeat) {
 
@@ -5216,7 +5305,7 @@ void editorDotRepeat(int repeat) {
 
   //case 'i': case 'I': case 'a': case 'A': 
   if (cmd_map1.count(E.last_command)) {
-    cmd_map1[E.last_command](E.last_repeat);
+    (p->*cmd_map1[E.last_command])(E.last_repeat);
 
     for (int n=0; n<E.last_repeat; n++) {
       for (char const &c : E.last_typed) {
@@ -5229,19 +5318,19 @@ void editorDotRepeat(int repeat) {
 
   //case 'o': case 'O':
   if (cmd_map2.count(E.last_command)) {
-    cmd_map2[E.last_command](E.last_repeat);
+    (p->*cmd_map2[E.last_command])(E.last_repeat);
     return;
   }
 
   //case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
   if (cmd_map3.count(E.last_command)) {
-    cmd_map3[E.last_command](E.last_repeat);
+    (p->*cmd_map3[E.last_command])(E.last_repeat);
     return;
   }
 
   //case C_cw: case C_caw: case 's':
   if (cmd_map4.count(E.last_command)) {
-      cmd_map4[E.last_command](E.last_repeat);
+      (p->*cmd_map4[E.last_command])(E.last_repeat);
 
     for (char const &c : E.last_typed) {
       if (c == '\r') editorInsertReturn();
@@ -5251,12 +5340,12 @@ void editorDotRepeat(int repeat) {
   }
 
   if (E.last_command == "~") {
-    f_change_case(E.last_repeat);
+    E.E_change_case(E.last_repeat);
     return;
   }
 
   if (E.last_command == "r") {
-    f_replace(E.last_repeat);
+    E.E_replace(E.last_repeat);
     return;
   }
 
@@ -7266,7 +7355,7 @@ void editorSpellCheck(void) {
 
   if (E.rows.empty()) return;
 
-  pos_mispelled_words.clear();
+  E.pos_mispelled_words.clear();
 
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
@@ -7288,7 +7377,7 @@ void editorSpellCheck(void) {
         end = row.size();
 
       if (!dict.spell(row.substr(start, end-start))) {
-        pos_mispelled_words.push_back(std::make_pair(n, start)); 
+        E.pos_mispelled_words.push_back(std::make_pair(n, start)); 
         editorHighlightWord(n, start, end-start);
       }
     }
@@ -7643,7 +7732,7 @@ bool editorProcessKeypress(void) {
             }
           }
 
-          if (cmd_map2.count(E.last_command)) cmd_map2[E.last_command](E.last_repeat - 1);
+          if (cmd_map2.count(E.last_command)) (p->*cmd_map2[E.last_command])(E.last_repeat - 1);
           /****************************************************/
 
           //'I' in VISUAL BLOCK mode
@@ -7757,7 +7846,7 @@ bool editorProcessKeypress(void) {
       if (e_lookup.count(E.command)) {
         if (!move_only.count(E.command)) editorCreateSnapshot(); 
 
-        e_lookup.at(E.command)(E.repeat); //money shot
+        (p->*e_lookup.at(E.command))(E.repeat); //money shot
 
         if (insert_cmds.count(E.command)) {
           E.mode = INSERT;
@@ -7807,7 +7896,8 @@ bool editorProcessKeypress(void) {
 
       if (c == '\r') {
         if (E_lookup_C.count(E.command_line)) {
-          E_lookup_C.at(E.command_line)();
+          //E_lookup_C.at(E.command_line)();
+          (p->*E_lookup_C.at(E.command_line))();
           return false;
         }
 
@@ -9075,6 +9165,9 @@ int main(int argc, char** argv) {
   enableRawMode();
   EraseScreenRedrawLines();
   initOutline();
+  //Editor E(); ///////////////////////////////////////////////
+  //Editor *p;
+  p = &E;
   initEditor();
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized

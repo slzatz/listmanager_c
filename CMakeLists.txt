@@ -40,7 +40,7 @@ set (source_dir "${PROJECT_SOURCE_DIR}/")
 #file (GLOB source_files "${source_dir}/listmanager_term_improved.*")
 
 #add_subdirectory("${source_dir}/tests") #new
-add_executable(${PROJECT_NAME} listmanager_term_improved.cpp)
+add_executable(${PROJECT_NAME} listmanager_term_improved.cpp Editor.cpp)
 
 # note that for what we're doing doesn't matter whether PUBLIC or PRIVATE (see CMAKE docs)
 #target_include_directories(${PROJECT_NAME} PUBLIC "${source_dir}")
