@@ -79,6 +79,325 @@ std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
 std::unordered_map<std::string, pfunc> cmd_map3 = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
 std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
 */
+struct config {
+  std::string user;
+  std::string password;
+  std::string dbname;
+  std::string hostaddr;
+  int port;
+};
+struct config c;
+zmq::context_t context (1);
+zmq::socket_t publisher (context, ZMQ_PUB);
+
+PGconn *conn = nullptr;
+
+typedef struct orow {
+  std::string title;
+  std::string fts_title;
+  int id; //listmanager db id of the row
+  bool star;
+  bool deleted;
+  bool completed;
+  //bool code; //new to say the note is actually code
+  char modified[16];
+
+  // note the members below are temporary editing flags
+  // and don't need to be reflected in database
+  bool dirty;
+  bool mark;
+} orow;
+
+struct outlineConfig {
+  int cx, cy; //cursor x and y position
+  unsigned int fc, fr; // file x and y position
+  unsigned int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
+  unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
+  unsigned int screenlines; //number of lines in the display available to text
+  unsigned int screencols;  //number of columns in the display available to text
+  std::vector<orow> rows;
+  std::string context;
+  std::string folder;
+  std::string keyword;
+  std::string sort;
+  char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
+  int highlight[2];
+  int mode;
+  int last_mode;
+  // probably ok that command isn't a std::string although it could be
+  char command[10]; // doesn't include command_line commands
+  std::string command_line; //for commands on the command line; string doesn't include ':'
+  int repeat;
+  bool show_deleted;
+  bool show_completed;
+  int view; // enum TASK, CONTEXT, FOLDER, SEARCH
+  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
+};
+
+struct outlineConfig O;
+int getWindowSize(int *, int *);
+
+// I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
+void EraseScreenRedrawLines(void);
+
+void outlineProcessKeypress(int = 0);
+bool editorProcessKeypress(void);
+
+/* OUTLINE COMMAND_LINE functions */
+void F_open(int);
+void F_openfolder(int);
+void F_openkeyword(int);
+void F_deletekeywords(int); // pos not used
+void F_addkeyword(int); 
+void F_keywords(int); 
+void F_write(int); // pos not used
+void F_x(int); // pos not used
+void F_refresh(int); // pos not used
+void F_new(int); // pos not used
+void F_edit(int); // pos not used
+void F_folders(int); 
+void F_contexts(int); 
+void F_recent(int); // pos not used
+void F_linked(int); // pos not used
+void F_find(int); 
+void F_sync(int); // pos not used
+void F_sync_test(int); // pos not used
+void F_updatefolder(int); // pos not used
+void F_updatecontext(int); // pos not used
+void F_delmarks(int); // pos not used
+void F_savefile(int);
+void F_sort(int);
+void F_showall(int); // pos not used
+void F_syntax(int);
+void F_set(int);
+void F_open_in_vim(int); // pos not used
+void F_join(int);
+void F_saveoutline(int);
+void F_readfile(int pos);
+void F_valgrind(int pos); // pos not used
+void F_quit_app(int pos); // pos not used
+void F_quit_app_ex(int pos); // pos not used
+void F_merge(int pos); // pos not used
+void F_help(int pos);
+void F_persist(int pos); // pos not used
+void F_clear(int pos); // pos not used
+
+/* OUTLINE mode NORMAL functions */
+void return_N(void);
+void w_N(void);
+void insert_N(void);
+void s_N(void);
+void x_N(void);
+void r_N(void);
+void tilde_N(void);
+void a_N(void);
+void A_N(void);
+void b_N(void);
+void e_N(void);
+void zero_N(void);
+void dollar_N(void);
+void I_N(void);
+void G_N(void);
+void O_N(void);
+void colon_N(void);
+void v_N(void);
+void p_N(void);
+void asterisk_N(void);
+void m_N(void);
+void n_N(void);
+void u_N(void);
+void caret_N(void);
+void dd_N(void);
+void star_N(void);
+void completed_N(void);
+void daw_N(void);
+void caw_N(void);
+void dw_N(void);
+void cw_N(void);
+void de_N(void);
+void d$_N(void);
+void gg_N(void);
+void gt_N(void);
+void edit_N(void);
+
+void navigate_page_hx(int direction);
+void navigate_cmd_hx(int direction);
+
+//Outline Prototypes
+void outlineShowMessage(const char *fmt, ...);
+void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
+void outlineDrawStatusBar(void);
+void outlineDrawMessageBar(std::string&);
+void outlineDelWord();
+void outlineMoveCursor(int key);
+void outlineBackspace(void);
+void outlineDelChar(void);
+void outlineDeleteToEndOfLine(void);
+void outlineYankLine(int n);
+void outlinePasteString(void);
+void outlineYankString();
+void outlineMoveCursorEOL();
+void outlineMoveBeginningWord();
+void outlineMoveEndWord(); 
+void outlineMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
+//void outlineMoveNextWord();// now w_N
+void outlineGetWordUnderCursor();
+void outlineFindNextWord();
+void outlineChangeCase();
+void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
+void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineDrawKeywords(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineDrawSearchRows(std::string&); //ditto
+void outlineScroll(void);
+void outlineSave(const std::string &);
+void return_cursor(void);
+
+//Database-related Prototypes
+void db_open(void);
+void update_task_context(std::string &, int);
+void update_task_folder(std::string &, int);
+int get_id(void);
+void get_note(int);
+void update_row(void);
+void update_rows(void);
+void toggle_deleted(void);
+void toggle_star(void);
+void toggle_completed(void);
+void touch(void);
+int insert_row(orow&);
+int insert_container(orow&);
+int insert_keyword(orow &);
+void update_container(void);
+void update_keyword(void);
+void get_items(int); 
+void get_containers(void); //has an if that determines callback: context_callback or folder_callback
+std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
+std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
+void update_note(void); //used by Editor class 
+//void solr_find(void);
+void search_db(std::string); //void fts5_sqlite(std::string);
+void search_db2(std::string); //just searches documentation - should be combined with above
+void get_items_by_id(std::stringstream &);
+int get_folder_tid(int); 
+void map_context_titles(void);
+void map_folder_titles(void);
+void add_task_keyword(std::string &, int);
+void add_task_keyword(int, int);
+//void delete_task_keywords(void); -> F_deletekeywords
+void display_item_info(int); 
+void display_item_info(void); //ctrl-i in NORMAL mode 0x9
+void display_item_info_pg(int);
+void display_container_info(int);
+int keyword_exists(std::string &);  
+int folder_exists(std::string &);
+int context_exists(std::string &);
+
+//sqlite callback functions
+typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
+
+int fts5_callback(void *, int, char **, char **);
+int data_callback(void *, int, char **, char **);
+int context_callback(void *, int, char **, char **);
+int folder_callback(void *, int, char **, char **);
+int keyword_callback(void *, int, char **, char **);
+int context_titles_callback(void *, int, char **, char **);
+int folder_titles_callback(void *, int, char **, char **);
+int by_id_data_callback(void *, int, char **, char **);
+int note_callback(void *, int, char **, char **);
+int display_item_info_callback(void *, int, char **, char **);
+int task_keywords_callback(void *, int, char **, char **);
+int keyword_id_callback(void *, int, char **, char **);//? not in use
+int container_id_callback(void *, int, char **, char **);
+int rowid_callback(void *, int, char **, char **);
+int offset_callback(void *, int, char **, char **);
+int folder_tid_callback(void *, int, char **, char **); 
+int context_info_callback(void *, int, char **, char **); 
+int folder_info_callback(void *, int, char **, char **); 
+int keyword_info_callback(void *, int, char **, char **);
+int count_callback(void *, int, char **, char **);
+int unique_data_callback(void *, int, char **, char **);
+
+void synchronize(int);
+
+//Editor Word Wrap
+int editorGetScreenXFromRowColWW(int, int);
+int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
+int editorGetLineInRowWW(int, int);
+int editorGetLinesInRowWW(int);
+int editorGetLineCharCountWW(int, int);
+std::string editorGenerateWWString(void); // only used by editorDrawCodeRows
+void editorDrawCodeRows(std::string &);
+int editorGetInitialRow(int &);
+int editorGetInitialRow(int &, int);
+
+//Editor Prototypes
+void editorDrawRows(std::string &); //erases lines to right as it goes
+void editorDrawMessageBar(std::string &);
+//void editorDrawStatusBar(std::string &); //only one status bar
+void editorSetMessage(const char *fmt, ...); //used by Editor Class
+bool editorScroll(void);
+void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line - used by Editor class
+void editorInsertReturn(void);
+void editorDecorateWord(int);
+void editorDecorateVisual(int);
+void editorDelWord(void);
+void editorDelRow(int);
+void editorIndentRow(void);
+void editorUnIndentRow(void);
+int editorIndentAmount(int);
+void editorMoveCursor(int);
+void editorBackspace(void);
+void editorDelChar(void);
+void editorDeleteToEndOfLine(void);
+void editorDeleteVisual(void);
+void editorYankLine(int);
+void editorPasteLine(void);
+void editorPasteLineVisual(void);
+void editorPasteString(void);
+void editorPasteStringVisual(void);
+void editorYankString(void); //only for VISUAL mode
+void editorMoveCursorEOL(void);
+void editorMoveCursorBOL(void);
+void editorMoveBeginningWord(void);
+void editorMoveEndWord(void); 
+void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
+void editorMoveNextWord(void);
+//void editorMarkupLink(void); //no longer doing links this way but preserving code
+std::string editorGetWordUnderCursor(void);
+void editorFindNextWord(void);
+void editorChangeCase(void);
+void editorRestoreSnapshot(void); 
+void editorCreateSnapshot(void); 
+void editorInsertRow(int, std::string);
+void editorInsertChar(int);
+void editorDisplayFile(void);
+void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+void editorInsertNewline(int);
+void editorSpellingSuggestions(void);
+void editorDotRepeat(int);
+
+void editorHighlightWordsByPosition(void);
+void editorSpellCheck(void);
+void editorHighlightWord(int, int, int);
+
+
+std::string editorRowsToString(void);
+std::string generate_html(void);
+std::string generate_html2(void);
+void generate_persistent_html_file(int);
+void load_meta(void);
+void update_html_file(std::string &&);
+void update_html_code_file(std::string &&);
+void editorSaveNoteToFile(const std::string &);
+void editorReadFile(const std::string &);
+void editorReadFileIntoNote(const std::string &); 
+
+void update_solr(void); //works but not in use
+void open_in_vim(void);
+
+typedef void (*pfunc)(int);
+typedef void (*zfunc)(void);
+
 /* OUTLINE COMMAND_LINE mode command lookup */
 std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open}, //open_O
@@ -197,15 +516,3 @@ std::unordered_map<std::string, zfunc> n_lookup {
   {"^", caret_N},
 
 };
-struct config {
-  std::string user;
-  std::string password;
-  std::string dbname;
-  std::string hostaddr;
-  int port;
-};
-struct config c;
-zmq::context_t context (1);
-zmq::socket_t publisher (context, ZMQ_PUB);
-
-PGconn *conn = nullptr;

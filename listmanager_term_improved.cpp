@@ -822,15 +822,16 @@ PGconn *conn = nullptr;
 #include "listmanager_vars.h"
 #include "Editor.h"
 
-//Editor E();
 Editor E; //this instantiates it
 Editor *p;
-//p = &E;
-//p = &E;
+
+/* Following were used when I was using extern
 bool editor_mode = false; ////////////////////EXTERNS//////////////////////////////////////////
 bool lm_browser = true; //////////////////////////////////////////////////////////////
 struct outlineConfig O; /////////////////////////////////////////////////////////////
 std::map<int, std::string> html_files; //////////////////////////////////////////
+*/
+
 typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
 
@@ -4626,7 +4627,8 @@ void edit_N(void) {
     outlineRefreshScreen();
     //editor_mode needs go before get_note in case we retrieved item via a search
     editor_mode = true;
-    get_note(id); //if id == -1 does not try to retrieve note
+    get_note(id); //if id == -1 does not try to retrieve note ? needs to be rewritten as Editor class member function
+    E.id = id;
     E.mode = NORMAL;
     E.command[0] = '\0';
   } else {

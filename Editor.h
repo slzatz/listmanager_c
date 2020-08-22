@@ -43,6 +43,7 @@ class Editor {
     std::string string_buffer; //yanking chars
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
+    int id; //listmanager db id of the row
 
 
 /* EDITOR COMMAND_LINE mode functions */

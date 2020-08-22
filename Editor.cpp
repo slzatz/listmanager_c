@@ -7,12 +7,13 @@ void Editor::E_write_C(void) {
   mode = NORMAL;
   command[0] = '\0';
   command_line.clear();
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) { //lm_browser is global and O below is global
+    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  auto it = html_files.find(O.rows.at(O.fr).id);
+  //auto it = html_files.find(O.rows.at(O.fr).id); // O is global and so html_files but not sure needed
+  auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   if (it != html_files.end()) update_html_file("assets/" + it->second);
   editorSetMessage("");
 }
@@ -22,13 +23,14 @@ void Editor::E_write_close_C(void) {
   mode = NORMAL;
   command[0] = '\0';
   command_line.clear();
-  editor_mode = false;
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  editor_mode = false; //global
+  if (lm_browser) { //lm_browser is global and O below is global
+    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  auto it = html_files.find(O.rows.at(O.fr).id);
+  //auto it = html_files.find(O.rows.at(O.fr).id); //O is global and so is html_files but not sure needed
+  auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   if (it != html_files.end()) update_html_file("assets/" + it->second);
   editorSetMessage("");
 }
@@ -43,7 +45,7 @@ void Editor::E_quit_C(void) {
   } else {
     editorSetMessage("");
     fr = fc = cy = cx = line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
-    editor_mode = false;
+    editor_mode = false; //global
   }
   editorRefreshScreen(false); // don't need to redraw rows
 }
@@ -52,7 +54,7 @@ void Editor::E_quit0_C(void) {
   mode = NORMAL;
   command[0] = '\0';
   command_line.clear();
-  editor_mode = false;
+  editor_mode = false; //global
 }
 
 void Editor::E_open_in_vim_C(void) {
@@ -77,7 +79,8 @@ void E_spellcheck_C(void) {
 #endif
 
 void Editor::E_persist_C(void) {
-  generate_persistent_html_file(O.rows.at(O.fr).id);
+  //generate_persistent_html_file(O.rows.at(O.fr).id); //global
+  generate_persistent_html_file(id); //global
   //command[0] = '\0';
   //command_line.clear();
   mode = NORMAL;
