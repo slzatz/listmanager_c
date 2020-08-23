@@ -1,6 +1,1194 @@
 #include "listmanager.h"
 #include "Editor.h"
 
+/* Basic Editor actions */
+void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
+  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
+    editorInsertRow(0, std::string());
+    editorInsertRow(0, std::string());
+    fc = 0;
+    fr = 1;
+    return;
+  }
+    
+  std::string& current_row = rows.at(fr);
+  std::string new_row1(current_row.begin(), current_row.begin() + fc);
+  std::string new_row2(current_row.begin() + fc, current_row.end());
+
+  int indent = (smartindent) ? editorIndentAmount(fr) : 0;
+
+  fr++;
+  current_row = new_row1;
+  rows.insert(rows.begin() + fr, new_row2);
+
+  fc = 0;
+  for (int j=0; j < indent; j++) editorInsertChar(' ');
+}
+
+void Editor::editorInsertRow(int fr, std::string s) {
+  auto pos = rows.begin() + fr;
+  rows.insert(pos, s);
+  dirty++;
+}
+
+int Editor::editorIndentAmount(int r) {
+  if (rows.empty()) return 0;
+  int i;
+  std::string& row = rows.at(r);
+
+  for (i=0; i<row.size(); i++) {
+    if (row[i] != ' ') break;}
+
+  return i;
+}
+
+void Editor::editorInsertNewline(int direction) {
+  /* note this func does position fc and fr*/
+  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
+    editorInsertRow(0, std::string());
+    return;
+  }
+
+  if (fr == 0 && direction == 0) { // this is for 'O'
+    editorInsertRow(0, std::string());
+    fc = 0;
+    return;
+  }
+    
+  int indent = (smartindent) ? editorIndentAmount(fr) : 0;
+
+  std::string spaces;
+  for (int j=0; j<indent; j++) {
+      spaces.push_back(' ');
+  }
+  fc = indent;
+
+  fr += direction;
+  editorInsertRow(fr, spaces);
+}
+
+void Editor::editorDelChar(void) {
+  if (rows.empty()) return; // creation of NO_ROWS may make this unnecessary
+  std::string& row = rows.at(fr);
+  if (row.empty() || fc > static_cast<int>(row.size()) - 1) return;
+  row.erase(row.begin() + fc);
+  dirty++;
+}
+
+void Editor::editorMoveCursorBOL(void) {
+  if (rows.empty()) return;
+  fc = 0;
+}
+
+void Editor::editorMoveCursorEOL(void) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+  if (row.size()) fc = row.size() - 1;
+}
+//
+// normal mode 'e'
+void Editor::editorMoveEndWord(void) {
+
+if (rows.empty()) return;
+
+if (rows.at(fr).empty() || fc == rows.at(fr).size() - 1) {
+  if (fr+1 > rows.size() -1) {return;}
+  else {fr++; fc = 0;}
+} else fc++;
+
+  int r = fr;
+  int c = fc;
+  int pos;
+  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  std::string delimiters_without_space = "<>,.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    if (r > rows.size() - 1) {return;}
+
+    std::string &row = rows.at(r);
+
+    if (row.empty()) {r++; c = 0; continue;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+      if (c == row.size()-1 || ispunct(row.at(c+1))) {fc = c; fr = r; return;}
+
+      pos = row.find_first_of(delimiters, c);
+      if (pos == std::string::npos) {fc = row.size() - 1; return;}
+      else {fr = r; fc = pos - 1; return;}
+
+    // we started on punct or space
+    } else {
+      if (row.at(c) == ' ') {
+        if (c == row.size() - 1) {r++; c = 0; continue;}
+        else {c++; continue;}
+
+      } else {
+        pos = row.find_first_not_of(delimiters_without_space, c);
+        if (pos != std::string::npos) {fc = pos - 1; return;}
+        else {fc = row.size() -1; return;}
+      }
+    }
+  }
+}
+
+void Editor::editorMoveNextWord(void) {
+
+  if (rows.empty()) return;
+
+  // like with 'b', we are incrementing by one to start
+  if (fc == rows.at(fr).size() - 1) {
+      if (fr+1 > rows.size() - 1) {return;}
+      fr++;
+      fc = 0;
+  } else fc++;
+
+  int r = fr;
+  int c = fc;
+  int pos;
+  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  std::string delimiters_without_space = "<>,.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    if (r > rows.size() - 1) {return;}
+
+    std::string &row = rows.at(r);
+
+    if (row.empty()) {fr = r; fc = 0; return;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+
+        if (c == 0) {fc = 0; fr = r; return;}
+        if (ispunct(row.at(c-1))) {fc =c; fr = r; return;}
+
+      pos = row.find_first_of(delimiters, c);
+      // found punctuation or space after starting on alphanumeric
+      if (pos != std::string::npos) {
+          if (row.at(pos) == ' ') {c = pos; continue;}
+          else {fc = pos; return;}
+      }
+
+      //did not find punctuation or space after starting on alphanumeric
+      r++; c = 0; continue;
+    }
+
+    // we started on punctuation or space
+    if (row.at(c) == ' ') {
+       pos = row.find_first_not_of(' ', c);
+       if (pos == std::string::npos) {r++; c = 0; continue;}
+       else {fc = pos; fr = r; return;}
+    // we started on punctuation and need to find first alpha
+    } else {
+        if (isalnum(row.at(c-1))) {fc = c; return;}
+        c++;
+        if (c > row.size() - 1) {r++; c=0; continue;}
+        pos = row.find_first_not_of(delimiters_without_space, c); //this is equiv of searching for space or alphanumeric
+        if (pos != std::string::npos) {
+            if (row.at(pos) == ' ') {c = pos; continue;}
+            else {fc = pos; return;}
+        }
+        // this just says that if you couldn't find a space or alpha (you're sitting on punctuation) go to next line
+        r++; c = 0;
+    }
+  }
+}
+
+// normal mode 'b'
+// not well tested but seems identical to vim including hanlding of runs of punctuation
+void Editor::editorMoveBeginningWord(void) {
+  if (rows.empty()) return;
+  if (fr == 0 && fc == 0) return;
+
+   //move back one character
+
+  if (fc == 0) { // this should also cover an empty row
+    fr--;
+    fc = rows.at(fr).size() - 1;
+    if (fc == -1) {fc = 0; return;}
+  } else fc--;
+
+  int r = fr;
+  int c = fc;
+  int pos;
+  std::string delimiters = " ,.;?:()[]{}&#~'";
+
+  for(;;) {
+
+    std::string &row = rows.at(r);
+
+    if (row.empty()) {fr = r; fc = 0; return;}
+
+    if (isalnum(row.at(c))) { //we are on an alphanumeric
+      pos = row.find_last_of(delimiters, c);
+      if (pos != std::string::npos) {fc = pos + 1; fr = r; return;}
+      else {fc = 0; fr = r; return;}
+    }
+
+   // If we get here we started on punctuation or space
+    if (row.at(c) == ' ') {
+      if (c == 0) {
+        r--;
+        c = rows.at(r).size() - 1;
+        if (c == -1) {fc = 0; fr = r; return;}
+      } else {c--; continue;}
+    }
+
+    if (c == 0 || row.at(c-1) == ' ' || isalnum(row.at(c-1))) {fc = c; fr = r; return;}
+
+    c--;
+   }
+}
+
+// decorates, undecorates, redecorates
+void Editor::editorDecorateWord(int c) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+  if (row.at(fc) == ' ') return;
+
+  //find beginning of word
+  auto beg = row.find_last_of(' ', fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  //find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (row.substr(beg, 2) == "**") {
+    row.erase(beg, 2);
+    end -= 4;
+    row.erase(end, 2);
+    fc -=2;
+    if (c == CTRL_KEY('b')) return;
+  } else if (row.at(beg) == '*') {
+    row.erase(beg, 1);
+    end -= 2;
+    fc -= 1;
+    row.erase(end, 1);
+    if (c == CTRL_KEY('i')) return;
+  } else if (row.at(beg) == '`') {
+    row.erase(beg, 1);
+    end -= 2;
+    fc -= 1;
+    row.erase(end, 1);
+    if (c == CTRL_KEY('e')) return;
+  }
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  switch(c) {
+    case CTRL_KEY('b'):
+      row.insert(beg, "**");
+      row.insert(end+2, "**"); //
+      fc +=2;
+      return;
+    case CTRL_KEY('i'):
+      row.insert(beg, "*");
+      row.insert(end+1 , "*");
+      fc++;
+      return;
+    case CTRL_KEY('e'):
+      row.insert(beg, "`");
+      row.insert(end+1 , "`");
+      fc++;
+      return;
+  }
+}
+
+void Editor::editorCreateSnapshot(void) {
+  if (rows.empty()) return; //don't create snapshot if there is no text
+  prev_rows = rows;
+}
+void Editor::editorRestoreSnapshot(void) {
+    if (prev_rows.empty()) return;
+    rows = prev_rows;
+}
+
+
+// only decorates which I think makes sense
+void Editor::editorDecorateVisual(int c) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+
+  int beg = highlight[0];
+  int end = highlight[1] + 1;
+
+  // needed if word at end of row
+  if (end == row.size()) row.push_back(' ');
+
+  switch(c) {
+    case CTRL_KEY('b'):
+      row.insert(beg, "**");
+      row.insert(end+2, "**"); //
+      fc += 2;
+      return;
+    case CTRL_KEY('i'):
+      row.insert(beg, "*");
+      row.insert(end+1 , "*");
+      fc++;
+      return;
+    case CTRL_KEY('e'):
+      row.insert(beg, "`");
+      row.insert(end+1 , "`");
+      fc++;
+      return;
+  }
+}
+void Editor::editorSetMessage(const char *fmt, ...) {
+  va_list ap; //type for iterating arguments
+  va_start(ap, fmt); // start iterating arguments with a va_list
+
+
+  /* vsnprint from <stdio.h> writes to the character string str
+     vsnprint(char *str,size_t size, const char *format, va_list ap)*/
+
+  vsnprintf(message, sizeof(message), fmt, ap);
+  va_end(ap); //free a va_list
+}
+
+void Editor::editorSpellCheck(void) {
+
+  if (rows.empty()) return;
+
+  pos_mispelled_words.clear();
+
+  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
+  auto path = dict_finder.get_dictionary_path("en_US");
+  //auto sugs = std::vector<std::string>();
+  auto dict = nuspell::Dictionary::load_from_path(path);
+
+  std::string delimiters = " -<>!$,.;?:()[]{}&#~^";
+
+  for (int n=first_visible_row; n<=last_visible_row; n++) {
+    int end = -1;
+    int start;
+    std::string &row = rows.at(n);
+    if (row.empty()) continue;
+    for (;;) {
+      if (end >= static_cast<int>(row.size()) - 1) break;
+      start = end + 1;
+      end = row.find_first_of(delimiters, start);
+      if (end == std::string::npos)
+        end = row.size();
+
+      if (!dict.spell(row.substr(start, end-start))) {
+        pos_mispelled_words.push_back(std::make_pair(n, start)); 
+        editorHighlightWord(n, start, end-start);
+      }
+    }
+  }
+
+  //reposition the cursor back to where it belongs
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + EDITOR_LEFT_MARGIN + 1); //03022019
+  write(STDOUT_FILENO, buf, strlen(buf));
+}
+
+
+void Editor::editorHighlightWord(int r, int c, int len) {
+  std::string &row = rows.at(r);
+  int x = editorGetScreenXFromRowColWW(r, c) + EDITOR_LEFT_MARGIN + 1;
+  int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1 - line_offset; // added line offset 12-25-2019
+  std::stringstream s;
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << row.substr(c, len)
+    << "\x1b[0m";
+
+  write(STDOUT_FILENO, s.str().c_str(), s.str().size());
+}
+
+void Editor::editorSaveNoteToFile(const std::string &filename) {
+  std::ofstream myfile;
+  myfile.open(filename); //filename
+  myfile << editorRowsToString();
+  editorSetMessage("wrote file");
+  myfile.close();
+}
+
+void Editor::editorMoveCursor(int key) {
+
+  if (rows.empty()) return; //could also be !numrows
+
+  switch (key) {
+    case ARROW_LEFT:
+    case 'h':
+      if (fc > 0) fc--;
+      break;
+
+    case ARROW_RIGHT:
+    case 'l':
+      fc++;
+      break;
+
+    case ARROW_UP:
+    case 'k':
+      if (fr > 0) fr--;
+      break;
+
+    case ARROW_DOWN:
+    case 'j':
+      if (fr < rows.size() - 1) fr++;
+      break;
+  }
+}
+
+void Editor::editorBackspace(void) {
+
+  if (fc == 0 && fr == 0) return;
+
+  std::string &row = rows.at(fr);
+  if (fc > 0) {
+    row.erase(row.begin() + fc - 1);
+    fc--;
+  } else if (row.size() > 1){
+    rows.at(fr-1) = rows.at(fr-1) + row;
+    editorDelRow(fr); //05082020
+    fr--;
+    fc = rows.at(fr).size();
+  } else {
+    editorDelRow(fr);
+    fr--;
+    fc = rows.at(fr).size();
+}
+  dirty++;
+}
+
+std::string Editor::editorRowsToString(void) {
+
+  std::string z = "";
+  for (auto i: rows) {
+      z += i;
+      z += '\n';
+  }
+  if (!z.empty()) z.pop_back(); //pop last return that we added
+  return z;
+}
+
+void Editor::editorInsertChar(int chr) {
+  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
+    editorInsertRow(0, std::string());
+  }
+  std::string &row = rows.at(fr);
+  row.insert(row.begin() + fc, chr); // this works if row empty
+  //row.at(fc) = chr; // this doesn't work if row is empty
+  dirty++;
+  fc++;
+}
+
+void Editor::editorDelRow(int r) {
+  //editorSetMessage("Row to delete = %d; numrows = %d", fr, numrows); 
+  if (rows.empty()) return; // creation of NO_ROWS may make this unnecessary
+
+  rows.erase(rows.begin() + r);
+  if (rows.size() == 0) {
+    fr = fc = cy = cx = line_offset = prev_line_offset = first_visible_row = last_visible_row = 0;
+
+    mode = NO_ROWS;
+    return;
+  }
+
+  dirty++;
+  //editorSetMessage("Row deleted = %d; numrows after deletion = %d cx = %d row[fr].size = %d", fr,
+  //numrows, cx, row[fr].size); 
+}
+
+// called by caw and daw
+// doesn't handle punctuation correctly
+// but vim pretty wierd for punctuation
+void Editor::editorDelWord(void) {
+
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+  if (row[fc] < 48) return;
+
+//below is finding beginning of word
+  auto beg = row.find_last_of(' ', fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+//below is finding end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+// below is deleting between beginning and end
+  row.erase(beg, end-beg+1);
+  fc = beg;
+
+  dirty++;
+  editorSetMessage("beg = %d, end = %d", beg, end);
+}
+
+// does not work
+void Editor::editorFindNextWord(void) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+
+  int y = fr;
+  int x = fc;
+  size_t found;
+
+  // make sure you're not sitting on search word to start
+  auto beg = row.find_last_of(' ', fc);
+  if (beg == std::string::npos ) beg = 0;
+  else beg++;
+
+  // find end of word
+  auto end = row.find_first_of(' ', beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  if (search_string == row.substr(beg, end-beg+1)) x++;
+  int passes = 0;
+  for(;;) {
+    std::string& row = rows.at(y);
+    found = row.find(search_string, x);
+    if (found != std::string::npos)
+       break;
+    y++;
+    if (y == rows.size()) {
+      passes++;
+      if (passes > 1) break;
+      y = 0;
+    }
+    x = 0;
+  }
+  if (passes <= 1) {
+    fc = found;
+    fr = y;
+  }
+}
+
+// called by get_note (and others) and in main while loop
+// redraw == true means draw the rows
+void Editor::editorRefreshScreen(bool redraw) {
+  char buf[32];
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
+  ab.append(buf, strlen(buf));
+
+  if (redraw) {
+    //Temporary kluge tid for code folder = 18
+    if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK)) editorDrawCodeRows(ab);
+    //if (highlight_syntax == true) editorDrawCodeRows(ab);
+    else editorDrawRows(ab);
+  }
+  editorDrawMessageBar(ab); //01012020
+
+  // the lines below position the cursor where it should go
+  if (mode != COMMAND_LINE){
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + EDITOR_LEFT_MARGIN + 1); //03022019
+    ab.append(buf, strlen(buf));
+  }
+
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  // can't do this until ab is written or will just overwite highlights
+  if (redraw) {
+    if (spellcheck) editorSpellCheck();
+    /* somehow from outline mode (not edit mode) mode = SEARCH needs to be set <-I did this */
+    else if (mode == SEARCH) editorHighlightWordsByPosition();
+  }
+}
+
+void Editor::editorDrawMessageBar(std::string& ab) {
+  std::stringstream buf;
+
+  buf  << "\x1b[" << screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  ab += buf.str();
+  ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
+  int msglen = strlen(message);
+  if (msglen > screencols) msglen = screencols;
+  ab.append(message, msglen);
+}
+
+void Editor::editorDrawRows(std::string &ab) {
+
+  /* for visual modes */
+  int begin = 0;
+  std::string abs = "";
+ 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf.str());
+
+  // erase the screen
+  for (int i=0; i < screenlines; i++) {
+    ab.append("\x1b[K");
+    ab.append(lf_ret, nchars);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  if (rows.empty()) return;
+
+  int h_light[2] = {0,0};
+  bool visual = false;
+  bool visual_block = false;
+  bool visual_line = false;
+  if (mode == VISUAL || mode == VISUAL_LINE) {
+    if (highlight[1] < highlight[0]) { //note highlight[1] should == fc
+      h_light[1] = highlight[0];
+      h_light[0] = highlight[1];
+    } else {
+      h_light[0] = highlight[0];
+      h_light[1] = highlight[1];
+    }
+  }
+
+  int y = 0;
+  int filerow = first_visible_row;
+  bool flag = false;
+
+  for (;;){
+    if (flag) break;
+    if (filerow == rows.size()) {last_visible_row = filerow - 1; break;}
+    std::string row = rows.at(filerow);
+
+    if (mode == VISUAL_LINE && filerow == h_light[0]) {
+      ab.append("\x1b[48;5;242m", 11);
+      visual_line = true;
+    }
+
+    if (mode == VISUAL && filerow == fr) {
+      /* zz counting the number of additional chars generated by '\n' at end of line*/
+      int zz = h_light[0]/screencols;
+      begin = ab.size() + h_light[0] + zz;
+      visual = true;
+    }
+
+    /**************************************/
+    if (mode == VISUAL_BLOCK && (filerow > (vb0[1] - 1) && filerow < (fr + 1))) { //highlight[3] top row highlight[4] lower (higher #)
+      int zz = vb0[0]/screencols;
+      begin = ab.size() + vb0[0] + zz;
+      visual_block = true;
+    } else visual_block = false;
+    /**************************************/
+
+    if (row.empty()) {
+      if (y == screenlines - 1) break;
+      //ab.append(lf_ret, nchars);
+      ab.append(1, '\f');
+      filerow++;
+      y++;
+
+      // pretty ugly that this has to appear here but need to take into account empty rows  
+      if (visual_line) {
+        if (filerow == h_light[1] + 1){ //could catch VISUAL_LINE starting on last row outside of for
+          ab.append("\x1b[0m", 4); //return background to normal
+          visual_line = false;
+        }
+      }
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= screencols) {
+        ab.append(row, pos+1, screencols);
+        abs.append(row, pos+1, screencols);
+        if (y == screenlines - 1) {flag=true; break;}
+        ab.append(1, '\f');
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      abs.append(row, prev_pos+1, pos-prev_pos);
+      if (y == screenlines - 1) {flag=true; break;}
+      ab.append(1, '\f');
+      y++;
+    }
+
+    /* The VISUAL mode code that actually does the writing */
+    if (visual) { 
+      std::string visual_snippet = ab.substr(begin, h_light[1]-h_light[0]); 
+      int pos = -1;
+      int n = 0;
+      for (;;) {
+        pos += 1;
+        pos = visual_snippet.find('\f', pos);
+        if (pos == std::string::npos) break;
+        n += 1;
+      }
+      ab.insert(begin + h_light[1] - h_light[0] + n + 1, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
+      visual = false;
+    }
+
+    if (visual_block) { 
+      std::string visual_snippet = ab.substr(begin, fc-vb0[0]); //fc = highlight[1] ; vb0[0] = highlight[0] 
+      int pos = -1;
+      int n = 0;
+      for (;;) {
+        pos += 1;
+        pos = visual_snippet.find('\f', pos);
+        if (pos == std::string::npos) break;
+        n += 1;
+      }
+      ab.insert(begin + fc - vb0[0] + n + 1, "\x1b[0m");
+      ab.insert(begin, "\x1b[48;5;242m");
+    }
+
+    if (visual_line) {
+      if (filerow == h_light[1] + 1){ //could catch VISUAL_LINE starting on last row outside of for
+        ab.append("\x1b[0m", 4); //return background to normal
+        visual_line = false;
+      }
+    }
+
+  }
+  last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+  ab.append("\x1b[0m", 4); //return background to normal - would catch VISUAL_LINE starting and ending on last row
+
+  size_t p = 0;
+  for (;;) {
+      if (p > ab.size()) break;
+      p = ab.find('\f', p);
+      if (p == std::string::npos) break;
+      ab.replace(p, 1, lf_ret);
+      p += 7;
+  }
+}
+
+void Editor::editorDrawCodeRows(std::string &ab) {
+  //save the current file to code_file with correct extension
+  std::ofstream myfile;
+  myfile.open("code_file"); 
+  myfile << editorGenerateWWString();
+  myfile.close();
+
+  std::stringstream display;
+  std::string line;
+
+  // below is a quick hack folder tid = 18 -> code
+  if (get_folder_tid(id) == 18) {
+   procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  } else {
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
+                               "--color=always", "--language=md.hbs", "--italic-text=always",
+                               "--theme=gruvbox-markdown");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  }
+
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf.str());
+
+  // erase the screen
+  for (int i=0; i < screenlines; i++) {
+    ab.append("\x1b[K");
+    ab.append(lf_ret, nchars);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  //std::string line;
+  display.clear();
+  display.seekg(0, std::ios::beg);
+  int n = 0;
+  while(std::getline(display, line, '\n')) {
+    if (n >= line_offset) {
+      ab.append(line);
+      ab.append(lf_ret);
+    }
+    n++;
+  }
+  ab.append("\x1b[0m");
+
+}
+
+// uses sqlite offsets contained in word_positions
+// currently just highlights the words in rows that are visible on the screen
+// You can't currently scroll because when you edit the search highlights disappear
+// ie text can't be scrolled unless you enter editor_mode which doesn't highlight
+// while this works ? better to use find_if as per
+// https://stackoverflow.com/questions/9333333/c-split-string-with-space-and-punctuation-chars
+void Editor::editorHighlightWordsByPosition(void) {
+
+  if (rows.empty()) return;
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\\"; //removed period?? since it is in list?
+  for (auto v: word_positions) {
+    int word_num = -1;
+    auto pos = v.begin();
+    auto prev_pos = pos;
+    for (int n=0; n<=last_visible_row; n++) {
+      int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+      int start;
+      std::string &row = rows.at(n);
+      if (row.empty()) continue;
+      for (;;) {
+        if (end >= static_cast<int>(row.size()) - 1) break;
+        start = end + 1;
+        end = row.find_first_of(delimiters, start);
+        if (end == std::string::npos) {
+          end = row.size();
+        }
+        if (end != start) word_num++;
+  
+        if (n < first_visible_row) continue;
+        // start the search from the last match? 12-23-2019
+        pos = std::find(pos, v.end(), word_num);
+        if (pos != v.end()) {
+          prev_pos = pos;
+          editorHighlightWord(n, start, end-start);
+        } else pos = prev_pos;
+      }
+    }
+  }
+}
+
+void Editor::editorYankLine(int n) {
+  line_buffer.clear();
+
+  for (int i=0; i < n; i++) {
+    line_buffer.push_back(rows.at(fr+i));
+  }
+  string_buffer.clear();
+}
+
+void Editor::editorPasteLine(void){
+  if (rows.empty())  editorInsertRow(0, std::string());
+
+  for (size_t i=0; i < line_buffer.size(); i++) {
+    //int len = (line_buffer[i].size());
+    fr++;
+    editorInsertRow(fr, line_buffer[i]);
+  }
+}
+
+void Editor::editorIndentRow(void) {
+  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
+    editorInsertRow(0, std::string());
+  }
+  std::string &row = rows.at(fr);
+  row.insert(0, indent, ' ');
+  fc = indent;
+  dirty++;
+}
+
+void Editor::editorUnIndentRow(void) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+  if (row.empty()) return;
+  fc = 0;
+  for (int i = 0; i < indent; i++) {
+    if (row.empty()) break;
+    if (row[0] == ' ') {
+      editorDelChar();
+    }
+  }
+  dirty++;
+}
+
+void Editor::editorPasteString(void) {
+  if (rows.empty() || string_buffer.empty()) return;
+  std::string& row = rows.at(fr);
+
+  row.insert(row.begin() + fc, string_buffer.begin(), string_buffer.end());
+  fc += string_buffer.size();
+  dirty++;
+}
+
+/**************can't take substring of row because absolute position matters**************************/
+//called by editorScroll to get cx
+int Editor::editorGetScreenXFromRowColWW(int r, int c) {
+  // can't use reference to row because replacing blanks to handle corner case
+  std::string row = rows.at(r);
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  if (row.size() <= screencols ) return c; //seems obvious but not added until 03022019
+
+  int pos = -1;
+  int prev_pos;
+  for (;;) {
+
+  if (row.substr(pos+1).size() <= screencols) {
+    prev_pos = pos;
+    break;
+  }
+
+  prev_pos = pos;
+  pos = row.find_last_of(' ', pos+screencols);
+
+  if (pos == std::string::npos) {
+      pos = prev_pos + screencols;
+  } else if (pos == prev_pos) {
+      replace(row.begin(), row.begin()+pos+1, ' ', '+');
+      pos = prev_pos + screencols;
+  }
+    /*
+    else
+      replace(row.begin()+prev_pos+1, row.begin()+pos+1, ' ', '+');
+    */
+
+  if (pos >= c) break;
+  }
+  return c - prev_pos - 1;
+}
+
+/* called by editorScroll to get cy
+line_offset is taken into account in editorScroll*/
+int Editor::editorGetScreenYFromRowColWW(int r, int c) {
+  int screenline = 0;
+
+  for (int n = 0; n < r; n++)
+    screenline+= editorGetLinesInRowWW(n);
+
+  screenline = screenline + editorGetLineInRowWW(r, c) - 1;
+  return screenline;
+}
+
+// used in editorGetScreenYFromRowColWW
+/**************can't take substring of row because absolute position matters**************************/
+int Editor::editorGetLineInRowWW(int r, int c) {
+  // can't use reference to row because replacing blanks to handle corner case
+  std::string row = rows.at(r);
+
+  if (row.size() <= screencols ) return 1; //seems obvious but not added until 03022019
+
+  /* pos is the position of the last char in the line
+   * and pos+1 is the position of first character of the next row
+   */
+
+  int lines = 0; //1
+  int pos = -1;
+  int prev_pos;
+  for (;;) {
+
+    // we know the first time around this can't be true
+    // could add if (line > 1 && row.substr(pos+1).size() ...);
+    if (row.substr(pos+1).size() <= screencols) {
+      lines++;
+      break;
+    }
+
+    prev_pos = pos;
+    pos = row.find_last_of(' ', pos+screencols);
+
+    if (pos == std::string::npos) {
+        pos = prev_pos + screencols;
+
+   // only replace if you have enough characters without a space to trigger this
+   // need to start at the beginning each time you hit this
+   // unless you want to save the position which doesn't seem worth it
+    } else if (pos == prev_pos) {
+      replace(row.begin(), row.begin()+pos+1, ' ', '+');
+      pos = prev_pos + screencols;
+    }
+
+    lines++;
+    if (pos >= c) break;
+  }
+  return lines;
+}
+//used by editorGetInitialRow
+//used by editorGetScreenYFromRowColWW
+int Editor::editorGetLinesInRowWW(int r) {
+  std::string_view row(rows.at(r));
+
+  if (row.size() <= screencols) return 1; //seems obvious but not added until 03022019
+
+  int lines = 0;
+  int pos = -1; //pos is the position of the last character in the line (zero-based)
+  int prev_pos;
+  for (;;) {
+
+    // we know the first time around this can't be true
+    // could add if (line > 1 && row.substr(pos+1).size() ...);
+    if (row.substr(pos+1).size() <= screencols) {
+      lines++;
+      break;
+    }
+
+    prev_pos = pos;
+    pos = row.find_last_of(' ', pos+screencols);
+
+    //note npos when signed = -1
+    //order can be reversed of if, else if and can drop prev_pos != -1: see editorDrawRows
+    if (pos == std::string::npos) {
+      pos = prev_pos + screencols;
+    } else if (pos == prev_pos) {
+      row = row.substr(pos+1);
+      //prev_pos = -1; 12-27-2019
+      pos = screencols - 1;
+    }
+    lines++;
+  }
+  return lines;
+}
+
+/* this exists to create a text file that has the proper
+ * line breaks based on screen width for syntax highlighters
+ * to operate on 
+ * Produces a text string that starts at the first line of the
+ * file and ends on the last visible line
+ */
+std::string Editor::editorGenerateWWString(void) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  int y = -line_offset;
+  int filerow = 0;
+
+  for (;;) {
+    if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+
+    std::string row = rows.at(filerow);
+    
+    if (row.empty()) {
+      if (y == screenlines - 1) return ab;
+      ab.append("\n");
+      filerow++;
+      y++;
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= screencols) {
+        ab.append(row, pos+1, screencols);
+        if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+        ab.append("\n");
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+      ab.append("\n");
+      y++;
+    }
+  }
+}
+//
+//handles punctuation
+std::string Editor::editorGetWordUnderCursor(void) {
+
+  if (rows.empty()) return "";
+  std::string &row = rows.at(fr);
+  if (row[fc] < 48) return "";
+
+  std::string delimiters = " ,.;?:()[]{}&#";
+
+  // find beginning of word
+  auto beg = row.find_last_of(delimiters, fc);
+  if (beg == std::string::npos) beg = 0;
+  else beg++;
+
+  // find end of word
+  auto end = row.find_first_of(delimiters, beg);
+  if (end == std::string::npos) {end = row.size();}
+
+  return row.substr(beg, end-beg);
+
+  //editorSetMessage("beg = %d, end = %d  word = %s", beg, end, search_string.c_str());
+}
+
+void Editor::editorSpellingSuggestions(void) {
+  auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
+  auto path = dict_finder.get_dictionary_path("en_US");
+  auto sugs = std::vector<std::string>();
+  auto dict = nuspell::Dictionary::load_from_path(path);
+
+  std::string word;
+  std::stringstream s;
+  word = editorGetWordUnderCursor();
+  if (word.empty()) return;
+
+  if (dict.spell(word)) {
+      editorSetMessage("%s is spelled correctly", word.c_str());
+      return;
+  }
+
+  dict.suggest(word, sugs);
+  if (sugs.empty()) {
+      editorSetMessage("No suggestions");
+  } else {
+    for (auto &sug : sugs) s << sug << ' ';
+    editorSetMessage("Suggestions for %s: %s", word.c_str(), s.str().c_str());
+  }
+}
+
+void Editor::editorChangeCase(void) {
+  if (rows.empty()) return;
+  std::string& row = rows.at(fr);
+  char d = row.at(fc);
+  if (d < 91 && d > 64) d = d + 32;
+  else if (d > 96 && d < 123) d = d - 32;
+  else {
+    editorMoveCursor(ARROW_RIGHT);
+    return;
+  }
+  editorDelChar();
+  editorInsertChar(d);
+}
+
+void Editor::editorDeleteToEndOfLine(void) {
+  std::string& row = rows.at(fr);
+  row.resize(fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  dirty++;
+}
+
+/************************************* end of WW ************************************************/
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
   update_note();

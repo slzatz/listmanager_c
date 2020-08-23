@@ -106,5 +106,49 @@ class Editor {
     void E_find_next_word(int);
     void E_undo(int);
 
+    void editorInsertNewline(int);
+    void editorDelChar(void);
+    void editorInsertRow(int, std::string);
+    int editorIndentAmount(int);
+    void editorInsertReturn(void);
+    void editorMoveCursorEOL(void);
+    void editorMoveCursorBOL(void);
+    void editorMoveEndWord(void);
+    void editorMoveNextWord(void);
+    void editorMoveBeginningWord(void);
+    void editorDecorateWord(int);
+    void editorCreateSnapshot(void);
+    void editorRestoreSnapshot(void);
+    void editorDecorateVisual(int);
+    void editorSetMessage(const char *fmt, ...);
+    void editorSpellCheck(void);
+    void editorHighlightWord(int, int, int);
+    void editorSaveNoteToFile(const std::string &);
+    void editorMoveCursor(int);
+    void editorBackspace(void);
+    std::string editorRowsToString(void);
+    void editorInsertChar(int);
+    void editorDelRow(int);
+    void editorDelWord(void);
+    void editorFindNextWord(void); //apparently doesn't work
+    void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
+    void editorDrawMessageBar(std::string &);
+    void editorDrawRows(std::string &);
+    void editorDrawCodeRows(std::string &);
+    void editorHighlightWordsByPosition(void);
+    void editorYankLine(int);
+    void editorPasteLine(void);
+    void editorIndentRow(void);
+    void editorUnIndentRow(void);
+    void editorPasteString(void);
+    std::string editorGetWordUnderCursor(void);
+    void editorSpellingSuggestions(void);
+    void editorChangeCase(void);
+    void editorDeleteToEndOfLine(void);
+    int editorGetScreenXFromRowColWW(int, int);
+    int editorGetScreenYFromRowColWW(int, int);
+    std::string editorGenerateWWString(void);
+    int editorGetLineInRowWW(int, int);
+    int editorGetLinesInRowWW(int);
 };
 #endif

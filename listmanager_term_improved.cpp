@@ -1,836 +1,9 @@
-/*
-#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits
-#define OUTLINE_LEFT_MARGIN 2
-#define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
-#define TOP_MARGIN 1
-#define DEBUG 0
-#define UNUSED(x) (void)(x)
-#define MAX 500 // max rows to bring back
-#define TZ_OFFSET 4 // time zone offset - either 4 or 5
-#define SCROLL_DOWN 0
-#define SCROLL_UP 1
-
-// to use GIT_BRANCH in makefile (from cmake)
-#define STRINGIFY(x) #x
-#define TOSTRING(x) STRINGIFY(x)
-
-#include <Python.h>
-#include <sys/ioctl.h>
-#include <csignal>
-#include <termios.h>
-#include <libpq-fe.h>
-#include <sqlite3.h>
-#include "inipp.h" // https://github.com/mcmtroffaes/inipp
-#include "process.h" // https://github.com/skystrife/procxx
-
-#include <string>
-#include <string_view> 
-#include <vector>
-#include <map>
-#include <unordered_map>
-#include <unordered_set>
-#include <cstdio>
-#include <cstring>
-#include <algorithm>
-#include <sstream>
-#include <fstream>
-#include <set>
-
-#if __has_include (<nuspell/dictionary.hxx>)
-  #include <nuspell/dictionary.hxx>
-  #include <nuspell/finder.hxx>
-  #define NUSPELL
-#endif
-
-#include <zmq.hpp>
-
-#include <memory>
-
-#include <fcntl.h>
-#include <unistd.h>
-
-//
-//
-extern "C" {
-#include <mkdio.h>
-}
-static const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-static const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
-static const std::string DB_INI = "db.ini";
-static const std::string CURRENT_NOTE_FILE = "current.html";
-static const std::string META_FILE = "assets/meta.html";
-static  std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
-static std::string meta;
-static int which_db;
-static int EDITOR_LEFT_MARGIN;
-static struct termios orig_termios;
-static int screenlines, screencols, new_screenlines, new_screencols;
-static std::stringstream display_text;
-static int initial_file_row = 0; //for arrowing or displaying files
-static bool editor_mode;
-static std::string search_terms;
-static std::vector<std::vector<int>> word_positions;
-static std::vector<int> fts_ids;
-static int fts_counter;
-static std::string search_string; //word under cursor works with *, n, N etc.
-static std::vector<std::string> line_buffer; //yanking lines
-static std::string string_buffer; //yanking chars
-static std::map<int, std::string> fts_titles;
-static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
-static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
-static std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
-//static std::vector<std::string> task_keywords;
-static std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
-static std::set<int> unique_ids; //used in unique_data_callback
-static std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
-static std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
-static size_t cmd_hx_idx = 0;
-static size_t page_hx_idx = 0;
-static std::map<int, std::string> html_files;
-static bool lm_browser = true;
-
-const std::string COLOR_1 = "\x1b[0;31m"; //red
-const std::string COLOR_2 = "\x1b[0;32m"; //green
-const std::string COLOR_3 = "\x1b[0;33m"; //yellow
-const std::string COLOR_4 = "\x1b[0;34m"; //blue
-const std::string COLOR_5 = "\x1b[0;35m"; //magenta
-const std::string COLOR_6 = "\x1b[0;36m"; //cyan
-const std::string COLOR_7 = "\x1b[0;37m"; //White
-
-static int SMARTINDENT = 4; //should be in config
-static int temporary_tid = 99999;
-static int link_id = 0;
-static char link_text[20];
-
-static int current_task_id;
-
-static std::unordered_set<int> marked_entries;
-
-enum outlineKey {
-  BACKSPACE = 127,
-  ARROW_LEFT = 1000, //would have to be < 127 to be chars
-  ARROW_RIGHT,
-  ARROW_UP,
-  ARROW_DOWN,
-  DEL_KEY,
-  HOME_KEY,
-  END_KEY,
-  PAGE_UP,
-  PAGE_DOWN,
-  SHIFT_TAB
-};
-
-enum Mode {
-  NORMAL, // = 0,
-  INSERT, // = 1,
-  COMMAND_LINE, // = 2, //note: if no rows as result of search put in COMMAND_LINE mode
-  VISUAL_LINE, // = 3, // only editor mode
-  VISUAL, // = 4,
-  REPLACE, // = 5,
-  DATABASE, // = 6, // only outline mode
-  FILE_DISPLAY,// = 7, // only outline mode
-  NO_ROWS,// = 8
-  VISUAL_BLOCK,
-  SEARCH,
-  ADD_KEYWORD  
-};
-
-enum View {
-  TASK,
-  CONTEXT,
-  FOLDER,
-  KEYWORD
-};
-
-enum TaskView {
-  BY_CONTEXT,
-  BY_FOLDER,
-  BY_KEYWORD,
-  BY_JOIN,
-  BY_RECENT,
-  BY_SEARCH
-};
-
-enum DB {
-  SQLITE,
-  POSTGRES
-};
-
-static const std::string mode_text[] = {
-                        "NORMAL",
-                        "INSERT",
-                        "COMMAND LINE",
-                        "VISUAL LINE",
-                        "VISUAL",
-                        "REPLACE",
-                        "DATABASE",
-                        "FILE DISPLAY",
-                        "NO ROWS",
-                        "VISUAL_BLOCK",
-                        "SEARCH",
-                        "ADD_KEYWORD"  
-                       }; 
-
-static constexpr char BASE_DATE[] = "1970-01-01 00:00";
-
-struct sqlite_db {
-  sqlite3 *db;
-  char *err_msg;
-  sqlite3 *fts_db;
-};
-
-static struct sqlite_db S;
-
-typedef struct orow {
-  std::string title;
-  std::string fts_title;
-  int id; //listmanager db id of the row
-  bool star;
-  bool deleted;
-  bool completed;
-  //bool code; //new to say the note is actually code
-  char modified[16];
-
-  // note the members below are temporary editing flags
-  // and don't need to be reflected in database
-  bool dirty;
-  bool mark;
-} orow;
-
-struct outlineConfig {
-  int cx, cy; //cursor x and y position
-  unsigned int fc, fr; // file x and y position
-  unsigned int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
-  unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
-  unsigned int screenlines; //number of lines in the display available to text
-  unsigned int screencols;  //number of columns in the display available to text
-  std::vector<orow> rows;
-  std::string context;
-  std::string folder;
-  std::string keyword;
-  std::string sort;
-  char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
-  int highlight[2];
-  int mode;
-  int last_mode;
-  // probably ok that command isn't a std::string although it could be
-  char command[10]; // doesn't include command_line commands
-  std::string command_line; //for commands on the command line; string doesn't include ':'
-  int repeat;
-  bool show_deleted;
-  bool show_completed;
-  int view; // enum TASK, CONTEXT, FOLDER, SEARCH
-  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
-};
-
-static struct outlineConfig O;
-
-struct editorConfig {
-  int cx, cy; //cursor x and y position
-  int fc, fr; // file x and y position
-  int line_offset; //row the user is currently scrolled to
-  int prev_line_offset;
-  int coloff; //column user is currently scrolled to
-  int screenlines; //number of lines in the display
-  int screencols;  //number of columns in the display
-  std::vector<std::string> rows;
-  std::vector<std::string> prev_rows;
-  int dirty; //file changes since last save
-  char message[120]; //status msg is a character array max 80 char
-  int highlight[2];
-  int vb0[3];
-  int mode;
-  // probably OK that command is a char[] and not a std::string
-  char command[10]; // right now includes normal mode commands and command line commands
-  std::string command_line; //for commands on the command line; string doesn't include ':'
-  //int last_command; //will use the number equivalent of the command
-  std::string last_command; 
-  int last_repeat;
-  std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
-  int repeat;
-  int indent;
-  int smartindent;
-  int first_visible_row;
-  int last_visible_row;
-  bool spellcheck;
-  bool highlight_syntax;
-};
-
-static struct editorConfig E;
-
-
-struct flock lock;
-
-// note that you can call these either through explicit dereference: (*get_note)(4328)
-// or through implicit dereference: get_note(4328)
-
-int getWindowSize(int *, int *);
-
-// I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
-void EraseScreenRedrawLines(void);
-
-void outlineProcessKeypress(int = 0);
-bool editorProcessKeypress(void);
-
-// OUTLINE COMMAND_LINE functions 
-void F_open(int);
-void F_openfolder(int);
-void F_openkeyword(int);
-void F_deletekeywords(int); // pos not used
-void F_addkeyword(int); 
-void F_keywords(int); 
-void F_write(int); // pos not used
-void F_x(int); // pos not used
-void F_refresh(int); // pos not used
-void F_new(int); // pos not used
-void F_edit(int); // pos not used
-void F_folders(int); 
-void F_contexts(int); 
-void F_recent(int); // pos not used
-void F_linked(int); // pos not used
-void F_find(int); 
-void F_sync(int); // pos not used
-void F_sync_test(int); // pos not used
-void F_updatefolder(int); // pos not used
-void F_updatecontext(int); // pos not used
-void F_delmarks(int); // pos not used
-void F_savefile(int);
-void F_sort(int);
-void F_showall(int); // pos not used
-void F_syntax(int);
-void F_set(int);
-void F_open_in_vim(int); // pos not used
-void F_join(int);
-void F_saveoutline(int);
-void F_readfile(int pos);
-void F_valgrind(int pos); // pos not used
-void F_quit_app(int pos); // pos not used
-void F_quit_app_ex(int pos); // pos not used
-void F_merge(int pos); // pos not used
-void F_help(int pos);
-void F_persist(int pos); // pos not used
-void F_clear(int pos); // pos not used
-
-// EDITOR COMMAND_LINE functions 
-void E_write_C(void);
-void E_write_close_C(void);
-void E_quit_C(void);
-void E_quit0_C(void);
-void E_open_in_vim_C(void);
-void E_spellcheck_C(void);
-void E_persist_C(void);
-
-// OUTLINE mode NORMAL functions 
-void return_N(void);
-void w_N(void);
-void insert_N(void);
-void s_N(void);
-void x_N(void);
-void r_N(void);
-void tilde_N(void);
-void a_N(void);
-void A_N(void);
-void b_N(void);
-void e_N(void);
-void zero_N(void);
-void dollar_N(void);
-void I_N(void);
-void G_N(void);
-void O_N(void);
-void colon_N(void);
-void v_N(void);
-void p_N(void);
-void asterisk_N(void);
-void m_N(void);
-void n_N(void);
-void u_N(void);
-void caret_N(void);
-void dd_N(void);
-void star_N(void);
-void completed_N(void);
-void daw_N(void);
-void caw_N(void);
-void dw_N(void);
-void cw_N(void);
-void de_N(void);
-void d$_N(void);
-void gg_N(void);
-void gt_N(void);
-void edit_N(void);
-
-void navigate_page_hx(int direction);
-void navigate_cmd_hx(int direction);
-
-//Outline Prototypes
-void outlineShowMessage(const char *fmt, ...);
-void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
-void outlineDrawStatusBar(void);
-void outlineDrawMessageBar(std::string&);
-void outlineDelWord();
-void outlineMoveCursor(int key);
-void outlineBackspace(void);
-void outlineDelChar(void);
-void outlineDeleteToEndOfLine(void);
-void outlineYankLine(int n);
-void outlinePasteString(void);
-void outlineYankString();
-void outlineMoveCursorEOL();
-void outlineMoveBeginningWord();
-void outlineMoveEndWord(); 
-void outlineMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
-//void outlineMoveNextWord();// now w_N
-void outlineGetWordUnderCursor();
-void outlineFindNextWord();
-void outlineChangeCase();
-void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
-void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawKeywords(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawSearchRows(std::string&); //ditto
-void outlineScroll(void);
-void outlineSave(const std::string &);
-void return_cursor(void);
-
-//Database-related Prototypes
-void db_open(void);
-void update_task_context(std::string &, int);
-void update_task_folder(std::string &, int);
-int get_id(void);
-void get_note(int);
-void update_row(void);
-void update_rows(void);
-void toggle_deleted(void);
-void toggle_star(void);
-void toggle_completed(void);
-void touch(void);
-int insert_row(orow&);
-int insert_container(orow&);
-int insert_keyword(orow &);
-void update_container(void);
-void update_keyword(void);
-void get_items(int); 
-void get_containers(void); //has an if that determines callback: context_callback or folder_callback
-std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
-std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
-void update_note(void); 
-//void solr_find(void);
-void search_db(std::string); //void fts5_sqlite(std::string);
-void search_db2(std::string); //just searches documentation - should be combined with above
-void get_items_by_id(std::stringstream &);
-int get_folder_tid(int); 
-void map_context_titles(void);
-void map_folder_titles(void);
-void add_task_keyword(std::string &, int);
-void add_task_keyword(int, int);
-//void delete_task_keywords(void); -> F_deletekeywords
-void display_item_info(int); 
-void display_item_info(void); //ctrl-i in NORMAL mode 0x9
-void display_item_info_pg(int);
-void display_container_info(int);
-int keyword_exists(std::string &);  
-int folder_exists(std::string &);
-int context_exists(std::string &);
-
-//sqlite callback functions
-typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
-
-int fts5_callback(void *, int, char **, char **);
-int data_callback(void *, int, char **, char **);
-int context_callback(void *, int, char **, char **);
-int folder_callback(void *, int, char **, char **);
-int keyword_callback(void *, int, char **, char **);
-int context_titles_callback(void *, int, char **, char **);
-int folder_titles_callback(void *, int, char **, char **);
-int by_id_data_callback(void *, int, char **, char **);
-int note_callback(void *, int, char **, char **);
-int display_item_info_callback(void *, int, char **, char **);
-int task_keywords_callback(void *, int, char **, char **);
-int keyword_id_callback(void *, int, char **, char **);//? not in use
-int container_id_callback(void *, int, char **, char **);
-int rowid_callback(void *, int, char **, char **);
-int offset_callback(void *, int, char **, char **);
-int folder_tid_callback(void *, int, char **, char **); 
-int context_info_callback(void *, int, char **, char **); 
-int folder_info_callback(void *, int, char **, char **); 
-int keyword_info_callback(void *, int, char **, char **);
-int count_callback(void *, int, char **, char **);
-int unique_data_callback(void *, int, char **, char **);
-
-void synchronize(int);
-
-//Editor Word Wrap
-int editorGetScreenXFromRowColWW(int, int);
-int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
-int editorGetLineInRowWW(int, int);
-int editorGetLinesInRowWW(int);
-int editorGetLineCharCountWW(int, int);
-std::string editorGenerateWWString(void); // only used by editorDrawCodeRows
-void editorDrawCodeRows(std::string &);
-int editorGetInitialRow(int &);
-int editorGetInitialRow(int &, int);
-
-//Editor Prototypes
-void editorDrawRows(std::string &); //erases lines to right as it goes
-void editorDrawMessageBar(std::string &);
-//void editorDrawStatusBar(std::string &); //only one status bar
-void editorSetMessage(const char *fmt, ...);
-bool editorScroll(void);
-void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
-void editorInsertReturn(void);
-void editorDecorateWord(int);
-void editorDecorateVisual(int);
-void editorDelWord(void);
-void editorDelRow(int);
-void editorIndentRow(void);
-void editorUnIndentRow(void);
-int editorIndentAmount(int);
-void editorMoveCursor(int);
-void editorBackspace(void);
-void editorDelChar(void);
-void editorDeleteToEndOfLine(void);
-void editorDeleteVisual(void);
-void editorYankLine(int);
-void editorPasteLine(void);
-void editorPasteLineVisual(void);
-void editorPasteString(void);
-void editorPasteStringVisual(void);
-void editorYankString(void); //only for VISUAL mode
-void editorMoveCursorEOL(void);
-void editorMoveCursorBOL(void);
-void editorMoveBeginningWord(void);
-void editorMoveEndWord(void); 
-void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
-void editorMoveNextWord(void);
-//void editorMarkupLink(void); //no longer doing links this way but preserving code
-std::string editorGetWordUnderCursor(void);
-void editorFindNextWord(void);
-void editorChangeCase(void);
-void editorRestoreSnapshot(void); 
-void editorCreateSnapshot(void); 
-void editorInsertRow(int, std::string);
-void editorInsertChar(int);
-void editorDisplayFile(void);
-void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
-void editorInsertNewline(int);
-void editorSpellingSuggestions(void);
-void editorDotRepeat(int);
-
-void editorHighlightWordsByPosition(void);
-void editorSpellCheck(void);
-void editorHighlightWord(int, int, int);
-
-
-std::string editorRowsToString(void);
-std::string generate_html(void);
-std::string generate_html2(void);
-void generate_persistent_html_file(int);
-void load_meta(void);
-void update_html_file(std::string &&);
-void update_html_code_file(std::string &&);
-void editorSaveNoteToFile(const std::string &);
-void editorReadFile(const std::string &);
-void editorReadFileIntoNote(const std::string &); 
-
-void update_solr(void); //works but not in use
-void open_in_vim(void);
-
-// EDITOR mode NORMAL functions 
-inline void f_i(int);
-inline void f_I(int);
-inline void f_a(int);
-inline void f_A(int);
-inline void f_O(int);
-inline void f_o(int);
-inline void f_dw(int);
-inline void f_daw(int);
-inline void f_dd(int);
-inline void f_de(int);
-inline void f_dG(int);
-inline void f_cw(int);
-inline void f_caw(int);
-inline void f_s(int);
-inline void f_x(int);
-inline void f_d$(int);
-inline void f_w(int);
-inline void f_b(int);
-inline void f_e(int);
-inline void f_0(int);
-inline void f_$(int);
-inline void f_replace(int);
-inline void f_J(int);
-inline void f_tilde(int);
-inline void f_indent(int);
-inline void f_unindent(int);
-inline void f_bold(int);
-inline void f_emphasis(int);
-inline void f_italic(int);
-inline void f_gg(int);
-inline void f_G(int);
-inline void f_toggle_smartindent(int);
-inline void f_save_note(int);
-
-void e_o(int);
-void e_O(int);
-void e_replace(int);
-void f_next_misspelling(int);
-void f_prev_misspelling(int);
-void f_suggestions(int);
-void f_change2command_line(int);
-void f_change2visual_line(int);
-void f_change2visual(int);
-void f_change2visual_block(int);
-void f_paste(int);
-void f_find(int);
-void f_find_next_word(int);
-void f_undo(int);
-
-static std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
-
-//these are not just move only but commands to don't require redrawing text
-//although the cursor and the message line will still be redrawn
-//more accurate would be something like no_redraw
-//will still redraw if page needs scrolling
-static std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"};
-
-static std::unordered_set<int> navigation = {
-         ARROW_UP,
-         ARROW_DOWN,
-         ARROW_LEFT,
-         ARROW_RIGHT,
-         'h',
-         'j',
-         'k',
-         'l'
-};
-
-//static const std::set<std::string> cmd_set1a = {"I", "i", "A", "a"};
-
-typedef void (*pfunc)(int);
-typedef void (*zfunc)(void);
-
-// note that if the key to the unordered_maps was an array
-// I'd have to implement the hash function whereas 
-// std::string has a hash function implemented
-
-static std::unordered_map<std::string, pfunc> cmd_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
-static std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
-static std::unordered_map<std::string, pfunc> cmd_map3 = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
-static std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
-
-// not in use right nowa - ? if has use
-//static std::unordered_map<std::string, pfunc> cmd_map5 = {{"w", f_w}, {"b", f_b}, {"e", f_e}, {"0", f_0}, {"$", f_$}};
-
-// OUTLINE COMMAND_LINE mode command lookup 
-static std::unordered_map<std::string, pfunc> cmd_lookup {
-  {"open", F_open}, //open_O
-  {"o", F_open},
-  {"openfolder", F_openfolder},
-  {"of", F_openfolder},
-  {"openkeyword", F_openkeyword},
-  {"ok", F_openkeyword},
-  {"deletekeywords", F_deletekeywords},
-  {"delkw", F_deletekeywords},
-  {"delk", F_deletekeywords},
-  {"addkeywords", F_addkeyword},
-  {"addkw", F_addkeyword},
-  {"addk", F_addkeyword},
-  {"k", F_keywords},
-  {"keyword", F_keywords},
-  {"keywords", F_keywords},
-  {"write", F_write},
-  {"w", F_write},
-  {"x", F_x},
-  {"refresh", F_refresh},
-  {"r", F_refresh},
-  {"n", F_new},
-  {"new", F_new},
-  {"e", F_edit},
-  {"edit", F_edit},
-  {"contexts", F_contexts},
-  {"context", F_contexts},
-  {"c", F_contexts},
-  {"folders", F_folders},
-  {"folder", F_folders},
-  {"f", F_folders},
-  {"recent", F_recent},
-  {"linked", F_linked},
-  {"l", F_linked},
-  {"related", F_linked},
-  {"find", F_find},
-  {"fin", F_find},
-  {"search", F_find},
-  {"sync", F_sync},
-  {"test", F_sync_test},
-  {"updatefolder", F_updatefolder},
-  {"uf", F_updatefolder},
-  {"updatecontext", F_updatecontext},
-  {"uc", F_updatecontext},
-  {"delmarks", F_delmarks},
-  {"delm", F_delmarks},
-  {"save", F_savefile},
-  {"sort", F_sort},
-  {"show", F_showall},
-  {"showall", F_showall},
-  {"set", F_set},
-  {"syntax", F_syntax},
-  {"vim", F_open_in_vim},
-  {"join", F_join},
-  {"saveoutline", F_saveoutline},
-  {"readfile", F_readfile},
-  {"read", F_readfile},
-  {"valgrind", F_valgrind},
-  {"quit", F_quit_app},
-  {"q", F_quit_app},
-  {"quit!", F_quit_app_ex},
-  {"q!", F_quit_app_ex},
-  {"merge", F_merge},
-  {"help", F_help},
-  {"h", F_help},
-  {"persist", F_persist},
-  {"clear", F_clear},
-
-};
-
-static std::unordered_map<std::string, zfunc> E_lookup_C {
-  {"write", E_write_C},
-  {"w", E_write_C},
-  {"x", E_write_close_C},
-  {"quit", E_quit_C},
-  {"q", E_quit_C},
-  {"quit!", E_quit0_C},
-  {"q!", E_quit0_C},
-  {"vim", E_open_in_vim_C},
-  {"spell", E_spellcheck_C},
-  {"spellcheck", E_spellcheck_C},
-  {"persist", E_persist_C},
-};
-
-// OUTLINE NORMAL mode command lookup
-static std::unordered_map<std::string, zfunc> n_lookup {
-  {"\r", return_N}, //return_O
-  {"i", insert_N},
-  {"s", s_N},
-  {"~", tilde_N},
-  {"r", r_N},
-  {"a", a_N},
-  {"A", A_N},
-  {"x", x_N},
-  {"w", w_N},
-
-  {"daw", daw_N},
-  {"dw", dw_N},
-  {"daw", caw_N},
-  {"dw", cw_N},
-  {"de", de_N},
-  {"d$", d$_N},
-
-  {"gg", gg_N},
-
-  {"gt", gt_N},
-
-  {{0x17,0x17}, edit_N},
-  {{0x9}, display_item_info},
-
-  {"b", b_N},
-  {"e", e_N},
-  {"0", zero_N},
-  {"$", dollar_N},
-  {"I", I_N},
-  {"G", G_N},
-  {"O", O_N},
-  {":", colon_N},
-  {"v", v_N},
-  {"p", p_N},
-  {"*", asterisk_N},
-  {"m", m_N},
-  {"n", n_N},
-  {"u", u_N},
-  {"dd", dd_N},
-  {{0x4}, dd_N}, //ctrl-d
-  {{0x2}, star_N}, //ctrl-b -probably want this go backwards (unimplemented) and use ctrl-e for this
-  {{0x18}, completed_N}, //ctrl-x
-  {"^", caret_N},
-
-};
-
-// EDITOR NORMAL mode command lookup
-static std::unordered_map<std::string, pfunc> e_lookup {
-
-  {"i", f_i}, //i_E
-  {"I", f_I},
-  {"a", f_a},
-  {"A", f_A},
-  {"o", e_o},
-  {"O", e_O},
-  {"x", f_x},
-  {"dw", f_dw},
-  {"de", f_de},
-  {"dG", f_dG},
-  {"d$", f_d$},
-  {"dd", f_dd},
-  {"cw", f_cw},
-  {"caw", f_caw},
-  {"s", f_s},
-  {"~", f_tilde},
-  {"J", f_J},
-  {"w", f_w},
-  {"e", f_e},
-  {"b", f_b},
-  {"0", f_0},
-  {"$", f_$},
-  {"r", e_replace},
-  {"[s", f_next_misspelling},
-  {"]s", f_prev_misspelling},
-  {"z=", f_suggestions},
-  {":", f_change2command_line},
-  {"V", f_change2visual_line},
-  {"v", f_change2visual},
-  {{0x16}, f_change2visual_block},
-  {"p", f_paste},
-  {"*", f_find},
-  {"n", f_find_next_word},
-  {"u", f_undo},
-  {".", editorDotRepeat},
-  {">>", f_indent},
-  {"<<", f_unindent},
-  {{0x2}, f_bold},
-  {{0x5}, f_emphasis},
-  {{0x9}, f_italic},
-  {"yy", editorYankLine},
-  {"gg", f_gg},
-  {"G", f_G},
-  {{0x1A}, f_toggle_smartindent},
-  {{0x13}, f_save_note},
-};
-
-// config struct for reading db.ini file
-struct config {
-  std::string user;
-  std::string password;
-  std::string dbname;
-  std::string hostaddr;
-  int port;
-};
-struct config c;
-
-zmq::context_t context (1);
-zmq::socket_t publisher (context, ZMQ_PUB);
-
-PGconn *conn = nullptr;
-*/
-
 #include "listmanager.h"
 #include "listmanager_vars.h"
 #include "Editor.h"
 
-Editor E; //this instantiates it
+Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
-
-/* Following were used when I was using extern
-bool editor_mode = false; ////////////////////EXTERNS//////////////////////////////////////////
-bool lm_browser = true; //////////////////////////////////////////////////////////////
-struct outlineConfig O; /////////////////////////////////////////////////////////////
-std::map<int, std::string> html_files; //////////////////////////////////////////
-*/
 
 typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
@@ -956,13 +129,30 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["port"], c.port);
 }
 
+//pg ini stuff
+void get_conn(void) {
+  char conninfo[250];
+  parse_ini_file(DB_INI);
+  
+  sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
+          c.user.c_str(), c.password.c_str(), c.dbname.c_str(), c.hostaddr.c_str(), c.port);
+
+  conn = PQconnectdb(conninfo);
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+        
+        fprintf(stderr, "Connection to database failed: %s\n",
+            PQerrorMessage(conn));
+        do_exit(conn);
+    }
+  } 
+}
+
 void load_meta(void) {
   std::ifstream f(META_FILE);
   std::string line;
   static std::stringstream text;
-
-  //text.str(std::string());
-  //text.clear();
 
   while (getline(f, line)) {
     text << line << '\n';
@@ -978,41 +168,6 @@ char * (url_callback)(const char *x, const int y, void *z) {
   sprintf(link_text,"id=\"%d\"", link_id);
   return link_text;
 }  
-
-/* this works but used mkd_generalhtml
- * and I thought it might be better to 
- * us mkd_document since then you can
- * write to the file once
- */
-void update_html_file_works(std::string &&fn) {
-  std::string note = editorRowsToString();
-  std::stringstream text;
-  std::string title = O.rows.at(O.fr).title;
-  text << "# " << title << "\n\n" << note;
-
-  // inserting title to tell if note displayed by ultralight 
-  // has changed to know whether to preserve scroll
-  std::string meta_(meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  //
-  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
-  mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, 0); //did something
-
-  FILE *fptr;
-  fptr = fopen(fn.c_str(), "w");
-  fprintf(fptr, meta_.c_str());
-  mkd_generatehtml(blob, fptr);
-  fprintf(fptr, "</article></body><html>");
-  fclose(fptr);
-  /* don't know if below is correct or necessary - I don't think so*/
-  //mkd_free_t x; 
-  //mkd_e_free(blob, x); 
-  mkd_cleanup(blob);
-  link_id = 0;
-}
 
 /* this version of update_html_file uses mkd_document
  * and only writes to the file once
@@ -1152,6 +307,7 @@ void generate_persistent_html_file(int id) {
   outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
 }
 
+/* moved earlier
 //pg ini stuff
 void get_conn(void) {
   char conninfo[250];
@@ -1171,7 +327,39 @@ void get_conn(void) {
     }
   } 
 }
+*/
 
+// postgresql functions - they come before sqlite but could move them after
+std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
+
+  std::stringstream query;
+  query << "SELECT keyword.name "
+           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
+           "WHERE " << tid << " =  task_keyword.task_id;";
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineShowMessage("Problem in get_task_keywords_pg!");
+    PQclear(res);
+    return std::make_pair(std::string(), std::vector<std::string>());
+  }
+
+  int rows = PQntuples(res);
+  std::vector<std::string> task_keywords = {};
+  for(int i=0; i<rows; i++) {
+    task_keywords.push_back(PQgetvalue(res, i, 0));
+  }
+   std::string delim = "";
+   std::string s = "";
+   for (const auto &kw : task_keywords) {
+     s += delim += kw;
+     delim = ",";
+   }
+  PQclear(res);
+  return std::make_pair(s, task_keywords);
+  // PQfinish(conn);
+}
 /* Begin sqlite database functions */
 
 void db_open(void) {
@@ -1187,6 +375,86 @@ void db_open(void) {
     exit(1);
   }
 }
+
+void display_item_info_pg(int id) {
+
+  if (id ==-1) return;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    outlineShowMessage("Postgres Error: %s", PQerrorMessage(conn)); 
+    PQclear(res);
+    return;
+  }    
+
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+
+  std::string s;
+
+  //set background color to blue
+  s.append("\n\n");
+  s.append("\x1b[44m", 5);
+  char str[300];
+
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
+  s.append(str);
+  s.append(lf_ret);
+
+  int context_tid = atoi(PQgetvalue(res, 0, 6));
+  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  int folder_tid = atoi(PQgetvalue(res, 0, 5));
+  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
+  s.append(str);
+  s.append(lf_ret);
+
+  std::string ss = get_task_keywords_pg(id).first;
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", ss.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  //sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  //s.append(str);
+  //s.append(lf_ret);
+
+  s.append("\x1b[0m");
+
+  write(STDOUT_FILENO, s.c_str(), s.size());
+
+  PQclear(res);
+}
+// end of pg functions
 
 bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
@@ -1416,6 +684,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
    return std::make_pair(s, task_keywords);
 }
 
+/* moved earlier
 // need this pg db function
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
 
@@ -1447,6 +716,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
   return std::make_pair(s, task_keywords);
   // PQfinish(conn);
 }
+*/
 
 int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 
@@ -1807,6 +1077,7 @@ void get_items_by_id(std::stringstream &query) {
     editorEraseScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
+    p->mode = SEARCH; ///////////////////////////////////////////////////////////////
     get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -1884,7 +1155,10 @@ void get_note(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
   word_positions.clear();
-  E.rows.clear();
+  
+  p->rows.clear();
+  //E.rows.clear();
+
   E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; 
 
   std::stringstream query;
@@ -1934,27 +1208,6 @@ void get_note(int id) {
   }   
 }
 
-int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  int *rwid = static_cast<int*>(rowid);
-  *rwid = atoi(argv[0]);
-  return 0;
-}
-
-int offset_callback (void *n, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-  int *nn= static_cast<int*>(n);
-
-  word_positions.at(*nn).push_back(atoi(argv[0]));
-
-  return 0;
-}
-
 // doesn't appear to be called if row is NULL
 int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
@@ -1976,6 +1229,28 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   E.dirty = 0;
   return 0;
 }
+
+int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *rwid = static_cast<int*>(rowid);
+  *rwid = atoi(argv[0]);
+  return 0;
+}
+
+int offset_callback (void *n, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  int *nn= static_cast<int*>(n);
+
+  word_positions.at(*nn).push_back(atoi(argv[0]));
+
+  return 0;
+}
+
 //void fts5_sqlite(std::string search_terms) {
 void search_db(std::string search_terms) {
 
@@ -2255,6 +1530,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   return 0;
 }
 
+/* moved earlier
 void display_item_info_pg(int id) {
 
   if (id ==-1) return;
@@ -2333,6 +1609,7 @@ void display_item_info_pg(int id) {
 
   PQclear(res);
 }
+*/
 
 void display_container_info(int id) {
   if (id ==-1) return;
@@ -5427,8 +4704,10 @@ void editorInsertReturn(void) { // right now only used for editor->INSERT mode->
 
 // now 'o' and 'O' separated from '\r' (in INSERT mode)
 //'o' -> direction == 1 and 'O' direction == 0
+/* also now in Editor class */
+/* been eliminated from listmanager...improved.cpp
 void editorInsertNewline(int direction) {
-  /* note this func does position E.fc and E.fr*/
+  // note this func does position E.fc and E.fr
   if (E.rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
     return;
@@ -5451,6 +4730,7 @@ void editorInsertNewline(int direction) {
   E.fr += direction;
   editorInsertRow(E.fr, spaces);
 }
+*/
 
 void editorDelChar(void) {
   if (E.rows.empty()) return; // creation of NO_ROWS may make this unnecessary
@@ -7671,32 +6951,32 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          editorInsertReturn();
-          E.last_typed += c;
+          (p->editorInsertReturn)();
+          p->last_typed += c;
           return true;
 
         // not sure this is in use
         case CTRL_KEY('s'):
-          editorSaveNoteToFile("lm_temp");
+          p->editorSaveNoteToFile("lm_temp");
           return false;
 
         case HOME_KEY:
-          editorMoveCursorBOL();
+          p->editorMoveCursorBOL();
           return false;
 
         case END_KEY:
-          editorMoveCursorEOL();
-          editorMoveCursor(ARROW_RIGHT);
+          p->editorMoveCursorEOL();
+          p->editorMoveCursor(ARROW_RIGHT);
           return false;
 
         case BACKSPACE:
-          editorCreateSnapshot();
-          editorBackspace();
+          p->editorCreateSnapshot();
+          p->editorBackspace();
           return true;
     
         case DEL_KEY:
-          editorCreateSnapshot();
-          editorDelChar();
+          p->editorCreateSnapshot();
+          p->editorDelChar();
           return true;
     
         case ARROW_UP:
@@ -7710,7 +6990,7 @@ bool editorProcessKeypress(void) {
         //case CTRL_KEY('i'): CTRL_KEY('i') -> 9 same as tab
         case CTRL_KEY('e'):
           editorCreateSnapshot();
-          editorDecorateWord(c);
+          p->editorDecorateWord(c);
           return true;
     
         // this should be a command line command
@@ -8019,7 +7299,7 @@ bool editorProcessKeypress(void) {
           return true;
     
         case '$':
-          editorMoveCursorEOL();
+          p->editorMoveCursorEOL();
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           editorSetMessage("");
@@ -8166,11 +7446,11 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
           editorCreateSnapshot();
-          editorDecorateVisual(c);
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
-          editorSetMessage("");
+          p->editorDecorateVisual(c);
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
+          p->editorSetMessage("");
           return true;
     
         case '\x1b':
@@ -8640,7 +7920,6 @@ void editorDelWord(void) {
   editorSetMessage("beg = %d, end = %d", beg, end);
 }
 
-
 void editorDeleteToEndOfLine(void) {
   std::string& row = E.rows.at(E.fr);
   row.resize(E.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
@@ -8702,23 +7981,6 @@ if (E.rows.at(E.fr).empty() || E.fc == E.rows.at(E.fr).size() - 1) {
       }
     }
   }
-}
-
-// not same as 'e' but moves to end of word or stays put if already
-//on end of word - used by dw
-//took out of use
-void editorMoveEndWord2() {
-  int j;
-
-  if (E.rows.empty()) return;
-  std::string &row = E.rows.at(E.fr);
-
-  for (j = E.fc + 1; j < row.size() ; j++) {
-    if (row[j] < 48) break;
-  }
-
-  E.fc = j - 1;
-
 }
 
 // used by 'w' -> goes to beginning of work left to right
@@ -9154,7 +8416,7 @@ int main(int argc, char** argv) {
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
   db_open();
-  get_conn(); //pg
+  get_conn(); //for pg
   load_meta(); 
 
   which_db = SQLITE;
@@ -9167,9 +8429,7 @@ int main(int argc, char** argv) {
   enableRawMode();
   EraseScreenRedrawLines();
   initOutline();
-  //Editor E(); ///////////////////////////////////////////////
-  //Editor *p;
-  p = &E;
+  p = &E; //very important - will need an array of pointers when there can be more than one editor
   initEditor();
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized

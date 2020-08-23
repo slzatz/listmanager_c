@@ -2,18 +2,18 @@
 std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
 std::string meta;
 int which_db;
-int EDITOR_LEFT_MARGIN;
+//int EDITOR_LEFT_MARGIN; //in listmanager.h - needed by Editor.cpp
 struct termios orig_termios;
 int screenlines, screencols, new_screenlines, new_screencols;
 std::stringstream display_text;
 int initial_file_row = 0; //for arrowing or displaying files
 //bool editor_mode;
 std::string search_terms;
-std::vector<std::vector<int>> word_positions;
+//std::vector<std::vector<int>> word_positions; //inline
 std::vector<int> fts_ids;
 int fts_counter;
 std::string search_string; //word under cursor works with *, n, N etc.
-std::vector<std::string> line_buffer; //yanking lines
+//std::vector<std::string> line_buffer; //yanking lines //inline
 std::string string_buffer; //yanking chars
 std::map<int, std::string> fts_titles;
 std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
@@ -319,6 +319,23 @@ int unique_data_callback(void *, int, char **, char **);
 
 void synchronize(int);
 
+// Not used by Editor class
+void editorDecorateWord(int);
+void editorDecorateVisual(int);
+void editorDrawMessageBar(std::string &); //not used by Editor class
+void editorDrawRows(std::string &); //erases lines to right as it goes
+bool editorScroll(void);
+void editorBackspace(void);
+void editorPasteStringVisual(void);
+void editorDisplayFile(void);
+void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+void editorHighlightWordsByPosition(void);
+void editorHighlightWord(int, int, int);
+void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
+void editorDeleteVisual(void);
+void editorYankString(void); //only for VISUAL mode
+void editorInsertRow(int, std::string);
+
 //Editor Word Wrap
 int editorGetScreenXFromRowColWW(int, int);
 int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
@@ -329,56 +346,40 @@ std::string editorGenerateWWString(void); // only used by editorDrawCodeRows
 void editorDrawCodeRows(std::string &);
 int editorGetInitialRow(int &);
 int editorGetInitialRow(int &, int);
+void editorDotRepeat(int);
 
-//Editor Prototypes
-void editorDrawRows(std::string &); //erases lines to right as it goes
-void editorDrawMessageBar(std::string &);
 //void editorDrawStatusBar(std::string &); //only one status bar
-void editorSetMessage(const char *fmt, ...); //used by Editor Class
-bool editorScroll(void);
-void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line - used by Editor class
-void editorInsertReturn(void);
-void editorDecorateWord(int);
-void editorDecorateVisual(int);
+
+// Used by Editor class
+void editorSetMessage(const char *fmt, ...); //used by Editor class
+void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
+void editorInsertReturn(void); //used by Editor class
 void editorDelWord(void);
 void editorDelRow(int);
 void editorIndentRow(void);
 void editorUnIndentRow(void);
 int editorIndentAmount(int);
 void editorMoveCursor(int);
-void editorBackspace(void);
 void editorDelChar(void);
 void editorDeleteToEndOfLine(void);
-void editorDeleteVisual(void);
 void editorYankLine(int);
 void editorPasteLine(void);
 void editorPasteLineVisual(void);
 void editorPasteString(void);
-void editorPasteStringVisual(void);
-void editorYankString(void); //only for VISUAL mode
 void editorMoveCursorEOL(void);
 void editorMoveCursorBOL(void);
 void editorMoveBeginningWord(void);
 void editorMoveEndWord(void); 
-void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
 void editorMoveNextWord(void);
-//void editorMarkupLink(void); //no longer doing links this way but preserving code
 std::string editorGetWordUnderCursor(void);
 void editorFindNextWord(void);
 void editorChangeCase(void);
 void editorRestoreSnapshot(void); 
 void editorCreateSnapshot(void); 
-void editorInsertRow(int, std::string);
 void editorInsertChar(int);
-void editorDisplayFile(void);
-void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 void editorInsertNewline(int);
 void editorSpellingSuggestions(void);
-void editorDotRepeat(int);
-
-void editorHighlightWordsByPosition(void);
 void editorSpellCheck(void);
-void editorHighlightWord(int, int, int);
 
 
 std::string editorRowsToString(void);
