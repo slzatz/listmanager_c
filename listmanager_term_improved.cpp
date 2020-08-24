@@ -5259,9 +5259,9 @@ void outlineDrawStatusBar(void) {
 
   if (DEBUG) {
     if (!E.rows.empty()){
-      int line = editorGetLineInRowWW(E.fr, E.fc);
-      int line_char_count = editorGetLineCharCountWW(E.fr, line);
-      int lines = editorGetLinesInRowWW(E.fr);
+      int line = p->editorGetLineInRowWW(E.fr, E.fc);
+      int line_char_count = p->editorGetLineCharCountWW(E.fr, line);
+      int lines = p->editorGetLinesInRowWW(E.fr);
 
       editor_len = snprintf(editor_status,
                      sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
@@ -6983,20 +6983,20 @@ bool editorProcessKeypress(void) {
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
-          editorMoveCursor(c);
+          p->editorMoveCursor(c);
           return false;
     
         case CTRL_KEY('b'):
         //case CTRL_KEY('i'): CTRL_KEY('i') -> 9 same as tab
         case CTRL_KEY('e'):
-          editorCreateSnapshot();
+          p->editorCreateSnapshot();
           p->editorDecorateWord(c);
           return true;
     
         // this should be a command line command
         case CTRL_KEY('z'):
           E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
-          editorSetMessage("E.smartindent = %d", E.smartindent); 
+          p->editorSetMessage("E.smartindent = %d", E.smartindent); 
           return false;
     
         case '\x1b':
@@ -7010,7 +7010,7 @@ bool editorProcessKeypress(void) {
           //if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
           if(cmd_map1.count(E.last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {editorInsertChar(c);}
+              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
             }
           }
 
@@ -7021,7 +7021,7 @@ bool editorProcessKeypress(void) {
           //if (E.last_command == -1) {
           if (E.last_command == "VBI") {
             for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {editorInsertChar(c);}
+              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
             }
             //{
             int temp = E.fr;
@@ -7029,7 +7029,7 @@ bool editorProcessKeypress(void) {
             for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
               for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
                 E.fc = E.vb0[0]; 
-                for (char const &c : E.last_typed) {editorInsertChar(c);}
+                for (char const &c : E.last_typed) {p->editorInsertChar(c);}
               }
             }
             E.fr = temp;
@@ -7042,7 +7042,7 @@ bool editorProcessKeypress(void) {
           if (E.last_command == "VBA") {
             //E.fc++;a doesn't go here
             for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {editorInsertChar(c);}
+              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
             }
             {
             int temp = E.fr;
@@ -7052,7 +7052,7 @@ bool editorProcessKeypress(void) {
                 int size = E.rows.at(E.fr).size();
                 if (E.vb0[2] > size) E.rows.at(E.fr).insert(size, E.vb0[2]-size, ' ');
                 E.fc = E.vb0[2];
-                for (char const &c : E.last_typed) {editorInsertChar(c);}
+                for (char const &c : E.last_typed) {p->editorInsertChar(c);}
               }
             }
             E.fr = temp;
@@ -7067,25 +7067,25 @@ bool editorProcessKeypress(void) {
           // below - if the indent amount == size of line then it's all blanks
           // can hit escape with E.row == NULL or E.row[E.fr].size == 0
           if (!E.rows.empty() && E.rows[E.fr].size()) {
-            int n = editorIndentAmount(E.fr);
+            int n = p->editorIndentAmount(E.fr);
             if (n == E.rows[E.fr].size()) {
               E.fc = 0;
               for (int i = 0; i < n; i++) {
-                editorDelChar();
+                p->editorDelChar();
               }
             }
           }
-          editorSetMessage(""); 
+          p->editorSetMessage(""); 
           //editorSetMessage(E.last_typed.c_str());
           return true;
     
         // deal with tab in insert mode - was causing segfault  
         case '\t':
-          for (int i=0; i<4; i++) editorInsertChar(' ');
+          for (int i=0; i<4; i++) p->editorInsertChar(' ');
           return true;  
 
         default:
-          editorInsertChar(c);
+          p->editorInsertChar(c);
           E.last_typed += c;
           //editorSetMessage(E.last_typed.c_str());
           return true;
@@ -7126,13 +7126,13 @@ bool editorProcessKeypress(void) {
       }
 
       if (e_lookup.count(E.command)) {
-        if (!move_only.count(E.command)) editorCreateSnapshot(); 
+        if (!move_only.count(E.command)) p->editorCreateSnapshot(); 
 
         (p->*e_lookup.at(E.command))(E.repeat); //money shot
 
         if (insert_cmds.count(E.command)) {
           E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
         }
 
         if (move_only.count(E.command)) {
@@ -7151,14 +7151,14 @@ bool editorProcessKeypress(void) {
       }
 
       if (navigation.count(c)) {
-          for (int j=0; j<E.repeat; j++) editorMoveCursor(c);
+          for (int j=0; j<E.repeat; j++) p->editorMoveCursor(c);
           E.command[0] = '\0';
           E.repeat = 0;
           return false;
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
-          editorPageUpDown(c);
+          p->editorPageUpDown(c);
           E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
           E.repeat = 0;
           return false;
@@ -7172,7 +7172,7 @@ bool editorProcessKeypress(void) {
         E.mode = NORMAL;
         E.command[0] = '\0';
         E.repeat = E.last_repeat = 0;
-        editorSetMessage(""); 
+        p->editorSetMessage(""); 
         return false;
       }
 
@@ -7183,7 +7183,7 @@ bool editorProcessKeypress(void) {
           return false;
         }
 
-        editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
+        p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
         E.mode = NORMAL;
         return false;
       }
@@ -7194,7 +7194,7 @@ bool editorProcessKeypress(void) {
         E.command_line.push_back(c);
       }
 
-      editorSetMessage(":%s", E.command_line.c_str());
+      p->editorSetMessage(":%s", E.command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
@@ -7209,71 +7209,71 @@ bool editorProcessKeypress(void) {
         case 'j':
         case 'k':
         case 'l':
-          editorMoveCursor(c);
+          p->editorMoveCursor(c);
           E.highlight[1] = E.fr;
           return true;
     
         case 'x':
           if (!E.rows.empty()) {
-            editorCreateSnapshot();
+            p->editorCreateSnapshot();
             E.repeat = E.highlight[1] - E.highlight[0] + 1;
             E.fr = E.highlight[0]; 
-            editorYankLine(E.repeat);
+            p->editorYankLine(E.repeat);
     
-            for (int i = 0; i < E.repeat; i++) editorDelRow(E.highlight[0]);
+            for (int i = 0; i < E.repeat; i++) p->editorDelRow(E.highlight[0]);
           }
 
           E.fc = 0;
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           E.mode = NORMAL;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case 'y':  
           E.repeat = E.highlight[1] - E.highlight[0] + 1;
           E.fr = E.highlight[0];
-          editorYankLine(E.repeat);
+          p->editorYankLine(E.repeat);
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case '>':
-          editorCreateSnapshot();
+          p->editorCreateSnapshot();
           E.repeat = E.highlight[1] - E.highlight[0] + 1;
           E.fr = E.highlight[0];
           for ( i = 0; i < E.repeat; i++ ) {
-            editorIndentRow();
+            p->editorIndentRow();
             E.fr++;}
           E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         // changed to E.fr on 11-26-2019
         case '<':
-          editorCreateSnapshot();
+          p->editorCreateSnapshot();
           E.repeat = E.highlight[1] - E.highlight[0] + 1;
           E.fr = E.highlight[0];
           for ( i = 0; i < E.repeat; i++ ) {
-            editorUnIndentRow();
+            p->editorUnIndentRow();
             E.fr++;}
           E.fr-=i;
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case '\x1b':
           E.mode = 0;
           E.command[0] = '\0';
           E.repeat = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         default:
@@ -7294,7 +7294,7 @@ bool editorProcessKeypress(void) {
         case 'j':
         case 'k':
         case 'l':
-          editorMoveCursor(c);
+          p->editorMoveCursor(c);
           //E.highlight[1] = E.fr;
           return true;
     
@@ -7302,12 +7302,12 @@ bool editorProcessKeypress(void) {
           p->editorMoveCursorEOL();
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
 
         case 'x':
           if (!E.rows.empty()) {
-            editorCreateSnapshot();
+            p->editorCreateSnapshot();
     
           for (int i = E.vb0[1]; i < E.fr + 1; i++) {
             E.rows.at(i).erase(E.vb0[0], E.fc - E.vb0[0] + 1); //needs to be cleaned up for E.fc < E.vb0[0] ? abs
@@ -7319,12 +7319,12 @@ bool editorProcessKeypress(void) {
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
           E.mode = NORMAL;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case 'I':
           if (!E.rows.empty()) {
-            editorCreateSnapshot();
+            p->editorCreateSnapshot();
       
           //E.repeat = E.fr - E.vb0[1];  
             {
@@ -7337,7 +7337,7 @@ bool editorProcessKeypress(void) {
           //command = -1;
           E.repeat = 1;
           E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
@@ -7353,7 +7353,7 @@ bool editorProcessKeypress(void) {
 
         case 'A':
           if (!E.rows.empty()) {
-            editorCreateSnapshot();
+            p->editorCreateSnapshot();
       
           //E.repeat = E.fr - E.vb0[1];  
             {
@@ -7369,7 +7369,7 @@ bool editorProcessKeypress(void) {
           //command = -2;
           E.repeat = 1;
           E.mode = INSERT;
-          editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
@@ -7387,7 +7387,7 @@ bool editorProcessKeypress(void) {
           E.mode = 0;
           E.command[0] = '\0';
           E.repeat = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         default:
@@ -7408,35 +7408,35 @@ bool editorProcessKeypress(void) {
         case 'j':
         case 'k':
         case 'l':
-          editorMoveCursor(c);
+          p->editorMoveCursor(c);
           E.highlight[1] = E.fc;
           return true;
     
         case 'x':
           if (!E.rows.empty()) {
-            editorCreateSnapshot();
-            editorYankString(); 
-            editorDeleteVisual();
+            p->editorCreateSnapshot();
+            p->editorYankString(); 
+            p->editorDeleteVisual();
           }
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case 'y':
           E.fc = E.highlight[0];
-          editorYankString();
+          p->editorYankString();
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         case 'p':
-          editorCreateSnapshot();
-          if (!string_buffer.empty()) editorPasteStringVisual();
-          else editorPasteLineVisual();
+          p->editorCreateSnapshot();
+          if (!string_buffer.empty()) p->editorPasteStringVisual();
+          else p->editorPasteLineVisual();
           E.command[0] = '\0';
           E.repeat = 0;
           E.mode = NORMAL;
@@ -7445,7 +7445,7 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
-          editorCreateSnapshot();
+          p->editorCreateSnapshot();
           p->editorDecorateVisual(c);
           p->command[0] = '\0';
           p->repeat = 0;
@@ -7457,7 +7457,7 @@ bool editorProcessKeypress(void) {
           E.mode = NORMAL;
           E.command[0] = '\0';
           E.repeat = E.last_repeat = 0;
-          editorSetMessage("");
+          p->editorSetMessage("");
           return true;
     
         default:
@@ -7479,8 +7479,8 @@ bool editorProcessKeypress(void) {
 
       //editorCreateSnapshot();
       for (int i = 0; i < E.last_repeat; i++) {
-        editorDelChar();
-        editorInsertChar(c);
+        p->editorDelChar();
+        p->editorInsertChar(c);
         E.last_typed.clear();
         E.last_typed += c;
       }

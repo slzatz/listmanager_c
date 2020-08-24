@@ -138,10 +138,12 @@ class Editor {
     void editorDrawCodeRows(std::string &);
     void editorHighlightWordsByPosition(void);
     void editorYankLine(int);
+    void editorYankString(void);
     void editorPasteLine(void);
     void editorIndentRow(void);
     void editorUnIndentRow(void);
     void editorPasteString(void);
+    void editorPasteStringVisual(void);
     std::string editorGetWordUnderCursor(void);
     void editorSpellingSuggestions(void);
     void editorChangeCase(void);
@@ -150,12 +152,16 @@ class Editor {
     int editorGetInitialRow(int &); // there should be just one of these
     int editorGetInitialRow(int &, int);  // there should be just one of these
     void editorDotRepeat(int repeat);
+    void editorPageUpDown(int);
+    void editorDeleteVisual(void);
+    void editorPasteLineVisual(void);
 
     int editorGetScreenXFromRowColWW(int, int);
     int editorGetScreenYFromRowColWW(int, int);
     std::string editorGenerateWWString(void);
     int editorGetLineInRowWW(int, int);
     int editorGetLinesInRowWW(int);
+    int editorGetLineCharCountWW(int, int);
 
     typedef void (Editor::*eefunc)(int);
     std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
