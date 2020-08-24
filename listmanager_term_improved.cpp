@@ -90,8 +90,8 @@ void signalHandler(int signum) {
     EraseScreenRedrawLines();
     O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
     O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
-    E.screenlines = screenlines - 2 - TOP_MARGIN;
-    E.screencols = -2 + screencols/2;
+    p->screenlines = screenlines - 2 - TOP_MARGIN;
+    p->screencols = -2 + screencols/2;
     EDITOR_LEFT_MARGIN = screencols/2 + 1;
 
     /*
@@ -1101,9 +1101,8 @@ void get_note(int id) {
   word_positions.clear();
   
   p->rows.clear();
-  //E.rows.clear();
 
-  E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0; 
+  p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0; 
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -1167,10 +1166,10 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   std::string s;
   while (getline(snote, s, '\n')) {
     //snote will not contain the '\n'
-    p->editorInsertRow(E.rows.size(), s);
+    p->editorInsertRow(p->rows.size(), s);
   }
 
-  E.dirty = 0;
+  p->dirty = 0;
   return 0;
 }
 
@@ -1401,7 +1400,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < p->screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1563,7 +1562,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < p->screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1649,7 +1648,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < p->screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1730,7 +1729,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < p->screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1841,7 +1840,7 @@ void update_note(void) {
    
   sqlite3_close(db);
 
-  E.dirty = 0;
+  p->dirty = 0;
 }
 
 void update_task_context(std::string &new_context, int id) {
@@ -2984,15 +2983,15 @@ void F_edit(int) {
     //editor_mode needs go before get_note in case we retrieved item via a search
     editor_mode = true;
     get_note(id); //if id == -1 does not try to retrieve note
-    //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
-    if (E.rows.empty()) {
-      E.mode = INSERT;
+    //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0;
+    if (p->rows.empty()) {
+      p->mode = INSERT;
       p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       p->editorRefreshScreen(false);
-    } else E.mode = NORMAL;
-    //E.mode = (E.rows.empty()) ? INSERT : NORMAL;
-    //E.mode = NORMAL;
-    E.command[0] = '\0';
+    } else p->mode = NORMAL;
+    //p->mode = (p->rows.empty()) ? INSERT : NORMAL;
+    //p->mode = NORMAL;
+    p->command[0] = '\0';
   } else {
     outlineShowMessage("You need to save item before you can "
                       "create a note");
@@ -3243,10 +3242,10 @@ void F_syntax(int pos) {
   if (pos) {
     std::string action = O.command_line.substr(pos + 1);
     if (action == "on") {
-      E.highlight_syntax = true;
+      p->highlight_syntax = true;
       outlineShowMessage("Syntax highlighting will be turned on");
     } else if (action == "off") {
-      E.highlight_syntax = false;
+      p->highlight_syntax = false;
       outlineShowMessage("Syntax highlighting will be turned off");
     } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
   } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
@@ -3259,10 +3258,10 @@ void F_set(int pos) {
   std::string action = O.command_line.substr(pos + 1);
   if (pos) {
     if (action == "spell") {
-      E.spellcheck = true;
+      p->spellcheck = true;
       outlineShowMessage("Spellcheck active");
     } else if (action == "nospell") {
-      E.spellcheck = false;
+      p->spellcheck = false;
       outlineShowMessage("Spellcheck off");
     } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
   } else {outlineShowMessage("Unknown option: %s", action.c_str());}
@@ -3272,7 +3271,7 @@ void F_set(int pos) {
 
 void F_open_in_vim(int) {
   open_in_vim(); //send you into editor mode
-  E.mode = NORMAL;
+  p->mode = NORMAL;
   //O.command[0] = '\0';
   //O.repeat = 0;
   //O.mode = NORMAL;
@@ -3358,7 +3357,7 @@ void F_merge(int) {
   }
   outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
   insert_row(O.rows.at(0)); 
-  E.rows.clear();
+  p->rows.clear();
   
   int n = 0;
   auto it = O.rows.begin();
@@ -3432,92 +3431,10 @@ void F_quit_app_ex(int) {
 /* need to look at this */
 void F_clear(int) {
   html_files.clear();
-  E.mode = NORMAL;
-  E.command[0] = '\0';
-  E.command_line.clear();
+  p->mode = NORMAL;
+  p->command[0] = '\0';
+  p->command_line.clear();
   p->editorSetMessage("");
-}
-
-/* EDITOR COMMAND_LINE mode functions */
-void E_write_C(void) {
-  update_note();
-  E.mode = NORMAL;
-  E.command[0] = '\0';
-  E.command_line.clear();
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-  }   
-  auto it = html_files.find(O.rows.at(O.fr).id);
-  if (it != html_files.end()) update_html_file("assets/" + it->second);
-  p->editorSetMessage("");
-}
-
-void E_write_close_C(void) {
-  update_note();
-  E.mode = NORMAL;
-  E.command[0] = '\0';
-  E.command_line.clear();
-  editor_mode = false;
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-  }   
-  auto it = html_files.find(O.rows.at(O.fr).id);
-  if (it != html_files.end()) update_html_file("assets/" + it->second);
-  p->editorSetMessage("");
-}
-
-//case 'q':
-void E_quit_C(void) {
-  if (E.dirty) {
-      E.mode = NORMAL;
-      E.command[0] = '\0';
-      E.command_line.clear();
-      p->editorSetMessage("No write since last change");
-  } else {
-    p->editorSetMessage("");
-    E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
-    editor_mode = false;
-  }
-  p->editorRefreshScreen(false); // don't need to redraw rows
-}
-
-void E_quit0_C(void) {
-  E.mode = NORMAL;
-  E.command[0] = '\0';
-  E.command_line.clear();
-  editor_mode = false;
-}
-
-void E_open_in_vim_C(void) {
-  open_in_vim(); //send you into editor mode
-  E.mode = NORMAL;
-}
-
-#ifdef NUSPELL
-void E_spellcheck_C(void) {
-  E.spellcheck = !E.spellcheck;
-  if (E.spellcheck) p->editorSpellCheck();
-  else p->editorRefreshScreen(true);
-  E.mode = NORMAL;
-  E.command[0] = '\0';
-  E.command_line.clear();
-  p->editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
-}
-#else
-void E_spellcheck_C(void) {
-  p->editorSetMessage("Nuspell is not available in this build");
-}
-#endif
-
-void E_persist_C(void) {
-  generate_persistent_html_file(O.rows.at(O.fr).id);
-  //E.command[0] = '\0';
-  //E.command_line.clear();
-  E.mode = NORMAL;
 }
 
 /* OUTLINE NORMAL mode functions */
@@ -3747,9 +3664,9 @@ void edit_N(void) {
     //editor_mode needs go before get_note in case we retrieved item via a search
     editor_mode = true;
     get_note(id); //if id == -1 does not try to retrieve note ? needs to be rewritten as Editor class member function
-    E.id = id;
-    E.mode = NORMAL;
-    E.command[0] = '\0';
+    p->id = id;
+    p->mode = NORMAL;
+    p->command[0] = '\0';
   } else {
     outlineShowMessage("You need to save item before you can "
                            "create a note");
@@ -3954,7 +3871,7 @@ void outlineSave(const std::string& fname) {
 // erases note
 void eraseRightScreen(void) {
 
-  E.rows.clear();
+  p->rows.clear(); /***** long term this can't be right *******/
 
   char lf_ret[10];
   //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
@@ -3972,7 +3889,7 @@ void eraseRightScreen(void) {
   ab.append(buf);
 
   //erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < p->screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret);
   }
@@ -4011,7 +3928,7 @@ void displayFile(void) {
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < E.screenlines; i++) {
+  for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -4028,22 +3945,22 @@ void displayFile(void) {
   display_text.clear();
   display_text.seekg(0, std::ios::beg);
   while(std::getline(display_text, row, '\n')) {
-    if (line_num > E.screenlines - 2) break;
+    if (line_num > O.screenlines - 2) break;
     row_num++;
     if (row_num < initial_file_row) continue;
-    if (static_cast<int>(row.size()) < E.screencols) {
+    if (static_cast<int>(row.size()) < O.right_screencols) {
       ab.append(row);
       ab.append(lf_ret);
       line_num++;
       continue;
     }
     //int n = 0;
-    int n = row.size()/(E.screencols - 1) + ((row.size()%(E.screencols - 1)) ? 1 : 0);
+    int n = row.size()/(O.right_screencols - 1) + ((row.size()%(O.right_screencols - 1)) ? 1 : 0);
     for(int i=0; i<n; i++) {
       line_num++;
-      if (line_num > E.screenlines - 2) break;
-      line = row.substr(0, E.screencols - 1);
-      row.erase(0, E.screencols - 1);
+      if (line_num > O.screenlines - 2) break;
+      line = row.substr(0, O.right_screencols - 1);
+      row.erase(0, O.right_screencols - 1);
       ab.append(line);
       ab.append(lf_ret);
     }
@@ -4131,7 +4048,7 @@ void outlineDrawRows(std::string& ab) {
     // then also deals with column offset
     if (O.mode == VISUAL && fr == O.fr) {
 
-       // below in case E.highlight[1] < E.highlight[0]
+       // below in case O.highlight[1] < O.highlight[0]
       k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
       j =!k;
       ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
@@ -4312,7 +4229,7 @@ void outlineDrawStatusBar(void) {
     orow& row = O.rows.at(O.fr);
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
-    if (E.dirty) truncated_title.append( "[+]");
+    if (p->dirty) truncated_title.append( "[+]");
     // needs to be here because O.rows could be empty
     std::string keywords = (O.view == TASK) ? get_task_keywords().first : ""; // see before and in switch
 
@@ -4342,18 +4259,18 @@ void outlineDrawStatusBar(void) {
   int editor_len = 0;
 
   if (DEBUG) {
-    if (!E.rows.empty()){
-      int line = p->editorGetLineInRowWW(E.fr, E.fc);
-      int line_char_count = p->editorGetLineCharCountWW(E.fr, line);
-      int lines = p->editorGetLinesInRowWW(E.fr);
+    if (!p->rows.empty()){
+      int line = p->editorGetLineInRowWW(p->fr, p->fc);
+      int line_char_count = p->editorGetLineCharCountWW(p->fr, line);
+      int lines = p->editorGetLinesInRowWW(p->fr);
 
       editor_len = snprintf(editor_status,
                      sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
                                      "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                     E.fr, lines, line, E.fc, E.line_offset, E.first_visible_row, E.last_visible_row, line_char_count, E.cx, E.cy, E.screencols);
+                                     p->fr, lines, line, p->fc, p->line_offset, p->first_visible_row, p->last_visible_row, line_char_count, p->cx, p->cy, p->screencols);
     } else {
       editor_len =  snprintf(editor_status, sizeof(editor_status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
-                                        E.cx, E.cy, E.rows.size(), E.line_offset);
+                                        p->cx, p->cy, p->rows.size(), p->line_offset);
     }
   }  
 
@@ -4385,11 +4302,11 @@ void return_cursor() {
 
   if (editor_mode) {
   // the lines below position the cursor where it should go
-    if (E.mode != COMMAND_LINE){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + TOP_MARGIN + 1, E.cx + EDITOR_LEFT_MARGIN + 1); //03022019
+    if (p->mode != COMMAND_LINE){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + EDITOR_LEFT_MARGIN + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", E.screenlines + 2 + TOP_MARGIN, E.command_line.size() + EDITOR_LEFT_MARGIN + 1); /// ****
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
     }
@@ -5148,12 +5065,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           break;
 
         case PAGE_UP:
-          initial_file_row = initial_file_row - E.screenlines;
+          initial_file_row = initial_file_row - O.screenlines;
           initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
           break;
 
         case PAGE_DOWN:
-          initial_file_row = initial_file_row + E.screenlines;
+          initial_file_row = initial_file_row + O.screenlines;
           break;
 
         case ':':
@@ -5420,60 +5337,6 @@ void outlineFindNextWord() {
     outlineShowMessage("x = %d; y = %d", x, y); 
 }
 
-// returns true if display needs to scroll and false if it doesn't
-bool editorScroll(void) {
-
-  if (E.rows.empty()) {
-    E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
-    return true;
-  }
-
-  if (E.fr >= E.rows.size()) E.fr = E.rows.size() - 1;
-
-  int row_size = E.rows.at(E.fr).size();
-  if (E.fc >= row_size) E.fc = row_size - (E.mode != INSERT); 
-
-  if (E.fc < 0) E.fc = 0;
-
-  E.cx = p->editorGetScreenXFromRowColWW(E.fr, E.fc);
-  int cy = p->editorGetScreenYFromRowColWW(E.fr, E.fc);
-
-  //my guess is that if you wanted to adjust E.line_offset to take into account that you wanted
-  // to only have full rows at the top (easier for drawing code) you would do it here.
-  // something like E.screenlines goes from 4 to 5 so that adjusts E.cy
-  // it's complicated and may not be worth it.
-
-  //deal with scroll insufficient to include the current line
-  if (cy > E.screenlines + E.line_offset - 1) {
-    E.line_offset = cy - E.screenlines + 1; ////
-    int line_offset = E.line_offset;
-    E.first_visible_row = p->editorGetInitialRow(line_offset);
-    E.line_offset = line_offset;
-  }
-
- //let's check if the current line_offset is causing there to be an incomplete row at the top
-
-  // this may further increase E.line_offset so we can start
-  // at the top with the first line of some row
-  // and not start mid-row which complicates drawing the rows
-
-  //deal with scrol where current line wouldn't be visible because we're scrolled too far
-  if (cy < E.line_offset) {
-    E.line_offset = cy;
-    E.first_visible_row = p->editorGetInitialRow(E.line_offset, SCROLL_UP);
-  }
-  if (E.line_offset == 0) E.first_visible_row = 0; 
-
-  E.cy = cy - E.line_offset;
-
-  // vim seems to want full rows to be displayed although I am not sure
-  // it's either helpful or worth it but this is a placeholder for the idea
-
-  // returns true if display needs to scroll and false if it doesn't
-  if (E.line_offset == E.prev_line_offset) return false;
-  else {E.prev_line_offset = E.line_offset; return true;}
-}
-
 // calls readKey()
 bool editorProcessKeypress(void) {
   //int start, end;
@@ -5482,21 +5345,21 @@ bool editorProcessKeypress(void) {
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  switch (int c = readKey(); E.mode) {
+  switch (int c = readKey(); p->mode) {
 
     case NO_ROWS:
 
       switch(c) {
         case ':':
-          E.mode = COMMAND_LINE;
-          E.command_line.clear();
-          E.command[0] = '\0';
+          p->mode = COMMAND_LINE;
+          p->command_line.clear();
+          p->command[0] = '\0';
           p->editorSetMessage(":");
           return false;
 
         case '\x1b':
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
           return false;
 
         case 'i':
@@ -5507,9 +5370,9 @@ bool editorProcessKeypress(void) {
         case 'O':
         case 'o':
           p->editorInsertRow(0, std::string());
-          E.mode = INSERT;
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->mode = INSERT;
+          p->command[0] = '\0';
+          p->repeat = 0;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           return true;
       }
@@ -5565,8 +5428,8 @@ bool editorProcessKeypress(void) {
     
         // this should be a command line command
         case CTRL_KEY('z'):
-          E.smartindent = (E.smartindent) ? 0 : SMARTINDENT;
-          p->editorSetMessage("E.smartindent = %d", E.smartindent); 
+          p->smartindent = (p->smartindent) ? 0 : SMARTINDENT;
+          p->editorSetMessage("E.smartindent = %d", p->smartindent); 
           return false;
     
         case '\x1b':
@@ -5578,75 +5441,75 @@ bool editorProcessKeypress(void) {
 
           /****************************************************/
           //if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
-          if(cmd_map1.count(E.last_command)) { //nuspell needed gcc+17 so no contains
-            for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
+          if(cmd_map1.count(p->last_command)) { //nuspell needed gcc+17 so no contains
+            for (int n=0; n<p->last_repeat-1; n++) {
+              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
           }
 
-          if (cmd_map2.count(E.last_command)) (p->*cmd_map2[E.last_command])(E.last_repeat - 1);
+          if (cmd_map2.count(p->last_command)) (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
           /****************************************************/
 
           //'I' in VISUAL BLOCK mode
-          //if (E.last_command == -1) {
-          if (E.last_command == "VBI") {
-            for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
+          //if (p->last_command == -1) {
+          if (p->last_command == "VBI") {
+            for (int n=0; n<p->last_repeat-1; n++) {
+              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
             //{
-            int temp = E.fr;
+            int temp = p->fr;
 
-            for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
-              for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
-                E.fc = E.vb0[0]; 
-                for (char const &c : E.last_typed) {p->editorInsertChar(c);}
+            for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
+              for (int n=0; n<p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
+                p->fc = p->vb0[0]; 
+                for (char const &c : p->last_typed) {p->editorInsertChar(c);}
               }
             }
-            E.fr = temp;
-            E.fc = E.vb0[0];
+            p->fr = temp;
+            p->fc = p->vb0[0];
           //}
           }
 
           //'A' in VISUAL BLOCK mode
-          //if (E.last_command == -2) {
-          if (E.last_command == "VBA") {
-            //E.fc++;a doesn't go here
-            for (int n=0; n<E.last_repeat-1; n++) {
-              for (char const &c : E.last_typed) {p->editorInsertChar(c);}
+          //if (p->last_command == -2) {
+          if (p->last_command == "VBA") {
+            //p->fc++;a doesn't go here
+            for (int n=0; n<p->last_repeat-1; n++) {
+              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
             {
-            int temp = E.fr;
+            int temp = p->fr;
 
-            for (E.fr=E.fr+1; E.fr<E.vb0[1]+1; E.fr++) {
-              for (int n=0; n<E.last_repeat; n++) { //NOTICE not E.last_repeat - 1
-                int size = E.rows.at(E.fr).size();
-                if (E.vb0[2] > size) E.rows.at(E.fr).insert(size, E.vb0[2]-size, ' ');
-                E.fc = E.vb0[2];
-                for (char const &c : E.last_typed) {p->editorInsertChar(c);}
+            for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
+              for (int n=0; n<p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
+                int size = p->rows.at(p->fr).size();
+                if (p->vb0[2] > size) p->rows.at(p->fr).insert(size, p->vb0[2]-size, ' ');
+                p->fc = p->vb0[2];
+                for (char const &c : p->last_typed) {p->editorInsertChar(c);}
               }
             }
-            E.fr = temp;
-            E.fc = E.vb0[0];
+            p->fr = temp;
+            p->fc = p->vb0[0];
           }
           }
 
-          E.mode = NORMAL;
-          E.repeat = 0;
-          if (E.fc > 0) E.fc--;
+          p->mode = NORMAL;
+          p->repeat = 0;
+          if (p->fc > 0) p->fc--;
 
           // below - if the indent amount == size of line then it's all blanks
-          // can hit escape with E.row == NULL or E.row[E.fr].size == 0
-          if (!E.rows.empty() && E.rows[E.fr].size()) {
-            int n = p->editorIndentAmount(E.fr);
-            if (n == E.rows[E.fr].size()) {
-              E.fc = 0;
+          // can hit escape with p->row == NULL or p->row[p->fr].size == 0
+          if (!p->rows.empty() && p->rows[p->fr].size()) {
+            int n = p->editorIndentAmount(p->fr);
+            if (n == p->rows[p->fr].size()) {
+              p->fc = 0;
               for (int i = 0; i < n; i++) {
                 p->editorDelChar();
               }
             }
           }
           p->editorSetMessage(""); 
-          //editorSetMessage(E.last_typed.c_str());
+          //editorSetMessage(p->last_typed.c_str());
           return true;
     
         // deal with tab in insert mode - was causing segfault  
@@ -5656,8 +5519,8 @@ bool editorProcessKeypress(void) {
 
         default:
           p->editorInsertChar(c);
-          E.last_typed += c;
-          //editorSetMessage(E.last_typed.c_str());
+          p->last_typed += c;
+          //editorSetMessage(p->last_typed.c_str());
           return true;
      
       } //end inner switch for outer case INSERT
@@ -5667,70 +5530,70 @@ bool editorProcessKeypress(void) {
     case NORMAL: 
  
       if (c == '\x1b') {
-        E.command[0] = '\0';
-        E.repeat = 0;
+        p->command[0] = '\0';
+        p->repeat = 0;
         return false;
       }
 
       /*leading digit is a multiplier*/
 
-      if ((c > 47 && c < 58) && (strlen(E.command) == 0)) {
+      if ((c > 47 && c < 58) && (strlen(p->command) == 0)) {
 
-        if (E.repeat == 0 && c == 48) {
+        if (p->repeat == 0 && c == 48) {
 
-        } else if (E.repeat == 0) {
-          E.repeat = c - 48;
+        } else if (p->repeat == 0) {
+          p->repeat = c - 48;
           // return false because command not complete
           return false;
         } else {
-          E.repeat = E.repeat*10 + c - 48;
+          p->repeat = p->repeat*10 + c - 48;
           // return false because command not complete
           return false;
         }
       }
-      if ( E.repeat == 0 ) E.repeat = 1;
+      if ( p->repeat == 0 ) p->repeat = 1;
       {
-      int n = strlen(E.command);
-      E.command[n] = c;
-      E.command[n+1] = '\0';
+      int n = strlen(p->command);
+      p->command[n] = c;
+      p->command[n+1] = '\0';
       }
 
-      if (e_lookup.count(E.command)) {
-        if (!move_only.count(E.command)) p->editorCreateSnapshot(); 
+      if (e_lookup.count(p->command)) {
+        if (!move_only.count(p->command)) p->editorCreateSnapshot(); 
 
-        (p->*e_lookup.at(E.command))(E.repeat); //money shot
+        (p->*e_lookup.at(p->command))(p->repeat); //money shot
 
-        if (insert_cmds.count(E.command)) {
-          E.mode = INSERT;
+        if (insert_cmds.count(p->command)) {
+          p->mode = INSERT;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
         }
 
-        if (move_only.count(E.command)) {
-          E.command[0] = '\0';
-          E.repeat = 0;
+        if (move_only.count(p->command)) {
+          p->command[0] = '\0';
+          p->repeat = 0;
           return false; //note text did not change
         } else {
-          if (E.command[0] != '.') {
-            E.last_repeat = E.repeat;
-            E.last_command = E.command; //E.last_command must be a string
+          if (p->command[0] != '.') {
+            p->last_repeat = p->repeat;
+            p->last_command = p->command; //p->last_command must be a string
           }
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
           return true; //note text changed
         }    
       }
 
       if (navigation.count(c)) {
-          for (int j=0; j<E.repeat; j++) p->editorMoveCursor(c);
-          E.command[0] = '\0';
-          E.repeat = 0;
+          for (int j=0; j<p->repeat; j++) p->editorMoveCursor(c);
+          p->command[0] = '\0';
+          p->repeat = 0;
           return false;
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
           p->editorPageUpDown(c);
-          E.command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-          E.repeat = 0;
+          p->command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          p->repeat = 0;
           return false;
       }
 
@@ -5739,32 +5602,32 @@ bool editorProcessKeypress(void) {
     case COMMAND_LINE:
 
       if (c == '\x1b') {
-        E.mode = NORMAL;
-        E.command[0] = '\0';
-        E.repeat = E.last_repeat = 0;
+        p->mode = NORMAL;
+        p->command[0] = '\0';
+        p->repeat = p->last_repeat = 0;
         p->editorSetMessage(""); 
         return false;
       }
 
       if (c == '\r') {
-        if (E_lookup_C.count(E.command_line)) {
-          //E_lookup_C.at(E.command_line)();
-          (p->*E_lookup_C.at(E.command_line))();
+        if (E_lookup_C.count(p->command_line)) {
+          //E_lookup_C.at(p->command_line)();
+          (p->*E_lookup_C.at(p->command_line))();
           return false;
         }
 
-        p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", E.command_line.c_str());
-        E.mode = NORMAL;
+        p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", p->command_line.c_str());
+        p->mode = NORMAL;
         return false;
       }
 
       if (c == DEL_KEY || c == BACKSPACE) {
-        if (!E.command_line.empty()) E.command_line.pop_back();
+        if (!p->command_line.empty()) p->command_line.pop_back();
       } else {
-        E.command_line.push_back(c);
+        p->command_line.push_back(c);
       }
 
-      p->editorSetMessage(":%s", E.command_line.c_str());
+      p->editorSetMessage(":%s", p->command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
@@ -5780,69 +5643,69 @@ bool editorProcessKeypress(void) {
         case 'k':
         case 'l':
           p->editorMoveCursor(c);
-          E.highlight[1] = E.fr;
+          p->highlight[1] = p->fr;
           return true;
     
         case 'x':
-          if (!E.rows.empty()) {
+          if (!p->rows.empty()) {
             p->editorCreateSnapshot();
-            E.repeat = E.highlight[1] - E.highlight[0] + 1;
-            E.fr = E.highlight[0]; 
-            p->editorYankLine(E.repeat);
+            p->repeat = p->highlight[1] - p->highlight[0] + 1;
+            p->fr = p->highlight[0]; 
+            p->editorYankLine(p->repeat);
     
-            for (int i = 0; i < E.repeat; i++) p->editorDelRow(E.highlight[0]);
+            for (int i = 0; i < p->repeat; i++) p->editorDelRow(p->highlight[0]);
           }
 
-          E.fc = 0;
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0;
-          E.mode = NORMAL;
+          p->fc = 0;
+          p->command[0] = '\0';
+          p->repeat = p->last_repeat = 0;
+          p->mode = NORMAL;
           p->editorSetMessage("");
           return true;
     
         case 'y':  
-          E.repeat = E.highlight[1] - E.highlight[0] + 1;
-          E.fr = E.highlight[0];
-          p->editorYankLine(E.repeat);
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+          p->repeat = p->highlight[1] - p->highlight[0] + 1;
+          p->fr = p->highlight[0];
+          p->editorYankLine(p->repeat);
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
           p->editorSetMessage("");
           return true;
     
         case '>':
           p->editorCreateSnapshot();
-          E.repeat = E.highlight[1] - E.highlight[0] + 1;
-          E.fr = E.highlight[0];
-          for ( i = 0; i < E.repeat; i++ ) {
+          p->repeat = p->highlight[1] - p->highlight[0] + 1;
+          p->fr = p->highlight[0];
+          for ( i = 0; i < p->repeat; i++ ) {
             p->editorIndentRow();
-            E.fr++;}
-          E.fr-=i;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+            p->fr++;}
+          p->fr-=i;
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
           p->editorSetMessage("");
           return true;
     
-        // changed to E.fr on 11-26-2019
+        // changed to p->fr on 11-26-2019
         case '<':
           p->editorCreateSnapshot();
-          E.repeat = E.highlight[1] - E.highlight[0] + 1;
-          E.fr = E.highlight[0];
-          for ( i = 0; i < E.repeat; i++ ) {
+          p->repeat = p->highlight[1] - p->highlight[0] + 1;
+          p->fr = p->highlight[0];
+          for ( i = 0; i < p->repeat; i++ ) {
             p->editorUnIndentRow();
-            E.fr++;}
-          E.fr-=i;
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+            p->fr++;}
+          p->fr-=i;
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
           p->editorSetMessage("");
           return true;
     
         case '\x1b':
-          E.mode = 0;
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->mode = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
           p->editorSetMessage("");
           return true;
     
@@ -5865,98 +5728,98 @@ bool editorProcessKeypress(void) {
         case 'k':
         case 'l':
           p->editorMoveCursor(c);
-          //E.highlight[1] = E.fr;
+          //p->highlight[1] = E.fr;
           return true;
     
         case '$':
           p->editorMoveCursorEOL();
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0;
+          p->command[0] = '\0';
+          p->repeat = p->last_repeat = 0;
           p->editorSetMessage("");
           return true;
 
         case 'x':
-          if (!E.rows.empty()) {
+          if (!p->rows.empty()) {
             p->editorCreateSnapshot();
     
-          for (int i = E.vb0[1]; i < E.fr + 1; i++) {
-            E.rows.at(i).erase(E.vb0[0], E.fc - E.vb0[0] + 1); //needs to be cleaned up for E.fc < E.vb0[0] ? abs
+          for (int i = p->vb0[1]; i < p->fr + 1; i++) {
+            p->rows.at(i).erase(p->vb0[0], p->fc - p->vb0[0] + 1); //needs to be cleaned up for p->fc < p->vb0[0] ? abs
           }
 
-          E.fc = E.vb0[0];
-          E.fr = E.vb0[1];
+          p->fc = p->vb0[0];
+          p->fr = p->vb0[1];
           }
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0;
-          E.mode = NORMAL;
+          p->command[0] = '\0';
+          p->repeat = p->last_repeat = 0;
+          p->mode = NORMAL;
           p->editorSetMessage("");
           return true;
     
         case 'I':
-          if (!E.rows.empty()) {
+          if (!p->rows.empty()) {
             p->editorCreateSnapshot();
       
-          //E.repeat = E.fr - E.vb0[1];  
+          //p->repeat = p->fr - p->vb0[1];  
             {
-          int temp = E.fr; //E.fr is wherever cursor Y is    
-          //E.vb0[2] = E.fr;
-          E.fc = E.vb0[0]; //vb0[0] is where cursor X was when ctrl-v happened
-          E.fr = E.vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
-          E.vb0[1] = temp; // resets E.vb0 to last cursor Y position - this could just be E.vb0[2]
-          //cmd_map1[c](E.repeat);
+          int temp = p->fr; //p->fr is wherever cursor Y is    
+          //p->vb0[2] = p->fr;
+          p->fc = p->vb0[0]; //vb0[0] is where cursor X was when ctrl-v happened
+          p->fr = p->vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
+          p->vb0[1] = temp; // resets p->vb0 to last cursor Y position - this could just be p->vb0[2]
+          //cmd_map1[c](p->repeat);
           //command = -1;
-          E.repeat = 1;
-          E.mode = INSERT;
+          p->repeat = 1;
+          p->mode = INSERT;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
 
-          E.last_repeat = E.repeat;
-          E.last_typed.clear();
-          //E.last_command = command;
-          E.last_command = std::string_view("VBI");
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->last_repeat = p->repeat;
+          p->last_typed.clear();
+          //p->last_command = command;
+          p->last_command = std::string_view("VBI");
+          p->command[0] = '\0';
+          p->repeat = 0;
           //editorSetMessage("command = %d", command);
           return true;
 
         case 'A':
-          if (!E.rows.empty()) {
+          if (!p->rows.empty()) {
             p->editorCreateSnapshot();
       
-          //E.repeat = E.fr - E.vb0[1];  
+          //p->repeat = p->fr - p->vb0[1];  
             {
-          int temp = E.fr;    
-          E.fr = E.vb0[1];
-          E.vb0[1] = temp;
-          E.fc++;
-          E.vb0[2] = E.fc;
-          //int last_row_size = E.rows.at(E.vb0[1]).size();
-          int first_row_size = E.rows.at(E.fr).size();
-          if (E.vb0[2] > first_row_size) E.rows.at(E.fr).insert(first_row_size, E.vb0[2]-first_row_size, ' ');
-          //cmd_map1[c](E.repeat);
+          int temp = p->fr;    
+          p->fr = p->vb0[1];
+          p->vb0[1] = temp;
+          p->fc++;
+          p->vb0[2] = p->fc;
+          //int last_row_size = p->rows.at(p->vb0[1]).size();
+          int first_row_size = p->rows.at(p->fr).size();
+          if (p->vb0[2] > first_row_size) p->rows.at(p->fr).insert(first_row_size, p->vb0[2]-first_row_size, ' ');
+          //cmd_map1[c](p->repeat);
           //command = -2;
-          E.repeat = 1;
-          E.mode = INSERT;
+          p->repeat = 1;
+          p->mode = INSERT;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
 
-          E.last_repeat = E.repeat;
-          E.last_typed.clear();
-          //E.last_command = command;
-          E.last_command = std::string_view("VBA");
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->last_repeat = p->repeat;
+          p->last_typed.clear();
+          //p->last_command = command;
+          p->last_command = std::string_view("VBA");
+          p->command[0] = '\0';
+          p->repeat = 0;
           //editorSetMessage("command = %d", command);
           return true;
 
         case '\x1b':
-          E.mode = 0;
-          E.command[0] = '\0';
-          E.repeat = 0;
+          p->mode = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
           p->editorSetMessage("");
           return true;
     
@@ -5979,27 +5842,27 @@ bool editorProcessKeypress(void) {
         case 'k':
         case 'l':
           p->editorMoveCursor(c);
-          E.highlight[1] = E.fc;
+          p->highlight[1] = p->fc;
           return true;
     
         case 'x':
-          if (!E.rows.empty()) {
+          if (!p->rows.empty()) {
             p->editorCreateSnapshot();
             p->editorYankString(); 
             p->editorDeleteVisual();
           }
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
           p->editorSetMessage("");
           return true;
     
         case 'y':
-          E.fc = E.highlight[0];
+          p->fc = p->highlight[0];
           p->editorYankString();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = 0;
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
           p->editorSetMessage("");
           return true;
     
@@ -6007,9 +5870,9 @@ bool editorProcessKeypress(void) {
           p->editorCreateSnapshot();
           if (!string_buffer.empty()) p->editorPasteStringVisual();
           else p->editorPasteLineVisual();
-          E.command[0] = '\0';
-          E.repeat = 0;
-          E.mode = NORMAL;
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = NORMAL;
           return true;
 
         case CTRL_KEY('b'):
@@ -6024,9 +5887,9 @@ bool editorProcessKeypress(void) {
           return true;
     
         case '\x1b':
-          E.mode = NORMAL;
-          E.command[0] = '\0';
-          E.repeat = E.last_repeat = 0;
+          p->mode = NORMAL;
+          p->command[0] = '\0';
+          p->repeat = p->last_repeat = 0;
           p->editorSetMessage("");
           return true;
     
@@ -6039,30 +5902,30 @@ bool editorProcessKeypress(void) {
     case REPLACE:
 
       if (c == '\x1b') {
-        E.command[0] = '\0';
-        E.repeat = E.last_repeat = 0;
-        E.last_command = "";
-        E.last_typed.clear();
-        E.mode = NORMAL;
+        p->command[0] = '\0';
+        p->repeat = p->last_repeat = 0;
+        p->last_command = "";
+        p->last_typed.clear();
+        p->mode = NORMAL;
         return true;
       }
 
       //editorCreateSnapshot();
-      for (int i = 0; i < E.last_repeat; i++) {
+      for (int i = 0; i < p->last_repeat; i++) {
         p->editorDelChar();
         p->editorInsertChar(c);
-        E.last_typed.clear();
-        E.last_typed += c;
+        p->last_typed.clear();
+        p->last_typed += c;
       }
-      //other than E.mode = NORMAL - all should go
-      E.last_command = "r";
-      //E.last_repeat = E.repeat;
-      E.repeat = 0;
-      E.command[0] = '\0';
-      E.mode = NORMAL;
+      //other than p->mode = NORMAL - all should go
+      p->last_command = "r";
+      //p->last_repeat = p->repeat;
+      p->repeat = 0;
+      p->command[0] = '\0';
+      p->mode = NORMAL;
       return true;
 
-  }  //end of outer switch(E.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
+  }  //end of outer switch(p->mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
   return true; // this should not be reachable but was getting an error
 } //end of editorProcessKeyPress
 
@@ -6136,6 +5999,7 @@ void initOutline() {
   // ? whether the screen-related stuff should be in one place
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
+  O.right_screencols = -2 + screencols/2;
 }
 
 void initEditor(void) {
@@ -6224,13 +6088,13 @@ int main(int argc, char** argv) {
     // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
-      scroll = editorScroll();
-      redraw = (E.mode == COMMAND_LINE) ? false : (text_change || scroll);
+      scroll = p->editorScroll();
+      redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll);
       p->editorRefreshScreen(redraw);
       ////////////////////
       if (scroll) {
         zmq::message_t message(20);
-        snprintf ((char *) message.data(), 20, "%d", E.line_offset*25); //25 - complete hack but works ok
+        snprintf ((char *) message.data(), 20, "%d", p->line_offset*25); //25 - complete hack but works ok
         publisher.send(message, zmq::send_flags::dontwait);
       }
       ////////////////////

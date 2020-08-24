@@ -115,6 +115,7 @@ struct outlineConfig {
   unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
   unsigned int screenlines; //number of lines in the display available to text
   unsigned int screencols;  //number of columns in the display available to text
+  unsigned int right_screencols; //Number of columns on right hand side of screen
   std::vector<orow> rows;
   std::string context;
   std::string folder;
