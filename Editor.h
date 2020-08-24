@@ -123,6 +123,7 @@ class Editor {
     void editorSetMessage(const char *fmt, ...);
     void editorSpellCheck(void);
     void editorHighlightWord(int, int, int);
+    void editorReadFileIntoNote(const std::string &);
     void editorSaveNoteToFile(const std::string &);
     void editorMoveCursor(int);
     void editorBackspace(void);
@@ -145,10 +146,21 @@ class Editor {
     void editorSpellingSuggestions(void);
     void editorChangeCase(void);
     void editorDeleteToEndOfLine(void);
+    bool editorScroll(void);
+    int editorGetInitialRow(int &); // there should be just one of these
+    int editorGetInitialRow(int &, int);  // there should be just one of these
+    void editorDotRepeat(int repeat);
+
     int editorGetScreenXFromRowColWW(int, int);
     int editorGetScreenYFromRowColWW(int, int);
     std::string editorGenerateWWString(void);
     int editorGetLineInRowWW(int, int);
     int editorGetLinesInRowWW(int);
+
+    typedef void (Editor::*eefunc)(int);
+    std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
+    std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o}, {"O", &Editor::E_O}};
+    std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
+    std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 };
 #endif

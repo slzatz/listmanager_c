@@ -74,7 +74,7 @@ std::unordered_set<int> navigation = {
          'l'
 };
 /*
-std::unordered_map<std::string, pfunc> cmd_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
+std::unordered_map<std::string, pfunc> c:md_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
 std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
 std::unordered_map<std::string, pfunc> cmd_map3 = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
 std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
@@ -327,8 +327,9 @@ void editorDrawRows(std::string &); //erases lines to right as it goes
 bool editorScroll(void);
 void editorBackspace(void);
 void editorPasteStringVisual(void);
-void editorDisplayFile(void);
-void editorEraseScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+void displayFile(void);
+void readFile(const std::string &);
+void eraseRightScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
 void editorHighlightWordsByPosition(void);
 void editorHighlightWord(int, int, int);
 void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
@@ -390,7 +391,6 @@ void load_meta(void);
 void update_html_file(std::string &&);
 void update_html_code_file(std::string &&);
 void editorSaveNoteToFile(const std::string &);
-void editorReadFile(const std::string &);
 void editorReadFileIntoNote(const std::string &); 
 
 void update_solr(void); //works but not in use

@@ -399,6 +399,30 @@ void Editor::editorHighlightWord(int r, int c, int len) {
   write(STDOUT_FILENO, s.str().c_str(), s.str().size());
 }
 
+void Editor::editorReadFileIntoNote(const std::string &filename) {
+
+  std::ifstream f(filename);
+  std::string line;
+
+  rows.clear();
+  fr = fc = cy = cx = line_offset = prev_line_offset = first_visible_row = last_visible_row = 0;
+
+  while (getline(f, line)) {
+    //replace(line.begin(), line.end(), '\t', "  ");
+    size_t pos = line.find('\t');
+    while(pos != std::string::npos) {
+      line.replace(pos, 1, "  "); // number is number of chars to replace
+      pos = line.find('\t');
+    }
+    rows.push_back(line);
+  }
+  f.close();
+
+  dirty = true;
+  editor_mode = true;
+  editorRefreshScreen(true);
+  return;
+}
 void Editor::editorSaveNoteToFile(const std::string &filename) {
   std::ofstream myfile;
   myfile.open(filename); //filename
@@ -1188,6 +1212,178 @@ void Editor::editorDeleteToEndOfLine(void) {
   dirty++;
 }
 
+// returns true if display needs to scroll and false if it doesn't
+bool Editor::editorScroll(void) {
+
+  if (rows.empty()) {
+    fr = fc = cy = cx = line_offset = prev_line_offset = first_visible_row = last_visible_row = 0;
+    return true;
+  }
+
+  if (fr >= rows.size()) fr = rows.size() - 1;
+
+  int row_size = rows.at(fr).size();
+  if (fc >= row_size) fc = row_size - (mode != INSERT); 
+
+  if (fc < 0) fc = 0;
+
+  cx = editorGetScreenXFromRowColWW(fr, fc);
+  int cy_ = editorGetScreenYFromRowColWW(fr, fc);
+
+  //my guess is that if you wanted to adjust line_offset to take into account that you wanted
+  // to only have full rows at the top (easier for drawing code) you would do it here.
+  // something like screenlines goes from 4 to 5 so that adjusts cy
+  // it's complicated and may not be worth it.
+
+  //deal with scroll insufficient to include the current line
+  if (cy_ > screenlines + line_offset - 1) {
+    line_offset = cy_ - screenlines + 1; ////
+    int line_offset_ = line_offset;
+    first_visible_row = editorGetInitialRow(line_offset_);
+    line_offset = line_offset_;
+  }
+
+ //let's check if the current line_offset is causing there to be an incomplete row at the top
+
+  // this may further increase line_offset so we can start
+  // at the top with the first line of some row
+  // and not start mid-row which complicates drawing the rows
+
+  //deal with scrol where current line wouldn't be visible because we're scrolled too far
+  if (cy_ < line_offset) {
+    line_offset = cy_;
+    first_visible_row = editorGetInitialRow(line_offset, SCROLL_UP);
+  }
+  if (line_offset == 0) first_visible_row = 0; 
+
+  cy = cy_ - line_offset;
+
+  // vim seems to want full rows to be displayed although I am not sure
+  // it's either helpful or worth it but this is a placeholder for the idea
+
+  // returns true if display needs to scroll and false if it doesn't
+  if (line_offset == prev_line_offset) return false;
+  else {prev_line_offset = line_offset; return true;}
+}
+
+// used by editorScroll to figure out the first row to draw
+// there should be only ONE of these (see below)
+int Editor::editorGetInitialRow(int &line_offset) {
+
+  if (line_offset == 0) return 0;
+
+  int r = 0;
+  int lines = 0;
+
+  for (;;) {
+    lines += editorGetLinesInRowWW(r);
+    r++;
+
+    // there is no need to adjust line_offset
+    // if it happens that we start
+    // on the first line of row r
+    if (lines == line_offset) break;
+
+    // need to adjust line_offset
+    // so we can start on the first
+    // line of row r
+    if (lines > line_offset) {
+      line_offset = lines;
+      break;
+    }
+  }
+  return r;
+}
+
+// used by editorScrolls to figure out the first row to draw
+int Editor::editorGetInitialRow(int &line_offset, int direction) {
+
+  if (line_offset == 0) return 0;
+
+  int r = 0;
+  int lines = 0;
+
+  for (;;) {
+    lines += editorGetLinesInRowWW(r);
+    r++;
+
+    // there is no need to adjust line_offset
+    // if it happens that we start
+    // on the first line of row r
+    if (lines == line_offset) {
+        line_offset = lines;
+        return r;
+    }
+
+    // need to adjust line_offset
+    // so we can start on the first
+    // line of row r
+      if (lines > line_offset) {
+        line_offset = lines;
+        break;
+    }
+  }
+  lines = 0;
+  int n = 0;
+  for (n=0; n<r-1; n++) {
+      lines += editorGetLinesInRowWW(n);
+  }
+  line_offset = lines;
+  return n;
+}
+
+/* this is dot */
+void Editor::editorDotRepeat(int repeat) {
+
+  //repeat not implemented
+
+  //case 'i': case 'I': case 'a': case 'A': 
+  if (cmd_map1.count(last_command)) {
+    (this->*cmd_map1[last_command])(last_repeat);
+
+    for (int n=0; n<last_repeat; n++) {
+      for (char const &c : last_typed) {
+        if (c == '\r') editorInsertReturn();
+        else editorInsertChar(c);
+      }
+    }
+    return;
+  }
+
+  //case 'o': case 'O':
+  if (cmd_map2.count(last_command)) {
+    (this->*cmd_map2[last_command])(last_repeat);
+    return;
+  }
+
+  //case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+  if (cmd_map3.count(last_command)) {
+    (this->*cmd_map3[last_command])(last_repeat);
+    return;
+  }
+
+  //case C_cw: case C_caw: case 's':
+  if (cmd_map4.count(last_command)) {
+      (this->*cmd_map4[last_command])(last_repeat);
+
+    for (char const &c : last_typed) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+    return;
+  }
+
+  if (last_command == "~") {
+    E_change_case(last_repeat);
+    return;
+  }
+
+  if (last_command == "r") {
+    E_replace(last_repeat);
+    return;
+  }
+
+}
 /************************************* end of WW ************************************************/
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {

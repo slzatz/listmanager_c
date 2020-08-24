@@ -60,13 +60,13 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"*", &Editor::E_find},
   {"n", &Editor::E_find_next_word},
   {"u", &Editor::E_undo},
-  //{".", editorDotRepeat},
+  {".", &Editor::editorDotRepeat},
   {">>", &Editor::E_indent},
   {"<<", &Editor::E_unindent},
   {{0x2}, &Editor::E_bold},
   {{0x5}, &Editor::E_emphasis},
   {{0x9}, &Editor::E_italic},
- // {"yy", editorYankLine},
+  {"yy", &Editor::editorYankLine},
   {"gg", &Editor::E_gg},
   {"G", &Editor::E_G},
   {{0x1A}, &Editor::E_toggle_smartindent},
@@ -106,9 +106,9 @@ void signalHandler(int signum) {
 
     if (editor_mode) {
       outlineRefreshScreen();
-      editorRefreshScreen(true);
+      p->editorRefreshScreen(true); //need to look at this in a multi-editor world
     } else {
-      editorRefreshScreen(true);
+      p->editorRefreshScreen(true); //need to look at this in a multi-editor world
       outlineRefreshScreen();
     }
     
@@ -173,7 +173,7 @@ char * (url_callback)(const char *x, const int y, void *z) {
  * and only writes to the file once
  */
 void update_html_file(std::string &&fn) {
-  std::string note = editorRowsToString();
+  std::string note = p->editorRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
@@ -224,7 +224,7 @@ void update_html_file(std::string &&fn) {
  * if this is my mistake or intentional
  * */
 void update_html_zmq(std::string &&fn) {
-  std::string note = editorRowsToString();
+  std::string note = p->editorRowsToString();
   std::stringstream text;
   std::stringstream html;
   std::string title = O.rows.at(O.fr).title;
@@ -263,7 +263,7 @@ void update_html_zmq(std::string &&fn) {
 void update_html_code_file(std::string &&fn) {
   std::ofstream myfile;
   myfile.open("code_file"); 
-  myfile << editorRowsToString(); //don't need word wrap
+  myfile << p->editorRowsToString(); //don't need word wrap
   myfile.close();
   std::stringstream html;
   std::string line;
@@ -896,7 +896,7 @@ void get_linked_items(int max) {
   if (O.rows.empty()) {
     outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
-    editorEraseScreen(); // in case there was a note displayed in previous view
+    eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = O.last_mode;
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -967,7 +967,7 @@ void get_items(int max) {
   if (O.rows.empty()) {
     outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
-    editorEraseScreen(); // in case there was a note displayed in previous view
+    eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = O.last_mode;
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
@@ -1074,7 +1074,7 @@ void get_items_by_id(std::stringstream &query) {
   if (no_rows) {
     outlineShowMessage("No results were returned");
     O.mode = NO_ROWS;
-    editorEraseScreen(); // in case there was a note displayed in previous view
+    eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
     p->mode = SEARCH; ///////////////////////////////////////////////////////////////
@@ -1166,7 +1166,7 @@ void get_note(int id) {
   if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
 
   if (O.taskview != BY_SEARCH) {
-    editorRefreshScreen(true);
+    p->editorRefreshScreen(true);
     //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
     if (lm_browser) {
       if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
@@ -1198,9 +1198,9 @@ void get_note(int id) {
   }
 
   int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
-  editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
+  p->editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
 
-  editorRefreshScreen(true);
+  p->editorRefreshScreen(true);
   //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
   if (lm_browser) {
     if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
@@ -1223,7 +1223,7 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   std::string s;
   while (getline(snote, s, '\n')) {
     //snote will not contain the '\n'
-    editorInsertRow(E.rows.size(), s);
+    p->editorInsertRow(E.rows.size(), s);
   }
 
   E.dirty = 0;
@@ -1277,7 +1277,7 @@ void search_db(std::string search_terms) {
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
-    editorEraseScreen(); //note can still return no rows from get_items_by_id if we found rows above that were deleted
+    eraseRightScreen(); //note can still return no rows from get_items_by_id if we found rows above that were deleted
     O.mode = NO_ROWS;
     return;
   }
@@ -1328,7 +1328,7 @@ void search_db2(std::string search_terms) {
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
-    editorEraseScreen();
+    eraseRightScreen();
     O.mode = NO_ROWS;
     return;
   }
@@ -1915,7 +1915,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
 
 void update_note(void) {
 
-  std::string text = editorRowsToString();
+  std::string text = p->editorRowsToString();
   std::stringstream query;
 
   // need to escape single quotes with two single quotes
@@ -1973,7 +1973,7 @@ void update_note(void) {
   } else {
     outlineShowMessage("Updated note and fts entry for item %d", id);
     outlineRefreshScreen();
-    editorSetMessage("Note update succeeeded"); 
+    p->editorSetMessage("Note update succeeeded"); 
   }
    
   sqlite3_close(db);
@@ -3009,7 +3009,7 @@ void F_openkeyword(int pos) {
 void F_addkeyword(int pos) {
   if (!pos) {
     current_task_id = O.rows.at(O.fr).id;
-    editorEraseScreen();
+    eraseRightScreen();
     O.view = KEYWORD;
     command_history.push_back(O.command_line);
     get_containers(); //O.mode = NORMAL is in get_containers
@@ -3046,7 +3046,7 @@ void F_addkeyword(int pos) {
 
 void F_keywords(int pos) {
   if (!pos) {
-    editorEraseScreen();
+    eraseRightScreen();
     O.view = KEYWORD;
     command_history.push_back(O.command_line); 
     get_containers(); //O.mode = NORMAL is in get_containers
@@ -3113,7 +3113,7 @@ void F_new(int) {
   O.command[0] = '\0';
   O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-  editorEraseScreen(); //erases the note area
+  eraseRightScreen(); //erases the note area
   O.mode = INSERT;
 
   int fd;
@@ -3145,8 +3145,8 @@ void F_edit(int) {
     //E.fr = E.fc = E.cy = E.cx = E.line_offset = E.prev_line_offset = E.first_visible_row = E.last_visible_row = 0;
     if (E.rows.empty()) {
       E.mode = INSERT;
-      editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      editorRefreshScreen(false);
+      p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+      p->editorRefreshScreen(false);
     } else E.mode = NORMAL;
     //E.mode = (E.rows.empty()) ? INSERT : NORMAL;
     //E.mode = NORMAL;
@@ -3161,7 +3161,7 @@ void F_edit(int) {
 
 void F_contexts(int pos) {
   if (!pos) {
-    editorEraseScreen();
+    eraseRightScreen();
     O.view = CONTEXT;
     command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
     get_containers();
@@ -3217,7 +3217,7 @@ void F_contexts(int pos) {
 
 void F_folders(int pos) {
   if (!pos) {
-    editorEraseScreen();
+    eraseRightScreen();
     O.view = FOLDER;
     command_history.push_back(O.command_line); 
     get_containers();
@@ -3319,24 +3319,24 @@ void F_sync(int) {
   map_context_titles();
   map_folder_titles();
   initial_file_row = 0; //for arrowing or displaying files
-  O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+  O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Synching local db and server and displaying results");
-  editorReadFile("log");
-  editorDisplayFile();//put them in the command mode case synch
+  readFile("log");
+  displayFile();//put them in the command mode case synch
 }
 
 void F_sync_test(int) {
   synchronize(1); //1 -> report_only
   initial_file_row = 0; //for arrowing or displaying files
-  O.mode = FILE_DISPLAY; // needs to appear before editorDisplayFile
+  O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Testing synching local db and server and displaying results");
-  editorReadFile("log");
-  editorDisplayFile();//put them in the command mode case synch
+  readFile("log");
+  displayFile();//put them in the command mode case synch
 }
 
 void F_updatecontext(int) {
   current_task_id = O.rows.at(O.fr).id;
-  editorEraseScreen();
+  eraseRightScreen();
   O.view = CONTEXT;
   command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
@@ -3346,7 +3346,7 @@ void F_updatecontext(int) {
 
 void F_updatefolder(int) {
   current_task_id = O.rows.at(O.fr).id;
-  editorEraseScreen();
+  eraseRightScreen();
   O.view = FOLDER;
   command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
@@ -3367,7 +3367,7 @@ void F_savefile(int pos) {
   std::string filename;
   if (pos) filename = O.command_line.substr(pos+1);
   else filename = "example.cpp";
-  editorSaveNoteToFile(filename);
+  p->editorSaveNoteToFile(filename);
   outlineShowMessage("Note saved to file: %s", filename.c_str());
   O.mode = NORMAL;
 }
@@ -3408,7 +3408,7 @@ void F_syntax(int pos) {
       outlineShowMessage("Syntax highlighting will be turned off");
     } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
   } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
-  editorRefreshScreen(true);
+  p->editorRefreshScreen(true);
   O.mode = NORMAL;
 }
 
@@ -3424,7 +3424,7 @@ void F_set(int pos) {
       outlineShowMessage("Spellcheck off");
     } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
   } else {outlineShowMessage("Unknown option: %s", action.c_str());}
-  editorRefreshScreen(true);
+  p->editorRefreshScreen(true);
   O.mode = NORMAL;
 }
 
@@ -3489,7 +3489,7 @@ void F_readfile(int pos) {
   std::string filename;
   if (pos) filename = O.command_line.substr(pos+1);
   else filename = "example.cpp";
-  editorReadFileIntoNote(filename);
+  p->editorReadFileIntoNote(filename);
   outlineShowMessage("Note generated from file: %s", filename.c_str());
   O.mode = NORMAL;
 }
@@ -3501,8 +3501,8 @@ void F_persist(int pos) {
 
 void F_valgrind(int) {
   initial_file_row = 0; //for arrowing or displaying files
-  editorReadFile("valgrind_log_file");
-  editorDisplayFile();//put them in the command mode case synch
+  readFile("valgrind_log_file");
+  displayFile();//put them in the command mode case synch
   O.last_mode = O.mode;
   O.mode = FILE_DISPLAY;
 }
@@ -3528,7 +3528,7 @@ void F_merge(int) {
   }
   outlineShowMessage("Number of notes merged = %d", n);
   O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
-  editorRefreshScreen(true);
+  p->editorRefreshScreen(true);
   update_note();
   O.command[0] = '\0';
   O.repeat = 0;
@@ -3542,8 +3542,8 @@ void F_help(int pos) {
     O.last_mode = O.mode;
     O.mode = FILE_DISPLAY;
     outlineShowMessage("Displaying help file");
-    editorReadFile("listmanager_commands");
-    editorDisplayFile();
+    readFile("listmanager_commands");
+    displayFile();
   } else {
     search_terms = O.command_line.substr(pos+1);
     O.context = "";
@@ -3593,7 +3593,7 @@ void F_clear(int) {
   E.mode = NORMAL;
   E.command[0] = '\0';
   E.command_line.clear();
-  editorSetMessage("");
+  p->editorSetMessage("");
 }
 
 /* EDITOR COMMAND_LINE mode functions */
@@ -3609,7 +3609,7 @@ void E_write_C(void) {
   }   
   auto it = html_files.find(O.rows.at(O.fr).id);
   if (it != html_files.end()) update_html_file("assets/" + it->second);
-  editorSetMessage("");
+  p->editorSetMessage("");
 }
 
 void E_write_close_C(void) {
@@ -3625,7 +3625,7 @@ void E_write_close_C(void) {
   }   
   auto it = html_files.find(O.rows.at(O.fr).id);
   if (it != html_files.end()) update_html_file("assets/" + it->second);
-  editorSetMessage("");
+  p->editorSetMessage("");
 }
 
 //case 'q':
@@ -3634,13 +3634,13 @@ void E_quit_C(void) {
       E.mode = NORMAL;
       E.command[0] = '\0';
       E.command_line.clear();
-      editorSetMessage("No write since last change");
+      p->editorSetMessage("No write since last change");
   } else {
-    editorSetMessage("");
+    p->editorSetMessage("");
     E.fr = E.fc = E.cy = E.cx = E.line_offset = 0; //added 11-26-2019 but may not be necessary having restored this in get_note.
     editor_mode = false;
   }
-  editorRefreshScreen(false); // don't need to redraw rows
+  p->editorRefreshScreen(false); // don't need to redraw rows
 }
 
 void E_quit0_C(void) {
@@ -3658,16 +3658,16 @@ void E_open_in_vim_C(void) {
 #ifdef NUSPELL
 void E_spellcheck_C(void) {
   E.spellcheck = !E.spellcheck;
-  if (E.spellcheck) editorSpellCheck();
-  else editorRefreshScreen(true);
+  if (E.spellcheck) p->editorSpellCheck();
+  else p->editorRefreshScreen(true);
   E.mode = NORMAL;
   E.command[0] = '\0';
   E.command_line.clear();
-  editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
+  p->editorSetMessage("Spellcheck %s", (E.spellcheck) ? "on" : "off");
 }
 #else
 void E_spellcheck_C(void) {
-  editorSetMessage("Nuspell is not available in this build");
+  p->editorSetMessage("Nuspell is not available in this build");
 }
 #endif
 
@@ -3920,7 +3920,7 @@ void O_N(void) {
   outlineInsertRow(0, "", true, false, false, BASE_DATE);
   O.fc = O.fr = O.rowoff = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-  editorEraseScreen(); //erases the note area
+  eraseRightScreen(); //erases the note area
   O.mode = INSERT;
 }
 
@@ -4775,7 +4775,7 @@ std::string editorRowsToString(void) {
 }
 
 // erases note
-void editorEraseScreen(void) {
+void eraseRightScreen(void) {
 
   E.rows.clear();
 
@@ -4807,7 +4807,7 @@ void editorEraseScreen(void) {
 }
 
 // currently used for sync log
-void editorReadFile(const std::string &filename) {
+void readFile(const std::string &filename) {
 
   std::ifstream f(filename);
   std::string line;
@@ -4821,7 +4821,7 @@ void editorReadFile(const std::string &filename) {
   f.close();
 }
 
-void editorDisplayFile(void) {
+void displayFile(void) {
 
   char lf_ret[10];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
@@ -4879,7 +4879,7 @@ void open_in_vim(void){
   std::string filename;
   if (get_folder_tid(O.rows.at(O.fr).id) != 18) filename = "vim_file.txt";
   else filename = "vim_file.cpp";
-  editorSaveNoteToFile(filename);
+  p->editorSaveNoteToFile(filename);
   std::stringstream s;
   s << "vim " << filename << " >/dev/tty";
   system(s.str().c_str());
@@ -5513,7 +5513,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.command[0] = '\0';
           O.repeat = 0;
           outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
-          editorEraseScreen(); //erases the note area
+          eraseRightScreen(); //erases the note area
           O.mode = INSERT;
           return;
       }
@@ -6090,7 +6090,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
       }
 
-      editorDisplayFile();
+      displayFile();
 
       return;
   } //end of outer switch(O.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
