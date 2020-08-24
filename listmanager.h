@@ -151,38 +151,6 @@ inline std::vector<std::vector<int>> word_positions;
 inline std::vector<std::string> line_buffer; //yanking lines
 void update_note(void); //used by Editor class 
 
-/* all used by Editor class */
-/*
-void editorSetMessage(const char *fmt, ...); //used by Editor Class
-void editorPasteString(void);
-void editorIndentRow(void);
-void editorRestoreSnapshot(void); 
-std::string editorGetWordUnderCursor(void);
-void editorMoveNextWord(void);
-void editorMoveBeginningWord(void);
-void editorSaveNoteToFile(const std::string &);
-void editorSpellingSuggestions(void);
-void editorCreateSnapshot(void); 
-void editorMoveCursorEOL(void);
-void editorMoveCursorBOL(void);
-void editorInsertChar(int);
-//int editorIndentAmount(int);
-void editorMoveCursor(int);
-void editorFindNextWord(void);
-void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
-void editorMoveEndWord(void); 
-//void editorDelChar(void);
-void editorSpellCheck(void);
-void editorChangeCase(void);
-//void editorInsertNewline(int);
-void editorDeleteToEndOfLine(void);
-void editorDelRow(int);
-void editorDelWord(void);
-void editorInsertReturn(void);
-void editorYankLine(int);
-void editorPasteLine(void);
-void editorUnIndentRow(void);
-*/
 
 /* also used by Editor class */
 int get_folder_tid(int); 

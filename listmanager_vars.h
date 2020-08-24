@@ -320,78 +320,18 @@ int unique_data_callback(void *, int, char **, char **);
 void synchronize(int);
 
 // Not used by Editor class
-void editorDecorateWord(int);
-void editorDecorateVisual(int);
-void editorDrawMessageBar(std::string &); //not used by Editor class
-void editorDrawRows(std::string &); //erases lines to right as it goes
-bool editorScroll(void);
-void editorBackspace(void);
-void editorPasteStringVisual(void);
-void displayFile(void);
 void readFile(const std::string &);
+void displayFile(void);
 void eraseRightScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
-void editorHighlightWordsByPosition(void);
-void editorHighlightWord(int, int, int);
-void editorMoveEndWord2(void); //not 'e' but just moves to end of word even if on last letter
-void editorDeleteVisual(void);
-void editorYankString(void); //only for VISUAL mode
-void editorInsertRow(int, std::string);
 
-//Editor Word Wrap
-int editorGetScreenXFromRowColWW(int, int);
-int editorGetScreenYFromRowColWW(int, int); //used by editorScroll
-int editorGetLineInRowWW(int, int);
-int editorGetLinesInRowWW(int);
-int editorGetLineCharCountWW(int, int);
-std::string editorGenerateWWString(void); // only used by editorDrawCodeRows
-void editorDrawCodeRows(std::string &);
-int editorGetInitialRow(int &);
-int editorGetInitialRow(int &, int);
-void editorDotRepeat(int);
-
-//void editorDrawStatusBar(std::string &); //only one status bar
-
-// Used by Editor class
-void editorSetMessage(const char *fmt, ...); //used by Editor class
-void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
-void editorInsertReturn(void); //used by Editor class
-void editorDelWord(void);
-void editorDelRow(int);
-void editorIndentRow(void);
-void editorUnIndentRow(void);
-int editorIndentAmount(int);
-void editorMoveCursor(int);
-void editorDelChar(void);
-void editorDeleteToEndOfLine(void);
-void editorYankLine(int);
-void editorPasteLine(void);
-void editorPasteLineVisual(void);
-void editorPasteString(void);
-void editorMoveCursorEOL(void);
-void editorMoveCursorBOL(void);
-void editorMoveBeginningWord(void);
-void editorMoveEndWord(void); 
-void editorMoveNextWord(void);
-std::string editorGetWordUnderCursor(void);
-void editorFindNextWord(void);
-void editorChangeCase(void);
-void editorRestoreSnapshot(void); 
-void editorCreateSnapshot(void); 
-void editorInsertChar(int);
-void editorInsertNewline(int);
-void editorSpellingSuggestions(void);
-void editorSpellCheck(void);
-
-
-std::string editorRowsToString(void);
 std::string generate_html(void);
 std::string generate_html2(void);
 void generate_persistent_html_file(int);
 void load_meta(void);
 void update_html_file(std::string &&);
 void update_html_code_file(std::string &&);
-void editorSaveNoteToFile(const std::string &);
-void editorReadFileIntoNote(const std::string &); 
+//void editorSaveNoteToFile(const std::string &);
+//void editorReadFileIntoNote(const std::string &); 
 
 void update_solr(void); //works but not in use
 void open_in_vim(void);
