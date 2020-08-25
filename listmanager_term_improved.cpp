@@ -915,7 +915,8 @@ void get_items(int max) {
   } else {
     O.mode = O.last_mode;
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -3969,6 +3970,148 @@ void displayFile(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
 
+void get_preview(int id) {
+  std::stringstream query;
+  O.preview_rows.clear();
+  query << "SELECT note FROM task WHERE id = " << id;
+  if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
+
+    //p->editorRefreshScreen(true); /*** needs to change ****/
+    draw_preview();
+    //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    if (lm_browser) {
+      if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+      else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+    }   
+}
+
+// doesn't appear to be called if row is NULL
+int preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
+  std::string note(argv[0]);
+  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  while (getline(snote, s, '\n')) {
+    //snote will not contain the '\n'
+    //p->editorInsertRow(p->rows.size(), s);
+    O.preview_rows.push_back(s);
+  }
+  return 0;
+}
+
+void draw_preview(void) {
+
+  char buf[32];
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
+  ab.append(buf, strlen(buf));
+  std::string abs = "";
+ 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf0.str());
+
+  // erase the screen
+  for (int i=0; i < O.screenlines; i++) {
+    ab.append("\x1b[K");
+    ab.append(lf_ret, nchars);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  /*****************get the rows******************************/
+  if (O.preview_rows.empty()) return;
+
+  int y = 0;
+  //int filerow = first_visible_row; //if unscrollable preview - should be 0 ?
+  int filerow = 0; //if unscrollable preview - should be 0 ?
+  bool flag = false;
+  ab.append("\x1b[1;42m");
+
+  for (;;){
+    if (flag) break;
+    //if (filerow == O.preview_rows.size()) {last_visible_row = filerow - 1; break;}
+    if (filerow == O.preview_rows.size())  break;
+    std::string row = O.preview_rows.at(filerow);
+
+    if (row.empty()) {
+      if (y == O.screenlines - 1) break;
+      //ab.append(lf_ret, nchars);
+      ab.append(1, '\f');
+      filerow++;
+      y++;
+
+      // pretty ugly that this has to appear here but need to take into account empty rows  
+      continue;
+    }
+
+    int pos = -1;
+    int prev_pos;
+    for (;;) {
+      /* this is needed because it deals where the end of the line doesn't have a space*/
+      if (row.substr(pos+1).size() <= O.right_screencols) {
+        ab.append(row, pos+1, O.right_screencols);
+        abs.append(row, pos+1, O.right_screencols);
+        if (y == O.screenlines - 1) {flag=true; break;}
+        ab.append(1, '\f');
+        y++;
+        filerow++;
+        break;
+      }
+
+      prev_pos = pos;
+      pos = row.find_last_of(' ', pos+O.right_screencols);
+
+      //note npos when signed = -1 and order of if/else may matter
+      if (pos == std::string::npos) {
+        pos = prev_pos + O.right_screencols;
+      } else if (pos == prev_pos) {
+        row = row.substr(pos+1);
+        prev_pos = -1;
+        pos = O.right_screencols - 1;
+      }
+
+      ab.append(row, prev_pos+1, pos-prev_pos);
+      abs.append(row, prev_pos+1, pos-prev_pos);
+      if (y == O.screenlines - 1) {flag=true; break;}
+      ab.append(1, '\f');
+      y++;
+    }
+
+  }
+  //last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
+  ab.append("\x1b[0m", 4); //return background to normal - would catch VISUAL_LINE starting and ending on last row
+
+  size_t p = 0;
+  for (;;) {
+      if (p > ab.size()) break;
+      p = ab.find('\f', p);
+      if (p == std::string::npos) break;
+      ab.replace(p, 1, lf_ret);
+      p += 7;
+  }
+  ab.append("\x1b[0m");
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
 void open_in_vim(void){
   std::string filename;
   if (get_folder_tid(O.rows.at(O.fr).id) != 18) filename = "vim_file.txt";
@@ -4296,6 +4439,7 @@ void outlineDrawStatusBar(void) {
   ab.append("\x1b[0m"); //switches back to normal formatting
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+
 void return_cursor() {
   std::string ab;
   char buf[32];
@@ -4305,8 +4449,9 @@ void return_cursor() {
     if (p->mode != COMMAND_LINE){
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + EDITOR_LEFT_MARGIN + 1); //03022019
       ab.append(buf, strlen(buf));
-    } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); /// ****
+    } else { //E.mode == COMMAND_LINE
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1);  
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->total_screenlines + TOP_MARGIN + 2, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); 
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
     }
@@ -4448,7 +4593,9 @@ void outlineMoveCursor(int key) {
 
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+
       } else display_container_info(O.rows.at(O.fr).id);
       break;
 
@@ -4458,7 +4605,8 @@ void outlineMoveCursor(int key) {
       O.fc = O.coloff = 0;
       if (O.view == TASK) {
         if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
       } else display_container_info(O.rows.at(O.fr).id);
       break;
   }
@@ -6024,8 +6172,9 @@ void initEditor(void) {
   E.highlight_syntax = true; // should only apply to code
 
   // ? whether the screen-related stuff should be in one place
-  E.screenlines = screenlines - 2 - TOP_MARGIN;
-  E.screencols = -2 + screencols/2;
+  E.screenlines = screenlines - 2 - TOP_MARGIN - 10;
+  E.screencols = -2 + screencols/2 - 10;
+  E.total_screenlines = screenlines - 2 - TOP_MARGIN;
   EDITOR_LEFT_MARGIN = screencols/2 + 1;
 }
 

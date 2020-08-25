@@ -16,8 +16,9 @@ class Editor {
     int line_offset; //row the user is currently scrolled to
     int prev_line_offset;
     int coloff; //column user is currently scrolled to
-    int screenlines; //number of lines in the display
+    int screenlines; //number of lines for this Editor
     int screencols;  //number of columns in the display
+    int total_screenlines; //number of lines in display
     std::vector<std::string> rows;
     std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
@@ -134,6 +135,7 @@ class Editor {
     void editorFindNextWord(void); //apparently doesn't work
     void editorRefreshScreen(bool); // true means need to redraw rows; false just redraw message and command line
     void editorDrawMessageBar(std::string &);
+    void editorDrawStatusBar(std::string &);
     void editorDrawRows(std::string &);
     void editorDrawCodeRows(std::string &);
     void editorHighlightWordsByPosition(void);

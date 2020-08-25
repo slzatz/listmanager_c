@@ -594,11 +594,22 @@ void Editor::editorRefreshScreen(bool redraw) {
   ab.append(buf, strlen(buf));
 
   if (redraw) {
+
+    // erase the screen
+    char lf_ret[10];
+    // \x1b[NC moves cursor forward by N columns
+    int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+    for (int i=0; i < total_screenlines; i++) {
+      ab.append("\x1b[K");
+      ab.append(lf_ret, nchars);
+    }
+
     //Temporary kluge tid for code folder = 18
     if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK)) editorDrawCodeRows(ab);
     //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
+  editorDrawStatusBar(ab); //08242020
   editorDrawMessageBar(ab); //01012020
 
   // the lines below position the cursor where it should go
@@ -621,12 +632,46 @@ void Editor::editorRefreshScreen(bool redraw) {
 void Editor::editorDrawMessageBar(std::string& ab) {
   std::stringstream buf;
 
-  buf  << "\x1b[" << screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  //buf  << "\x1b[" << screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(message);
   if (msglen > screencols) msglen = screencols;
   ab.append(message, msglen);
+}
+
+void Editor::editorDrawStatusBar(std::string& ab) {
+  int len;
+  char status[200];
+  // position the cursor at the beginning of the editor status bar at correct indent
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1,
+                                            EDITOR_LEFT_MARGIN);
+  ab.append(buf, strlen(buf));
+  ab.append("\x1b[K"); //cursor in middle of screen and doesn't move on erase
+  ab.append("\x1b[7m"); //switches to inverted colors
+  ab.append(" ");
+  if (!rows.empty()){
+    int line = editorGetLineInRowWW(fr, fc);
+    int line_char_count = editorGetLineCharCountWW(fr, line);
+    int lines = editorGetLinesInRowWW(fr);
+    //fr, fc, cx, cy, line chars start at zero; line, lines line 
+    len = snprintf(status,
+                   sizeof(status), "fr=%d lines=%d line=%d fc=%d line offset=%d initial row=%d last row=%d line chrs="
+                                   "%d  cx=%d cy=%d scols(1)=%d",
+                                   fr, lines, line, fc, line_offset, first_visible_row, last_visible_row, line_char_count, cx, cy, screencols);
+  } else {
+    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
+                                      cx, cy, rows.size(), line_offset);
+  }
+  if (len > screencols) len = screencols;
+  ab.append(status, len);
+  while (len < screencols) {
+      ab.append(" ", 1);
+      len++;
+    }
+  ab.append("\x1b[m", 3); //switches back to normal formatting
 }
 
 void Editor::editorDrawRows(std::string &ab) {
@@ -636,8 +681,7 @@ void Editor::editorDrawRows(std::string &ab) {
   std::string abs = "";
  
   char lf_ret[10];
-  // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
   ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf;
@@ -645,11 +689,13 @@ void Editor::editorDrawRows(std::string &ab) {
   buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
   ab.append(buf.str());
 
+  /* testing moving into editorRefreshScreen
   // erase the screen
   for (int i=0; i < screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
   }
+  */
 
   std::stringstream buf2;
   buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
@@ -828,7 +874,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
   ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf;
@@ -836,11 +882,13 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
   ab.append(buf.str());
 
+  /* testing moving into editorRefreshScreen
   // erase the screen
   for (int i=0; i < screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
   }
+  */
 
   std::stringstream buf2;
   buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
@@ -1887,6 +1935,7 @@ void Editor::E_suggestions(int repeat) {
 }
 
 void Editor::E_change2command_line(int repeat) {
+  //where is the cursor position set? In return_cursor.
   editorSetMessage(":");
   command_line.clear();
   mode = COMMAND_LINE;

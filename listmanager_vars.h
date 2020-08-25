@@ -117,6 +117,7 @@ struct outlineConfig {
   unsigned int screencols;  //number of columns in the display available to text
   unsigned int right_screencols; //Number of columns on right hand side of screen
   std::vector<orow> rows;
+  std::vector<std::string> preview_rows;
   std::string context;
   std::string folder;
   std::string keyword;
@@ -143,6 +144,13 @@ void EraseScreenRedrawLines(void);
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
+void outlineDrawPreview(std::string &ab);
+void outlineShowMessage(const char *fmt, ...);
+void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
+void outlineDrawStatusBar(void);
+void outlineDrawMessageBar(std::string&);
+
+
 
 /* OUTLINE COMMAND_LINE functions */
 void F_open(int);
@@ -224,11 +232,6 @@ void edit_N(void);
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
 
-//Outline Prototypes
-void outlineShowMessage(const char *fmt, ...);
-void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
-void outlineDrawStatusBar(void);
-void outlineDrawMessageBar(std::string&);
 void outlineDelWord();
 void outlineMoveCursor(int key);
 void outlineBackspace(void);
@@ -252,6 +255,7 @@ void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 void outlineSave(const std::string &);
 void return_cursor(void);
+void draw_preview(void);
 
 //Database-related Prototypes
 void db_open(void);
@@ -292,6 +296,7 @@ void display_container_info(int);
 int keyword_exists(std::string &);  
 int folder_exists(std::string &);
 int context_exists(std::string &);
+void get_preview(int);
 
 //sqlite callback functions
 typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
@@ -317,6 +322,7 @@ int folder_info_callback(void *, int, char **, char **);
 int keyword_info_callback(void *, int, char **, char **);
 int count_callback(void *, int, char **, char **);
 int unique_data_callback(void *, int, char **, char **);
+int preview_callback (void *, int, char **, char **);
 
 void synchronize(int);
 
