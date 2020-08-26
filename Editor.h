@@ -9,7 +9,35 @@ class Editor {
 
   public:
 
-    Editor() {}
+    Editor() {
+      cx = 0; //cursor x position
+      cy = 0; //cursor y position
+      fc = 0; //file x position
+      fr = 0; //file y position
+      line_offset = 0;  //the number of lines of text at the top scrolled off the screen
+      prev_line_offset = 0;  //the number of lines of text at the top scrolled off the screen
+      //E.coloff = 0;  //should always be zero because of line wrap
+      dirty = 0; //has filed changed since last save
+      message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
+      highlight[0] = highlight[1] = -1;
+      mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
+      command[0] = '\0';
+      command_line = "";
+      repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
+      indent = 4;
+      smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
+      first_visible_row = 0;
+      spellcheck = false;
+      highlight_syntax = true; // should only apply to code
+
+      // ? whether the screen-related stuff should be in one place
+      /*
+      screenlines = screenlines - 2 - TOP_MARGIN - 10;
+      screencols = -2 + screencols/2 - 10;
+      total_screenlines = screenlines - 2 - TOP_MARGIN;
+      EDITOR_LEFT_MARGIN = screencols/2 + 1;
+      */
+}
 
     int cx, cy; //cursor x and y position
     int fc, fr; // file x and y position
@@ -18,6 +46,7 @@ class Editor {
     int coloff; //column user is currently scrolled to
     int screenlines; //number of lines for this Editor
     int screencols;  //number of columns in the display
+    int left_margin; //can vary (so could TOP_MARGIN - will do that later
     int total_screenlines; //number of lines in display
     std::vector<std::string> rows;
     std::vector<std::string> prev_rows;

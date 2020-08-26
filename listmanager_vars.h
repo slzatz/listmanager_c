@@ -149,6 +149,7 @@ void outlineShowMessage(const char *fmt, ...);
 void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
 void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
+void outlineRefreshAllEditors(void);
 
 
 

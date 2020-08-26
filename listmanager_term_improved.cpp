@@ -2,11 +2,13 @@
 #include "listmanager_vars.h"
 #include "Editor.h"
 
-Editor E; //this instantiates it - with () it looks like a function definition with type Editor
+//Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
+//std::shared_ptr<Editor> p(nullptr);
 
 typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
+std::vector<Editor *> editors;
 
 /* EDITOR COMMAND_LINE mode lookup */
 std::unordered_map<std::string, efunc> E_lookup_C {
@@ -92,7 +94,8 @@ void signalHandler(int signum) {
     O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
     p->screenlines = screenlines - 2 - TOP_MARGIN;
     p->screencols = -2 + screencols/2;
-    EDITOR_LEFT_MARGIN = screencols/2 + 1;
+    //EDITOR_LEFT_MARGIN = screencols/2 + 1;
+    p->left_margin = screencols/2 + 1;
 
     /*
     the order of everything below
@@ -1022,7 +1025,7 @@ void get_items_by_id(std::stringstream &query) {
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
-    p->mode = SEARCH; ///////////////////////////////////////////////////////////////
+    p->mode = SEARCH; /////////////////////////////////////////////////////////////// can't be right
     get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -1110,7 +1113,7 @@ void get_note(int id) {
   if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
 
   if (O.taskview != BY_SEARCH) {
-    p->editorRefreshScreen(true);
+    //p->editorRefreshScreen(true); /***********************************************/
     //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
     if (lm_browser) {
       if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
@@ -2725,8 +2728,8 @@ int readKey() {
     return '\x1b'; // if it doesn't match a known escape sequence like ] ... or O ... just return escape
   
   } else {
-      //outlineShowMessage("You pressed %d", c); //slz
-      return c;
+    //outlineShowMessage("You pressed %d", c); //slz
+    return c;
   }
 }
 
@@ -2971,27 +2974,77 @@ void F_new(int) {
 }
 
 void F_edit(int) {
+  
   if (!(O.view == TASK)) {
     O.command[0] = '\0';
     O.mode = NORMAL;
     outlineShowMessage("Only tasks have notes to edit!");
     return;
   }
+
   int id = get_id();
   if (id != -1) {
     outlineShowMessage("Edit note %d", id);
     outlineRefreshScreen();
     //editor_mode needs go before get_note in case we retrieved item via a search
     editor_mode = true;
+
+    /*
+     * 1) check if the note is already being edited
+     * 2) if it is then just set p to that note
+     * 3) if not being edited add to editors vector
+     * 4) all the other editors will need to have their size updated
+     * 5) Assume for now they are organized side by side
+     *
+     *
+     */
+
+    if (!editors.empty()){
+      auto it = std::find_if(std::begin(editors), std::end(editors),
+                         [&id](auto& pp) { return pp->id == id; }); //auto&& also works
+
+      if (it == editors.end()) {
+        //Editor E;
+        //editors.push_back(&E);
+        p = new Editor;
+        editors.push_back(p);
+        //editors.push_back(std::make_shared<Editor>(E));
+        p = editors.back();
+      } else {
+        p = *it;
+      }    
+    } else {
+      //Editor E;
+      p = new Editor;
+      //editors.push_back(&E);
+      editors.push_back(p);
+      //editors.push_back(std::make_shared<Editor>(E));
+      p = editors.back();
+   }
+
+    int n = editors.size();
+    int i = 0;
+    for (auto z : editors) {
+      z->screenlines = screenlines - 2 - TOP_MARGIN - 10;
+      z->screencols = (-2 + screencols/2)/n;
+      z->total_screenlines = screenlines - 2 - TOP_MARGIN;
+      z->left_margin = screencols/2 + 1 + i*z->screencols;
+      i++;
+    }
+
     get_note(id); //if id == -1 does not try to retrieve note
+    //In get_note but probably shouldn't be and probably refreshscreen shouldn't be there either
     //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0;
     if (p->rows.empty()) {
       p->mode = INSERT;
       p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
       p->editorRefreshScreen(false);
-    } else p->mode = NORMAL;
-    //p->mode = (p->rows.empty()) ? INSERT : NORMAL;
-    //p->mode = NORMAL;
+    } else {
+      p->mode = NORMAL;
+      p->editorSetMessage("Howdy"); //shouldn't need this
+      p->editorRefreshScreen(true);
+      outlineShowMessage("HELP!!!");
+    }
     p->command[0] = '\0';
   } else {
     outlineShowMessage("You need to save item before you can "
@@ -3976,13 +4029,12 @@ void get_preview(int id) {
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
 
-    //p->editorRefreshScreen(true); /*** needs to change ****/
-    draw_preview();
-    //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    if (lm_browser) {
-      if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-      else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-    }   
+  draw_preview();
+
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  }   
 }
 
 // doesn't appear to be called if row is NULL
@@ -4000,7 +4052,6 @@ int preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   std::string s;
   while (getline(snote, s, '\n')) {
     //snote will not contain the '\n'
-    //p->editorInsertRow(p->rows.size(), s);
     O.preview_rows.push_back(s);
   }
   return 0;
@@ -4053,7 +4104,6 @@ void draw_preview(void) {
 
     if (row.empty()) {
       if (y == O.screenlines - 1) break;
-      //ab.append(lf_ret, nchars);
       ab.append(1, '\f');
       filerow++;
       y++;
@@ -4307,6 +4357,16 @@ void outlineDrawSearchRows(std::string& ab) {
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
 }
+
+void outlineRefreshAllEditors(void) {
+
+  eraseRightScreen();
+
+  //may be a redundant partial erase in each editorRefreshScreen
+  for (auto e : editors) e->editorRefreshScreen(true);
+    
+}
+
 void outlineDrawStatusBar(void) {
 
   std::string ab;  
@@ -4372,7 +4432,9 @@ void outlineDrawStatusBar(void) {
     orow& row = O.rows.at(O.fr);
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
-    if (p->dirty) truncated_title.append( "[+]");
+    
+    //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
+
     // needs to be here because O.rows could be empty
     std::string keywords = (O.view == TASK) ? get_task_keywords().first : ""; // see before and in switch
 
@@ -4398,9 +4460,10 @@ void outlineDrawStatusBar(void) {
   ab.append(status, len);
   ab.append(" ", 1);
 
-  char editor_status[200];
-  int editor_len = 0;
+  //char editor_status[200];
+  //int editor_len = 0;
 
+  /*
   if (DEBUG) {
     if (!p->rows.empty()){
       int line = p->editorGetLineInRowWW(p->fr, p->fc);
@@ -4416,10 +4479,11 @@ void outlineDrawStatusBar(void) {
                                         p->cx, p->cy, p->rows.size(), p->line_offset);
     }
   }  
+  */
 
-  ab.append(editor_status, editor_len);
+  //ab.append(editor_status, editor_len);
 
-  len = len + editor_len;
+  //len = len + editor_len;
   //because of escapes
   len-=22;
 
@@ -4447,7 +4511,8 @@ void return_cursor() {
   if (editor_mode) {
   // the lines below position the cursor where it should go
     if (p->mode != COMMAND_LINE){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + EDITOR_LEFT_MARGIN + 1); //03022019
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + EDITOR_LEFT_MARGIN + 1); //03022019
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
       //snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1);  
@@ -4738,7 +4803,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case NORMAL:  
 
       if (c == '\x1b') {
-        if (O.view == TASK) get_note(O.rows.at(O.fr).id); //get out of display_item_info
+        //if (O.view == TASK) get_note(O.rows.at(O.fr).id); //get out of display_item_info
+        if (O.view == TASK) get_preview(O.rows.at(O.fr).id); //get out of display_item_info
         outlineShowMessage("");
         O.command[0] = '\0';
         O.repeat = 0;
@@ -5532,7 +5598,8 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          (p->editorInsertReturn)();
+          //(p->editorInsertReturn)();
+          p->editorInsertReturn();
           p->last_typed += c;
           return true;
 
@@ -5577,7 +5644,7 @@ bool editorProcessKeypress(void) {
         // this should be a command line command
         case CTRL_KEY('z'):
           p->smartindent = (p->smartindent) ? 0 : SMARTINDENT;
-          p->editorSetMessage("E.smartindent = %d", p->smartindent); 
+          p->editorSetMessage("smartindent = %d", p->smartindent); 
           return false;
     
         case '\x1b':
@@ -6150,6 +6217,7 @@ void initOutline() {
   O.right_screencols = -2 + screencols/2;
 }
 
+/*
 void initEditor(void) {
   E.cx = 0; //cursor x position
   E.cy = 0; //cursor y position
@@ -6177,6 +6245,7 @@ void initEditor(void) {
   E.total_screenlines = screenlines - 2 - TOP_MARGIN;
   EDITOR_LEFT_MARGIN = screencols/2 + 1;
 }
+*/
 
 int main(int argc, char** argv) { 
 
@@ -6207,8 +6276,9 @@ int main(int argc, char** argv) {
   enableRawMode();
   EraseScreenRedrawLines();
   initOutline();
-  p = &E; //very important - will need an array of pointers when there can be more than one editor
-  initEditor();
+  //p = &E; //very important - will need an array of pointers when there can be more than one editor
+  //initEditor();
+  EDITOR_LEFT_MARGIN = screencols/2 + 1;
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized
@@ -6233,7 +6303,6 @@ int main(int argc, char** argv) {
   return_cursor();
 
   while (1) {
-
     // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
