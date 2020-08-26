@@ -120,6 +120,7 @@ class Editor {
     void E_toggle_smartindent(int);
     void E_save_note(int);
     void E_change_case(int);
+    void E_goto_outline(int);
 
     void e_o(int);
     void e_O(int);

@@ -72,6 +72,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"gg", &Editor::E_gg},
   {"G", &Editor::E_G},
   {{0x1A}, &Editor::E_toggle_smartindent},
+ // {{0x8}, &Editor::E_goto_outline},
   {{0x13}, &Editor::E_save_note},
 };
 
@@ -3038,14 +3039,15 @@ void F_edit(int) {
     if (p->rows.empty()) {
       p->mode = INSERT;
       p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      p->editorRefreshScreen(false);
+      //p->editorRefreshScreen(false);
     } else {
       p->mode = NORMAL;
       p->editorSetMessage("Howdy"); //shouldn't need this
-      p->editorRefreshScreen(true);
-      outlineShowMessage("HELP!!!");
+      //p->editorRefreshScreen(true);
+      //outlineShowMessage("HELP!!!");
     }
-    p->command[0] = '\0';
+    //p->command[0] = '\0';
+    for (auto e : editors) e->editorRefreshScreen(true);
   } else {
     outlineShowMessage("You need to save item before you can "
                       "create a note");
@@ -3492,6 +3494,10 @@ void F_clear(int) {
 }
 
 /* OUTLINE NORMAL mode functions */
+void goto_editor_N(void) {
+  editor_mode = true;
+}
+
 void return_N(void) {
   orow& row = O.rows.at(O.fr);
 
@@ -3925,7 +3931,7 @@ void outlineSave(const std::string& fname) {
 // erases note
 void eraseRightScreen(void) {
 
-  p->rows.clear(); /***** long term this can't be right *******/
+  //p->rows.clear(); /***** long term this can't be right *******/
 
   char lf_ret[10];
   //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
@@ -4360,7 +4366,7 @@ void outlineDrawSearchRows(std::string& ab) {
 
 void outlineRefreshAllEditors(void) {
 
-  eraseRightScreen();
+  //eraseRightScreen();
 
   //may be a redundant partial erase in each editorRefreshScreen
   for (auto e : editors) e->editorRefreshScreen(true);
@@ -5747,6 +5753,25 @@ bool editorProcessKeypress(void) {
       if (c == '\x1b') {
         p->command[0] = '\0';
         p->repeat = 0;
+        return false;
+      }
+
+      if (c == CTRL_KEY('h')) {
+        if (editors.size() == 1) {
+          editor_mode = false;
+          return false;
+        }
+        auto it = std::find(editors.begin(), editors.end(), p);
+        int index = std::distance(editors.begin(), it);
+        if (index) p = editors[index - 1];
+        else editor_mode = false;
+        return false;
+      }
+      
+      if (c == CTRL_KEY('l')) {
+        auto it = std::find(editors.begin(), editors.end(), p);
+        int index = std::distance(editors.begin(), it);
+        if (index < editors.size() - 1) p = editors[index + 1];
         return false;
       }
 

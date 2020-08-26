@@ -193,6 +193,7 @@ void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used
 
 /* OUTLINE mode NORMAL functions */
+void goto_editor_N(void);
 void return_N(void);
 void w_N(void);
 void insert_N(void);
@@ -420,6 +421,7 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
 
 /* OUTLINE NORMAL mode command lookup */
 std::unordered_map<std::string, zfunc> n_lookup {
+  {{0xC}, goto_editor_N},
   {"\r", return_N}, //return_O
   {"i", insert_N},
   {"s", s_N},

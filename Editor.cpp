@@ -1789,6 +1789,10 @@ void Editor::E_change_case(int repeat) {
   for (int i = 0; i < repeat; i++) editorChangeCase();
 }
 
+void Editor::E_goto_outline(int repeat) {
+  editor_mode = false;
+}
+
 void Editor::E_replace(int repeat) {
   for (int i = 0; i < repeat; i++) {
     editorDelChar();
