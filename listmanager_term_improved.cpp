@@ -5850,6 +5850,36 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == '\r') {
+
+        if (p->command_line == "q" || p->command_line == "quit") {
+          if (p->dirty) {
+              p->mode = NORMAL;
+              p->command[0] = '\0';
+              p->command_line.clear();
+              p->editorSetMessage("No write since last change");
+              return false;
+          }
+
+          eraseRightScreen();
+          if (auto n = editors.size(); n > 1) {
+            editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+            p = editors[0]; //kluge should move in some logical fashion
+            n--;
+            int i = 0;
+            for (auto z : editors) {
+              z->screenlines = screenlines - 2 - TOP_MARGIN - 10;
+              z->screencols = (-2 + screencols/2)/n;
+              z->total_screenlines = screenlines - 2 - TOP_MARGIN;
+              z->left_margin = screencols/2 + 1 + i*z->screencols;
+              z->editorRefreshScreen(true);
+              i++;
+            }
+          } else editor_mode = false;
+        //editorRefreshScreen(false); // don't need to redraw rows
+          p->editorSetMessage("");
+          return false;
+        }
+
         if (E_lookup_C.count(p->command_line)) {
           //E_lookup_C.at(p->command_line)();
           (p->*E_lookup_C.at(p->command_line))();

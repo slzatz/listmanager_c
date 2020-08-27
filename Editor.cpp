@@ -595,16 +595,21 @@ void Editor::editorRefreshScreen(bool redraw) {
   ab.append(buf, strlen(buf));
 
   if (redraw) {
-
-    // erase the screen
+    // erase the screen - problem erases everything to the right - is there a rectangular erase??????
     char lf_ret[10];
+    char erase_chars[10];
     // \x1b[NC moves cursor forward by N columns
-    //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-    int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+    //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+    snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+    snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols);
     for (int i=0; i < total_screenlines; i++) {
-      ab.append("\x1b[K");
-      ab.append(lf_ret, nchars);
+      //ab.append("\x1b[K"); does everything to right of cursor - not good in multi-editor world
+      //ab.append("\x1b[40X");
+      ab.append(erase_chars);
+      //ab.append(lf_ret, nchars);
+      ab.append(lf_ret);
     }
+    //ab.append("\x1b[5;100;200;100$z");
 
     //Temporary kluge tid for code folder = 18
     if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK)) editorDrawCodeRows(ab);
