@@ -45,7 +45,7 @@ class Editor {
     int prev_line_offset;
     int coloff; //column user is currently scrolled to
     int screenlines; //number of lines for this Editor
-    int screencols;  //number of columns in the display
+    int screencols;  //number of columns for this Editor
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
     int total_screenlines; //number of lines in display
     std::vector<std::string> rows;

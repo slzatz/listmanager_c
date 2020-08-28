@@ -637,7 +637,9 @@ void Editor::editorRefreshScreen(bool redraw) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, left_margin + screencols); //may not need offset
     ab.append(buf);
     ab.append("\x1b[37;1mw");
-    ab.append("\x1b(B"); //exit line drawing mode
+
+    //exit line drawing mode
+    ab.append("\x1b(B");
 
   ab.append("\x1b[?25h", 6); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -667,10 +669,14 @@ void Editor::editorDrawStatusBar(std::string& ab) {
   char status[200];
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1,
-                                            left_margin);
-  ab.append(buf, strlen(buf));
-  ab.append("\x1b[K"); //cursor in middle of screen and doesn't move on erase
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1, left_margin);
+  ab.append(buf);
+
+  //erase from start of an Editor's status bar to the end of the Editor's status bar
+  //ab.append("\x1b[K"); //erases from cursor to end of screen on right - not what we want
+  snprintf(buf, sizeof(buf), "\x1b[%dX", screencols);
+  ab.append(buf);
+
   ab.append("\x1b[7m"); //switches to inverted colors
   ab.append(" ");
   if (DEBUG) {

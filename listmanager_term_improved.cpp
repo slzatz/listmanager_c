@@ -3044,10 +3044,11 @@ void F_edit(int) {
     int n = editors.size();
     int i = 0;
     for (auto z : editors) {
-      z->screenlines = screenlines - 2 - TOP_MARGIN - 10;
+      z->screenlines = screenlines - 2 - TOP_MARGIN;
       z->screencols = (-2 + screencols/2)/n;
       z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-      z->left_margin = screencols/2 + 1 + i*z->screencols;
+      //z->left_margin = screencols/2 + 1 + i*z->screencols;
+      z->left_margin = screencols/2 + i*z->screencols + i + 1;
       i++;
     }
 
@@ -3061,11 +3062,9 @@ void F_edit(int) {
       //p->editorRefreshScreen(false);
     } else {
       p->mode = NORMAL;
-      p->editorSetMessage("Howdy"); //shouldn't need this
-      //p->editorRefreshScreen(true);
-      //outlineShowMessage("HELP!!!");
     }
-    //p->command[0] = '\0';
+
+    eraseRightScreen();
     for (auto e : editors) e->editorRefreshScreen(true);
   } else {
     outlineShowMessage("You need to save item before you can "
@@ -3949,9 +3948,6 @@ void outlineSave(const std::string& fname) {
 
 // erases note
 void eraseRightScreen(void) {
-
-  //p->rows.clear(); /***** long term this can't be right *******/
-
   char lf_ret[10];
   //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
   //or
@@ -3964,16 +3960,30 @@ void eraseRightScreen(void) {
   ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
   //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, EDITOR_LEFT_MARGIN + 1); 
   ab.append(buf);
 
   //erase the screen
-  for (int i=0; i < p->screenlines; i++) {
+  //for (int i=0; i < p->screenlines; i++) {
+  for (int i=0; i < screenlines - TOP_MARGIN; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  // redraw top horizontal line which has t's so needs to be erased
+  ab.append("\x1b(0"); // Enter line drawing mode
+  for (int j=1; j<screencols/2; j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2 + j); //don't think need offset
+    ab.append(buf);
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    ab.append("\x1b[37;1mq");
+  }
+  //exit line drawing mode
+  ab.append("\x1b(B");
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //necessary? 
   ab.append(buf);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -4086,30 +4096,47 @@ void draw_preview(void) {
 
   char buf[32];
   std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
+  unsigned int width = O.right_screencols - 10;
+  unsigned int length = O.screenlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5);
   ab.append(buf, strlen(buf));
-  std::string abs = "";
+  //std::string abs = "";
  
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN + 5);
   ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
-  buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  //buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 5 << ";" <<  EDITOR_LEFT_MARGIN + 5 << "H";
   ab.append(buf0.str());
 
+  /*
   // erase the screen
   for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K");
     ab.append(lf_ret, nchars);
   }
+  */
+
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols - 5);
+  //for (int i=0; i < O.screenlines; i++) {
+  for (int i=0; i < length; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
 
   std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  //buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 5 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   /*****************get the rows******************************/
@@ -4128,7 +4155,8 @@ void draw_preview(void) {
     std::string row = O.preview_rows.at(filerow);
 
     if (row.empty()) {
-      if (y == O.screenlines - 1) break;
+      //if (y == O.screenlines - 1) break;
+      if (y == length - 1) break;
       ab.append(1, '\f');
       filerow++;
       y++;
@@ -4141,10 +4169,12 @@ void draw_preview(void) {
     int prev_pos;
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
-      if (row.substr(pos+1).size() <= O.right_screencols) {
-        ab.append(row, pos+1, O.right_screencols);
-        abs.append(row, pos+1, O.right_screencols);
-        if (y == O.screenlines - 1) {flag=true; break;}
+      //if (row.substr(pos+1).size() <= O.right_screencols) {
+      if (row.substr(pos+1).size() <= width) {
+        //ab.append(row, pos+1, O.right_screencols);
+        ab.append(row, pos+1, width);
+        //if (y == O.screenlines - 1) {flag=true; break;}
+        if (y == length - 1) {flag=true; break;}
         ab.append(1, '\f');
         y++;
         filerow++;
@@ -4152,20 +4182,24 @@ void draw_preview(void) {
       }
 
       prev_pos = pos;
-      pos = row.find_last_of(' ', pos+O.right_screencols);
+      //pos = row.find_last_of(' ', pos+O.right_screencols);
+      pos = row.find_last_of(' ', pos+width);
 
       //note npos when signed = -1 and order of if/else may matter
       if (pos == std::string::npos) {
-        pos = prev_pos + O.right_screencols;
+        //pos = prev_pos + O.right_screencols;
+        pos = prev_pos + width;
       } else if (pos == prev_pos) {
         row = row.substr(pos+1);
         prev_pos = -1;
-        pos = O.right_screencols - 1;
+        //pos = O.right_screencols - 1;
+        pos = width - 1;
       }
 
       ab.append(row, prev_pos+1, pos-prev_pos);
-      abs.append(row, prev_pos+1, pos-prev_pos);
-      if (y == O.screenlines - 1) {flag=true; break;}
+      //abs.append(row, prev_pos+1, pos-prev_pos);
+      //if (y == O.screenlines - 1) {flag=true; break;}
+      if (y == length - 1) {flag=true; break;}
       ab.append(1, '\f');
       y++;
     }
@@ -4182,8 +4216,36 @@ void draw_preview(void) {
       ab.replace(p, 1, lf_ret);
       p += 7;
   }
+    //draw lines
+  char move_cursor[10];
+  snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
+  ab.append("\x1b(0"); // Enter line drawing mode
+  for (int j=0; j<length+1; j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, EDITOR_LEFT_MARGIN + 5); 
+    ab.append(buf);
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    ab.append("\x1b[37;1mx");
+    ab.append(move_cursor);
+    ab.append("\x1b[37;1mx");
+  }
+  snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dB", length);
+  for (int j=0; j<width+1; j++) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5 + j); 
+    ab.append(buf);
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    ab.append("\x1b[37;1mq");
+    ab.append(move_cursor);
+    ab.append("\x1b[37;1mq");
+  }
+  //exit line drawing mode
+  ab.append("\x1b(B");
+
   ab.append("\x1b[0m");
   ab.append("\x1b[?25h", 6); //shows the cursor
+
+
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
@@ -5883,15 +5945,15 @@ bool editorProcessKeypress(void) {
         //if (p->command_line == "q" || p->command_line == "quit") {
           if (p->command_line == "x") update_note();
 
-          if (p->dirty) {
+          if (p->command_line == "q!" || p->command_line == "quit!") {
+            // do nothing = allow editor to be closed
+          } else if (p->dirty) {
               p->mode = NORMAL;
               p->command[0] = '\0';
               p->command_line.clear();
               p->editorSetMessage("No write since last change");
               return false;
           }
-
-          if (p->command_line == "x") update_note();
 
           eraseRightScreen();
           if (auto n = editors.size(); n > 1) {
@@ -5900,14 +5962,17 @@ bool editorProcessKeypress(void) {
             n--;
             int i = 0;
             for (auto z : editors) {
-              z->screenlines = screenlines - 2 - TOP_MARGIN - 10;
+              z->screenlines = screenlines - 2 - TOP_MARGIN;
               z->screencols = (-2 + screencols/2)/n;
               z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-              z->left_margin = screencols/2 + 1 + i*z->screencols;
+              z->left_margin = screencols/2 +  i*z->screencols + i + 1;
               z->editorRefreshScreen(true);
               i++;
             }
-          } else editor_mode = false;
+          } else {
+            editors.clear(); // there's only one so also could just erase editors0]
+            editor_mode = false;
+          }
         //editorRefreshScreen(false); // don't need to redraw rows
           p->editorSetMessage("");
           return false;
@@ -6305,36 +6370,6 @@ void initOutline() {
   O.right_screencols = -2 + screencols/2;
   O.left_screencols = O.right_screencols -2;
 }
-
-/*
-void initEditor(void) {
-  E.cx = 0; //cursor x position
-  E.cy = 0; //cursor y position
-  E.fc = 0; //file x position
-  E.fr = 0; //file y position
-  E.line_offset = 0;  //the number of lines of text at the top scrolled off the screen
-  E.prev_line_offset = 0;  //the number of lines of text at the top scrolled off the screen
-  //E.coloff = 0;  //should always be zero because of line wrap
-  E.dirty = 0; //has filed changed since last save
-  E.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
-  E.highlight[0] = E.highlight[1] = -1;
-  E.mode = 0; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
-  E.command[0] = '\0';
-  E.command_line = "";
-  E.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
-  E.indent = 4;
-  E.smartindent = 1; //CTRL-z toggles - don't want on what pasting from outside source
-  E.first_visible_row = 0;
-  E.spellcheck = false;
-  E.highlight_syntax = true; // should only apply to code
-
-  // ? whether the screen-related stuff should be in one place
-  E.screenlines = screenlines - 2 - TOP_MARGIN - 10;
-  E.screencols = -2 + screencols/2 - 10;
-  E.total_screenlines = screenlines - 2 - TOP_MARGIN;
-  EDITOR_LEFT_MARGIN = screencols/2 + 1;
-}
-*/
 
 int main(int argc, char** argv) { 
 
