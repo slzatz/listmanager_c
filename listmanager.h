@@ -150,6 +150,7 @@ inline int EDITOR_LEFT_MARGIN;
 inline std::vector<std::vector<int>> word_positions = {};
 inline std::vector<std::string> line_buffer = {}; //yanking lines
 void update_note(void); //used by Editor class 
+std::string get_title(int id);
 
 
 /* also used by Editor class */

@@ -1100,6 +1100,24 @@ void merge_note(int id) {
   //}
 }
 
+std::string get_title(int id) {
+  std::string title;
+  std::stringstream query;
+  query << "SELECT title FROM task WHERE id = " << id;
+  if (!db_query(S.db, query.str().c_str(), title_callback, &title, &S.err_msg, __func__)) return std::string("SQL Problem");
+  return title;
+}
+
+int title_callback (void *title, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  std::string *t = static_cast<std::string*>(title);
+  *t = std::string(argv[0]);
+  return 0;
+}
+
 void get_note(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
@@ -3033,6 +3051,7 @@ void F_edit(int) {
       i++;
     }
 
+    p->id = id;
     get_note(id); //if id == -1 does not try to retrieve note
     //In get_note but probably shouldn't be and probably refreshscreen shouldn't be there either
     //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0;
@@ -4393,8 +4412,8 @@ void outlineDrawStatusBar(void) {
 
   ab.append(buf, strlen(buf));
 
-  ab.append("\x1b[7m", 4); //switches to inverted colors
-  char status[300], rstatus[80];
+  ab.append("\x1b[7m"); //switches to inverted colors
+  char status[300], status0[300], rstatus[80];
 
   std::string s;
   //std::string keywords = "";
@@ -4444,27 +4463,37 @@ void outlineDrawStatusBar(void) {
     // needs to be here because O.rows could be empty
     std::string keywords = (O.view == TASK) ? get_task_keywords().first : ""; // see before and in switch
 
-    len = snprintf(status, sizeof(status),
-                              // because video is reversted [42 sets text to green and 49 undoes it
-                              // also [0;35;7m -> because of 7m it reverses background and foreground
-                              // I think the [0;7m is revert to normal and reverse video
+    // because video is reversted [42 sets text to green and 49 undoes it
+    // also [0;35;7m -> because of 7m it reverses background and foreground
+    // I think the [0;7m is revert to normal and reverse video
+    snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
+    len = snprintf(status0, sizeof(status0),
+                              "%s%s%s %.15s... %s  %d %d/%zu %s",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   } else {
 
-    len = snprintf(status, sizeof(status),
+    snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
+                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+    len = snprintf(status0, sizeof(status0),
+                              "%s%s%s %.15s... %d %d/%zu %s",
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   }
 
-  ab.append(status, len);
-  ab.append(" ", 1);
+  ab.append(status);
+  ab.append(" ");
 
   //char editor_status[200];
   //int editor_len = 0;
@@ -4489,20 +4518,19 @@ void outlineDrawStatusBar(void) {
 
   //ab.append(editor_status, editor_len);
 
-  //len = len + editor_len;
   //because of escapes
-  len-=22;
+  len-=10;
 
   int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite:" : "postgres:"), TOSTRING(GIT_BRANCH));
 
-  if (len > screencols - 1) len = screencols - 1;
+  if (len > O.left_screencols - 1) len = O.left_screencols - 1;
 
-  while (len < screencols - 1 ) {
-    if ((screencols - len) == rlen - 9) { //10 of chars not printable
+  while (len < O.left_screencols - 1 ) {
+    if ((O.left_screencols - len) == rlen - 2) { //10 of chars not printable but for some reason 2 works
       ab.append(rstatus, rlen);
       break;
     } else {
-      ab.append(" ", 1);
+      ab.append(" ");
       len++;
     }
   }
@@ -5851,7 +5879,10 @@ bool editorProcessKeypress(void) {
 
       if (c == '\r') {
 
-        if (p->command_line == "q" || p->command_line == "quit") {
+        if (quit_cmds.count(p->command_line)) {
+        //if (p->command_line == "q" || p->command_line == "quit") {
+          if (p->command_line == "x") update_note();
+
           if (p->dirty) {
               p->mode = NORMAL;
               p->command[0] = '\0';
@@ -5859,6 +5890,8 @@ bool editorProcessKeypress(void) {
               p->editorSetMessage("No write since last change");
               return false;
           }
+
+          if (p->command_line == "x") update_note();
 
           eraseRightScreen();
           if (auto n = editors.size(); n > 1) {
@@ -6270,6 +6303,7 @@ void initOutline() {
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
   O.right_screencols = -2 + screencols/2;
+  O.left_screencols = O.right_screencols -2;
 }
 
 /*

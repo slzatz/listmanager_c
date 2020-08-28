@@ -659,19 +659,29 @@ void Editor::editorDrawStatusBar(std::string& ab) {
   ab.append("\x1b[K"); //cursor in middle of screen and doesn't move on erase
   ab.append("\x1b[7m"); //switches to inverted colors
   ab.append(" ");
-  if (!rows.empty()){
-    int line = editorGetLineInRowWW(fr, fc);
-    int line_char_count = editorGetLineCharCountWW(fr, line);
-    int lines = editorGetLinesInRowWW(fr);
-    //fr, fc, cx, cy, line chars start at zero; line, lines line 
-    len = snprintf(status,
-                   sizeof(status), "fr=%d lines=%d line=%d fc=%d line offset=%d initial row=%d last row=%d line chrs="
-                                   "%d  cx=%d cy=%d scols(1)=%d, left_margin=%d rows.size=%ld",
-                                   fr, lines, line, fc, line_offset, first_visible_row, last_visible_row, line_char_count, cx, cy, screencols, left_margin, rows.size());
-  } else {
-    len =  snprintf(status, sizeof(status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
+  if (DEBUG) {
+    if (!rows.empty()){
+      int line = editorGetLineInRowWW(fr, fc);
+      int line_char_count = editorGetLineCharCountWW(fr, line);
+      int lines = editorGetLinesInRowWW(fr);
+      //fr, fc, cx, cy, line chars start at zero; line, lines line 
+      len = snprintf(status, sizeof(status),
+                                    "fr=%d lines=%d line=%d fc=%d line offset=%d initial row=%d last row=%d line chrs="
+                                     "%d  cx=%d cy=%d scols(1)=%d, left_margin=%d rows.size=%ld",
+                                     fr, lines, line, fc, line_offset, first_visible_row, last_visible_row, line_char_count,
+                                     cx, cy, screencols, left_margin, rows.size());
+    } else {
+      len =  snprintf(status, sizeof(status),
+                                     "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
                                       cx, cy, rows.size(), line_offset);
-  }
+    }
+  } else {
+    std::string title = get_title(id);
+    std::string truncated_title = title.substr(0, 30);
+    if (dirty) truncated_title.append("[+]"); 
+    len = snprintf(status, sizeof(status), "%d - %s ...", id, truncated_title.c_str());
+    }
+
   if (len > screencols) len = screencols;
   ab.append(status, len);
   while (len < screencols) {

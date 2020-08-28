@@ -61,6 +61,7 @@ typedef struct orow {
 } orow;
 */
 
+std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
 std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
 std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"};
 std::unordered_set<int> navigation = {
@@ -115,7 +116,8 @@ struct outlineConfig {
   unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
   unsigned int screenlines; //number of lines in the display available to text
   unsigned int screencols;  //number of columns in the display available to text
-  unsigned int right_screencols; //Number of columns on right hand side of screen
+  unsigned int right_screencols; //Number of columns on right-hand side of screen
+  unsigned int left_screencols; //Number of columns on left-hand side of screen
   std::vector<orow> rows;
   std::vector<std::string> preview_rows;
   std::string context;
@@ -265,6 +267,7 @@ void update_task_context(std::string &, int);
 void update_task_folder(std::string &, int);
 int get_id(void);
 void get_note(int);
+std::string get_title(int);
 void update_row(void);
 void update_rows(void);
 void toggle_deleted(void);
@@ -317,6 +320,7 @@ int task_keywords_callback(void *, int, char **, char **);
 int keyword_id_callback(void *, int, char **, char **);//? not in use
 int container_id_callback(void *, int, char **, char **);
 int rowid_callback(void *, int, char **, char **);
+int title_callback(void *, int, char **, char **);
 int offset_callback(void *, int, char **, char **);
 int folder_tid_callback(void *, int, char **, char **); 
 int context_info_callback(void *, int, char **, char **); 
