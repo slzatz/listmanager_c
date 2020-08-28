@@ -624,6 +624,20 @@ void Editor::editorRefreshScreen(bool redraw) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + left_margin + 1); //03022019
     ab.append(buf, strlen(buf));
   }
+    //char buf[32];
+    ab.append("\x1b(0"); // Enter line drawing mode
+    for (int j=1; j<screenlines+1; j++) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, left_margin + screencols); 
+      ab.append(buf);
+      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+      // only need one 'm'
+      ab.append("\x1b[37;1mx");
+    }
+    //'T' corner
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, left_margin + screencols); //may not need offset
+    ab.append(buf);
+    ab.append("\x1b[37;1mw");
+    ab.append("\x1b(B"); //exit line drawing mode
 
   ab.append("\x1b[?25h", 6); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
