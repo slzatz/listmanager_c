@@ -87,37 +87,43 @@ void do_exit(PGconn *conn) {
 }
 
 void signalHandler(int signum) {
-    getWindowSize(&new_screenlines, &new_screencols);
-    screenlines = new_screenlines;
-    screencols = new_screencols;
-    EraseScreenRedrawLines();
-    O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-    O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
-    p->screenlines = screenlines - 2 - TOP_MARGIN;
-    p->screencols = -2 + screencols/2;
-    //EDITOR_LEFT_MARGIN = screencols/2 + 1;
-    p->left_margin = screencols/2 + 1;
+  getWindowSize(&new_screenlines, &new_screencols);
+  screenlines = new_screenlines;
+  screencols = new_screencols;
+  EraseScreenRedrawLines();
+  O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
+  EDITOR_LEFT_MARGIN = screencols/2 + 1;
+  //p->screenlines = screenlines - 2 - TOP_MARGIN;
+  //p->screencols = -2 + screencols/2;
+  //p->left_margin = screencols/2 + 1;
 
-    /*
-    the order of everything below
-    seems to preserve cursor
-    editorRefreshScreen may be called
-    twice since called by get_note but that's OK
-    */
+  int n = editors.size();
+  int i = 0;
+  for (auto z : editors) {
+    z->screenlines = screenlines - 2 - TOP_MARGIN;
+    z->screencols = (-2 + screencols/2)/n;
+    z->total_screenlines = screenlines - 2 - TOP_MARGIN;
+    //z->left_margin = screencols/2 + 1 + i*z->screencols;
+    z->left_margin = screencols/2 + i*z->screencols + i + 1;
+    i++;
+  }
+  /*
+  the order of everything below
+  seems to preserve cursor
+  editorRefreshScreen may be called
+  twice since called by get_note but that's OK
+  */
 
-    if (O.view == TASK && O.mode != NO_ROWS)
-      get_note(O.rows.at(O.fr).id);
-
-    if (editor_mode) {
-      outlineRefreshScreen();
-      p->editorRefreshScreen(true); //need to look at this in a multi-editor world
-    } else {
-      p->editorRefreshScreen(true); //need to look at this in a multi-editor world
-      outlineRefreshScreen();
-    }
-    
+  outlineRefreshScreen();
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
+
+  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
+    get_preview(O.rows.at(O.fr).id);
+
+  for (auto e : editors) e->editorRefreshScreen(true);
+
   return_cursor();
 }
 
@@ -177,7 +183,7 @@ char * (url_callback)(const char *x, const int y, void *z) {
  * and only writes to the file once
  */
 void update_html_file(std::string &&fn) {
-  std::string note = p->editorRowsToString();
+  std::string note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
@@ -228,7 +234,7 @@ void update_html_file(std::string &&fn) {
  * if this is my mistake or intentional
  * */
 void update_html_zmq(std::string &&fn) {
-  std::string note = p->editorRowsToString();
+  std::string note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   std::string title = O.rows.at(O.fr).title;
@@ -267,7 +273,7 @@ void update_html_zmq(std::string &&fn) {
 void update_html_code_file(std::string &&fn) {
   std::ofstream myfile;
   myfile.open("code_file"); 
-  myfile << p->editorRowsToString(); //don't need word wrap
+  myfile << outlinePreviewRowsToString();
   myfile.close();
   std::stringstream html;
   std::string line;
@@ -848,7 +854,8 @@ void get_linked_items(int max) {
   } else {
     O.mode = O.last_mode;
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1027,7 +1034,8 @@ void get_items_by_id(std::stringstream &query) {
   } else {
     O.mode = SEARCH;
     p->mode = SEARCH; /////////////////////////////////////////////////////////////// can't be right
-    get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    //get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1121,11 +1129,11 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 void get_note(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
-  word_positions.clear();
+  //word_positions.clear(); this needs to move into get_preview
   
-  p->rows.clear();
+  //p->rows.clear(); only do this for new editor and it will be cleared
 
-  p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0; 
+  //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0; 
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
@@ -1354,6 +1362,7 @@ int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColNam
 void display_item_info(int id) {
 
   if (id ==-1) return;
+  id = O.rows.at(O.fr).id;
 
   std::stringstream query;
   query << "SELECT * FROM task WHERE id = " << id;
@@ -1423,10 +1432,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < p->screenlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
-  }
+  eraseRightScreen();
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
   ab.append(buf, strlen(buf));
@@ -1585,7 +1591,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < p->screenlines; i++) {
+  for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1671,7 +1677,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < p->screenlines; i++) {
+  for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -2904,7 +2910,7 @@ void F_addkeyword(int pos) {
   }
   }
   O.mode = O.last_mode;
-  if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+  //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
   return;
 }
 
@@ -2940,7 +2946,7 @@ void F_keywords(int pos) {
   }
   }
   O.mode = O.last_mode;
-  if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+  //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
   return;
 }
 
@@ -3028,7 +3034,9 @@ void F_edit(int) {
         p = new Editor;
         editors.push_back(p);
         //editors.push_back(std::make_shared<Editor>(E));
-        p = editors.back();
+        //p = editors.back();
+        p->id = id;
+        get_note(id); //if id == -1 does not try to retrieve note
       } else {
         p = *it;
       }    
@@ -3038,7 +3046,9 @@ void F_edit(int) {
       //editors.push_back(&E);
       editors.push_back(p);
       //editors.push_back(std::make_shared<Editor>(E));
-      p = editors.back();
+      //p = editors.back();
+      p->id = id;
+      get_note(id); //if id == -1 does not try to retrieve note
    }
 
     int n = editors.size();
@@ -3052,8 +3062,8 @@ void F_edit(int) {
       i++;
     }
 
-    p->id = id;
-    get_note(id); //if id == -1 does not try to retrieve note
+    //p->id = id;
+    //get_note(id); //if id == -1 does not try to retrieve note
     //In get_note but probably shouldn't be and probably refreshscreen shouldn't be there either
     //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0;
     if (p->rows.empty()) {
@@ -3124,7 +3134,7 @@ void F_contexts(int pos) {
       outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
     }
     O.mode = O.last_mode;
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+   // if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
     //O.command_line.clear(); //calling : in all modes should clear command_line
     return;
   }
@@ -3688,7 +3698,8 @@ void I_N(void) {
 void gg_N(void) {
   O.fc = O.rowoff = 0;
   O.fr = O.repeat-1; //this needs to take into account O.rowoff
-  if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
   else display_container_info(O.rows.at(O.fr).id);
 }
 
@@ -3696,7 +3707,8 @@ void gg_N(void) {
 void G_N(void) {
   O.fc = 0;
   O.fr = O.rows.size() - 1;
-  if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+  if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
   else display_container_info(O.rows.at(O.fr).id);
 }
 
@@ -3748,8 +3760,7 @@ void edit_N(void) {
     p->mode = NORMAL;
     p->command[0] = '\0';
   } else {
-    outlineShowMessage("You need to save item before you can "
-                           "create a note");
+    outlineShowMessage("You need to save item before you can create a note");
   }
 }
 
@@ -4795,6 +4806,17 @@ void outlineMoveCursor(int key) {
   if (row.title.empty()) O.fc = 0;
 }
 
+std::string outlinePreviewRowsToString(void) {
+
+  std::string z = "";
+  for (auto i: O.preview_rows) {
+      z += i;
+      z += '\n';
+  }
+  if (!z.empty()) z.pop_back(); //pop last return that we added
+  return z;
+}
+
 // depends on readKey()
 //void outlineProcessKeypress(void) {
 void outlineProcessKeypress(int c) { //prototype has int = 0  
@@ -5010,7 +5032,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       outlineShowMessage(":%s", O.command_line.c_str());
       return; //end of case COMMAND_LINE
-
+/*
     // note database mode always deals with current character regardless of previously typed char
     // since all commands are one char.
     case DATABASE:
@@ -5169,7 +5191,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       } // end of switch(c) in case DATABASLE
 
       //return; //end of outer case DATABASE //won't be executed
-
+*/
     case SEARCH:  
       switch (c) {
 
@@ -5197,7 +5219,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case SHIFT_TAB:  
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
-          get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          //get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          get_preview(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineShowMessage("");
           return;
 
@@ -5411,7 +5434,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\x1b':
           O.mode = O.last_mode;
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+          //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
+          if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
           else display_container_info(O.rows.at(O.fr).id);
           O.command[0] = '\0';
           O.repeat = 0;

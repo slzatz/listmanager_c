@@ -152,8 +152,7 @@ void outlineRefreshScreen(void); //erases outline area but not sort/time screen 
 void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineRefreshAllEditors(void);
-
-
+std::string outlinePreviewRowsToString(void);
 
 /* OUTLINE COMMAND_LINE functions */
 void F_open(int);
