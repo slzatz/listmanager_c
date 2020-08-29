@@ -3513,6 +3513,8 @@ void F_clear(int) {
 
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
+  eraseRightScreen();
+  for (auto &e : editors) e->editorRefreshScreen(true);
   editor_mode = true;
 }
 
@@ -4101,7 +4103,7 @@ void draw_preview(void) {
   //hide the cursor
   ab.append("\x1b[?25l");
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
   ab.append(buf, strlen(buf));
   //std::string abs = "";
  
@@ -4114,7 +4116,7 @@ void draw_preview(void) {
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
   //buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  buf0 << "\x1b[" << TOP_MARGIN + 5 << ";" <<  EDITOR_LEFT_MARGIN + 5 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 5 << "H";
   ab.append(buf0.str());
 
   /*
@@ -4127,7 +4129,7 @@ void draw_preview(void) {
 
   //erase set number of chars on each line
   char erase_chars[10];
-  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols - 5);
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.right_screencols - 10);
   //for (int i=0; i < O.screenlines; i++) {
   for (int i=0; i < length; i++) {
     ab.append(erase_chars);
@@ -4136,7 +4138,7 @@ void draw_preview(void) {
 
   std::stringstream buf2;
   //buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  buf2 << "\x1b[" << TOP_MARGIN + 5 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   /*****************get the rows******************************/
@@ -4217,10 +4219,15 @@ void draw_preview(void) {
       p += 7;
   }
     //draw lines
-  char move_cursor[10];
+  char move_cursor[20];
+  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
+  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC\x1b[1B", width);
   snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
   ab.append("\x1b(0"); // Enter line drawing mode
-  for (int j=0; j<length+1; j++) {
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5); 
+  ab.append(buf);
+  ab.append("\x1b[37;1ml"); //upper left corner
+  for (int j=1; j<length; j++) { //+1
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, EDITOR_LEFT_MARGIN + 5); 
     ab.append(buf);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -4229,8 +4236,14 @@ void draw_preview(void) {
     ab.append(move_cursor);
     ab.append("\x1b[37;1mx");
   }
-  snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dB", length);
-  for (int j=0; j<width+1; j++) {
+  ab.append(buf);
+  //ab.append("\x1b[37;1mx");
+  //ab.append("\x1b[1B\x1b[1D");
+  ab.append("\x1b[1B");
+  ab.append("\x1b[37;1mm"); //lower left corner
+
+  snprintf(move_cursor, sizeof(move_cursor), "\x1b[1D\x1b[%dB", length);
+  for (int j=1; j<width+1; j++) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5 + j); 
     ab.append(buf);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -4239,6 +4252,11 @@ void draw_preview(void) {
     ab.append(move_cursor);
     ab.append("\x1b[37;1mq");
   }
+  ab.append("\x1b[37;1mj"); //lower right corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + width + 6); 
+  ab.append(buf);
+  ab.append("\x1b[37;1mk"); //upper right corner
+
   //exit line drawing mode
   ab.append("\x1b(B");
 
@@ -5849,13 +5867,17 @@ bool editorProcessKeypress(void) {
       if (c == CTRL_KEY('h')) {
         if (editors.size() == 1) {
           editor_mode = false;
+          get_preview(O.rows.at(O.fr).id); 
           return false;
         }
         auto it = std::find(editors.begin(), editors.end(), p);
         int index = std::distance(editors.begin(), it);
-        if (index) p = editors[index - 1];
-        else editor_mode = false;
-        return false;
+        if (index) {
+          p = editors[index - 1];
+        } else {editor_mode = false;
+          get_preview(O.rows.at(O.fr).id); 
+          return false;
+        }
       }
       
       if (c == CTRL_KEY('l')) {
