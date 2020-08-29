@@ -108,12 +108,6 @@ void signalHandler(int signum) {
     z->left_margin = screencols/2 + i*z->screencols + i + 1;
     i++;
   }
-  /*
-  the order of everything below
-  seems to preserve cursor
-  editorRefreshScreen may be called
-  twice since called by get_note but that's OK
-  */
 
   outlineRefreshScreen();
   outlineDrawStatusBar();
@@ -854,7 +848,6 @@ void get_linked_items(int max) {
   } else {
     O.mode = O.last_mode;
     if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
     else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -925,9 +918,7 @@ void get_items(int max) {
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = O.last_mode;
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-    else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1034,7 +1025,6 @@ void get_items_by_id(std::stringstream &query) {
   } else {
     O.mode = SEARCH;
     p->mode = SEARCH; /////////////////////////////////////////////////////////////// can't be right
-    //get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
     get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -1129,18 +1119,13 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 void get_note(int id) {
   if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
 
-  //word_positions.clear(); this needs to move into get_preview
-  
-  //p->rows.clear(); only do this for new editor and it will be cleared
-
-  //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0; 
-
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
 
+  /* this all needs to move to get_preview
   if (O.taskview != BY_SEARCH) {
-    //p->editorRefreshScreen(true); /***********************************************/
+    //p->editorRefreshScreen(true);
     //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
     if (lm_browser) {
       if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
@@ -1180,6 +1165,7 @@ void get_note(int id) {
     if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
+  */
 }
 
 // doesn't appear to be called if row is NULL
@@ -1548,7 +1534,7 @@ void display_container_info(int id) {
  rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
 
   if (rc != SQLITE_OK ) {
-    outlineShowMessage("In get_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
+    outlineShowMessage("In display_container_info: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
     sqlite3_free(S.err_msg);
     sqlite3_close(S.fts_db);
   }
@@ -2871,7 +2857,6 @@ void F_openkeyword(int pos) {
   O.folder = "";
   O.taskview = BY_KEYWORD;
   get_items(MAX);
-  //editorRefreshScreen(); //in get_note
   O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
   return;
 }
@@ -2998,6 +2983,7 @@ void F_new(int) {
   } else outlineShowMessage("Couldn't open file");
 }
 
+//this is the main event - right now only way to initiate editing an entry
 void F_edit(int) {
   
   if (!(O.view == TASK)) {
@@ -3011,18 +2997,7 @@ void F_edit(int) {
   if (id != -1) {
     outlineShowMessage("Edit note %d", id);
     outlineRefreshScreen();
-    //editor_mode needs go before get_note in case we retrieved item via a search
     editor_mode = true;
-
-    /*
-     * 1) check if the note is already being edited
-     * 2) if it is then just set p to that note
-     * 3) if not being edited add to editors vector
-     * 4) all the other editors will need to have their size updated
-     * 5) Assume for now they are organized side by side
-     *
-     *
-     */
 
     if (!editors.empty()){
       auto it = std::find_if(std::begin(editors), std::end(editors),
@@ -3057,15 +3032,10 @@ void F_edit(int) {
       z->screenlines = screenlines - 2 - TOP_MARGIN;
       z->screencols = (-2 + screencols/2)/n;
       z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-      //z->left_margin = screencols/2 + 1 + i*z->screencols;
       z->left_margin = screencols/2 + i*z->screencols + i + 1;
       i++;
     }
 
-    //p->id = id;
-    //get_note(id); //if id == -1 does not try to retrieve note
-    //In get_note but probably shouldn't be and probably refreshscreen shouldn't be there either
-    //p->fr = p->fc = p->cy = p->cx = p->line_offset = p->prev_line_offset = p->first_visible_row = p->last_visible_row = 0;
     if (p->rows.empty()) {
       p->mode = INSERT;
       p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
@@ -3698,7 +3668,6 @@ void I_N(void) {
 void gg_N(void) {
   O.fc = O.rowoff = 0;
   O.fr = O.repeat-1; //this needs to take into account O.rowoff
-  //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
   if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
   else display_container_info(O.rows.at(O.fr).id);
 }
@@ -3707,7 +3676,6 @@ void gg_N(void) {
 void G_N(void) {
   O.fc = 0;
   O.fr = O.rows.size() - 1;
-  //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
   if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
   else display_container_info(O.rows.at(O.fr).id);
 }
@@ -3736,11 +3704,10 @@ void gt_N(void) {
     O.context = it->first;
     outlineShowMessage("\'%s\' will be opened", O.context.c_str());
   }
-  //EraseScreenRedrawLines(); //*****************************
   get_items(MAX);
-          //editorRefreshScreen(); //in get_note
 }
 
+/*
 void edit_N(void) {
   // can't edit note if rows_are_contexts
   if (!(O.view == TASK)) {
@@ -3763,7 +3730,7 @@ void edit_N(void) {
     outlineShowMessage("You need to save item before you can create a note");
   }
 }
-
+*/
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
@@ -4074,6 +4041,7 @@ void displayFile(void) {
 void get_preview(int id) {
   std::stringstream query;
   O.preview_rows.clear();
+  //word_positions.clear(); this needs to move into get_preview
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
 
@@ -4127,7 +4095,7 @@ void draw_preview(void) {
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
   //buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 5 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf0.str());
 
   /*
@@ -4142,7 +4110,7 @@ void draw_preview(void) {
   char erase_chars[10];
   snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.right_screencols - 10);
   //for (int i=0; i < O.screenlines; i++) {
-  for (int i=0; i < length; i++) {
+  for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
   }
@@ -4152,14 +4120,22 @@ void draw_preview(void) {
   buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf2.str()); //reposition cursor
 
-  /*****************get the rows******************************/
-  if (O.preview_rows.empty()) return;
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+               TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
+  if (O.preview_rows.empty()) {
+    ab.append(buf);
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
+}
 
   int y = 0;
   //int filerow = first_visible_row; //if unscrollable preview - should be 0 ?
   int filerow = 0; //if unscrollable preview - should be 0 ?
   bool flag = false;
-  ab.append("\x1b[1;42m");
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  //               TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
+  ab.append(buf);
+  ab.append("\x1b[1;44m");
 
   for (;;){
     if (flag) break;
@@ -4782,9 +4758,9 @@ void outlineMoveCursor(int key) {
       O.fc = O.coloff = 0; 
 
       if (O.view == TASK) {
-        if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-        else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+        //else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
       } else display_container_info(O.rows.at(O.fr).id);
       break;
@@ -4794,9 +4770,9 @@ void outlineMoveCursor(int key) {
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
       if (O.view == TASK) {
-        if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        //else get_note(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-        else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
+        //else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+        get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
       } else display_container_info(O.rows.at(O.fr).id);
       break;
   }
@@ -4939,7 +4915,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case NORMAL:  
 
       if (c == '\x1b') {
-        //if (O.view == TASK) get_note(O.rows.at(O.fr).id); //get out of display_item_info
         if (O.view == TASK) get_preview(O.rows.at(O.fr).id); //get out of display_item_info
         outlineShowMessage("");
         O.command[0] = '\0';
@@ -5032,166 +5007,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       outlineShowMessage(":%s", O.command_line.c_str());
       return; //end of case COMMAND_LINE
-/*
-    // note database mode always deals with current character regardless of previously typed char
-    // since all commands are one char.
-    case DATABASE:
 
-      switch (c) {
-
-        case PAGE_UP:
-        case PAGE_DOWN:
-          if (c == PAGE_UP) {
-            O.fr = (O.screenlines > O.fr) ? 0 : O.fr - O.screenlines; //O.fr and O.screenlines are unsigned ints
-          } else if (c == PAGE_DOWN) {
-             O.fr += O.screenlines;
-             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
-          }
-          return;
-
-        case ARROW_UP:
-        case ARROW_DOWN:
-        case 'j':
-        case 'k':
-        case 'h':
-        case 'l':
-          outlineMoveCursor(c);
-          return;
-
-        //TAB toggles between DATABASE and OUTLINE mode
-        //Escape one way between DATABASE and OUTLINE
-        case '\x1b':
-        case '\t':  
-          O.fc = 0; 
-          O.mode = NORMAL;
-          if (O.view == TASK) get_note(O.rows.at(O.fr).id);
-          outlineShowMessage("");
-          return;
-
-        case 'G':
-          O.fc = 0;
-          O.fr = O.rows.size() - 1;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id);
-          return;
-
-        case 'g':
-          O.fr = O.fc = O.rowoff = 0;
-          O.command[0] = '\0';
-          O.repeat = 0;
-          if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id); 
-          return;
-
-
-        case '\r':
-          if (orow& row = O.rows.at(O.fr); O.view == TASK) {
-            O.command[0] = '\0';
-            return;
-          } else if (O.view == CONTEXT) {
-            O.context = row.title;
-            O.folder = "";
-            O.taskview = BY_CONTEXT;
-          } else if (O.view == FOLDER) {
-            O.folder = row.title;
-            O.context = "";
-            O.taskview = BY_FOLDER;
-          } else if (O.view == KEYWORD) {
-            O.keyword = row.title;
-            O.folder = "";
-            O.context = "";
-            O.taskview = BY_KEYWORD;
-          }
-          get_items(MAX);
-          O.command[0] = '\0';
-          return;
-
-        case ':':
-          outlineShowMessage(":");
-          O.command[0] = '\0';
-          O.command_line.clear();
-          O.last_mode = O.mode;
-          O.mode = COMMAND_LINE;
-          return;
-
-        case 'x':
-          if (O.view == TASK) toggle_completed();
-          return;
-
-        case 'f':
-          if (O.view == TASK) {
-            std::string keywords = get_task_keywords().first;
-            if (keywords.empty()) {
-              outlineShowMessage("The current entry has no keywords");
-            } else {
-              O.keyword = keywords;
-              O.context = "No Context";
-              O.folder = "No Folder";
-              O.taskview = BY_KEYWORD;
-
-              get_linked_items(MAX);
-            }   //O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
-          }
-          return;
-
-        case 'd':
-          toggle_deleted();
-          return;
-
-        case 't': //touch
-          if (O.view == TASK) touch();
-          return;
-
-        case '*':
-          toggle_star(); //row.star -> "default" (sqlite) or default for context and private for folder
-          return;
-
-        case 'm':
-          if (O.view == TASK) {
-            O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
-          outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
-          }
-          return;
-
-        case 's':
-          if (O.view == TASK) {
-            O.show_deleted = !O.show_deleted;
-            O.show_completed = !O.show_completed;
-            if (O.taskview == BY_SEARCH)
-              ; //search_db();
-            else
-              get_items(MAX);
-          }
-          outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
-          return;
-
-        case 'r':
-          if (O.view == TASK) {
-            outlineShowMessage("Tasks will be refreshed");
-            if (O.taskview == BY_SEARCH)
-              ; //search_db();
-             else
-              get_items(MAX);
-          } else {
-            outlineShowMessage("contexts will be refreshed");
-            get_containers();
-          }
-          return;
-  
-        case 'i': //display item info
-          display_item_info(O.rows.at(O.fr).id);
-          return;
-  
-        default:
-          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in DATABASE mode", c);
-          else outlineShowMessage("<%c> doesn't do anything in DATABASE mode", c);
-          return;
-      } // end of switch(c) in case DATABASLE
-
-      //return; //end of outer case DATABASE //won't be executed
-*/
     case SEARCH:  
       switch (c) {
 
@@ -5219,7 +5035,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case SHIFT_TAB:  
           O.fc = 0; //otherwise END in DATABASE mode could have done bad things
           O.mode = NORMAL;
-          //get_note(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           get_preview(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineShowMessage("");
           return;
@@ -5434,7 +5249,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\x1b':
           O.mode = O.last_mode;
-          //if (O.view == TASK) get_note(O.rows.at(O.fr).id);
           if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
           else display_container_info(O.rows.at(O.fr).id);
           O.command[0] = '\0';

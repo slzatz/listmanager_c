@@ -425,6 +425,7 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
 /* OUTLINE NORMAL mode command lookup */
 std::unordered_map<std::string, zfunc> n_lookup {
   {{0xC}, goto_editor_N},
+  {{0x17,0x17}, goto_editor_N},
   {"\r", return_N}, //return_O
   {"i", insert_N},
   {"s", s_N},
@@ -446,7 +447,7 @@ std::unordered_map<std::string, zfunc> n_lookup {
 
   {"gt", gt_N},
 
-  {{0x17,0x17}, edit_N},
+  //{{0x17,0x17}, edit_N},
   {{0x9}, display_item_info},
 
   {"b", b_N},
