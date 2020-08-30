@@ -1,6 +1,8 @@
 #include "listmanager.h"
 #include "listmanager_vars.h"
 #include "Editor.h"
+#include <cstdarg> //va_start etc.
+#include <string_view>
 
 //Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
@@ -90,7 +92,7 @@ void signalHandler(int signum) {
   getWindowSize(&new_screenlines, &new_screencols);
   screenlines = new_screenlines;
   screencols = new_screencols;
-  EraseScreenRedrawLines();
+  eraseScreenRedrawLines();
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
   EDITOR_LEFT_MARGIN = screencols/2 + 1;
@@ -530,7 +532,7 @@ void get_containers(void) {
       outlineShowMessage("Somehow you are in a view I can't handle");
       return;
   }
-
+  
   std::stringstream query;
   query << "SELECT * FROM " << table << " ORDER BY " << column  << " COLLATE NOCASE ASC;";
 
@@ -847,8 +849,7 @@ void get_linked_items(int max) {
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = O.last_mode;
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1738,13 +1739,13 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
 
   std::string ab;
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf, strlen(buf));
+  ab.append(buf);
 
   //need to erase the screen
-  for (int i=0; i < p->screenlines; i++) {
+  for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -1783,7 +1784,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
 
   ///////////////////////////
 
-  ab.append("\x1b[0m", 4);
+  ab.append("\x1b[0m");
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
@@ -2775,16 +2776,15 @@ void F_open(int pos) { //C_open - by context
 
     if (!success) {
       outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
-      O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+      O.mode = NORMAL;
       return;
     }
 
   } else {
     outlineShowMessage("You did not provide a context!");
-    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    O.mode = NORMAL;
     return;
   }
-  //EraseScreenRedrawLines(); //*****************************
   outlineShowMessage("\'%s\' will be opened", O.context.c_str());
   command_history.push_back(O.command_line);
   page_hx_idx++;
@@ -2795,7 +2795,7 @@ void F_open(int pos) { //C_open - by context
   O.taskview = BY_CONTEXT;
   get_items(MAX);
   //O.mode = O.last_mode;
-  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  O.mode = NORMAL;
   return;
 }
 
@@ -2811,13 +2811,13 @@ void F_openfolder(int pos) {
     }
     if (!success) {
       outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
-      O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+      O.mode = NORMAL;
       return;
     }
 
   } else {
     outlineShowMessage("You did not provide a folder!");
-    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    O.mode = NORMAL;
     return;
   }
   outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
@@ -2828,14 +2828,14 @@ void F_openfolder(int pos) {
   O.context = "";
   O.taskview = BY_FOLDER;
   get_items(MAX);
-  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  O.mode = NORMAL;
   return;
 }
 
 void F_openkeyword(int pos) {
   if (!pos) {
     outlineShowMessage("You need to provide a keyword");
-    O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+    O.mode = NORMAL;
     return;
   }
  
@@ -2857,7 +2857,7 @@ void F_openkeyword(int pos) {
   O.folder = "";
   O.taskview = BY_KEYWORD;
   get_items(MAX);
-  O.mode = (O.last_mode == DATABASE) ? DATABASE : NORMAL;
+  O.mode = NORMAL;
   return;
 }
 
@@ -2868,7 +2868,7 @@ void F_addkeyword(int pos) {
     O.view = KEYWORD;
     command_history.push_back(O.command_line);
     get_containers(); //O.mode = NORMAL is in get_containers
-    O.mode = ADD_KEYWORD;
+    O.mode = ADD_CHANGE_FILTER;
     outlineShowMessage("Select keyword to add to marked or current entry");
     return;
   }
@@ -2895,7 +2895,6 @@ void F_addkeyword(int pos) {
   }
   }
   O.mode = O.last_mode;
-  //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
   return;
 }
 
@@ -2931,7 +2930,6 @@ void F_keywords(int pos) {
   }
   }
   O.mode = O.last_mode;
-  //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
   return;
 }
 
@@ -3104,8 +3102,6 @@ void F_contexts(int pos) {
       outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
     }
     O.mode = O.last_mode;
-   // if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-    //O.command_line.clear(); //calling : in all modes should clear command_line
     return;
   }
 }
@@ -3160,7 +3156,6 @@ void F_folders(int pos) {
       outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
     }
     O.mode = O.last_mode;
-    if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
     return;
   }
 }
@@ -3235,7 +3230,7 @@ void F_updatecontext(int) {
   O.view = CONTEXT;
   command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
-  O.mode = ADD_KEYWORD; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
@@ -3245,7 +3240,7 @@ void F_updatefolder(int) {
   O.view = FOLDER;
   command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
-  O.mode = ADD_KEYWORD; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
@@ -4361,7 +4356,7 @@ void outlineDrawRows(std::string& ab) {
   }
 }
 
-void outlineDrawKeywords(std::string& ab) {
+void outlineDrawFilters(std::string& ab) {
 
   if (O.rows.empty()) return;
 
@@ -4619,14 +4614,14 @@ void return_cursor() {
       //snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1);  
       snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->total_screenlines + TOP_MARGIN + 2, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); 
       ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+      ab.append("\x1b[?25h"); // show cursor
     }
   } else {
-    if (O.mode == ADD_KEYWORD){
+    if (O.mode == ADD_CHANGE_FILTER){
       //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN + 60); //offset
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, EDITOR_LEFT_MARGIN); //offset
       ab.append(buf, strlen(buf));
-    } else if (O.mode == SEARCH || O.mode == DATABASE) {
+    } else if (O.mode == SEARCH) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
       ab.append(buf, strlen(buf));
     } else if (O.mode != COMMAND_LINE) {
@@ -4635,12 +4630,12 @@ void return_cursor() {
       // below restores the cursor position based on O.cx and O.cy + margin
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + OUTLINE_LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+      ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
     } else { //O.mode == COMMAND_LINE
       snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + OUTLINE_LEFT_MARGIN); /// ****
       ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h", 6); // want to show cursor in non-DATABASE modes
+      ab.append("\x1b[?25h", 6); // show cursor 
     }
   }
   ab.append("\x1b[0m"); //return background to normal
@@ -4674,7 +4669,7 @@ void outlineRefreshScreen(void) {
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
   //if (O.view != KEYWORD) {
-  if (O.mode != ADD_KEYWORD) {
+  if (O.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
       O.screencols + OUTLINE_LEFT_MARGIN + 17); 
@@ -4686,8 +4681,7 @@ void outlineRefreshScreen(void) {
   ab.append(buf, strlen(buf));
 
   if (O.mode == SEARCH) outlineDrawSearchRows(ab);
-  //else if (O.view == KEYWORD) outlineDrawKeywords(ab);
-  else if (O.mode == ADD_KEYWORD) outlineDrawKeywords(ab);
+  else if (O.mode == ADD_CHANGE_FILTER) outlineDrawFilters(ab);
   else  outlineDrawRows(ab);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -4736,14 +4730,6 @@ void outlineMoveCursor(int key) {
     case ARROW_LEFT:
     case 'h':
       if (O.fc > 0) O.fc--; 
-      // arowing left in NORMAL puts you into DATABASE mode
-     // else {
-     //   O.mode = DATABASE;
-     //   if (O.view == TASK) display_item_info(O.rows.at(O.fr).id);
-     //   else display_container_info(O.rows.at(O.fr).id);
-     //   O.command[0] = '\0';
-     //   O.repeat = 0;
-     // }
       break;
 
     case ARROW_RIGHT:
@@ -4758,8 +4744,6 @@ void outlineMoveCursor(int key) {
       O.fc = O.coloff = 0; 
 
       if (O.view == TASK) {
-        //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        //else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
         get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
 
       } else display_container_info(O.rows.at(O.fr).id);
@@ -4770,8 +4754,6 @@ void outlineMoveCursor(int key) {
       if (O.fr < O.rows.size() - 1) O.fr++;
       O.fc = O.coloff = 0;
       if (O.view == TASK) {
-        //if (O.mode == DATABASE) display_item_info(O.rows.at(O.fr).id);
-        //else get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
         get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
       } else display_container_info(O.rows.at(O.fr).id);
       break;
@@ -5033,7 +5015,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         //TAB and SHIFT_TAB moves from SEARCH to OUTLINE NORMAL mode but SHIFT_TAB gets back
         case '\t':  
         case SHIFT_TAB:  
-          O.fc = 0; //otherwise END in DATABASE mode could have done bad things
+          O.fc = 0; 
           O.mode = NORMAL;
           get_preview(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
           outlineShowMessage("");
@@ -5124,7 +5106,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       return; //////// end of outer case REPLACE
 
-    case ADD_KEYWORD:
+    case ADD_CHANGE_FILTER:
 
       switch(c) {
 
@@ -5208,12 +5190,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         default:
-          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in ADD_KEYWORD mode", c);
-          else outlineShowMessage("<%c> doesn't do anything in ADD_KEYWORD mode", c);
+          if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in ADD_CHANGE_FILTER mode", c);
+          else outlineShowMessage("<%c> doesn't do anything in ADD_CHANGE_FILTER mode", c);
           return;
       }
 
-      return; //in ADD_KEYWORDS - do nothing if no c match
+      return; //end  ADD_CHANGE_FILTER - do nothing if no c match
 
     case FILE_DISPLAY: 
 
@@ -5832,6 +5814,7 @@ bool editorProcessKeypress(void) {
           } else {
             editors.clear(); // there's only one so also could just erase editors0]
             editor_mode = false;
+            get_preview(O.rows.at(O.fr).id);
           }
         //editorRefreshScreen(false); // don't need to redraw rows
           p->editorSetMessage("");
@@ -6157,7 +6140,7 @@ bool editorProcessKeypress(void) {
   return true; // this should not be reachable but was getting an error
 } //end of editorProcessKeyPress
 
-void EraseScreenRedrawLines(void) {
+void eraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
   int pos = screencols/2;
   char buf[32];
@@ -6258,7 +6241,7 @@ int main(int argc, char** argv) {
   //if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
   getWindowSize(&screenlines, &screencols);
   enableRawMode();
-  EraseScreenRedrawLines();
+  eraseScreenRedrawLines();
   initOutline();
   //p = &E; //very important - will need an array of pointers when there can be more than one editor
   //initEditor();

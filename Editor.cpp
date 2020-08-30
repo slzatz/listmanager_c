@@ -1,5 +1,8 @@
 #include "listmanager.h"
 #include "Editor.h"
+#include <fstream>
+#include <cstdarg> //va_start etc
+#include <string_view>
 
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'

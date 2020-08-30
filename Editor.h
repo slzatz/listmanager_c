@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <unordered_map>
 //#include "listmanager.h" //////
 
 class Editor {

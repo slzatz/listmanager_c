@@ -1,4 +1,34 @@
+#define OUTLINE_LEFT_MARGIN 2
+#define OUTLINE_RIGHT_MARGIN 18 // need this if going to have modified col
+#define UNUSED(x) (void)(x)
+#define MAX 500 // max rows to bring back
+#define TZ_OFFSET 4 // time zone offset - either 4 or 5
+
+
+// to use GIT_BRANCH in makefile (from cmake)
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+
+#include <Python.h>
+#include <sys/ioctl.h>
+#include <csignal>
+#include <termios.h>
+#include <libpq-fe.h>
+#include <sqlite3.h>
+#include "inipp.h" // https://github.com/mcmtroffaes/inipp
+
 #include <string>
+#include <vector> // doesn't seem necessary ? why
+#include <map>
+#include <unordered_map>
+#include <unordered_set>
+#include <fstream>
+#include <set>
+
+const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
+const std::string DB_INI = "db.ini";
+
 std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
 std::string meta;
 int which_db;
@@ -29,6 +59,7 @@ size_t page_hx_idx = 0;
 //std::map<int, std::string> html_files;
 //bool lm_browser = true;
 int SMARTINDENT = 4; //should be in config
+constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;
 int link_id = 0;
 char link_text[20];
@@ -88,6 +119,7 @@ struct config {
   int port;
 };
 struct config c;
+
 zmq::context_t context (1);
 zmq::socket_t publisher (context, ZMQ_PUB);
 
@@ -137,18 +169,40 @@ struct outlineConfig {
   int view; // enum TASK, CONTEXT, FOLDER, SEARCH
   int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
 };
-
 struct outlineConfig O;
+
+enum DB {
+  SQLITE,
+  POSTGRES
+};
+
+enum View {
+  TASK,
+  CONTEXT,
+  FOLDER,
+  KEYWORD
+};
+
+enum TaskView {
+  BY_CONTEXT,
+  BY_FOLDER,
+  BY_KEYWORD,
+  BY_JOIN,
+  BY_RECENT,
+  BY_SEARCH
+};
+
 int getWindowSize(int *, int *);
 
-// I believe this is being called at times redundantly before editorEraseScreen and outlineRefreshScreen
-void EraseScreenRedrawLines(void);
-
+void eraseScreenRedrawLines(void);
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
-void outlineDrawPreview(std::string &ab);
-void outlineShowMessage(const char *fmt, ...);
-void outlineRefreshScreen(void); //erases outline area but not sort/time screen columns
+//void outlineDrawPreview(std::string &ab);
+void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineDrawFilters(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineDrawSearchRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
+void outlineShowMessage(const char *fmt, ...); //erases outline message area and writes message so can be called separately
+void outlineRefreshScreen(void); //erases outline area and sort/time screen columns and writes outline rows so can be called separately
 void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineRefreshAllEditors(void);
@@ -230,7 +284,7 @@ void de_N(void);
 void d$_N(void);
 void gg_N(void);
 void gt_N(void);
-void edit_N(void);
+//void edit_N(void);
 
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
@@ -252,9 +306,6 @@ void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
 void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
-void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawKeywords(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawSearchRows(std::string&); //ditto
 void outlineScroll(void);
 void outlineSave(const std::string &);
 void return_cursor(void);
@@ -334,7 +385,7 @@ void synchronize(int);
 // Not used by Editor class
 void readFile(const std::string &);
 void displayFile(void);
-void eraseRightScreen(void); //erases the note section; redundant if just did an EraseScreenRedrawLines
+void eraseRightScreen(void); //erases the note section; redundant if just did an eraseScreenRedrawLines
 
 std::string generate_html(void);
 std::string generate_html2(void);
