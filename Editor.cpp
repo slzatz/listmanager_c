@@ -300,15 +300,34 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
-void Editor::editorCreateSnapshot(void) {
+void Editor::editorCreateSnapshot(void) {}
+void Editor::editorRestoreSnapshot(void) {}
+
+void Editor::push_current(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
-  prev_rows = rows;
+  //prev_rows = rows;
+  undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+  d_index = 0;
+
+
 }
-void Editor::editorRestoreSnapshot(void) {
-    if (prev_rows.empty()) return;
-    rows = prev_rows;
+void Editor::undo(void) {
+    if (undo_deque.empty()) return;
+    if (d_index < (int)undo_deque.size() - 1) d_index++;
+    auto [r, row] = undo_deque.at(d_index);
+    rows.at(r) = row;
 }
 
+void Editor::redo(void) {
+    //if (undo_deque.size() < 2) return;
+    if (d_index == 0) {
+      editorSetMessage("Already at newest change");
+      return;
+    }
+    d_index--;
+    auto [r, row] = undo_deque.at(d_index);
+    rows.at(r) = row;
+}
 
 // only decorates which I think makes sense
 void Editor::editorDecorateVisual(int c) {
@@ -2032,7 +2051,13 @@ void Editor::E_find_next_word(int repeat) {
 
 //case 'u':
 void Editor::E_undo(int repeat) {
-  editorRestoreSnapshot();
+  //editorRestoreSnapshot();
+  undo();
+}
+
+//case 'ctrl-r':
+void Editor::E_redo(int repeat) {
+  redo();
 }
 
 void Editor::E_indent(int repeat) {

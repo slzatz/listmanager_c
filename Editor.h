@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <deque>
 //#include "listmanager.h" //////
 
 class Editor {
@@ -50,7 +51,7 @@ class Editor {
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
     int total_screenlines; //number of lines in display
     std::vector<std::string> rows;
-    std::vector<std::string> prev_rows;
+    //std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
     char message[120]; //status msg is a character array max 80 char
     int highlight[2];
@@ -75,7 +76,15 @@ class Editor {
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
     int id; //listmanager db id of the row
+    std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
+    std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
+    int d_index; //undo_deque index
 
+
+/* undo - redo */
+    void push_current(void);
+    void undo(void);
+    void redo(void);
 
 /* EDITOR COMMAND_LINE mode functions */
     void E_write_C(void);
@@ -137,6 +146,7 @@ class Editor {
     void E_find(int);
     void E_find_next_word(int);
     void E_undo(int);
+    void E_redo(int);
 
     void editorInsertNewline(int);
     void editorDelChar(void);

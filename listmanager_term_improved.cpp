@@ -63,7 +63,8 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"p", &Editor::E_paste},
   {"*", &Editor::E_find},
   {"n", &Editor::E_find_next_word},
-  {"u", &Editor::E_undo},
+ // {"u", &Editor::E_undo},
+ // {{CTRL_KEY('r')}, &Editor::E_redo},
   {".", &Editor::editorDotRepeat},
   {">>", &Editor::E_indent},
   {"<<", &Editor::E_unindent},
@@ -5552,12 +5553,12 @@ bool editorProcessKeypress(void) {
           return false;
 
         case BACKSPACE:
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->editorBackspace();
           return true;
     
         case DEL_KEY:
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->editorDelChar();
           return true;
     
@@ -5571,7 +5572,7 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('b'):
         //case CTRL_KEY('i'): CTRL_KEY('i') -> 9 same as tab
         case CTRL_KEY('e'):
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->editorDecorateWord(c);
           return true;
     
@@ -5684,6 +5685,19 @@ bool editorProcessKeypress(void) {
         return false;
       }
 
+      if (c == 'u') {
+        if (p->d_index == 0) p->push_current();
+        p->editorSetMessage("d_index = %d", p->d_index);
+        p->undo();
+        return true;
+      }
+
+      if (c == CTRL_KEY('r')) {
+        p->editorSetMessage("d_index = %d", p->d_index);
+        p->redo();
+        return true;
+      }
+
       if (c == CTRL_KEY('h')) {
         if (editors.size() == 1) {
           editor_mode = false;
@@ -5731,7 +5745,7 @@ bool editorProcessKeypress(void) {
       }
 
       if (e_lookup.count(p->command)) {
-        if (!move_only.count(p->command)) p->editorCreateSnapshot(); 
+        if (!move_only.count(p->command)) p->push_current(); //p->editorCreateSnapshot(); 
 
         (p->*e_lookup.at(p->command))(p->repeat); //money shot
 
@@ -5859,7 +5873,7 @@ bool editorProcessKeypress(void) {
     
         case 'x':
           if (!p->rows.empty()) {
-            p->editorCreateSnapshot();
+            p->push_current(); //p->editorCreateSnapshot();
             p->repeat = p->highlight[1] - p->highlight[0] + 1;
             p->fr = p->highlight[0]; 
             p->editorYankLine(p->repeat);
@@ -5885,7 +5899,7 @@ bool editorProcessKeypress(void) {
           return true;
     
         case '>':
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->repeat = p->highlight[1] - p->highlight[0] + 1;
           p->fr = p->highlight[0];
           for ( i = 0; i < p->repeat; i++ ) {
@@ -5900,7 +5914,7 @@ bool editorProcessKeypress(void) {
     
         // changed to p->fr on 11-26-2019
         case '<':
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->repeat = p->highlight[1] - p->highlight[0] + 1;
           p->fr = p->highlight[0];
           for ( i = 0; i < p->repeat; i++ ) {
@@ -5951,7 +5965,7 @@ bool editorProcessKeypress(void) {
 
         case 'x':
           if (!p->rows.empty()) {
-            p->editorCreateSnapshot();
+            //p->editorCreateSnapshot();
     
           for (int i = p->vb0[1]; i < p->fr + 1; i++) {
             p->rows.at(i).erase(p->vb0[0], p->fc - p->vb0[0] + 1); //needs to be cleaned up for p->fc < p->vb0[0] ? abs
@@ -5968,7 +5982,7 @@ bool editorProcessKeypress(void) {
     
         case 'I':
           if (!p->rows.empty()) {
-            p->editorCreateSnapshot();
+            //p->editorCreateSnapshot();
       
           //p->repeat = p->fr - p->vb0[1];  
             {
@@ -5997,7 +6011,7 @@ bool editorProcessKeypress(void) {
 
         case 'A':
           if (!p->rows.empty()) {
-            p->editorCreateSnapshot();
+            //p->editorCreateSnapshot();
       
           //p->repeat = p->fr - p->vb0[1];  
             {
@@ -6058,7 +6072,7 @@ bool editorProcessKeypress(void) {
     
         case 'x':
           if (!p->rows.empty()) {
-            p->editorCreateSnapshot();
+            p->push_current(); //p->editorCreateSnapshot();
             p->editorYankString(); 
             p->editorDeleteVisual();
           }
@@ -6078,7 +6092,7 @@ bool editorProcessKeypress(void) {
           return true;
     
         case 'p':
-          p->editorCreateSnapshot();
+          p->push_current();
           if (!string_buffer.empty()) p->editorPasteStringVisual();
           else p->editorPasteLineVisual();
           p->command[0] = '\0';
@@ -6089,7 +6103,7 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
-          p->editorCreateSnapshot();
+          p->push_current(); //p->editorCreateSnapshot();
           p->editorDecorateVisual(c);
           p->command[0] = '\0';
           p->repeat = 0;
