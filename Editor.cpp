@@ -6,6 +6,7 @@
 
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
+  /* I don't think you can get here from a no row situation 09012020
   if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
     editorInsertRow(0, std::string());
@@ -13,7 +14,8 @@ void Editor::editorInsertReturn(void) { // right now only used for editor->INSER
     fr = 1;
     return;
   }
-    
+  */
+
   std::string& current_row = rows.at(fr);
   std::string new_row1(current_row.begin(), current_row.begin() + fc);
   std::string new_row2(current_row.begin() + fc, current_row.end());
@@ -308,8 +310,7 @@ void Editor::push_current(void) {
   //prev_rows = rows;
   undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
   d_index = 0;
-
-
+  undo_mode = false;
 }
 void Editor::undo(void) {
     if (undo_deque.empty()) return;

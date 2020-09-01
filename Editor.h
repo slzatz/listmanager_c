@@ -31,6 +31,7 @@ class Editor {
       first_visible_row = 0;
       spellcheck = false;
       highlight_syntax = true; // should only apply to code
+      undo_mode = false;
 
       // ? whether the screen-related stuff should be in one place
       /*
@@ -79,6 +80,7 @@ class Editor {
     std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
     std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
     int d_index; //undo_deque index
+    bool undo_mode;
 
 
 /* undo - redo */

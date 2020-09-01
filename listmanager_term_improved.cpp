@@ -4071,7 +4071,7 @@ int preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
 void draw_preview(void) {
 
-  char buf[32];
+  char buf[50];
   std::string ab;
   unsigned int width = O.right_screencols - 10;
   unsigned int length = O.screenlines - 10;
@@ -4094,18 +4094,9 @@ void draw_preview(void) {
   buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf0.str());
 
-  /*
-  // erase the screen
-  for (int i=0; i < O.screenlines; i++) {
-    ab.append("\x1b[K");
-    ab.append(lf_ret, nchars);
-  }
-  */
-
   //erase set number of chars on each line
   char erase_chars[10];
   snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.right_screencols - 10);
-  //for (int i=0; i < O.screenlines; i++) {
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
@@ -4116,7 +4107,8 @@ void draw_preview(void) {
   buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
   ab.append(buf2.str()); //reposition cursor
 
-  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
                TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
   if (O.preview_rows.empty()) {
     ab.append(buf);
@@ -4131,7 +4123,8 @@ void draw_preview(void) {
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   //               TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
   ab.append(buf);
-  ab.append("\x1b[1;44m");
+  //ab.append("\x1b[1;44m");
+  ab.append("\x1b[48;5;235m");
 
   for (;;){
     if (flag) break;
@@ -4190,8 +4183,6 @@ void draw_preview(void) {
     }
 
   }
-  //last_visible_row = filerow - 1; // note that this is not exactly true - could be the whole last row is visible
-  ab.append("\x1b[0m", 4); //return background to normal - would catch VISUAL_LINE starting and ending on last row
 
   size_t p = 0;
   for (;;) {
@@ -5533,7 +5524,7 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          //(p->editorInsertReturn)();
+          p->push_current();
           p->editorInsertReturn();
           p->last_typed += c;
           return true;
@@ -5686,7 +5677,9 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == 'u') {
-        if (p->d_index == 0) p->push_current();
+        if (!p->undo_mode) p->push_current();
+        //if (p->d_index == 0) p->push_current();
+        p->undo_mode = true;
         p->editorSetMessage("d_index = %d", p->d_index);
         p->undo();
         return true;
