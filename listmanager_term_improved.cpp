@@ -34,8 +34,8 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"I", &Editor::E_I},
   {"a", &Editor::E_a},
   {"A", &Editor::E_A},
-  {"o", &Editor::e_o},
-  {"O", &Editor::e_O},
+  {"o", &Editor::E_o}, //note there is an E_o_escape
+  {"O", &Editor::E_O}, //note there is an E_O_escape
   {"x", &Editor::E_x},
   {"dw", &Editor::E_dw},
   {"de", &Editor::E_de},
@@ -80,7 +80,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
 };
 
 std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
-std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o}, {"O", &Editor::E_O}};
+std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
 std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
 std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 
@@ -5577,17 +5577,19 @@ bool editorProcessKeypress(void) {
 
           /*
            * below deals with certain NORMAL mode commands that
-           * cause entry to INSERT mode - deals with repeats
+           * cause entry to INSERT mode includes dealing with repeats
            */
 
           /****************************************************/
-          //if(cmd_set1a.count(E.last_command)) { //nuspell needed gcc+17 so no contains
+
+          //i,I,a,A - deals with repeat
           if(cmd_map1.count(p->last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
           }
 
+          //cmd_map2 "o" E_o_escape and E_O_escape - deals with repeat
           if (cmd_map2.count(p->last_command)) (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
           /****************************************************/
 
@@ -5661,7 +5663,8 @@ bool editorProcessKeypress(void) {
         default:
           p->editorInsertChar(c);
           p->last_typed += c;
-          //editorSetMessage(p->last_typed.c_str());
+          // not 100% clear but should deal with O, o which can't be dealt with as single line
+          p->undo_deque[0].last_typed += c;
           return true;
      
       } //end inner switch for outer case INSERT
@@ -5677,17 +5680,32 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == 'u') {
-        if (!p->undo_mode) p->push_current();
-        //if (p->d_index == 0) p->push_current();
-        p->undo_mode = true;
-        p->editorSetMessage("d_index = %d", p->d_index);
+        //If most recent edit was line-based, we want to capture the current state
+        //If most recent edit was a delete we don't need to capture current state
+        //If cursor was moved, need to get fr of last edit (if it was line oriented)
+        //Since that is the fr we want
+        //Need to check if there are no records in undo_deque do we tell user
+        if (!p->undo_mode) {
+          //if (p->undo_deque.empty() || p->d_index == p->undo_deque.size() - 1) {
+          if (p->undo_deque.empty()) {
+            p->editorSetMessage("Already at oldest change");
+            return false;
+          }
+
+          p->command[0] = 'u';
+          p->command[1]= '\0';
+          p->undo_mode = true; //must be after puch_current
+          p->push_base();
+        }
+
         p->undo();
+        p->command[0] = '\0';
         return true;
       }
 
       if (c == CTRL_KEY('r')) {
-        p->editorSetMessage("d_index = %d", p->d_index);
         p->redo();
+        p->command[0] = '\0';
         return true;
       }
 

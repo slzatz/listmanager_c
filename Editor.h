@@ -7,6 +7,17 @@
 #include <deque>
 //#include "listmanager.h" //////
 
+struct Diff {
+  int fr;
+  int fc;
+  int repeat;
+  std::string command;
+  std::string last_typed;
+  std::string deleted; //deleted chars - being recorded by not used right now or perhaps ever!
+
+  std::vector<std::pair<int, std::string>> changed_rows;
+};
+
 class Editor {
 
   public:
@@ -77,13 +88,15 @@ class Editor {
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
     int id; //listmanager db id of the row
-    std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
+    //std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
+    std::deque<Diff> undo_deque; //if neg it was a delete
     std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
     int d_index; //undo_deque index
     bool undo_mode;
 
 
 /* undo - redo */
+    void push_base(void); //used when you first go into undo mode
     void push_current(void);
     void undo(void);
     void redo(void);
@@ -102,8 +115,8 @@ class Editor {
     void E_I(int);
     void E_a(int);
     void E_A(int);
-    void E_O(int);
-    void E_o(int);
+    void E_O(int); //there is an E_O_escape
+    void E_o(int);  //there is an E_o_escape
     void E_dw(int);
     void E_daw(int);
     void E_dd(int);
@@ -134,8 +147,8 @@ class Editor {
     void E_change_case(int);
     void E_goto_outline(int);
 
-    void e_o(int);
-    void e_O(int);
+    void E_o_escape(int); //used in INSERT escape and dot
+    void E_O_escape(int); //used in INSERT escape and dot
     void e_replace(int);
     void E_next_misspelling(int);
     void E_prev_misspelling(int);

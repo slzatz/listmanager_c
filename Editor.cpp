@@ -305,18 +305,109 @@ void Editor::editorDecorateWord(int c) {
 void Editor::editorCreateSnapshot(void) {}
 void Editor::editorRestoreSnapshot(void) {}
 
+void Editor::push_base(void) {
+  Diff d;
+  d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
+  d.fc = undo_deque.at(0).fc;
+  d.repeat = 1;
+  d.command = command;
+
+  if (undo_deque.at(0).command == "o") { //previous
+    for (int r=undo_deque.at(0).fr; r<5; r++) {
+      if (r > (int)rows.size()-1) break;
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+
+  for (auto [r, s] : undo_deque.at(0).changed_rows) {
+    d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+  }
+
+  //d.changed_rows.push_back(std::make_pair(d.fr, rows.at(d.fr)));
+  undo_deque.push_front(d);
+}
+
 void Editor::push_current(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
-  //prev_rows = rows;
-  undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+
+  // probably not reason to include last_typed as always "" at this point
+  Diff d = {fr, fc, repeat, command};
+  d.last_typed = std::string();
+  //d.fr = fr;
+  //d.fc = fc;
+  //d.command = command;
+  //d.repeat = repeat;
+
+  //need to know which rows were changed by last action
+  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
+    for (auto [r, s] : undo_deque.at(0).changed_rows) {
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+
+  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
+  if (undo_deque.at(0).command == "o") { //previous
+    for (int r=undo_deque.at(0).fr; r<5; r++) {
+      if (r > (int)rows.size()-1) break;
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+  }
+
+  if (command == std::string_view("o")) {; // you really don't need any current rows although there is code below
+    undo_deque.push_front(d);
+    d_index = 0;
+    undo_mode = false;
+    editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
+    return;
+  }
+
+
+
+  if (d.command != "dd") d.repeat = 1;
+
+  for (int i=fr;i<fr+d.repeat; i++) {
+     d.changed_rows.push_back(std::make_pair(i, rows.at(i)));
+    }
+  //d.changed_rows.push_back(std::make_pair(fr, rows.at(fr))); //simplest case
+  //undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+  undo_deque.push_front(d);
   d_index = 0;
   undo_mode = false;
+  editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
 }
+
 void Editor::undo(void) {
-    if (undo_deque.empty()) return;
-    if (d_index < (int)undo_deque.size() - 1) d_index++;
-    auto [r, row] = undo_deque.at(d_index);
-    rows.at(r) = row;
+  if (undo_deque.empty()) return;
+
+  if (d_index == (int)undo_deque.size() - 1) {
+    editorSetMessage("Already at oldest change");
+    return;
+  }
+
+
+  d_index++;
+  //auto [r, row] = undo_deque.at(d_index);
+  Diff d = undo_deque.at(d_index);
+  fr = d.fr;
+  fc = d.fc;
+
+  //rows.at(r) = row;
+  if (d.command == "p") {
+    fr++;
+    editorYankLine(d.repeat);
+    rows.erase(rows.begin()+fr, rows.begin()+fr+d.repeat);
+    fr--;
+    return;
+  }
+
+  if (d.command == "dd") {
+    for (int i=0; i<d.repeat; i++) rows.insert(rows.begin()+fr, std::string());
+  }
+
+
+  for (auto [r, row] : d.changed_rows) rows.at(r) = row;
+  editorSetMessage("d_index: %d; fr:  %d; fc: %d; command: %s; repeat: %d; last_typed: %s; deleted: %s; deque size: %d", d_index, fr, fc, d.command.c_str(), d.repeat, d.last_typed.c_str(), d.deleted.c_str(), undo_deque.size());
 }
 
 void Editor::redo(void) {
@@ -325,9 +416,24 @@ void Editor::redo(void) {
       editorSetMessage("Already at newest change");
       return;
     }
+
+    Diff d = undo_deque.at(d_index);
+    if (d.command == "dd") {
+      fr = d.fr;
+      fc = d.fc;
+      E_dd(d.repeat);
+      d_index--;
+      return;
+    }  
     d_index--;
-    auto [r, row] = undo_deque.at(d_index);
-    rows.at(r) = row;
+    d = undo_deque.at(d_index);
+    fr = d.fr;
+    fc = d.fc;
+
+    for (auto [r, row] : d.changed_rows) rows.at(r) = row;
+    //auto [r, row] = undo_deque.at(d_index);
+    //rows.at(r) = row;
+    editorSetMessage("d_index: %d; fr:  %d; fc: %d; command: %s; repeat: %d; last_typed: %s; deleted: %s", d_index, fr, fc, d.command.c_str(), d.repeat, d.last_typed.c_str(), d.deleted.c_str());
 }
 
 // only decorates which I think makes sense
@@ -1309,13 +1415,13 @@ void Editor::editorDotRepeat(int repeat) {
     return;
   }
 
-  //case 'o': case 'O':
+  //'o' 'O':
   if (cmd_map2.count(last_command)) {
     (this->*cmd_map2[last_command])(last_repeat);
     return;
   }
 
-  //case 'x': case C_dw: case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+  //'x' 'dw': case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
   if (cmd_map3.count(last_command)) {
     (this->*cmd_map3[last_command])(last_repeat);
     return;
@@ -1743,7 +1849,10 @@ void Editor::E_cw(int repeat) {
     editorMoveEndWord();
     int end = fc;
     fc = start;
-    for (int j = 0; j < end - start + 1; j++) editorDelChar();
+    //for (int j = 0; j < end - start + 1; j++) editorDelChar();
+    std::string &row = rows.at(fr);
+    undo_deque[0].deleted = row.substr(fc, end - start + 1);
+    row.erase(fc, end - start + 1);
     // text repeats once
   }
 }
@@ -1814,12 +1923,25 @@ void Editor::E_dG(int repeat) {
 
 void Editor::E_s(int repeat) {
   //editorCreateSnapshot();
-  for (int i = 0; i < repeat; i++) editorDelChar();
+  //for (int i = 0; i < repeat; i++) editorDelChar();
+
+  //if (rows.empty()) return; // creation of NO_ROWS may make this unnecessary
+  std::string& row = rows.at(fr);
+  //if (row.empty() || fc > static_cast<int>(row.size()) - 1) return;
+  if (row.empty()) return; //act like it was an insert
+  undo_deque[0].deleted = row.substr(fc, repeat);
+  row.erase(fc, repeat);
+  dirty++;
 }
 
 void Editor::E_x(int repeat) {
   //editorCreateSnapshot();
-  for (int i = 0; i < repeat; i++) editorDelChar();
+  //for (int i = 0; i < repeat; i++) editorDelChar();
+  std::string& row = rows.at(fr);
+  if (row.empty()) return; 
+  undo_deque[0].deleted = row.substr(fc, repeat);
+  row.erase(fc, repeat);
+  dirty++;
 }
 
 void Editor::E_dd(int repeat) {
@@ -1828,7 +1950,6 @@ void Editor::E_dd(int repeat) {
   repeat = (r >= repeat) ? repeat : r ;
   editorYankLine(repeat);
   for (int i=0; i<repeat ; i++) editorDelRow(fr);
-  editorSetMessage("Howdy");
 }
 
 void Editor::E_d$(int repeat) {
@@ -1874,17 +1995,31 @@ void Editor::E_A(int repeat) {
   editorMoveCursor(ARROW_RIGHT); //works even though not in INSERT mode
 }
 
+// see E_o_escape
 void Editor::E_o(int repeat) {
+  last_typed.clear();
+  editorInsertNewline(1);
+}
+
+// see E_O_escape
+void Editor::E_O(int repeat) { 
+  last_typed.clear();
+  editorInsertNewline(0);
+}
+
+//used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1
+void Editor::E_o_escape(int repeat) { 
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(1);
-    for (char const &c : last_typed) {
+    for (char const &c : last_typed) { 
       if (c == '\r') editorInsertReturn();
       else editorInsertChar(c);
     }
   }
 }
 
-void Editor::E_O(int repeat) {
+//used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1
+void Editor::E_O_escape(int repeat) {
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(0);
     for (char const &c : last_typed) {
@@ -1941,22 +2076,6 @@ void Editor::E_J(int repeat) {
   }  
 }
 
-/* 'O' and 'o' need special handling for repeat*/
-void Editor::e_o(int repeat) {
-  editorCreateSnapshot();
-  last_typed.clear();
-  E_o(1);
-  //mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-}
-
-void Editor::e_O(int repeat) {
-  editorCreateSnapshot();
-  last_typed.clear();
-  E_O(1);
-  //mode = INSERT;
-  editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-}
 
 //needs to be special b/o count/repeat
 void Editor::e_replace(int repeat) {
@@ -2050,16 +2169,18 @@ void Editor::E_find_next_word(int repeat) {
   editorSetMessage("\x1b[1m-- FINDING NEXT WORD... --\x1b[0m");
 }
 
-//case 'u':
+/* not in use - see NORMAL mode switch
+// 'u'
 void Editor::E_undo(int repeat) {
   //editorRestoreSnapshot();
   undo();
 }
 
-//case 'ctrl-r':
+// 'ctrl-r':
 void Editor::E_redo(int repeat) {
   redo();
 }
+*/
 
 void Editor::E_indent(int repeat) {
   int i;
