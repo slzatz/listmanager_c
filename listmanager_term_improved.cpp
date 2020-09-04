@@ -180,7 +180,9 @@ char * (url_callback)(const char *x, const int y, void *z) {
  * and only writes to the file once
  */
 void update_html_file(std::string &&fn) {
-  std::string note = outlinePreviewRowsToString();
+  std::string note;
+  if (editor_mode) note = p->editorRowsToString();
+  else note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
@@ -3489,6 +3491,11 @@ void F_clear(int) {
 
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
+  if (editors.empty()) {
+    outlineShowMessage("There are no active editors");
+    return;
+  }
+
   eraseRightScreen();
   for (auto &e : editors) e->editorRefreshScreen(true);
   editor_mode = true;
@@ -3961,6 +3968,7 @@ void eraseRightScreen(void) {
 
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //necessary? 
   ab.append(buf);
+  ab.append("\x1b[0m"); // needed or else in bold mode from line drawing above
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }

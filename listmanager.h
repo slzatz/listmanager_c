@@ -26,6 +26,7 @@ extern "C" {
 #include <mkdio.h>
 }
 
+// used by list..improved.cpp and Editor.cpp
 const std::string CURRENT_NOTE_FILE = "current.html";
 const std::string META_FILE = "assets/meta.html";
 

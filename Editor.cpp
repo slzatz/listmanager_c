@@ -750,7 +750,7 @@ void Editor::editorDrawRows(std::string &ab) {
 
   /* for visual modes */
   int begin = 0;
-  std::string abs = "";
+  std::string abs = ""; 
  
   char lf_ret[10];
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
@@ -769,9 +769,9 @@ void Editor::editorDrawRows(std::string &ab) {
   }
   */
 
-  std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
-  ab.append(buf2.str()); //reposition cursor
+  //std::stringstream buf2;
+  //buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
+  //ab.append(buf2.str()); //reposition cursor
 
   if (rows.empty()) return;
 
@@ -828,7 +828,7 @@ void Editor::editorDrawRows(std::string &ab) {
       // pretty ugly that this has to appear here but need to take into account empty rows  
       if (visual_line) {
         if (filerow == h_light[1] + 1){ //could catch VISUAL_LINE starting on last row outside of for
-          ab.append("\x1b[0m", 4); //return background to normal
+          ab.append("\x1b[0m"); //return background to normal
           visual_line = false;
         }
       }
@@ -1677,6 +1677,7 @@ void Editor::E_write_C(void) {
   //auto it = html_files.find(O.rows.at(O.fr).id); // O is global and so html_files but not sure needed
   auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   if (it != html_files.end()) update_html_file("assets/" + it->second);
+  //editorSetMessage("lm_browser: %d, CURRENT_NOTE_FILE: %s, id: %d, get_folder_tid: %d", lm_browser, CURRENT_NOTE_FILE.c_str(), id, get_folder_tid(id));
   editorSetMessage("");
 }
 
