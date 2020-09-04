@@ -10,12 +10,8 @@
 struct Diff {
   int fr;
   int fc;
-  int repeat;
   std::string command;
-  std::string last_typed;
-  std::string deleted; //deleted chars - being recorded by not used right now or perhaps ever!
-
-  std::vector<std::pair<int, std::string>> changed_rows;
+  std::vector<std::string> rows;
 };
 
 class Editor {
@@ -96,7 +92,6 @@ class Editor {
 
 
 /* undo - redo */
-    void push_base(void); //used when you first go into undo mode
     void push_current(void);
     void undo(void);
     void redo(void);
@@ -174,8 +169,6 @@ class Editor {
     void editorMoveNextWord(void);
     void editorMoveBeginningWord(void);
     void editorDecorateWord(int);
-    void editorCreateSnapshot(void);
-    void editorRestoreSnapshot(void);
     void editorDecorateVisual(int);
     void editorSetMessage(const char *fmt, ...);
     void editorSpellCheck(void);

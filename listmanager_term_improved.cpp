@@ -5524,7 +5524,7 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          p->push_current();
+          //p->push_current();
           p->editorInsertReturn();
           p->last_typed += c;
           return true;
@@ -5544,12 +5544,12 @@ bool editorProcessKeypress(void) {
           return false;
 
         case BACKSPACE:
-          p->push_current(); //p->editorCreateSnapshot();
+          //p->push_current(); //p->editorCreateSnapshot();
           p->editorBackspace();
           return true;
     
         case DEL_KEY:
-          p->push_current(); //p->editorCreateSnapshot();
+          //p->push_current(); //p->editorCreateSnapshot();
           p->editorDelChar();
           return true;
     
@@ -5664,7 +5664,7 @@ bool editorProcessKeypress(void) {
           p->editorInsertChar(c);
           p->last_typed += c;
           // not 100% clear but should deal with O, o which can't be dealt with as single line
-          p->undo_deque[0].last_typed += c;
+          //p->undo_deque[0].last_typed += c;
           return true;
      
       } //end inner switch for outer case INSERT
@@ -5694,8 +5694,9 @@ bool editorProcessKeypress(void) {
 
           p->command[0] = 'u';
           p->command[1]= '\0';
+          p->push_current();
           p->undo_mode = true; //must be after puch_current
-          p->push_base();
+     
         }
 
         p->undo();
@@ -5704,6 +5705,11 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == CTRL_KEY('r')) {
+        if (p->d_index == 0) {
+          p->editorSetMessage("Already at newest change");
+          return false;
+        }
+
         p->redo();
         p->command[0] = '\0';
         return true;
@@ -5756,7 +5762,7 @@ bool editorProcessKeypress(void) {
       }
 
       if (e_lookup.count(p->command)) {
-        if (!move_only.count(p->command)) p->push_current(); //p->editorCreateSnapshot(); 
+        if (!move_only.count(p->command)) p->push_current(); 
 
         (p->*e_lookup.at(p->command))(p->repeat); //money shot
 

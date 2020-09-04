@@ -302,79 +302,18 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
-void Editor::editorCreateSnapshot(void) {}
-void Editor::editorRestoreSnapshot(void) {}
-
-void Editor::push_base(void) {
-  Diff d;
-  d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
-  d.fc = undo_deque.at(0).fc;
-  d.repeat = 1;
-  d.command = command;
-
-  if (undo_deque.at(0).command == "o") { //previous
-    for (int r=undo_deque.at(0).fr; r<5; r++) {
-      if (r > (int)rows.size()-1) break;
-      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-    }
-  }
-
-  for (auto [r, s] : undo_deque.at(0).changed_rows) {
-    d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-  }
-
-  //d.changed_rows.push_back(std::make_pair(d.fr, rows.at(d.fr)));
-  undo_deque.push_front(d);
-}
-
 void Editor::push_current(void) {
-  if (rows.empty()) return; //don't create snapshot if there is no text
+  //if (rows.empty()) return; //not sure this is necessary
 
-  // probably not reason to include last_typed as always "" at this point
-  Diff d = {fr, fc, repeat, command};
-  d.last_typed = std::string();
-  //d.fr = fr;
-  //d.fc = fc;
-  //d.command = command;
-  //d.repeat = repeat;
+  //if we didn't get back to the top of the stack then clear undo_deque
+  if (undo_mode == true && d_index != 0) undo_deque.clear(); 
 
-  //need to know which rows were changed by last action
-  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
-    for (auto [r, s] : undo_deque.at(0).changed_rows) {
-      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-    }
-  }
-
-  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
-  if (undo_deque.at(0).command == "o") { //previous
-    for (int r=undo_deque.at(0).fr; r<5; r++) {
-      if (r > (int)rows.size()-1) break;
-      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-    }
-  }
-  }
-
-  if (command == std::string_view("o")) {; // you really don't need any current rows although there is code below
-    undo_deque.push_front(d);
-    d_index = 0;
-    undo_mode = false;
-    editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
-    return;
-  }
-
-
-
-  if (d.command != "dd") d.repeat = 1;
-
-  for (int i=fr;i<fr+d.repeat; i++) {
-     d.changed_rows.push_back(std::make_pair(i, rows.at(i)));
-    }
-  //d.changed_rows.push_back(std::make_pair(fr, rows.at(fr))); //simplest case
-  //undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+  Diff d = {fr, fc, command};
+  d.rows = rows;
   undo_deque.push_front(d);
   d_index = 0;
+
   undo_mode = false;
-  editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
 }
 
 void Editor::undo(void) {
@@ -385,55 +324,22 @@ void Editor::undo(void) {
     return;
   }
 
-
   d_index++;
-  //auto [r, row] = undo_deque.at(d_index);
   Diff d = undo_deque.at(d_index);
   fr = d.fr;
   fc = d.fc;
-
-  //rows.at(r) = row;
-  if (d.command == "p") {
-    fr++;
-    editorYankLine(d.repeat);
-    rows.erase(rows.begin()+fr, rows.begin()+fr+d.repeat);
-    fr--;
-    return;
-  }
-
-  if (d.command == "dd") {
-    for (int i=0; i<d.repeat; i++) rows.insert(rows.begin()+fr, std::string());
-  }
-
-
-  for (auto [r, row] : d.changed_rows) rows.at(r) = row;
-  editorSetMessage("d_index: %d; fr:  %d; fc: %d; command: %s; repeat: %d; last_typed: %s; deleted: %s; deque size: %d", d_index, fr, fc, d.command.c_str(), d.repeat, d.last_typed.c_str(), d.deleted.c_str(), undo_deque.size());
+  rows = d.rows;
+  editorSetMessage("d_index: %d undo_deque.size(): %d", d_index, undo_deque.size());
 }
 
 void Editor::redo(void) {
-    //if (undo_deque.size() < 2) return;
-    if (d_index == 0) {
-      editorSetMessage("Already at newest change");
-      return;
-    }
 
-    Diff d = undo_deque.at(d_index);
-    if (d.command == "dd") {
-      fr = d.fr;
-      fc = d.fc;
-      E_dd(d.repeat);
-      d_index--;
-      return;
-    }  
-    d_index--;
-    d = undo_deque.at(d_index);
-    fr = d.fr;
-    fc = d.fc;
-
-    for (auto [r, row] : d.changed_rows) rows.at(r) = row;
-    //auto [r, row] = undo_deque.at(d_index);
-    //rows.at(r) = row;
-    editorSetMessage("d_index: %d; fr:  %d; fc: %d; command: %s; repeat: %d; last_typed: %s; deleted: %s", d_index, fr, fc, d.command.c_str(), d.repeat, d.last_typed.c_str(), d.deleted.c_str());
+  d_index--;
+  Diff d = undo_deque.at(d_index);
+  d = undo_deque.at(d_index);
+  fr = d.fr;
+  fc = d.fc;
+  rows = d.rows;
 }
 
 // only decorates which I think makes sense
@@ -1851,7 +1757,7 @@ void Editor::E_cw(int repeat) {
     fc = start;
     //for (int j = 0; j < end - start + 1; j++) editorDelChar();
     std::string &row = rows.at(fr);
-    undo_deque[0].deleted = row.substr(fc, end - start + 1);
+    //undo_deque[0].deleted = row.substr(fc, end - start + 1);
     row.erase(fc, end - start + 1);
     // text repeats once
   }
@@ -1922,30 +1828,27 @@ void Editor::E_dG(int repeat) {
 }
 
 void Editor::E_s(int repeat) {
-  //editorCreateSnapshot();
   //for (int i = 0; i < repeat; i++) editorDelChar();
 
   //if (rows.empty()) return; // creation of NO_ROWS may make this unnecessary
   std::string& row = rows.at(fr);
   //if (row.empty() || fc > static_cast<int>(row.size()) - 1) return;
   if (row.empty()) return; //act like it was an insert
-  undo_deque[0].deleted = row.substr(fc, repeat);
+  //undo_deque[0].deleted = row.substr(fc, repeat);
   row.erase(fc, repeat);
   dirty++;
 }
 
 void Editor::E_x(int repeat) {
-  //editorCreateSnapshot();
   //for (int i = 0; i < repeat; i++) editorDelChar();
   std::string& row = rows.at(fr);
   if (row.empty()) return; 
-  undo_deque[0].deleted = row.substr(fc, repeat);
+  //undo_deque[0].deleted = row.substr(fc, repeat);
   row.erase(fc, repeat);
   dirty++;
 }
 
 void Editor::E_dd(int repeat) {
-  //editorCreateSnapshot();
   int r = rows.size() - fr;
   repeat = (r >= repeat) ? repeat : r ;
   editorYankLine(repeat);
@@ -1964,7 +1867,6 @@ void Editor::E_d$(int repeat) {
 }
 
 void Editor::E_change_case(int repeat) {
-  //editorCreateSnapshot();
   for (int i = 0; i < repeat; i++) editorChangeCase();
 }
 
