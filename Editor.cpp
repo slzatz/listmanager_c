@@ -302,9 +302,6 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
-void Editor::editorCreateSnapshot(void) {}
-void Editor::editorRestoreSnapshot(void) {}
-
 void Editor::push_base(void) {
   Diff d;
   d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
@@ -333,10 +330,6 @@ void Editor::push_current(void) {
   // probably not reason to include last_typed as always "" at this point
   Diff d = {fr, fc, repeat, command};
   d.last_typed = std::string();
-  //d.fr = fr;
-  //d.fc = fc;
-  //d.command = command;
-  //d.repeat = repeat;
 
   //need to know which rows were changed by last action
   if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;

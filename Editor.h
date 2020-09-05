@@ -14,7 +14,7 @@ struct Diff {
   std::string command;
   std::string last_typed;
   std::string deleted; //deleted chars - being recorded by not used right now or perhaps ever!
-
+  std::vector<std::pair<char, int> diff; //c = changed; d = deleted; a = added
   std::vector<std::pair<int, std::string>> changed_rows;
 };
 
