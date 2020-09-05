@@ -306,8 +306,64 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
-void Editor::push_current(void) {
+//<<<<<<< HEAD
+//void Editor::push_current(void) {
   //if (rows.empty()) return; //not sure this is necessary
+//=======
+void Editor::push_base(void) {
+  Diff d;
+  d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
+  d.fc = undo_deque.at(0).fc;
+  d.repeat = 1;
+  d.command = command;
+
+  if (undo_deque.at(0).command == "o") { //previous
+    for (int r=undo_deque.at(0).fr; r<5; r++) {
+      if (r > (int)rows.size()-1) break;
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+
+  for (auto [r, s] : undo_deque.at(0).changed_rows) {
+    d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+  }
+
+  //d.changed_rows.push_back(std::make_pair(d.fr, rows.at(d.fr)));
+  undo_deque.push_front(d);
+}
+
+void Editor::push_current(void) {
+  if (rows.empty()) return; //don't create snapshot if there is no text
+
+  // probably not reason to include last_typed as always "" at this point
+  Diff d = {fr, fc, repeat, command};
+  d.last_typed = std::string();
+
+  //need to know which rows were changed by last action
+  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
+    for (auto [r, s] : undo_deque.at(0).changed_rows) {
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+
+  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
+  if (undo_deque.at(0).command == "o") { //previous
+    for (int r=undo_deque.at(0).fr; r<5; r++) {
+      if (r > (int)rows.size()-1) break;
+      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
+    }
+  }
+  }
+
+  if (command == std::string_view("o")) {; // you really don't need any current rows although there is code below
+    undo_deque.push_front(d);
+    d_index = 0;
+    undo_mode = false;
+    editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
+    return;
+  }
+
+//>>>>>>> 5fa944a... Editor.cpp, Editor.h: beginning work on diff branch - added diff vector
 
   //if we didn't get back to the top of the stack then clear undo_deque
   if (undo_mode == true && d_index != 0) undo_deque.clear(); 
