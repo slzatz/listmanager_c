@@ -86,7 +86,7 @@ class Editor {
     int id; //listmanager db id of the row
     //std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
     std::deque<Diff> undo_deque; //if neg it was a delete
-    std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
+    //std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
     int d_index; //undo_deque index
     bool undo_mode;
 

@@ -95,20 +95,22 @@ void signalHandler(int signum) {
   screencols = new_screencols;
   eraseScreenRedrawLines();
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
-  EDITOR_LEFT_MARGIN = screencols/2 + 1;
-  //p->screenlines = screenlines - 2 - TOP_MARGIN;
-  //p->screencols = -2 + screencols/2;
-  //p->left_margin = screencols/2 + 1;
+  //O.titlecols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
+  O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
+  //EDITOR_LEFT_MARGIN = screencols/2 + 1;
+  EDITOR_LEFT_MARGIN = O.divider + 1;
 
   int n = editors.size();
   int i = 0;
   for (auto z : editors) {
     z->screenlines = screenlines - 2 - TOP_MARGIN;
-    z->screencols = (-2 + screencols/2)/n;
+    //z->screencols = (-2 + screencols/2)/n;
+    //z->screencols = (-2 + O.divider)/n;
+    z->screencols = (-2 + screencols - O.divider)/n;
     z->total_screenlines = screenlines - 2 - TOP_MARGIN;
     //z->left_margin = screencols/2 + 1 + i*z->screencols;
-    z->left_margin = screencols/2 + i*z->screencols + i + 1;
+    //z->left_margin = screencols/2 + i*z->screencols + i + 1;
+    z->left_margin = O.divider + i*z->screencols + i + 1;
     i++;
   }
 
@@ -134,6 +136,7 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["dbname"], c.dbname);
   inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
   inipp::extract(ini.sections["ini"]["port"], c.port);
+  inipp::extract(ini.sections["editor"]["ed_pct"], c.ed_pct);
 }
 
 //pg ini stuff
@@ -3031,9 +3034,11 @@ void F_edit(int) {
     int i = 0;
     for (auto z : editors) {
       z->screenlines = screenlines - 2 - TOP_MARGIN;
-      z->screencols = (-2 + screencols/2)/n;
+      //z->screencols = (-2 + screencols - O.divider)/n;
+      z->screencols = -1 + (screencols - O.divider)/n;
       z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-      z->left_margin = screencols/2 + i*z->screencols + i + 1;
+      //z->left_margin = O.divider + i*z->screencols + i + 1;
+      z->left_margin = O.divider + i*z->screencols + i;
       i++;
     }
 
@@ -3046,10 +3051,40 @@ void F_edit(int) {
     }
 
     eraseRightScreen();
-    for (auto e : editors) e->editorRefreshScreen(true);
+    //for (auto e : editors) e->editorRefreshScreen(true);
+
+
+    /*********************************/
+    std::string ab;
+    //for (auto e : editors) {
+    for (int i=0; i<editors.size(); i++) {  
+      Editor *&e = editors.at(i);
+      e->editorRefreshScreen(true);
+      char buf[32];
+      ab.append("\x1b(0"); // Enter line drawing mode
+      for (int j=1; j<O.screenlines+1; j++) {
+        snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
+        ab.append(buf);
+        // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+        // only need one 'm'
+        ab.append("\x1b[37;1mx");
+      }
+      //'T' corner = w or right top corner = k
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+      ab.append(buf);
+      if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+      else ab.append("\x1b[37;1mw");
+
+      //exit line drawing mode
+      ab.append("\x1b(B");
+    }
+    ab.append("\x1b[?25h", 6); //shows the cursor
+    ab.append("\x1b[0m"); //or else subsequent editors are bold
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    /*********************************/
+
   } else {
-    outlineShowMessage("You need to save item before you can "
-                      "create a note");
+    outlineShowMessage("You need to save item before you can create a note");
   }
   O.command[0] = '\0';
   O.mode = NORMAL;
@@ -3956,8 +3991,11 @@ void eraseRightScreen(void) {
 
   // redraw top horizontal line which has t's so needs to be erased
   ab.append("\x1b(0"); // Enter line drawing mode
-  for (int j=1; j<screencols/2; j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2 + j); //don't think need offset
+  //for (int j=1; j<screencols/2; j++) {
+  //for (int j=1; j<O.divider; j++) {
+  for (int j=1; j<O.totaleditorcols+1; j++) { //added +1 0906/2020
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2 + j); //don't think need offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, O.divider + j); //don't think need offset
     ab.append(buf);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
@@ -4021,19 +4059,19 @@ void displayFile(void) {
     if (line_num > O.screenlines - 2) break;
     row_num++;
     if (row_num < initial_file_row) continue;
-    if (static_cast<int>(row.size()) < O.right_screencols) {
+    if (static_cast<int>(row.size()) < O.totaleditorcols) {
       ab.append(row);
       ab.append(lf_ret);
       line_num++;
       continue;
     }
     //int n = 0;
-    int n = row.size()/(O.right_screencols - 1) + ((row.size()%(O.right_screencols - 1)) ? 1 : 0);
+    int n = row.size()/(O.totaleditorcols - 1) + ((row.size()%(O.totaleditorcols - 1)) ? 1 : 0);
     for(int i=0; i<n; i++) {
       line_num++;
       if (line_num > O.screenlines - 2) break;
-      line = row.substr(0, O.right_screencols - 1);
-      row.erase(0, O.right_screencols - 1);
+      line = row.substr(0, O.totaleditorcols - 1);
+      row.erase(0, O.totaleditorcols - 1);
       ab.append(line);
       ab.append(lf_ret);
     }
@@ -4081,7 +4119,7 @@ void draw_preview(void) {
 
   char buf[50];
   std::string ab;
-  unsigned int width = O.right_screencols - 10;
+  unsigned int width = O.totaleditorcols - 10;
   unsigned int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
@@ -4104,7 +4142,7 @@ void draw_preview(void) {
 
   //erase set number of chars on each line
   char erase_chars[10];
-  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.right_screencols - 10);
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.totaleditorcols - 10);
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
@@ -4155,9 +4193,9 @@ void draw_preview(void) {
     int prev_pos;
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
-      //if (row.substr(pos+1).size() <= O.right_screencols) {
+      //if (row.substr(pos+1).size() <= O.totaleditorcols) {
       if (row.substr(pos+1).size() <= width) {
-        //ab.append(row, pos+1, O.right_screencols);
+        //ab.append(row, pos+1, O.totaleditorcols);
         ab.append(row, pos+1, width);
         //if (y == O.screenlines - 1) {flag=true; break;}
         if (y == length - 1) {flag=true; break;}
@@ -4168,17 +4206,17 @@ void draw_preview(void) {
       }
 
       prev_pos = pos;
-      //pos = row.find_last_of(' ', pos+O.right_screencols);
+      //pos = row.find_last_of(' ', pos+O.totaleditorcols);
       pos = row.find_last_of(' ', pos+width);
 
       //note npos when signed = -1 and order of if/else may matter
       if (pos == std::string::npos) {
-        //pos = prev_pos + O.right_screencols;
+        //pos = prev_pos + O.totaleditorcols;
         pos = prev_pos + width;
       } else if (pos == prev_pos) {
         row = row.substr(pos+1);
         prev_pos = -1;
-        //pos = O.right_screencols - 1;
+        //pos = O.totaleditorcols - 1;
         pos = width - 1;
       }
 
@@ -4276,8 +4314,8 @@ void outlineScroll(void) {
     O.rowoff =  O.fr;
   }
 
-  if (O.fc > O.screencols + O.coloff - 1) {
-    O.coloff =  O.fc - O.screencols + 1;
+  if (O.fc > O.titlecols + O.coloff - 1) {
+    O.coloff =  O.fc - O.titlecols + 1;
   }
 
   if (O.fc < O.coloff) {
@@ -4309,7 +4347,7 @@ void outlineDrawRows(std::string& ab) {
     // if a line is long you only draw what fits on the screen
     //below solves problem when deleting chars from a scrolled long line
     unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
-    if (len > O.screencols) len = O.screencols;
+    if (len > O.titlecols) len = O.titlecols;
 
     if (row.star) {
       ab.append("\x1b[1m"); //bold
@@ -4345,10 +4383,11 @@ void outlineDrawRows(std::string& ab) {
 
     // for a 'dirty' (red) row or ithe selected row, the spaces make it look
     // like the whole row is highlighted
-    spaces = O.screencols - len;
+    spaces = O.titlecols - len - 3; //09052020 added -2
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); // + offset
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); // + offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - OUTLINE_RIGHT_MARGIN + 2); // + offset
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
     ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
@@ -4373,7 +4412,7 @@ void outlineDrawFilters(std::string& ab) {
 
     orow& row = O.rows[fr];
 
-    size_t len = (row.title.size() > O.screencols) ? O.screencols : row.title.size();
+    size_t len = (row.title.size() > O.titlecols) ? O.titlecols : row.title.size();
 
     if (row.star) {
       ab.append("\x1b[1m"); //bold
@@ -4383,7 +4422,7 @@ void outlineDrawFilters(std::string& ab) {
     if (fr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
 
     ab.append(&row.title[0], len);
-    int spaces = O.screencols - len; //needs to change but reveals stuff being written
+    int spaces = O.titlecols - len; //needs to change but reveals stuff being written
     std::string s(spaces, ' '); 
     ab.append(s);
     ab.append("\x1b[0m"); // return background to normal /////
@@ -4422,21 +4461,22 @@ void outlineDrawSearchRows(std::string& ab) {
 
     //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
 
-    // I think the following blows up if there are multiple search terms hits in a line longer than O.screencols
+    // I think the following blows up if there are multiple search terms hits in a line longer than O.titlecols
 
-    if (row.title.size() <= O.screencols) // we know it fits
+    if (row.title.size() <= O.titlecols) // we know it fits
       ab.append(row.fts_title.c_str(), row.fts_title.size());
     else {
       size_t pos = row.fts_title.find("\x1b[49m");
-      if (pos < O.screencols + 10) //length of highlight escape
-        ab.append(row.fts_title.c_str(), O.screencols + 15); // length of highlight escape + remove formatting escape
+      if (pos < O.titlecols + 10) //length of highlight escape
+        ab.append(row.fts_title.c_str(), O.titlecols + 15); // length of highlight escape + remove formatting escape
       else
-        ab.append(row.title.c_str(), O.screencols);
+        ab.append(row.title.c_str(), O.titlecols);
 }
-    len = (row.title.size() <= O.screencols) ? row.title.size() : O.screencols;
-    spaces = O.screencols - len;
+    len = (row.title.size() <= O.titlecols) ? row.title.size() : O.titlecols;
+    spaces = O.titlecols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); //wouldn't need offset
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); //wouldn't need offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - OUTLINE_RIGHT_MARGIN + 2); //wouldn't need offset
     ab.append("\x1b[0m", 4); // return background to normal
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
@@ -4468,7 +4508,7 @@ void outlineDrawStatusBar(void) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + TOP_MARGIN + 1,
-                             O.screencols + OUTLINE_LEFT_MARGIN,
+                             O.titlecols + OUTLINE_LEFT_MARGIN,
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
@@ -4557,29 +4597,6 @@ void outlineDrawStatusBar(void) {
   ab.append(status);
   ab.append(" ");
 
-  //char editor_status[200];
-  //int editor_len = 0;
-
-  /*
-  if (DEBUG) {
-    if (!p->rows.empty()){
-      int line = p->editorGetLineInRowWW(p->fr, p->fc);
-      int line_char_count = p->editorGetLineCharCountWW(p->fr, line);
-      int lines = p->editorGetLinesInRowWW(p->fr);
-
-      editor_len = snprintf(editor_status,
-                     sizeof(editor_status), "E.fr(0)=%d lines(1)=%d line(1)=%d E.fc(0)=%d LO=%d initial_row=%d last_row=%d line chrs(1)="
-                                     "%d  E.cx(0)=%d E.cy(0)=%d E.scols(1)=%d",
-                                     p->fr, lines, line, p->fc, p->line_offset, p->first_visible_row, p->last_visible_row, line_char_count, p->cx, p->cy, p->screencols);
-    } else {
-      editor_len =  snprintf(editor_status, sizeof(editor_status), "E.row is NULL E.cx = %d E.cy = %d  E.numrows = %ld E.line_offset = %d",
-                                        p->cx, p->cy, p->rows.size(), p->line_offset);
-    }
-  }  
-  */
-
-  //ab.append(editor_status, editor_len);
-
   //because of escapes
   len-=10;
 
@@ -4588,7 +4605,7 @@ void outlineDrawStatusBar(void) {
   if (len > O.left_screencols - 1) len = O.left_screencols - 1;
 
   while (len < O.left_screencols - 1 ) {
-    if ((O.left_screencols - len) == rlen - 2) { //10 of chars not printable but for some reason 2 works
+    if ((O.left_screencols - len) == rlen) { //10 of chars not printable but for some reason 2 works
       ab.append(rstatus, rlen);
       break;
     } else {
@@ -4648,13 +4665,15 @@ void outlineDrawMessageBar(std::string& ab) {
 
   // Erase from mid-screen to the left and then place cursor all the way left
   buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
-      << screencols/2 << "H" << "\x1b[1K\x1b["
+      //<< screencols/2 << "H" << "\x1b[1K\x1b["
+      << O.divider << "H" << "\x1b[1K\x1b["
       << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab += buf.str();
 
   int msglen = strlen(O.message);
-  if (msglen > screencols/2) msglen = screencols/2;
+  //if (msglen > screencols/2) msglen = screencols/2;
+  if (msglen > O.divider) msglen = O.divider;
   ab.append(O.message, msglen);
 }
 
@@ -4672,7 +4691,7 @@ void outlineRefreshScreen(void) {
   if (O.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-      O.screencols + OUTLINE_LEFT_MARGIN + 17); 
+      O.titlecols + OUTLINE_LEFT_MARGIN + 17); 
       ab.append(buf, strlen(buf));
     }
   }
@@ -4708,14 +4727,16 @@ void outlineShowMessage(const char *fmt, ...) {
 
   // Erase from mid-screen to the left and then place cursor all the way left
   buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
-      << screencols/2 << "H" << "\x1b[1K\x1b["
+      //<< screencols/2 << "H" << "\x1b[1K\x1b["
+      << O.divider << "H" << "\x1b[1K\x1b["
       << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab = buf.str();
   //ab.append("\x1b[0m"); //checking if necessary
 
   int msglen = strlen(message);
-  if (msglen > screencols/2) msglen = screencols/2;
+  //if (msglen > screencols/2) msglen = screencols/2;
+  if (msglen > O.divider) msglen = O.divider;
   ab.append(message, msglen);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -5380,7 +5401,7 @@ void outlineDeleteToEndOfLine(void) {
 
 void outlineMoveCursorEOL() {
 
-  O.fc = O.rows.at(O.fr).title.size() - 1;  //if O.cx > O.screencols will be adjusted in EditorScroll
+  O.fc = O.rows.at(O.fr).title.size() - 1;  //if O.cx > O.titlecols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
@@ -5844,9 +5865,11 @@ bool editorProcessKeypress(void) {
             int i = 0;
             for (auto z : editors) {
               z->screenlines = screenlines - 2 - TOP_MARGIN;
-              z->screencols = (-2 + screencols/2)/n;
+              //z->screencols = (-2 + screencols/2)/n;
+              z->screencols = (-2 + O.divider)/n;
               z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-              z->left_margin = screencols/2 +  i*z->screencols + i + 1;
+              //z->left_margin = screencols/2 +  i*z->screencols + i + 1;
+              z->left_margin = O.divider +  i*z->screencols + i + 1;
               z->editorRefreshScreen(true);
               i++;
             }
@@ -6181,7 +6204,8 @@ bool editorProcessKeypress(void) {
 
 void eraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
-  int pos = screencols/2;
+  //int pos = screencols/2;
+  int pos = O.divider;
   char buf[32];
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
   for (int j = 1; j < screenlines + 1; j++) {
@@ -6248,9 +6272,13 @@ void initOutline() {
 
   // ? whether the screen-related stuff should be in one place
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  O.screencols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
-  O.right_screencols = -2 + screencols/2;
-  O.left_screencols = O.right_screencols -2;
+  O.divider = screencols - c.ed_pct * screencols/100;
+  //O.titlecols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
+  O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
+  //O.totaleditorcols = -2 + screencols/2;
+  O.totaleditorcols = screencols - O.divider - 2; //? OUTLINE MARGINS?
+  //O.left_screencols = O.totaleditorcols -2;
+  O.left_screencols = O.divider - 2; //OUTLINE_MARGINS
 }
 
 int main(int argc, char** argv) { 
@@ -6277,14 +6305,14 @@ int main(int argc, char** argv) {
   map_context_titles();
   map_folder_titles();
 
-  //if (getWindowSize(&screenlines, &screencols) == -1) die("getWindowSize");
   getWindowSize(&screenlines, &screencols);
   enableRawMode();
-  eraseScreenRedrawLines();
   initOutline();
+  eraseScreenRedrawLines();
   //p = &E; //very important - will need an array of pointers when there can be more than one editor
   //initEditor();
-  EDITOR_LEFT_MARGIN = screencols/2 + 1;
+  //EDITOR_LEFT_MARGIN = screencols/2 + 1;
+  EDITOR_LEFT_MARGIN = O.divider + 1;
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized

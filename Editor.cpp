@@ -636,7 +636,7 @@ void Editor::editorRefreshScreen(bool redraw) {
     // \x1b[NC moves cursor forward by N columns
     //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
     snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
-    snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols);
+    snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols);//09062020 added the -1: keeps lines from being erased
     for (int i=0; i < total_screenlines; i++) {
       //ab.append("\x1b[K"); does everything to right of cursor - not good in multi-editor world
       //ab.append("\x1b[40X");
@@ -659,6 +659,8 @@ void Editor::editorRefreshScreen(bool redraw) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + left_margin + 1); //03022019
     ab.append(buf, strlen(buf));
   }
+
+  /*
     //char buf[32];
     ab.append("\x1b(0"); // Enter line drawing mode
     for (int j=1; j<screenlines+1; j++) {
@@ -677,6 +679,9 @@ void Editor::editorRefreshScreen(bool redraw) {
     ab.append("\x1b(B");
 
   ab.append("\x1b[?25h", 6); //shows the cursor
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+*/
+
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights

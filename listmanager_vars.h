@@ -117,6 +117,7 @@ struct config {
   std::string dbname;
   std::string hostaddr;
   int port;
+  int ed_pct;
 };
 struct config c;
 
@@ -147,9 +148,10 @@ struct outlineConfig {
   unsigned int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
   unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
   unsigned int screenlines; //number of lines in the display available to text
-  unsigned int screencols;  //number of columns in the display available to text
-  unsigned int right_screencols; //Number of columns on right-hand side of screen
+  unsigned int titlecols;  //number of columns in the display available to text
+  unsigned int totaleditorcols; //Number of columns on right-hand side of screen
   unsigned int left_screencols; //Number of columns on left-hand side of screen
+  unsigned int divider; //where the dividing line is between note list and editor (takes margins into account)
   std::vector<orow> rows;
   std::vector<std::string> preview_rows;
   std::string context;
