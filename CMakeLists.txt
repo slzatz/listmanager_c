@@ -6,7 +6,6 @@
 cmake_minimum_required(VERSION 3.15)
 project(listmanager_cpp)
 set(CMAKE_CXX_STANDARD 20)
-
 find_package(ZeroMQ QUIET)
 
 if(NOT ZeroMQ_FOUND)
@@ -48,11 +47,10 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
 target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
-#target_include_directories(${PROJECT_NAME} PUBLIC ${PROJECT_SOURCE_DIR}/maddy/include)
 # add_executable has to come before target_link_libraries
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown) 
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown /usr/local/lib/libfmt.a) 
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)

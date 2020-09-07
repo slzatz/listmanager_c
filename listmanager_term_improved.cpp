@@ -3060,17 +3060,20 @@ void F_edit(int) {
     for (int i=0; i<editors.size(); i++) {  
       Editor *&e = editors.at(i);
       e->editorRefreshScreen(true);
-      char buf[32];
+      //char buf[32];
+      std::string buf;
       ab.append("\x1b(0"); // Enter line drawing mode
       for (int j=1; j<O.screenlines+1; j++) {
-        snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
+        //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
+        buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
         ab.append(buf);
         // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
         // only need one 'm'
         ab.append("\x1b[37;1mx");
       }
       //'T' corner = w or right top corner = k
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+      buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
       ab.append(buf);
       if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
       else ab.append("\x1b[37;1mw");
@@ -3966,27 +3969,36 @@ void outlineSave(const std::string& fname) {
 
 // erases note
 void eraseRightScreen(void) {
-  char lf_ret[10];
+  //char lf_ret[10];
   //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
   //or
-  //fmt::memory_buffer lf_ret;
-  //format_to(lf_ret, "\r\n\x1b[{}C", EDITOR_LEFT_MARGIN)
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+
+  //there may be an issue reusing the same memory buffer once it's created
+  //so they may be reserved for use not in loops etc where you are changing
+  //the value
+
+  //std::string lf_ret =  fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
 
   std::string ab;
 
   ab.append("\x1b[?25l"); //hides the cursor
-  char buf[32];
-  //std::string lf_ret = fmt::format("\r\n\x1b[{}C", EDITOR_LEFT_MARGIN);
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, EDITOR_LEFT_MARGIN + 1); 
-  ab.append(buf);
+  //char buf[32];
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, EDITOR_LEFT_MARGIN + 1); 
+
+  //below positions cursor such that top line is erased the first time through
+  //for loop although could really start on second line since need to redraw
+  //horizontal line anyway
+  fmt::memory_buffer buf;
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + 1); //need +1 or erase top T
+  ab.append(buf.data(), buf.size());
 
   //erase the screen
-  //for (int i=0; i < p->screenlines; i++) {
+  fmt::memory_buffer lf_ret;
+  //note O.divider -1 would take out center divider line and don't want to do that
+  fmt::format_to(lf_ret, "\r\n\x1b[{}C", O.divider);
   for (int i=0; i < screenlines - TOP_MARGIN; i++) {
     ab.append("\x1b[K");
-    ab.append(lf_ret);
+    ab.append(lf_ret.data(), lf_ret.size());
   }
 
   // redraw top horizontal line which has t's so needs to be erased
@@ -3994,9 +4006,10 @@ void eraseRightScreen(void) {
   //for (int j=1; j<screencols/2; j++) {
   //for (int j=1; j<O.divider; j++) {
   for (int j=1; j<O.totaleditorcols+1; j++) { //added +1 0906/2020
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, screencols/2 + j); //don't think need offset
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, O.divider + j); //don't think need offset
-    ab.append(buf);
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, O.divider + j); //don't think need offset
+    //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + j);
+    std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, O.divider + j);
+    ab.append(buf2);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
     ab.append("\x1b[37;1mq");
@@ -4004,8 +4017,10 @@ void eraseRightScreen(void) {
   //exit line drawing mode
   ab.append("\x1b(B");
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //necessary? 
-  ab.append(buf);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //necessary? 
+  //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  ab.append(buf3);
   ab.append("\x1b[0m"); // needed or else in bold mode from line drawing above
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -5843,11 +5858,15 @@ bool editorProcessKeypress(void) {
 
       if (c == '\r') {
 
-        if (quit_cmds.count(p->command_line)) {
-        //if (p->command_line == "q" || p->command_line == "quit") {
-          if (p->command_line == "x") update_note();
+        // right now only command that has a space is readfile
+        std::size_t pos = p->command_line.find(' ');
+        std::string cmd = p->command_line.substr(0, pos);
 
-          if (p->command_line == "q!" || p->command_line == "quit!") {
+        if (quit_cmds.count(cmd)) {
+        //if (p->command_line == "q" || p->command_line == "quit") {
+          if (cmd == "x") update_note();
+
+          if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
           } else if (p->dirty) {
               p->mode = NORMAL;
@@ -5883,9 +5902,9 @@ bool editorProcessKeypress(void) {
           return false;
         }
 
-        if (E_lookup_C.count(p->command_line)) {
+        if (E_lookup_C.count(cmd)) {
           //E_lookup_C.at(p->command_line)();
-          (p->*E_lookup_C.at(p->command_line))();
+          (p->*E_lookup_C.at(cmd))();
           return false;
         }
 

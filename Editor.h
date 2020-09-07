@@ -104,6 +104,7 @@ class Editor {
     void E_open_in_vim_C(void);
     void E_spellcheck_C(void);
     void E_persist_C(void);
+    void E_readfile_C(void);
 
     /* EDITOR mode NORMAL functions */
     void E_i(int);

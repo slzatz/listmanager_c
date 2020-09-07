@@ -25,6 +25,9 @@
 #include <fstream>
 #include <set>
 
+#include <fmt/core.h>
+#include <fmt/format.h>
+
 const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";

@@ -1754,6 +1754,15 @@ void Editor::E_persist_C(void) {
   mode = NORMAL;
 }
 
+void Editor::E_readfile_C(void) {
+  std::string filename;
+  std::size_t pos = command_line.find(' ');
+  if (pos) filename = command_line.substr(pos+1);
+  else filename = "example.cpp";
+  editorReadFileIntoNote(filename);
+  editorSetMessage("Note generated from file: %s", filename.c_str());
+  mode = NORMAL;
+}
 // EDITOR NORMAL mode functions
 void Editor::E_cw(int repeat) {
   for (int j = 0; j < repeat; j++) {
