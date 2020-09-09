@@ -33,7 +33,7 @@ task_table = Table('task',metadata,
               Column('deleted', Boolean, default=False),
               Column('created', DateTime, default=datetime.datetime.now), 
               Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
-              Column('startdate', Date),
+              Column('startdate', DateTime),
               Column('remind', Integer)
 )
 

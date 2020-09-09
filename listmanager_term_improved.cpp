@@ -445,6 +445,13 @@ void display_item_info_pg(int id) {
 }
 // end of pg functions
 
+std::string now(void) {
+  std::time_t t = std::time(nullptr);
+  //int adj_t = (int)t - 14400;
+  //return fmt::format("{:%Y-%m-%d %H:%M}", fmt::localtime(t));
+  return fmt::format("{:%H:%M}", fmt::localtime(t));
+}
+
 std::string time_delta(std::string t) {
   struct std::tm tm = {};
   std::istringstream iss;
@@ -455,7 +462,8 @@ std::string time_delta(std::string t) {
   auto now = std::chrono::system_clock::now();
   std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
   auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
-  int adj_secs = int_secs.count() - 14400; //time zone adjustment of 4 hours - needs to be cleaned up
+  //int adj_secs = (int)int_secs.count() + 14400; //time zone adjustment of 4 hours - needs to be cleaned up
+  int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 4 hours - needs to be cleaned up
 
   std::string s;
 
@@ -1853,7 +1861,9 @@ void update_note(void) {
   }
 
   int id = get_id();
-  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+  //query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours'), "
+        << "startdate=datetime('now', '-" << TZ_OFFSET << " hours')WHERE id=" << id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -3010,7 +3020,8 @@ void F_refresh(int) {
 }
 
 void F_new(int) {
-  outlineInsertRow(0, "", true, false, false, BASE_DATE);
+  //outlineInsertRow(0, "", true, false, false, BASE_DATE);
+  outlineInsertRow(0, "", true, false, false, now().c_str());
   O.fc = O.fr = O.rowoff = 0;
   O.command[0] = '\0';
   O.repeat = 0;

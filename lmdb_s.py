@@ -40,7 +40,7 @@ task_table = Table('task',metadata,
               Column('deleted', Boolean, default=False),
               Column('created', DateTime, default=datetime.datetime.now), 
               Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
-              Column('startdate', Date), # this has been hijacked to represent the true date the item was created originally
+              Column('startdate', DateTime), # this has been hijacked to represent the true date the item was created originally
               #Column('starttime', Time),
               Column('remind', Integer) # number of minutes prior to duedate that reminder will be sent
               )

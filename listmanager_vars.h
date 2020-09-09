@@ -28,6 +28,7 @@
 #include <iomanip>  //provides get_time used in time_delta function
 #include <fmt/core.h>
 #include <fmt/format.h>
+#include <fmt/chrono.h>
 
 const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -358,6 +359,8 @@ int keyword_exists(std::string &);
 int folder_exists(std::string &);
 int context_exists(std::string &);
 void get_preview(int);
+std::string time_delta(std::string);
+std::string now(void);
 
 //sqlite callback functions
 typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
