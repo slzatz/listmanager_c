@@ -95,10 +95,8 @@ void signalHandler(int signum) {
   screencols = new_screencols;
   eraseScreenRedrawLines();
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  //O.titlecols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
   O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
-  //EDITOR_LEFT_MARGIN = screencols/2 + 1;
-  EDITOR_LEFT_MARGIN = O.divider + 1;
+  EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
 
   int n = editors.size();
   int i = 0;
@@ -382,7 +380,8 @@ void display_item_info_pg(int id) {
   }    
 
   char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
 
   std::string s;
 
@@ -445,6 +444,30 @@ void display_item_info_pg(int id) {
   PQclear(res);
 }
 // end of pg functions
+
+std::string time_delta(std::string t) {
+  struct std::tm tm = {};
+  std::istringstream iss;
+  //std::stringstream iss;
+  iss.str(t);
+  iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
+  auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+  auto now = std::chrono::system_clock::now();
+  std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
+  auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
+  int adj_secs = int_secs.count() - 14400; //time zone adjustment of 4 hours - needs to be cleaned up
+
+  std::string s;
+
+  if (adj_secs <= 120) s = fmt::format("{} seconds ago", adj_secs);
+  else if (adj_secs <= 60*120) s = fmt::format("{} minutes ago", adj_secs/60); // <120 minutes we report minutes
+  else if (adj_secs <= 48*60*60) s = fmt::format("{} hours ago", adj_secs/3600); // <48 hours report hours
+  else if (adj_secs <= 24*60*60*60) s = fmt::format("{} days ago", adj_secs/3600/24); // <60 days report days
+  else if (adj_secs <= 24*30*24*60*60) s = fmt::format("{} months ago", adj_secs/3600/24/30); // <24 months report months
+  else s = fmt::format("{} years ago", adj_secs/3600/24/30/12);
+ 
+  return s;
+}
 
 bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
@@ -981,7 +1004,15 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   int *sc = static_cast<int*>(sortcolnum);
   std::string row_modified; //would be row.modified if changed to string
   (argv[*sc] != nullptr) ? row_modified.assign(argv[*sc], 16) : row_modified.assign(16, ' ');
-  strncpy(row.modified, row_modified.c_str(), 16);
+
+
+
+  //int days = time_delta(row_modified);
+  //strncpy(row.modified, std::to_string(days).c_str(), 16);
+
+  strncpy(row.modified, time_delta(row_modified).c_str(), 16);
+
+  //strncpy(row.modified, row_modified.c_str(), 16);
   O.rows.push_back(row);
 
   return 0;
@@ -1082,7 +1113,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.completed = (argv[10]) ? true: false;
   row.dirty = false;
   row.mark = false;
-  //if changed modified (which should be some generic time name) then row.modified.assign(argv[16], 16)
+  //if changed modified (which should be some generic time name) to string then row.modified.assign(argv[16], 16)
   strncpy(row.modified, argv[16], 16);
   O.rows.push_back(row);
 
@@ -1415,19 +1446,22 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   */
 
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
   eraseRightScreen();
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //set background color to blue
@@ -1574,13 +1608,15 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   9: modified
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
@@ -1589,7 +1625,8 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -1660,13 +1697,15 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   11: modified
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
@@ -1675,7 +1714,8 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -1741,13 +1781,15 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   5: deleted
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf);
 
   //need to erase the screen
@@ -1756,7 +1798,8 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -4019,7 +4062,8 @@ void eraseRightScreen(void) {
 
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //necessary? 
   //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  //std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, O.divider + 2);
   ab.append(buf3);
   ab.append("\x1b[0m"); // needed or else in bold mode from line drawing above
 
@@ -4044,13 +4088,15 @@ void readFile(const std::string &filename) {
 void displayFile(void) {
 
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
@@ -4059,7 +4105,8 @@ void displayFile(void) {
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
   ab.append(buf, strlen(buf));
 
   ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
@@ -4138,21 +4185,21 @@ void draw_preview(void) {
   unsigned int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, O.divider + 6);
   ab.append(buf, strlen(buf));
   //std::string abs = "";
  
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN + 5);
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN + 5);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 6);
   ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
-  //buf0 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  //buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
   ab.append(buf0.str());
 
   //erase set number of chars on each line
@@ -4164,13 +4211,14 @@ void draw_preview(void) {
   }
 
   std::stringstream buf2;
-  //buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  EDITOR_LEFT_MARGIN + 1 << "H";
-  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  //buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
+               //TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
+               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width);
   if (O.preview_rows.empty()) {
     ab.append(buf);
     write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -4259,11 +4307,13 @@ void draw_preview(void) {
   //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC\x1b[1B", width);
   snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
   ab.append("\x1b(0"); // Enter line drawing mode
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6); 
   ab.append(buf);
   ab.append("\x1b[37;1ml"); //upper left corner
   for (int j=1; j<length; j++) { //+1
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, EDITOR_LEFT_MARGIN + 5); 
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, EDITOR_LEFT_MARGIN + 5); 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, O.divider + 6); 
     ab.append(buf);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
@@ -4279,7 +4329,8 @@ void draw_preview(void) {
 
   snprintf(move_cursor, sizeof(move_cursor), "\x1b[1D\x1b[%dB", length);
   for (int j=1; j<width+1; j++) {
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5 + j); 
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5 + j); 
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6 + j); 
     ab.append(buf);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
@@ -4288,7 +4339,8 @@ void draw_preview(void) {
     ab.append("\x1b[37;1mq");
   }
   ab.append("\x1b[37;1mj"); //lower right corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + width + 6); 
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + width + 6); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 7 + width); 
   ab.append(buf);
   ab.append("\x1b[37;1mk"); //upper right corner
 
@@ -4415,10 +4467,12 @@ void outlineDrawFilters(std::string& ab) {
   if (O.rows.empty()) return;
 
   char lf_ret[16];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  //snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
 
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%dG", EDITOR_LEFT_MARGIN + 1); 
+  //snprintf(buf, sizeof(buf), "\x1b[%dG", EDITOR_LEFT_MARGIN + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%dG", O.divider + 2); 
   ab.append(buf); 
 
   for (int y = 0; y < O.screenlines; y++) {
@@ -4643,15 +4697,15 @@ void return_cursor() {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
-      //snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->screenlines + 2 + TOP_MARGIN, p->command_line.size() + EDITOR_LEFT_MARGIN + 1);  
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->total_screenlines + TOP_MARGIN + 2, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); 
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->total_screenlines + TOP_MARGIN + 2, p->command_line.size() + EDITOR_LEFT_MARGIN + 1); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", p->total_screenlines + TOP_MARGIN + 2, p->command_line.size() + O.divider + 2); 
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h"); // show cursor
     }
   } else {
     if (O.mode == ADD_CHANGE_FILTER){
-      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN + 60); //offset
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, EDITOR_LEFT_MARGIN); //offset
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, EDITOR_LEFT_MARGIN); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.divider + 1); 
       ab.append(buf, strlen(buf));
     } else if (O.mode == SEARCH) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, OUTLINE_LEFT_MARGIN); //blue
@@ -5627,7 +5681,7 @@ bool editorProcessKeypress(void) {
           /****************************************************/
 
           //i,I,a,A - deals with repeat
-          if(cmd_map1.count(p->last_command)) { //nuspell needed gcc+17 so no contains
+          if(cmd_map1.contains(p->last_command)) { //nuspell needed gcc+17 so no contains
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
@@ -6328,10 +6382,7 @@ int main(int argc, char** argv) {
   enableRawMode();
   initOutline();
   eraseScreenRedrawLines();
-  //p = &E; //very important - will need an array of pointers when there can be more than one editor
-  //initEditor();
-  //EDITOR_LEFT_MARGIN = screencols/2 + 1;
-  EDITOR_LEFT_MARGIN = O.divider + 1;
+  EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized

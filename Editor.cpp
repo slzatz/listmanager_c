@@ -625,7 +625,6 @@ void Editor::editorRefreshScreen(bool redraw) {
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1); //03022019 added len
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, left_margin + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
@@ -695,7 +694,7 @@ void Editor::editorRefreshScreen(bool redraw) {
 void Editor::editorDrawMessageBar(std::string& ab) {
   std::stringstream buf;
 
-  // we want this on the left margin
+  // only use of EDITOR_LEFT_MARGIN in Editor.cpp
   buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
@@ -1184,7 +1183,7 @@ void Editor::editorChangeCase(void) {
 
 void Editor::editorDeleteToEndOfLine(void) {
   std::string& row = rows.at(fr);
-  row.resize(fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  row.resize(fc); // or row.chars.erase(row.chars.begin() + fc, row.chars.end())
   dirty++;
 }
 
@@ -1674,15 +1673,12 @@ void Editor::E_write_C(void) {
   mode = NORMAL;
   command[0] = '\0';
   command_line.clear();
-  if (lm_browser) { //lm_browser is global and O below is global
-    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) { //lm_browser is global
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  //auto it = html_files.find(O.rows.at(O.fr).id); // O is global and so html_files but not sure needed
   auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   if (it != html_files.end()) update_html_file("assets/" + it->second);
-  //editorSetMessage("lm_browser: %d, CURRENT_NOTE_FILE: %s, id: %d, get_folder_tid: %d", lm_browser, CURRENT_NOTE_FILE.c_str(), id, get_folder_tid(id));
   editorSetMessage("");
 }
 
@@ -1692,12 +1688,10 @@ void Editor::E_write_close_C(void) {
   command[0] = '\0';
   command_line.clear();
   editor_mode = false; //global
-  if (lm_browser) { //lm_browser is global and O below is global
-    //if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) { //lm_browser is global
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  //auto it = html_files.find(O.rows.at(O.fr).id); //O is global and so is html_files but not sure needed
   auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   if (it != html_files.end()) update_html_file("assets/" + it->second);
   editorSetMessage("");
@@ -1747,7 +1741,6 @@ void E_spellcheck_C(void) {
 #endif
 
 void Editor::E_persist_C(void) {
-  //generate_persistent_html_file(O.rows.at(O.fr).id); //global
   generate_persistent_html_file(id); //global
   //command[0] = '\0';
   //command_line.clear();
