@@ -316,7 +316,9 @@ void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
 void outlineScroll(void);
 void outlineSave(const std::string &);
 void return_cursor(void);
+void get_preview(int);
 void draw_preview(void);
+std::string draw_preview_box(unsigned int &, unsigned int &);
 
 //Database-related Prototypes
 void db_open(void);
@@ -358,7 +360,6 @@ void display_container_info(int);
 int keyword_exists(std::string &);  
 int folder_exists(std::string &);
 int context_exists(std::string &);
-void get_preview(int);
 std::string time_delta(std::string);
 std::string now(void);
 

@@ -95,19 +95,19 @@ void signalHandler(int signum) {
   screencols = new_screencols;
   eraseScreenRedrawLines();
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  O.divider = screencols - c.ed_pct * screencols/100;
   O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
+  O.totaleditorcols = screencols - O.divider - 2; //? OUTLINE MARGINS?
+  O.left_screencols = O.divider - 2; //OUTLINE_MARGINS
+
   EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
 
   int n = editors.size();
   int i = 0;
   for (auto z : editors) {
     z->screenlines = screenlines - 2 - TOP_MARGIN;
-    //z->screencols = (-2 + screencols/2)/n;
-    //z->screencols = (-2 + O.divider)/n;
     z->screencols = (-2 + screencols - O.divider)/n;
     z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-    //z->left_margin = screencols/2 + 1 + i*z->screencols;
-    //z->left_margin = screencols/2 + i*z->screencols + i + 1;
     z->left_margin = O.divider + i*z->screencols + i + 1;
     i++;
   }
@@ -3087,10 +3087,8 @@ void F_edit(int) {
     int i = 0;
     for (auto z : editors) {
       z->screenlines = screenlines - 2 - TOP_MARGIN;
-      //z->screencols = (-2 + screencols - O.divider)/n;
       z->screencols = -1 + (screencols - O.divider)/n;
       z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-      //z->left_margin = O.divider + i*z->screencols + i + 1;
       z->left_margin = O.divider + i*z->screencols + i;
       i++;
     }
@@ -4231,6 +4229,8 @@ void draw_preview(void) {
                TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width);
   if (O.preview_rows.empty()) {
     ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(draw_preview_box(width, length));
     write(STDOUT_FILENO, ab.c_str(), ab.size());
     return;
 }
@@ -4362,6 +4362,62 @@ void draw_preview(void) {
 
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+std::string draw_preview_box(unsigned int &width, unsigned int &length) {
+  std::string ab;
+  //char move_cursor[20];
+  fmt::memory_buffer move_cursor;
+  fmt::format_to(move_cursor, "\x1b[{}C", width);
+  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
+  ab.append("\x1b(0"); // Enter line drawing mode
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6); 
+  fmt::memory_buffer buf;
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6); 
+  ab.append(buf.data(), buf.size());
+  buf.clear();
+  ab.append("\x1b[37;1ml"); //upper left corner
+  for (int j=1; j<length; j++) { //+1
+   // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, O.divider + 6); 
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, O.divider + 6); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    ab.append("\x1b[37;1mx");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mx");
+  }
+  //ab.append(buf); //might be needed!!
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, O.divider + 6));
+  ab.append("\x1b[1B");
+  ab.append("\x1b[37;1mm"); //lower left corner
+
+  move_cursor.clear();
+  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[1D\x1b[%dB", length);
+  fmt::format_to(move_cursor, "\x1b[1D\x1b[{}B", length);
+  for (int j=1; j<width+1; j++) {
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6 + j); 
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6 + j); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    ab.append("\x1b[37;1mq");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mq");
+  }
+  ab.append("\x1b[37;1mj"); //lower right corner
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 7 + width); 
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 7 + width); 
+  ab.append(buf.data(), buf.size());
+  ab.append("\x1b[37;1mk"); //upper right corner
+
+  //exit line drawing mode
+  ab.append("\x1b(B");
+  ab.append("\x1b[0m");
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  return ab;
 }
 
 void open_in_vim(void){
@@ -4587,7 +4643,8 @@ void outlineDrawStatusBar(void) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + TOP_MARGIN + 1,
-                             O.titlecols + OUTLINE_LEFT_MARGIN,
+                             //O.titlecols + OUTLINE_LEFT_MARGIN,
+                             O.divider,
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
