@@ -18,6 +18,7 @@ find_package(SQLite3 REQUIRED)
 find_package(PythonLibs REQUIRED)
 find_package(PostgreSQL REQUIRED)
 find_package(Nuspell)
+find_package(fmt)
 
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD
@@ -50,7 +51,8 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
 # add_executable has to come before target_link_libraries
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown /usr/local/lib/libfmt.a) 
+#target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown /usr/local/lib/libfmt.a) 
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown fmt::fmt) 
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)

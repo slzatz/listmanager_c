@@ -463,7 +463,7 @@ std::string time_delta(std::string t) {
   std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
   auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
   //int adj_secs = (int)int_secs.count() + 14400; //time zone adjustment of 4 hours - needs to be cleaned up
-  int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 4 hours - needs to be cleaned up
+  int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 1 hour works - no idea why!
 
   std::string s;
 
@@ -2422,8 +2422,8 @@ int insert_row(orow& row) {
         << "note, "
         << "deleted, "
         << "created, "
-        << "modified, "
-        << "startdate "
+        << "modified "
+        //<< "startdate "
         << ") VALUES ("
         << " 3," //priority
         << "'" << title << "'," //title
@@ -2438,8 +2438,8 @@ int insert_row(orow& row) {
         << "''," //note
         << " False," //deleted
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
-        << " date()" //startdate
+        << " datetime('now', '-" << TZ_OFFSET << " hours')" // modified
+        //<< " date()" //startdate
         << ");"; // RETURNING id;",
 
   /*
