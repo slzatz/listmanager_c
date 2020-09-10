@@ -1070,7 +1070,6 @@ void get_items_by_id(std::stringstream &query) {
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     O.mode = SEARCH;
-    p->mode = SEARCH; /////////////////////////////////////////////////////////////// can't be right
     get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }

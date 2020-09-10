@@ -55,16 +55,16 @@ enum outlineKey {
 enum Mode {
   NORMAL, // = 0,
   INSERT, // = 1,
-  COMMAND_LINE, // = 2, //note: if no rows as result of search put in COMMAND_LINE mode
+  COMMAND_LINE, // = 2 
   VISUAL_LINE, // = 3, // only editor mode
   VISUAL, // = 4,
   REPLACE, // = 5,
  // DATABASE, // = 6, // only outline mode
   FILE_DISPLAY,// = 7, // only outline mode
   NO_ROWS,// = 8
-  VISUAL_BLOCK,
-  SEARCH,
-  ADD_CHANGE_FILTER  
+  VISUAL_BLOCK, //only editor mode
+  SEARCH, // only outline mode
+  ADD_CHANGE_FILTER //only outline mode 
 };
 
 const std::string mode_text[] = {
