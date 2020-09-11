@@ -1627,6 +1627,7 @@ std::string Editor::editorGenerateWWString(void) {
     }
   }
 }
+
 //used in status bar because interesting but not essential
 int Editor::editorGetLineCharCountWW(int r, int line) {
   //This should be a string view and use substring like lines in row

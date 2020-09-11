@@ -4153,16 +4153,56 @@ void displayFile(void) {
 void get_preview(int id) {
   std::stringstream query;
   O.preview_rows.clear();
-  //word_positions.clear(); this needs to move into get_preview
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
 
-  draw_preview();
+  if (O.taskview != BY_SEARCH) draw_preview();
+  else {
+    word_positions.clear(); 
+    get_search_positions(id);
+    draw_search_preview();
+  }
+  //draw_preview();
 
   if (lm_browser) {
     if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
+}
+
+void get_search_positions(int id) {
+  std::stringstream query;
+  query << "SELECT rowid FROM fts WHERE lm_id = " << id << ";";
+
+  int rowid = -1;
+  // callback is *not* called if result (argv) is null
+  if (!db_query(S.fts_db, query.str().c_str(), rowid_callback, &rowid, &S.err_msg, __func__)) return;
+
+  // split string into a vector of words
+  std::vector<std::string> vec;
+  std::istringstream iss(search_terms);
+  for(std::string ss; iss >> ss; ) vec.push_back(ss);
+  std::stringstream query3;
+  int n = 0;
+  for(auto v: vec) {
+    word_positions.push_back(std::vector<int>{});
+    query.str(std::string()); // how you clear a stringstream
+    query << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
+    if (!db_query(S.fts_db, query.str().c_str(), offset_callback, &n, &S.err_msg, __func__)) return;
+
+    n++;
+  }
+
+  int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
+  outlineShowMessage("Word position first: %d; id = %d ", ww, id);
+
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  /*
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  } 
+  */
 }
 
 // doesn't appear to be called if row is NULL
@@ -4233,135 +4273,190 @@ void draw_preview(void) {
     ab.append(draw_preview_box(width, length));
     write(STDOUT_FILENO, ab.c_str(), ab.size());
     return;
+  }
+
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  ab.append(generateWWString(O.preview_rows, width, length, lf_ret));
+  ab.append(draw_preview_box(width, length));
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+/* this exists to create a text file that has the proper
+ * line breaks based on screen width for syntax highlighters
+ * to operate on 
+ * Produces a text string that starts at the first line of the
+ * file and ends on the last visible line
+ */
+// essentially the same as the word wrap portion of draw_preview and could be used by
+// draw_preview and draw_search_preview
+std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  //int y = -line_offset;
   int y = 0;
-  //int filerow = first_visible_row; //if unscrollable preview - should be 0 ?
-  int filerow = 0; //if unscrollable preview - should be 0 ?
-  bool flag = false;
-  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
-  //               TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
-  ab.append(buf);
-  //ab.append("\x1b[1;44m");
-  ab.append("\x1b[48;5;235m");
+  int filerow = 0;
 
-  for (;;){
-    if (flag) break;
-    //if (filerow == O.preview_rows.size()) {last_visible_row = filerow - 1; break;}
-    if (filerow == O.preview_rows.size())  break;
-    std::string row = O.preview_rows.at(filerow);
+  for (;;) {
+    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+    if (filerow == rows.size()) return ab;
 
+    std::string row = rows.at(filerow);
+    
     if (row.empty()) {
-      //if (y == O.screenlines - 1) break;
-      if (y == length - 1) break;
-      ab.append(1, '\f');
+      if (y == length - 1) return ab;
+      //ab.append("\n");
+      ab.append(ret);
       filerow++;
       y++;
-
-      // pretty ugly that this has to appear here but need to take into account empty rows  
       continue;
     }
 
     int pos = -1;
     int prev_pos;
     for (;;) {
-      /* this is needed because it deals where the end of the line doesn't have a space*/
-      //if (row.substr(pos+1).size() <= O.totaleditorcols) {
+      // this is needed because it deals where the end of the line doesn't have a space
       if (row.substr(pos+1).size() <= width) {
-        //ab.append(row, pos+1, O.totaleditorcols);
         ab.append(row, pos+1, width);
-        //if (y == O.screenlines - 1) {flag=true; break;}
-        if (y == length - 1) {flag=true; break;}
-        ab.append(1, '\f');
+        //if (y == length - 1) {last_visible_row = filerow - 1; return ab;}
+        if (y == length - 1) return ab;
+       // ab.append("\n");
+        ab.append(ret);
         y++;
         filerow++;
         break;
       }
 
       prev_pos = pos;
-      //pos = row.find_last_of(' ', pos+O.totaleditorcols);
       pos = row.find_last_of(' ', pos+width);
 
       //note npos when signed = -1 and order of if/else may matter
       if (pos == std::string::npos) {
-        //pos = prev_pos + O.totaleditorcols;
         pos = prev_pos + width;
       } else if (pos == prev_pos) {
         row = row.substr(pos+1);
         prev_pos = -1;
-        //pos = O.totaleditorcols - 1;
         pos = width - 1;
       }
 
       ab.append(row, prev_pos+1, pos-prev_pos);
-      //abs.append(row, prev_pos+1, pos-prev_pos);
-      //if (y == O.screenlines - 1) {flag=true; break;}
-      if (y == length - 1) {flag=true; break;}
-      ab.append(1, '\f');
+      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
+      //ab.append("\n");
+      ab.append(ret);
       y++;
     }
-
   }
+}
+
+void draw_search_preview(void) {
+  //need to bring back the note with some marker around the words that
+  //we search and replace or retrieve the note with the actual
+  //escape codes and not worry that the word wrap will be messed up
+  //but it shouldn't ever split an escaped word.  Would start
+  //with escapes and go from there
+ //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+ //fts_query << "SELECT highlight(fts, ??1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE lm_id=? AND fts MATCH '" << search_terms << "' ORDER BY rank";
+
+  char buf[50];
+  std::string ab;
+  unsigned int width = O.totaleditorcols - 10;
+  unsigned int length = O.screenlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, O.divider + 6);
+  ab.append(buf, strlen(buf));
+  //std::string abs = "";
+ 
+  // \x1b[NC moves cursor forward by N columns
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 6);
+
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  //buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  ab.append(buf0.str());
+
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  std::stringstream buf2;
+  //buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  EDITOR_LEFT_MARGIN + 6 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+               //TOP_MARGIN+6, EDITOR_LEFT_MARGIN+6, TOP_MARGIN+4+length, EDITOR_LEFT_MARGIN+6+width);
+               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width);
+  if (O.preview_rows.empty()) {
+    ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(draw_preview_box(width, length));
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
+  }
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  std::string t = generateWWString(O.preview_rows, width, length, "\f");
+  //ab.append(generateWWString(O.preview_rows, width, length, lf_ret));
+  highlight_terms_string(t);
 
   size_t p = 0;
   for (;;) {
-      if (p > ab.size()) break;
-      p = ab.find('\f', p);
-      if (p == std::string::npos) break;
-      ab.replace(p, 1, lf_ret);
-      p += 7;
-  }
-    //draw lines
-  char move_cursor[20];
-  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
-  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC\x1b[1B", width);
-  snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
-  ab.append("\x1b(0"); // Enter line drawing mode
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5); 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6); 
-  ab.append(buf);
-  ab.append("\x1b[37;1ml"); //upper left corner
-  for (int j=1; j<length; j++) { //+1
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, EDITOR_LEFT_MARGIN + 5); 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, O.divider + 6); 
-    ab.append(buf);
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
-    ab.append("\x1b[37;1mx");
-    ab.append(move_cursor);
-    ab.append("\x1b[37;1mx");
-  }
-  ab.append(buf);
-  //ab.append("\x1b[37;1mx");
-  //ab.append("\x1b[1B\x1b[1D");
-  ab.append("\x1b[1B");
-  ab.append("\x1b[37;1mm"); //lower left corner
+    if (p > t.size()) break;
+    p = t.find('\f', p);
+    if (p == std::string::npos) break;
+    t.replace(p, 1, lf_ret);
+    p +=7;
+   }
 
-  snprintf(move_cursor, sizeof(move_cursor), "\x1b[1D\x1b[%dB", length);
-  for (int j=1; j<width+1; j++) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + 5 + j); 
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6 + j); 
-    ab.append(buf);
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
-    ab.append("\x1b[37;1mq");
-    ab.append(move_cursor);
-    ab.append("\x1b[37;1mq");
-  }
-  ab.append("\x1b[37;1mj"); //lower right corner
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, EDITOR_LEFT_MARGIN + width + 6); 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 7 + width); 
-  ab.append(buf);
-  ab.append("\x1b[37;1mk"); //upper right corner
-
-  //exit line drawing mode
-  ab.append("\x1b(B");
-
-  ab.append("\x1b[0m");
-  ab.append("\x1b[?25h", 6); //shows the cursor
-
-
+  ab.append(t);
+  ab.append(draw_preview_box(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+void highlight_terms_string(std::string &text) {
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\f\\"; //must have \f if using as placeholder
+
+  for (auto v: word_positions) { //v will be an int vector of word positions like 15, 30, 70
+    int word_num = -1;
+    auto pos = v.begin(); //pos = word count of the next word
+    auto prev_pos = pos;
+    int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+    int start;
+    for (;;) {
+      if (end >= static_cast<int>(text.size()) - 1) break;
+      //if (word_num > v.back()) break; ///////////
+      start = end + 1;
+      end = text.find_first_of(delimiters, start);
+      if (end == std::string::npos) end = text.size() - 1;
+      
+      if (end != start) word_num++;
+
+      // start the search from the last match? 12-23-2019
+      pos = std::find(pos, v.end(), word_num); // is this saying if word_num is in the vector you have a match
+      if (pos != v.end()) {
+        //editorHighlightWord(n, start, end-start); put escape codes or [at end and start]
+        text.insert(end, "\x1b[48;5;235m"); //49m"); //48:5:235
+        text.insert(start, "\x1b[48;5;31m");
+        if (pos == v.end() - 1) break;
+        end += 21;
+        pos++;
+        prev_pos = pos;
+      } else pos = prev_pos; //pos == v.end() => the current word position was not in v[n]
+    }
+  }
 }
 
 std::string draw_preview_box(unsigned int &width, unsigned int &length) {

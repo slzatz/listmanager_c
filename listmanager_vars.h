@@ -318,7 +318,11 @@ void outlineSave(const std::string &);
 void return_cursor(void);
 void get_preview(int);
 void draw_preview(void);
+void draw_search_preview(void);
 std::string draw_preview_box(unsigned int &, unsigned int &);
+std::string generateWWString(std::vector<std::string> &, int, int, std::string);
+void highlight_terms_string(std::string &);
+void get_search_positions(int);
 
 //Database-related Prototypes
 void db_open(void);
