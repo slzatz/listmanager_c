@@ -4,6 +4,10 @@
 #include <cstdarg> //va_start etc
 #include <string_view>
 
+
+ std::vector<std::string> Editor::line_buffer = {}; //static
+ std::string Editor::string_buffer = {}; //static
+
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
   /* I don't think you can get here from a no row situation 09012020
@@ -421,7 +425,7 @@ void Editor::editorSpellCheck(void) {
   write(STDOUT_FILENO, buf, strlen(buf));
 }
 
-
+// called by editorSpellCheck
 void Editor::editorHighlightWord(int r, int c, int len) {
   std::string &row = rows.at(r);
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
@@ -659,36 +663,10 @@ void Editor::editorRefreshScreen(bool redraw) {
     ab.append(buf, strlen(buf));
   }
 
-  /*
-    //char buf[32];
-    ab.append("\x1b(0"); // Enter line drawing mode
-    for (int j=1; j<screenlines+1; j++) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, left_margin + screencols); 
-      ab.append(buf);
-      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-      // only need one 'm'
-      ab.append("\x1b[37;1mx");
-    }
-    //'T' corner
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, left_margin + screencols); //may not need offset
-    ab.append(buf);
-    ab.append("\x1b[37;1mw");
-
-    //exit line drawing mode
-    ab.append("\x1b(B");
-
-  ab.append("\x1b[?25h", 6); //shows the cursor
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-*/
-
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights
-  if (redraw) {
-    if (spellcheck) editorSpellCheck();
-    /* somehow from outline mode (not edit mode) mode = SEARCH needs to be set <-I did this */
-    else if (mode == SEARCH) editorHighlightWordsByPosition();
-  }
+  if (redraw && spellcheck) editorSpellCheck();
 }
 
 void Editor::editorDrawMessageBar(std::string& ab) {
@@ -958,14 +936,6 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
   ab.append(buf.str());
 
-  /* testing moving into editorRefreshScreen
-  // erase the screen
-  for (int i=0; i < screenlines; i++) {
-    ab.append("\x1b[K");
-    ab.append(lf_ret, nchars);
-  }
-  */
-
   std::stringstream buf2;
   buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
   ab.append(buf2.str()); //reposition cursor
@@ -985,6 +955,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
 }
 
+/* leaving for a while but shouldn't be used anymore - ? only used for search
 // uses sqlite offsets contained in word_positions
 // currently just highlights the words in rows that are visible on the screen
 // You can't currently scroll because when you edit the search highlights disappear
@@ -1025,6 +996,7 @@ void Editor::editorHighlightWordsByPosition(void) {
     }
   }
 }
+*/
 
 void Editor::editorYankLine(int n) {
   line_buffer.clear();
@@ -1032,7 +1004,7 @@ void Editor::editorYankLine(int n) {
   for (int i=0; i < n; i++) {
     line_buffer.push_back(rows.at(fr+i));
   }
-  string_buffer.clear();
+  string_buffer.clear(); //static
 }
 
 void Editor::editorYankString(void) {
@@ -1040,7 +1012,7 @@ void Editor::editorYankString(void) {
   if (rows.empty()) return;
 
   std::string& row = rows.at(fr);
-  string_buffer.clear();
+  string_buffer.clear(); //static
 
   int h_light[2] = {0,0};
 
@@ -1054,21 +1026,21 @@ void Editor::editorYankString(void) {
 
   std::string::const_iterator first = row.begin() + h_light[0];
   std::string::const_iterator last = row.begin() + h_light[1] + 1;
-  string_buffer = std::string(first, last);
+  string_buffer = std::string(first, last); //static
 }
 
 
 void Editor::editorPasteString(void) {
-  if (rows.empty() || string_buffer.empty()) return;
+  if (rows.empty() || string_buffer.empty()) return; //static
   std::string& row = rows.at(fr);
 
-  row.insert(row.begin() + fc, string_buffer.begin(), string_buffer.end());
-  fc += string_buffer.size();
+  row.insert(row.begin() + fc, string_buffer.begin(), string_buffer.end()); //static
+  fc += string_buffer.size(); //static
   dirty++;
 }
 
 void Editor::editorPasteStringVisual(void) {
-  if (rows.empty() || string_buffer.empty()) return;
+  if (rows.empty() || string_buffer.empty()) return; //static
   std::string& row = rows.at(fr);
 
   int h_light[2] = {0,0};
@@ -1080,8 +1052,8 @@ void Editor::editorPasteStringVisual(void) {
     h_light[1] = highlight[1];
   }
 
-  row.replace(row.begin() + h_light[0], row.begin() + h_light[1] + 1, string_buffer);
-  fc = h_light[0] + string_buffer.size();
+  row.replace(row.begin() + h_light[0], row.begin() + h_light[1] + 1, string_buffer); //static
+  fc = h_light[0] + string_buffer.size(); //static
   dirty++;
 }
 
@@ -1683,6 +1655,8 @@ void Editor::E_write_C(void) {
   editorSetMessage("");
 }
 
+/* the following are not being called and were written for single editor
+ * but very possible they should be reworked and called
 void Editor::E_write_close_C(void) {
   update_note();
   mode = NORMAL;
@@ -1719,6 +1693,7 @@ void Editor::E_quit0_C(void) {
   command_line.clear();
   editor_mode = false; //global
 }
+*/
 
 void Editor::E_open_in_vim_C(void) {
   open_in_vim(); //send you into editor mode
@@ -2059,7 +2034,7 @@ void Editor::E_change2visual_block(int repeat) {
 
 //case 'p':  
 void Editor::E_paste(int repeat) {
-  if (!string_buffer.empty()) editorPasteString();
+  if (!string_buffer.empty()) editorPasteString(); //static
   else editorPasteLine();
 }
 

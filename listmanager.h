@@ -89,7 +89,7 @@ inline bool editor_mode = false;
 inline std::map<int, std::string> html_files;
 inline int EDITOR_LEFT_MARGIN; //only used in Editor.cpp and = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
-inline std::vector<std::string> line_buffer = {}; //yanking lines
+//inline std::vector<std::string> line_buffer = {}; //yanking lines
 void update_note(void); //used by Editor class 
 std::string get_title(int id);
 

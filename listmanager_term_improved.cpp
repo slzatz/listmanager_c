@@ -16,11 +16,12 @@ std::vector<Editor *> editors;
 std::unordered_map<std::string, efunc> E_lookup_C {
   {"write", &Editor::E_write_C},
   {"w", &Editor::E_write_C},
-  {"x", &Editor::E_write_close_C},
-  {"quit", &Editor::E_quit_C},
-  {"q",&Editor:: E_quit_C},
-  {"quit!", &Editor::E_quit0_C},
-  {"q!", &Editor::E_quit0_C},
+ /* all below handled (right now) in editor command line switch statement*/
+ // {"x", &Editor::E_write_close_C},
+ // {"quit", &Editor::E_quit_C},
+ // {"q",&Editor:: E_quit_C},
+ // {"quit!", &Editor::E_quit0_C},
+ // {"q!", &Editor::E_quit0_C},
   {"vim", &Editor::E_open_in_vim_C},
   {"spell",&Editor:: E_spellcheck_C},
   {"spellcheck", &Editor::E_spellcheck_C},
@@ -30,7 +31,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
 /* EDITOR NORMAL mode command lookup */
 std::unordered_map<std::string, eefunc> e_lookup {
 
-  {"i", &Editor::E_i}, //i_E
+  {"i", &Editor::E_i}, 
   {"I", &Editor::E_I},
   {"a", &Editor::E_a},
   {"A", &Editor::E_A},
@@ -106,9 +107,9 @@ void signalHandler(int signum) {
   int i = 0;
   for (auto z : editors) {
     z->screenlines = screenlines - 2 - TOP_MARGIN;
-    z->screencols = (-2 + screencols - O.divider)/n;
+    z->screencols = -1 + (screencols - O.divider)/n;
     z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-    z->left_margin = O.divider + i*z->screencols + i + 1;
+    z->left_margin = O.divider + i*z->screencols + i; //was +1
     i++;
   }
 
@@ -1859,10 +1860,11 @@ void update_note(void) {
     pos = text.find("'", pos + 2);
   }
 
-  int id = get_id();
+  //int id = get_id();
+
   //query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
   query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours'), "
-        << "startdate=datetime('now', '-" << TZ_OFFSET << " hours')WHERE id=" << id;
+        << "startdate=datetime('now', '-" << TZ_OFFSET << " hours')WHERE id=" << p->id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1881,7 +1883,7 @@ void update_note(void) {
     outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineShowMessage("Updated note for item %d", id);
+    outlineShowMessage("Updated note for item %d", p->id);
     outlineRefreshScreen();
   }
 
@@ -1899,7 +1901,7 @@ void update_note(void) {
 
   std::stringstream query2;
   //query.clear(); //this clear clears eof and fail flags so query.str(std::string());query.clear()
-  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << id;
+  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << p->id;
 
   rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
 
@@ -1907,7 +1909,7 @@ void update_note(void) {
     outlineShowMessage("SQL fts error: %s", err_msg);
     sqlite3_free(err_msg);
   } else {
-    outlineShowMessage("Updated note and fts entry for item %d", id);
+    outlineShowMessage("Updated note and fts entry for item %d", p->id);
     outlineRefreshScreen();
     p->editorSetMessage("Note update succeeeded"); 
   }
@@ -3051,95 +3053,99 @@ void F_edit(int) {
   }
 
   int id = get_id();
-  if (id != -1) {
-    outlineShowMessage("Edit note %d", id);
-    outlineRefreshScreen();
-    editor_mode = true;
+  if (id == -1) {
+    outlineShowMessage("You need to save item before you can create a note");
+    O.command[0] = '\0';
+    O.mode = NORMAL;
+    return;
+  }
 
-    if (!editors.empty()){
-      auto it = std::find_if(std::begin(editors), std::end(editors),
-                         [&id](auto& pp) { return pp->id == id; }); //auto&& also works
+  outlineShowMessage("Edit note %d", id);
+  outlineRefreshScreen();
+  editor_mode = true;
 
-      if (it == editors.end()) {
-        //Editor E;
-        //editors.push_back(&E);
-        p = new Editor;
-        editors.push_back(p);
-        //editors.push_back(std::make_shared<Editor>(E));
-        //p = editors.back();
-        p->id = id;
-        get_note(id); //if id == -1 does not try to retrieve note
-      } else {
-        p = *it;
-      }    
-    } else {
+  if (!editors.empty()){
+    auto it = std::find_if(std::begin(editors), std::end(editors),
+                       [&id](auto& pp) { return pp->id == id; }); //auto&& also works
+
+    if (it == editors.end()) {
       //Editor E;
-      p = new Editor;
       //editors.push_back(&E);
+      p = new Editor;
       editors.push_back(p);
       //editors.push_back(std::make_shared<Editor>(E));
       //p = editors.back();
       p->id = id;
       get_note(id); //if id == -1 does not try to retrieve note
-   }
-
-    int n = editors.size();
-    int i = 0;
-    for (auto z : editors) {
-      z->screenlines = screenlines - 2 - TOP_MARGIN;
-      z->screencols = -1 + (screencols - O.divider)/n;
-      z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-      z->left_margin = O.divider + i*z->screencols + i;
-      i++;
-    }
-
-    if (p->rows.empty()) {
-      p->mode = INSERT;
-      p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-      //p->editorRefreshScreen(false);
     } else {
-      p->mode = NORMAL;
-    }
-
-    eraseRightScreen();
-    //for (auto e : editors) e->editorRefreshScreen(true);
-
-
-    /*********************************/
-    std::string ab;
-    //for (auto e : editors) {
-    for (int i=0; i<editors.size(); i++) {  
-      Editor *&e = editors.at(i);
-      e->editorRefreshScreen(true);
-      //char buf[32];
-      std::string buf;
-      ab.append("\x1b(0"); // Enter line drawing mode
-      for (int j=1; j<O.screenlines+1; j++) {
-        //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
-        buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
-        ab.append(buf);
-        // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-        // only need one 'm'
-        ab.append("\x1b[37;1mx");
-      }
-      //'T' corner = w or right top corner = k
-      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
-      buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
-      ab.append(buf);
-      if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
-      else ab.append("\x1b[37;1mw");
-
-      //exit line drawing mode
-      ab.append("\x1b(B");
-    }
-    ab.append("\x1b[?25h", 6); //shows the cursor
-    ab.append("\x1b[0m"); //or else subsequent editors are bold
-    write(STDOUT_FILENO, ab.c_str(), ab.size());
-    /*********************************/
-
+      p = *it;
+    }    
   } else {
-    outlineShowMessage("You need to save item before you can create a note");
+    //Editor E;
+    p = new Editor;
+    //editors.push_back(&E);
+    editors.push_back(p);
+    //editors.push_back(std::make_shared<Editor>(E));
+    //p = editors.back();
+    p->id = id;
+    get_note(id); //if id == -1 does not try to retrieve note
+ }
+
+  int n = editors.size();
+  int i = 0;
+  for (auto z : editors) {
+    z->screenlines = screenlines - 2 - TOP_MARGIN;
+    z->screencols = -1 + (screencols - O.divider)/n;
+    z->total_screenlines = screenlines - 2 - TOP_MARGIN;
+    z->left_margin = O.divider + i*z->screencols + i;
+    i++;
   }
+
+  if (p->rows.empty()) {
+    p->mode = INSERT;
+    p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+    //p->editorRefreshScreen(false);
+  } else {
+    p->mode = NORMAL;
+  }
+
+  eraseRightScreen();
+  //for (auto e : editors) e->editorRefreshScreen(true);
+
+
+  
+  /*********************************/
+  std::string ab;
+  //for (auto e : editors) {
+  for (int i=0; i<editors.size(); i++) {  
+    Editor *&e = editors.at(i);
+    e->editorRefreshScreen(true);
+    //char buf[32];
+    std::string buf;
+    ab.append("\x1b(0"); // Enter line drawing mode
+    for (int j=1; j<O.screenlines+1; j++) {
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
+      buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
+      ab.append(buf);
+      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+      // only need one 'm'
+      ab.append("\x1b[37;1mx");
+    }
+    //'T' corner = w or right top corner = k
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+    buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+    ab.append(buf);
+    if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+    else ab.append("\x1b[37;1mw");
+
+    //exit line drawing mode
+    ab.append("\x1b(B");
+  }
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  ab.append("\x1b[0m"); //or else subsequent editors are bold
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  /*********************************/
+
   O.command[0] = '\0';
   O.mode = NORMAL;
 }
@@ -3344,6 +3350,7 @@ void F_delmarks(int) {
   outlineShowMessage("Marks all deleted");
 }
 
+// to avoid confusion should only be an editor command line function
 void F_savefile(int pos) {
   command_history.push_back(O.command_line);
   std::string filename;
@@ -3395,6 +3402,7 @@ void F_syntax(int pos) {
 }
 
 // set spell | set nospell
+// should also only be an editor function
 void F_set(int pos) {
   std::string action = O.command_line.substr(pos + 1);
   if (pos) {
@@ -3410,6 +3418,7 @@ void F_set(int pos) {
   O.mode = NORMAL;
 }
 
+// also should be only editor function
 void F_open_in_vim(int) {
   open_in_vim(); //send you into editor mode
   p->mode = NORMAL;
@@ -3467,6 +3476,7 @@ void F_saveoutline(int pos) {
   }
 }
 
+// should be only an editor function
 void F_readfile(int pos) {
   std::string filename;
   if (pos) filename = O.command_line.substr(pos+1);
@@ -3489,6 +3499,7 @@ void F_valgrind(int) {
   O.mode = FILE_DISPLAY;
 }
 
+//probably should be removed altogether
 void F_merge(int) {
   int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
   if (count < 2) {
@@ -3798,31 +3809,6 @@ void gt_N(void) {
   }
   get_items(MAX);
 }
-
-/*
-void edit_N(void) {
-  // can't edit note if rows_are_contexts
-  if (!(O.view == TASK)) {
-    O.command[0] = '\0';
-    O.mode = NORMAL;
-    outlineShowMessage("Contexts and Folders do not have notes to edit");
-    return;
-  }
-  int id = get_id();
-  if (id != -1) {
-    outlineShowMessage("Edit note %d", id);
-    outlineRefreshScreen();
-    //editor_mode needs go before get_note in case we retrieved item via a search
-    editor_mode = true;
-    get_note(id); //if id == -1 does not try to retrieve note ? needs to be rewritten as Editor class member function
-    p->id = id;
-    p->mode = NORMAL;
-    p->command[0] = '\0';
-  } else {
-    outlineShowMessage("You need to save item before you can create a note");
-  }
-}
-*/
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
@@ -4515,6 +4501,7 @@ std::string draw_preview_box(unsigned int &width, unsigned int &length) {
   return ab;
 }
 
+// should also just be editor command
 void open_in_vim(void){
   std::string filename;
   if (get_folder_tid(O.rows.at(O.fr).id) != 18) filename = "vim_file.txt";
@@ -6078,6 +6065,8 @@ bool editorProcessKeypress(void) {
         std::size_t pos = p->command_line.find(' ');
         std::string cmd = p->command_line.substr(0, pos);
 
+        // note that right now we are not calling editor commands like E_write_close_C
+        // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
         //if (p->command_line == "q" || p->command_line == "quit") {
           if (cmd == "x") update_note();
@@ -6100,14 +6089,44 @@ bool editorProcessKeypress(void) {
             int i = 0;
             for (auto z : editors) {
               z->screenlines = screenlines - 2 - TOP_MARGIN;
-              //z->screencols = (-2 + screencols/2)/n;
-              z->screencols = (-2 + O.divider)/n;
+              z->screencols = -1 + (screencols - O.divider)/n;
               z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-              //z->left_margin = screencols/2 +  i*z->screencols + i + 1;
-              z->left_margin = O.divider +  i*z->screencols + i + 1;
-              z->editorRefreshScreen(true);
+              z->left_margin = O.divider +  i*z->screencols + i; //was +1
+              //z->editorRefreshScreen(true);
               i++;
             }
+            /**********also in F_edit - should be in a function ***********************/
+            std::string ab;
+            for (auto &e : editors) {
+            //for (int i=0; i<editors.size(); i++) {  
+              //Editor *&e = editors.at(i);
+              e->editorRefreshScreen(true);
+              //char buf[32];
+              std::string buf;
+              ab.append("\x1b(0"); // Enter line drawing mode
+              for (int j=1; j<O.screenlines+1; j++) {
+                //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
+                buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
+                ab.append(buf);
+                // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+                // only need one 'm'
+                ab.append("\x1b[37;1mx");
+              }
+              //'T' corner = w or right top corner = k
+              //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+              buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+              ab.append(buf);
+              //if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+              if (&editors.back() == &e) ab.append("\x1b[37;1mk");
+              else ab.append("\x1b[37;1mw");
+
+              //exit line drawing mode
+              ab.append("\x1b(B");
+            }
+            ab.append("\x1b[?25h", 6); //shows the cursor
+            ab.append("\x1b[0m"); //or else subsequent editors are bold
+            write(STDOUT_FILENO, ab.c_str(), ab.size());
+            /*********************************/
           } else {
             editors.clear(); // there's only one so also could just erase editors0]
             editor_mode = false;

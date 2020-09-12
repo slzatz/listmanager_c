@@ -80,7 +80,8 @@ class Editor {
     bool spellcheck;
     bool highlight_syntax;
     std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
-    std::string string_buffer; //yanking chars
+    static std::string string_buffer; //yanking chars
+    static std::vector<std::string> line_buffer; //yanking lines
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
     int id; //listmanager db id of the row

@@ -71,6 +71,7 @@ char link_text[20];
 int current_task_id;
 std::unordered_set<int> marked_entries;
 struct flock lock;
+std::vector<std::string> line_buffer = {}; //yanking lines
 
 struct sqlite_db {
   sqlite3 *db;
