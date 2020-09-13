@@ -99,9 +99,10 @@ class Editor {
 
 /* EDITOR COMMAND_LINE mode functions */
     void E_write_C(void);
-    void E_write_close_C(void);
-    void E_quit_C(void);
-    void E_quit0_C(void);
+    //below currently done in COMMAND_LINE switch
+    //void E_write_close_C(void);
+    //void E_quit_C(void);
+    //void E_quit0_C(void);
     void E_open_in_vim_C(void);
     void E_spellcheck_C(void);
     void E_persist_C(void);
