@@ -4081,27 +4081,26 @@ void readFile(const std::string &filename) {
 
 void displayFile(void) {
 
-  char lf_ret[10];
-  //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", EDITOR_LEFT_MARGIN);
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
-
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
-  char buf[32];
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
-  ab.append(buf, strlen(buf));
 
-  //need to erase the screen
+  char lf_ret[20];
+  int lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider); //note no + 1
+
+  char buf[20];
+  //position cursor prior to erase
+  int bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 1);
+  ab.append(buf, bufchars); //don't need to give length but will if change to memory_buffer
+
+  //erase the right half of the screen
   for (int i=0; i < O.screenlines; i++) {
     ab.append("\x1b[K", 3);
-    ab.append(lf_ret, nchars);
+    ab.append(lf_ret, lf_chars);
   }
 
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, EDITOR_LEFT_MARGIN + 1);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
-  ab.append(buf, strlen(buf));
+  bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
+  ab.append(buf, bufchars);
 
   ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
 
@@ -4122,6 +4121,7 @@ void displayFile(void) {
       continue;
     }
     //int n = 0;
+    lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 2); //indent text extra space
     int n = row.size()/(O.totaleditorcols - 1) + ((row.size()%(O.totaleditorcols - 1)) ? 1 : 0);
     for(int i=0; i<n; i++) {
       line_num++;
@@ -4129,7 +4129,7 @@ void displayFile(void) {
       line = row.substr(0, O.totaleditorcols - 1);
       row.erase(0, O.totaleditorcols - 1);
       ab.append(line);
-      ab.append(lf_ret);
+      ab.append(lf_ret, lf_chars);
     }
   }
   ab.append("\x1b[0m", 4);
@@ -4552,8 +4552,6 @@ void outlineDrawRows(std::string& ab) {
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", OUTLINE_LEFT_MARGIN);
 
-  int spaces;
-
   for (y = 0; y < O.screenlines; y++) {
     unsigned int fr = y + O.rowoff;
     if (fr > O.rows.size() - 1) return;
@@ -4596,13 +4594,13 @@ void outlineDrawRows(std::string& ab) {
         ab.append(&row.title[((fr == O.fr) ? O.coloff : 0)], len);
     }
 
-    // for a 'dirty' (red) row or ithe selected row, the spaces make it look
-    // like the whole row is highlighted
-    spaces = O.titlecols - len - 3; //09052020 added -2
-    for (int i=0; i < spaces; i++) ab.append(" ", 1);
-    //abAppend(ab, "\x1b[1C", 4); // move over vertical line; below better for cell being edited
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - OUTLINE_RIGHT_MARGIN + 2); // + offset
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - OUTLINE_RIGHT_MARGIN + 2); // + offset
+    // the spaces make it look like the whole row is highlighted
+    //note len can't be greater than titlecols so always positive
+    ab.append(O.titlecols - len + 1, ' ');
+
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - OUTLINE_RIGHT_MARGIN + 2); // + offset
+    // believe the +2 is just to give some space from the end of long titles
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, O.divider - OUTLINE_RIGHT_MARGIN + 2); // + offset
     ab.append(buf, strlen(buf));
     ab.append(row.modified, 16);
     ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
@@ -5957,6 +5955,7 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == CTRL_KEY('h')) {
+        p->command[0] = '\0';
         if (editors.size() == 1) {
           editor_mode = false;
           get_preview(O.rows.at(O.fr).id); 
@@ -5973,6 +5972,7 @@ bool editorProcessKeypress(void) {
       }
       
       if (c == CTRL_KEY('l')) {
+        p->command[0] = '\0';
         auto it = std::find(editors.begin(), editors.end(), p);
         int index = std::distance(editors.begin(), it);
         if (index < editors.size() - 1) p = editors[index + 1];
@@ -6518,15 +6518,12 @@ void initOutline() {
   O.context = "No Context";
   O.keyword = "";
 
-  // ? whether the screen-related stuff should be in one place
+  // ? where this should be.  Also in signal.
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.divider = screencols - c.ed_pct * screencols/100;
-  //O.titlecols =  screencols/2 - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
   O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN; 
-  //O.totaleditorcols = -2 + screencols/2;
-  O.totaleditorcols = screencols - O.divider - 2; //? OUTLINE MARGINS?
-  //O.left_screencols = O.totaleditorcols -2;
-  O.left_screencols = O.divider - 2; //OUTLINE_MARGINS
+  O.totaleditorcols = screencols - O.divider - 1; // was 2 
+  O.left_screencols = O.divider - 1; //was 2
 }
 
 int main(int argc, char** argv) { 
