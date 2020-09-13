@@ -94,7 +94,6 @@ void signalHandler(int signum) {
   getWindowSize(&new_screenlines, &new_screencols);
   screenlines = new_screenlines;
   screencols = new_screencols;
-  eraseScreenRedrawLines();
   O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   O.divider = screencols - c.ed_pct * screencols/100;
   O.titlecols =  O.divider - OUTLINE_RIGHT_MARGIN - OUTLINE_LEFT_MARGIN;
@@ -102,6 +101,8 @@ void signalHandler(int signum) {
   O.left_screencols = O.divider - 2; //OUTLINE_MARGINS
 
   EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
+
+  eraseScreenRedrawLines();
 
   int n = editors.size();
   int i = 0;
@@ -3021,7 +3022,6 @@ void F_refresh(int) {
 }
 
 void F_new(int) {
-  //outlineInsertRow(0, "", true, false, false, BASE_DATE);
   outlineInsertRow(0, "", true, false, false, now().c_str());
   O.fc = O.fr = O.rowoff = 0;
   O.command[0] = '\0';
@@ -3812,7 +3812,7 @@ void gt_N(void) {
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
-  outlineInsertRow(0, "", true, false, false, BASE_DATE);
+  outlineInsertRow(0, "", true, false, false, now().c_str());
   O.fc = O.fr = O.rowoff = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   eraseRightScreen(); //erases the note area
@@ -4725,7 +4725,6 @@ void outlineDrawStatusBar(void) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + TOP_MARGIN + 1,
-                             //O.titlecols + OUTLINE_LEFT_MARGIN,
                              O.divider,
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
@@ -4736,40 +4735,38 @@ void outlineDrawStatusBar(void) {
   char status[300], status0[300], rstatus[80];
 
   std::string s;
-  //std::string keywords = "";
   switch (O.view) {
-      case TASK:
-        //keywords = get_task_keywords(); can't be here because O.rows.empty() might be true
-        switch (O.taskview) {
-            case BY_SEARCH:
-              s =  "search"; 
-              break;
-            case BY_FOLDER:
-              s = O.folder + "[f]";
-              break;
-            case BY_CONTEXT:
-              s = O.context + "[c]";
-              break;
-            case BY_RECENT:
-              s = "recent";
-              break;
-            case BY_JOIN:
-              s = O.context + "[c] + " + O.folder + "[f]";
-              break;
-            case BY_KEYWORD:
-              s = O.keyword + "[k]";
-              break;
-        }    
-        break;
-      case CONTEXT:
-        s = "Contexts";
-        break;
-      case FOLDER:
-        s = "Folders";
-        break;
-      case KEYWORD:  
-        s = "Keywords";
-        break;
+    case TASK:
+      switch (O.taskview) {
+        case BY_SEARCH:
+          s =  "search"; 
+          break;
+        case BY_FOLDER:
+          s = O.folder + "[f]";
+          break;
+        case BY_CONTEXT:
+          s = O.context + "[c]";
+          break;
+        case BY_RECENT:
+          s = "recent";
+          break;
+        case BY_JOIN:
+          s = O.context + "[c] + " + O.folder + "[f]";
+          break;
+        case BY_KEYWORD:
+          s = O.keyword + "[k]";
+          break;
+      }    
+      break;
+    case CONTEXT:
+      s = "Contexts";
+      break;
+    case FOLDER:
+      s = "Folders";
+      break;
+    case KEYWORD:  
+      s = "Keywords";
+      break;
   }
 
   if (!O.rows.empty()) {
@@ -4792,6 +4789,7 @@ void outlineDrawStatusBar(void) {
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
+    // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %s  %d %d/%zu %s",
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
@@ -4805,6 +4803,8 @@ void outlineDrawStatusBar(void) {
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
                               (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+    
+    // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %d %d/%zu %s",
                               s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
@@ -4812,25 +4812,19 @@ void outlineDrawStatusBar(void) {
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   }
 
-  ab.append(status);
-  ab.append(" ");
+  int rlen = snprintf(rstatus, sizeof(rstatus), " %s %s ", ((which_db == SQLITE) ? "sqlite:" : "postgres:"), TOSTRING(GIT_BRANCH));
 
-  //because of escapes
-  len-=10;
-
-  int rlen = snprintf(rstatus, sizeof(rstatus), "\x1b[1m %s %s\x1b[0;7m ", ((which_db == SQLITE) ? "sqlite:" : "postgres:"), TOSTRING(GIT_BRANCH));
-
-  if (len > O.left_screencols - 1) len = O.left_screencols - 1;
-
-  while (len < O.left_screencols - 1 ) {
-    if ((O.left_screencols - len) == rlen) { //10 of chars not printable but for some reason 2 works
-      ab.append(rstatus, rlen);
-      break;
-    } else {
-      ab.append(" ");
-      len++;
-    }
+  if (len > O.left_screencols + 1) {
+    ab.append(status0, O.left_screencols + 1);
+  } else if (len + rlen > O.left_screencols + 1) {
+    ab.append(status);
+    ab.append(rstatus, O.left_screencols + 1 - len);
+  } else {
+    ab.append(status);
+    ab.append(O.left_screencols + 1 - len - rlen, ' ');
+    ab.append(rstatus);
   }
+
   ab.append("\x1b[0m"); //switches back to normal formatting
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }

@@ -111,12 +111,7 @@ std::unordered_set<int> navigation = {
          'k',
          'l'
 };
-/*
-std::unordered_map<std::string, pfunc> c:md_map1 = {{"i", f_i}, {"I", f_I}, {"a", f_a}, {"A", f_A}};
-std::unordered_map<std::string, pfunc> cmd_map2 = {{"o", f_o}, {"O", f_O}};
-std::unordered_map<std::string, pfunc> cmd_map3 = {{"x", f_x}, {"dw", f_dw}, {"daw", f_daw}, {"dd", f_dd}, {"d$", f_d$}, {"de", f_de}, {"dG", f_dG}};
-std::unordered_map<std::string, pfunc> cmd_map4 = {{"cw", f_cw}, {"caw", f_caw}, {"s", f_s}};
-*/
+
 struct config {
   std::string user;
   std::string password;
