@@ -307,9 +307,12 @@ void Editor::editorDecorateWord(int c) {
 }
 
 //<<<<<<< HEAD
+//<<<<<<< HEAD
 //void Editor::push_current(void) {
   //if (rows.empty()) return; //not sure this is necessary
 //=======
+//=======
+//>>>>>>> 5fa944a4b05c8a138e1de073573554bbeb408503
 void Editor::push_base(void) {
   Diff d;
   d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr

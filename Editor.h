@@ -17,7 +17,11 @@ struct Diff {
 //=======
   std::string last_typed;
   std::string deleted; //deleted chars - being recorded by not used right now or perhaps ever!
+//<<<<<<< HEAD
   std::vector<std::pair<char, int>> diff; //c = changed; d = deleted; a = added
+//=======
+ // std::vector<std::pair<char, int> diff; //c = changed; d = deleted; a = added
+//>>>>>>> 5fa944a4b05c8a138e1de073573554bbeb408503
   std::vector<std::pair<int, std::string>> changed_rows;
 //>>>>>>> 5fa944a... Editor.cpp, Editor.h: beginning work on diff branch - added diff vector
 };
