@@ -10,13 +10,14 @@
 struct Diff {
   int fr;
   int fc;
+  int repeat;
   std::string command;
 //<<<<<<< HEAD
   std::vector<std::string> rows;
 //=======
   std::string last_typed;
   std::string deleted; //deleted chars - being recorded by not used right now or perhaps ever!
-  std::vector<std::pair<char, int> diff; //c = changed; d = deleted; a = added
+  std::vector<std::pair<char, int>> diff; //c = changed; d = deleted; a = added
   std::vector<std::pair<int, std::string>> changed_rows;
 //>>>>>>> 5fa944a... Editor.cpp, Editor.h: beginning work on diff branch - added diff vector
 };
@@ -101,6 +102,7 @@ class Editor {
 
 /* undo - redo */
     void push_current(void);
+    void push_base(void);
     void undo(void);
     void redo(void);
 

@@ -363,18 +363,31 @@ void Editor::push_current(void) {
     return;
   }
 
+if (d.command != "dd") d.repeat = 1;
+
+  for (int i=fr;i<fr+d.repeat; i++) {
+     d.changed_rows.push_back(std::make_pair(i, rows.at(i)));
+    }
+  //d.changed_rows.push_back(std::make_pair(fr, rows.at(fr))); //simplest case
+  //undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+  undo_deque.push_front(d);
+  d_index = 0;
+  undo_mode = false;
+  editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
+}
+
 //>>>>>>> 5fa944a... Editor.cpp, Editor.h: beginning work on diff branch - added diff vector
 
   //if we didn't get back to the top of the stack then clear undo_deque
-  if (undo_mode == true && d_index != 0) undo_deque.clear(); 
+  //if (undo_mode == true && d_index != 0) undo_deque.clear(); 
 
-  Diff d = {fr, fc, command};
-  d.rows = rows;
-  undo_deque.push_front(d);
-  d_index = 0;
+  //Diff d = {fr, fc, command};
+  //d.rows = rows;
+  //undo_deque.push_front(d);
+  //d_index = 0;
 
-  undo_mode = false;
-}
+  //undo_mode = false;
+//}
 
 void Editor::undo(void) {
   if (undo_deque.empty()) return;
