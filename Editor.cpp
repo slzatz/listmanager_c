@@ -10,16 +10,6 @@
 
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
-  /* I don't think you can get here from a no row situation 09012020
-  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
-    editorInsertRow(0, std::string());
-    editorInsertRow(0, std::string());
-    fc = 0;
-    fr = 1;
-    return;
-  }
-  */
-
   std::string& current_row = rows.at(fr);
   std::string new_row1(current_row.begin(), current_row.begin() + fc);
   std::string new_row2(current_row.begin() + fc, current_row.end());
@@ -306,13 +296,6 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
-//<<<<<<< HEAD
-//<<<<<<< HEAD
-//void Editor::push_current(void) {
-  //if (rows.empty()) return; //not sure this is necessary
-//=======
-//=======
-//>>>>>>> 5fa944a4b05c8a138e1de073573554bbeb408503
 void Editor::push_base(void) {
   Diff d;
   d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
@@ -339,9 +322,10 @@ void Editor::push_current(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
 
   // probably not reason to include last_typed as always "" at this point
-  Diff d = {fr, fc, repeat, command};
-  d.last_typed = std::string();
+  Diff d = {fr, fc, last_repeat, last_command};
+  d.inserted_text = last_typed;
 
+  /*
   //need to know which rows were changed by last action
   if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
     for (auto [r, s] : undo_deque.at(0).changed_rows) {
@@ -358,39 +342,42 @@ void Editor::push_current(void) {
   }
   }
 
-  if (command == std::string_view("o")) {; // you really don't need any current rows although there is code below
+  if (command == std::string_view("o")) {; 
     undo_deque.push_front(d);
     d_index = 0;
     undo_mode = false;
-    editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
+    if (undo_deque.size() > 1) {
+      Diff & prev = undo_deque.at(1);
+      editorSetMessage("prev cmd: %s; current cmd: %s; repeat: %d text: %s", prev.command.c_str(), d.command.c_str(), command, d.repeat, d.inserted_text.c_str());
+    } else {
+    editorSetMessage("prev cmd: none ; current cmd: %s; repeat: %d text: %s", d.command.c_str(), command, repeat, d.inserted_text.c_str());
+    }
     return;
   }
+*/
 
-if (d.command != "dd") d.repeat = 1;
+  //if (d.command != "dd") d.repeat = 1;
 
+  /*
   for (int i=fr;i<fr+d.repeat; i++) {
      d.changed_rows.push_back(std::make_pair(i, rows.at(i)));
     }
   //d.changed_rows.push_back(std::make_pair(fr, rows.at(fr))); //simplest case
   //undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
+  */
+
   undo_deque.push_front(d);
   d_index = 0;
   undo_mode = false;
-  editorSetMessage("previous command: %s; current command: %s; repeat: %d", undo_deque.at(0).command, command, repeat);
+
+  editorSetMessage("prev cmd: %s; current cmd: %s; repeat: %d; text: %s; fr: %d; fc: %d", 
+                      (undo_deque.size() > 1) ? prev.command.c_str(): "none", 
+                      d.command.c_str(), 
+                      d.repeat, 
+                      d.inserted_text.c_str(),
+                      d.fr,
+                      d.fc);
 }
-
-//>>>>>>> 5fa944a... Editor.cpp, Editor.h: beginning work on diff branch - added diff vector
-
-  //if we didn't get back to the top of the stack then clear undo_deque
-  //if (undo_mode == true && d_index != 0) undo_deque.clear(); 
-
-  //Diff d = {fr, fc, command};
-  //d.rows = rows;
-  //undo_deque.push_front(d);
-  //d_index = 0;
-
-  //undo_mode = false;
-//}
 
 void Editor::undo(void) {
   if (undo_deque.empty()) return;

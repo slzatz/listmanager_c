@@ -5819,19 +5819,24 @@ bool editorProcessKeypress(void) {
            * cause entry to INSERT mode includes dealing with repeats
            */
 
-          /****************************************************/
-
           //i,I,a,A - deals with repeat
           if(cmd_map1.contains(p->last_command)) { //nuspell needed gcc+17 so no contains
+            p->push_current(); //
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
           }
 
           //cmd_map2 "o" E_o_escape and E_O_escape - deals with repeat
-          if (cmd_map2.count(p->last_command)) (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
-          /****************************************************/
+          if (cmd_map2.count(p->last_command)) {
+            (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
+            p->push_current(); //
+          }
 
+          if (cmd_map4.count(p->last_command)) { //cw, caw, s
+            //(p->*cmd_map4[p->last_command])(p->last_repeat - 1);
+            p->push_current(); //
+          }
           //'I' in VISUAL BLOCK mode
           //if (p->last_command == -1) {
           if (p->last_command == "VBI") {
@@ -5875,8 +5880,10 @@ bool editorProcessKeypress(void) {
           }
           }
 
+          /*falls through to here*/
           p->mode = NORMAL;
           p->repeat = 0;
+          p->last_typed = std::string(); //probably messes up dot but dot could use last cmd from diff
           if (p->fc > 0) p->fc--;
 
           // below - if the indent amount == size of line then it's all blanks
@@ -5890,9 +5897,9 @@ bool editorProcessKeypress(void) {
               }
             }
           }
-          p->editorSetMessage(""); 
+          //p->editorSetMessage(""); // commented out to debug push_current
           //editorSetMessage(p->last_typed.c_str());
-          return true;
+          return true; //end case x1b:
     
         // deal with tab in insert mode - was causing segfault  
         case '\t':
@@ -6003,16 +6010,19 @@ bool editorProcessKeypress(void) {
       }
 
       if (e_lookup.count(p->command)) {
-        if (!move_only.count(p->command)) p->push_current(); 
+        //if (!move_only.count(p->command)) p->push_current(); 
 
         (p->*e_lookup.at(p->command))(p->repeat); //money shot
 
         if (insert_cmds.count(p->command)) {
           p->mode = INSERT;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-        }
-
-        if (move_only.count(p->command)) {
+          p->last_repeat = p->repeat;
+          p->last_command = p->command; //p->last_command must be a string
+          p->command[0] = '\0';
+          p->repeat = 0;
+          return true;
+        } else if (move_only.count(p->command)) {
           p->command[0] = '\0';
           p->repeat = 0;
           return false; //note text did not change
@@ -6020,10 +6030,10 @@ bool editorProcessKeypress(void) {
           if (p->command[0] != '.') {
             p->last_repeat = p->repeat;
             p->last_command = p->command; //p->last_command must be a string
+            p->push_current();
+            p->command[0] = '\0';
+            p->repeat = 0;
           }
-          p->command[0] = '\0';
-          p->repeat = 0;
-          return true; //note text changed
         }    
       }
 
