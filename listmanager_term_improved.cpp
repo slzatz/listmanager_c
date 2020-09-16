@@ -3089,6 +3089,7 @@ void F_edit(int) {
     //p = editors.back();
     p->id = id;
     get_note(id); //if id == -1 does not try to retrieve note
+    p->snapshot = p->rows; ////undo-related
  }
 
   int n = editors.size();
@@ -5926,38 +5927,14 @@ bool editorProcessKeypress(void) {
       }
 
       if (c == 'u') {
-        //If most recent edit was line-based, we want to capture the current state
-        //If most recent edit was a delete we don't need to capture current state
-        //If cursor was moved, need to get fr of last edit (if it was line oriented)
-        //Since that is the fr we want
-        //Need to check if there are no records in undo_deque do we tell user
-        if (!p->undo_mode) {
-          //if (p->undo_deque.empty() || p->d_index == p->undo_deque.size() - 1) {
-          if (p->undo_deque.empty()) {
-            p->editorSetMessage("Already at oldest change");
-            return false;
-          }
-
-          p->command[0] = 'u';
-          p->command[1]= '\0';
-          p->push_current();
-          p->undo_mode = true; //must be after puch_current
-     
-        }
-
-        p->undo();
         p->command[0] = '\0';
+        p->undo();
         return true;
       }
 
       if (c == CTRL_KEY('r')) {
-        if (p->d_index == 0) {
-          p->editorSetMessage("Already at newest change");
-          return false;
-        }
-
-        p->redo();
         p->command[0] = '\0';
+        p->redo();
         return true;
       }
 
@@ -6011,6 +5988,9 @@ bool editorProcessKeypress(void) {
 
       if (e_lookup.count(p->command)) {
         //if (!move_only.count(p->command)) p->push_current(); 
+        //here's the problem - we need fr and fc now
+        p->prev_fr = p->fr;
+        p->prev_fc = p->fc;
 
         (p->*e_lookup.at(p->command))(p->repeat); //money shot
 

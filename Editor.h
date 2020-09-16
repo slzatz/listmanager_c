@@ -7,6 +7,7 @@
 #include <deque>
 //#include "listmanager.h" //////
 
+
 struct Diff {
   int fr;
   int fc;
@@ -17,7 +18,10 @@ struct Diff {
   std::string deleted_text; //deleted chars - being recorded by not used right now or perhaps ever!
   std::vector<std::pair<char, int>> diff; //c = changed; d = deleted; a = added
   std::vector<std::pair<int, std::string>> changed_rows;
+  int undo_method; //CHANGE_ROW< REPLACE_NOTE< ADD_ROWS, DELETE_ROWS
+  int mode;
 };
+
 
 class Editor {
 
@@ -76,6 +80,7 @@ class Editor {
     //int last_command; //will use the number equivalent of the command
     std::string last_command; 
     int last_repeat;
+    int prev_fr, prev_fc;
     std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
     int repeat;
     int indent;
@@ -95,6 +100,7 @@ class Editor {
     //std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
     int d_index; //undo_deque index
     bool undo_mode;
+    std::vector<std::string> snapshot;
 
 
 /* undo - redo */
@@ -199,7 +205,7 @@ class Editor {
     void editorHighlightWordsByPosition(void);
     void editorYankLine(int);
     void editorYankString(void);
-    void editorPasteLine(void);
+    void paste_line(void);
     void editorIndentRow(void);
     void editorUnIndentRow(void);
     void editorPasteString(void);

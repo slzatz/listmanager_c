@@ -3,10 +3,20 @@
 #include <fstream>
 #include <cstdarg> //va_start etc
 #include <string_view>
+#include <unordered_set>
 
 
- std::vector<std::string> Editor::line_buffer = {}; //static
- std::string Editor::string_buffer = {}; //static
+std::vector<std::string> Editor::line_buffer = {}; //static
+std::string Editor::string_buffer = {}; //static
+
+std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw"};
+
+enum Undo_method {
+  CHANGE_ROW, //x,s,i,a,A
+  REPLACE_NOTE, //when in doubt
+  ADD_ROWS, //dd
+  DELETE_ROWS //o,O,p,P
+};
 
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -298,7 +308,8 @@ void Editor::editorDecorateWord(int c) {
 
 void Editor::push_base(void) {
   Diff d;
-  d.fr = undo_deque.at(0).fr; // not sure this is right - might be just d.fr = fr
+  d.fr = 0; // not sure this is right - might be just d.fr = fr
+
   d.fc = undo_deque.at(0).fc;
   d.repeat = 1;
   d.command = command;
@@ -322,79 +333,67 @@ void Editor::push_current(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
 
   // probably not reason to include last_typed as always "" at this point
-  Diff d = {fr, fc, last_repeat, last_command};
+  Diff d = {prev_fr, prev_fc, last_repeat, last_command};
   d.inserted_text = last_typed;
 
-  /*
-  //need to know which rows were changed by last action
-  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
-    for (auto [r, s] : undo_deque.at(0).changed_rows) {
-      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-    }
+  if (line_commands.count(d.command)) {
+      d.undo_method = CHANGE_ROW;
+      d.rows.push_back(snapshot.at(fr));
+  } else if (d.command == "dd") {
+      d.undo_method = ADD_ROWS;
+      d.rows.insert(d.rows.begin(), snapshot.begin()+d.fr, snapshot.begin()+d.fr+repeat);
+  } else if (d.command == "p") {
+      d.undo_method = DELETE_ROWS;
+      //d.rows.insert(d.rows.begin(), line_buffer.begin(), line_buffer.end());
+      d.rows = line_buffer;
+  } else {
+      d.undo_method = REPLACE_NOTE;
+      d.rows = snapshot;
   }
-
-  if (!undo_deque.empty()) { //d.changed_rows = undo_deque.at(0).changed_rows;
-  if (undo_deque.at(0).command == "o") { //previous
-    for (int r=undo_deque.at(0).fr; r<5; r++) {
-      if (r > (int)rows.size()-1) break;
-      d.changed_rows.push_back(std::make_pair(r, rows.at(r)));
-    }
-  }
-  }
-
-  if (command == std::string_view("o")) {; 
-    undo_deque.push_front(d);
-    d_index = 0;
-    undo_mode = false;
-    if (undo_deque.size() > 1) {
-      Diff & prev = undo_deque.at(1);
-      editorSetMessage("prev cmd: %s; current cmd: %s; repeat: %d text: %s", prev.command.c_str(), d.command.c_str(), command, d.repeat, d.inserted_text.c_str());
-    } else {
-    editorSetMessage("prev cmd: none ; current cmd: %s; repeat: %d text: %s", d.command.c_str(), command, repeat, d.inserted_text.c_str());
-    }
-    return;
-  }
-*/
-
-  //if (d.command != "dd") d.repeat = 1;
-
-  /*
-  for (int i=fr;i<fr+d.repeat; i++) {
-     d.changed_rows.push_back(std::make_pair(i, rows.at(i)));
-    }
-  //d.changed_rows.push_back(std::make_pair(fr, rows.at(fr))); //simplest case
-  //undo_deque.push_front(std::make_pair(fr, rows.at(fr)));
-  */
+  if (d_index != 0) undo_deque.clear(); //if you haven't redone everything, undo/redo starts again
 
   undo_deque.push_front(d);
   d_index = 0;
   undo_mode = false;
+  snapshot = rows; //this is the snapshot used to pick a row or the whole thing
 
-  editorSetMessage("prev cmd: %s; current cmd: %s; repeat: %d; text: %s; fr: %d; fc: %d", 
-                      (undo_deque.size() > 1) ? prev.command.c_str(): "none", 
+  editorSetMessage("index: %d; cmd: %s; repeat: %d; text: %s; fr: %d; fc: %d rows.size %d undo method: %d", 
+                      d_index,
                       d.command.c_str(), 
                       d.repeat, 
                       d.inserted_text.c_str(),
                       d.fr,
-                      d.fc);
+                      d.fc,
+                      d.rows.size(),
+                      d.undo_method);
 }
 
 void Editor::undo(void) {
   if (undo_deque.empty()) return;
 
-  if (d_index == (int)undo_deque.size() - 1) {
+  if (d_index == (int)undo_deque.size()) { //with no push base
     editorSetMessage("Already at oldest change");
     return;
   }
 
-  d_index++;
   Diff d = undo_deque.at(d_index);
-  fr = d.fr;
-  fc = d.fc;
-  rows = d.rows;
-  editorSetMessage("d_index: %d undo_deque.size(): %d", d_index, undo_deque.size());
-}
+  //fr = d.fr;
+  //fc = d.fc;
+  //rows = d.rows;
+  if (d.undo_method == CHANGE_ROW) {
+    rows.at(d.fr) = d.rows.at(0);
+  } else if (d.undo_method == ADD_ROWS) {
+    rows.insert(rows.begin()+d.fr, d.rows.begin(), d.rows.end());
+  } else if (d.undo_method == DELETE_ROWS) {
+      rows.erase(rows.begin()+d.fr, rows.begin()+d.fr+d.rows.size());
+  } else {
+    rows = d.rows;
+  }
 
+  editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
+  d_index++;
+}
+/*
 void Editor::redo(void) {
 
   d_index--;
@@ -403,6 +402,72 @@ void Editor::redo(void) {
   fr = d.fr;
   fc = d.fc;
   rows = d.rows;
+}
+*/
+
+void Editor::redo(void) {
+
+  if (d_index > 0) {
+    d_index--;
+  } else {
+    editorSetMessage("Already at newest change");
+    return;
+  }
+
+  Diff &d = undo_deque.at(d_index);
+  fr = d.fr;
+  fc = d.fc;
+  //rows = d.rows;
+  //editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d; text %s", d_index, undo_deque.size(), d.command.c_str(), d.undo_method, d.inserted_text.c_str());
+  //return;
+
+  //case 'i': case 'I': case 'a': case 'A': 
+  if (cmd_map1.count(d.command)) {
+    (this->*cmd_map1[d.command])(d.repeat);
+
+    for (int n=0; n<d.repeat; n++) {
+      for (char const &c : d.inserted_text) {
+        if (c == '\r') editorInsertReturn();
+        else editorInsertChar(c);
+      }
+    }
+    return;
+  }
+
+  //'o' 'O':
+  if (cmd_map2.count(d.command)) {
+    (this->*cmd_map2[d.command])(d.repeat);
+    return;
+  }
+
+  //'x' 'dw': case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+  if (cmd_map3.count(d.command)) {
+    (this->*cmd_map3[d.command])(d.repeat);
+    return;
+  }
+
+  //case C_cw: case C_caw: case 's':
+  if (cmd_map4.count(d.command)) {
+      (this->*cmd_map4[d.command])(d.repeat);
+
+    for (char const &c : d.inserted_text) {
+      if (c == '\r') editorInsertReturn();
+      else editorInsertChar(c);
+    }
+    return;
+  }
+
+  if (last_command == "~") {
+    E_change_case(d.repeat);
+    return;
+  }
+
+  if (last_command == "r") {
+    E_replace(d.repeat);
+    return;
+  }
+  editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
+  d_index--;
 }
 
 // only decorates which I think makes sense
@@ -1064,6 +1129,7 @@ void Editor::editorYankLine(int n) {
     line_buffer.push_back(rows.at(fr+i));
   }
   string_buffer.clear(); //static
+  editorSetMessage("line_buffer.size() = %d string_buffer.size() = %d", line_buffer.size(), string_buffer.size());
 }
 
 void Editor::editorYankString(void) {
@@ -1116,14 +1182,16 @@ void Editor::editorPasteStringVisual(void) {
   dirty++;
 }
 
-void Editor::editorPasteLine(void){
-  if (rows.empty())  editorInsertRow(0, std::string());
-
-  for (size_t i=0; i < line_buffer.size(); i++) {
-    //int len = (line_buffer[i].size());
-    fr++;
-    editorInsertRow(fr, line_buffer[i]);
+void Editor::paste_line(void){
+  if (rows.empty()) {
+    rows = line_buffer;
+    fr = fc = 0;
+  } else {
+    rows.insert(rows.begin()+fr+1, line_buffer.begin(), line_buffer.end());
+    fr++; //you just pasted rows so should be able to increment fr
+    fc = 0;
   }
+  //editorSetMessage("got here"); 
 }
 
 void Editor::editorIndentRow(void) {
@@ -2094,7 +2162,7 @@ void Editor::E_change2visual_block(int repeat) {
 //case 'p':  
 void Editor::E_paste(int repeat) {
   if (!string_buffer.empty()) editorPasteString(); //static
-  else editorPasteLine();
+  else paste_line();
 }
 
 //case '*':  
