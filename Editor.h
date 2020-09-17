@@ -230,10 +230,18 @@ class Editor {
     int editorGetLinesInRowWW(int);
     int editorGetLineCharCountWW(int, int);
 
+    /*
     typedef void (Editor::*eefunc)(int);
     std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
     std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
     std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
     std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
+    */
 };
+    typedef void (Editor::*eefunc)(int);
+    // if make the maps const (which would also make them static) would need to change access to cmd_map1.at(d.command)
+    inline std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
+    inline std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
+    inline std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
+    inline std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 #endif

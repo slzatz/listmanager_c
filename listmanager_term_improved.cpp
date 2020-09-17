@@ -80,10 +80,12 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {{0x13}, &Editor::E_save_note},
 };
 
+/* now defined as inline in Editor.h - could be const  if access was cmd_mapN.at(command)
 std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
 std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
 std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
 std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
+*/
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -6379,7 +6381,7 @@ bool editorProcessKeypress(void) {
     
         case 'p':
           p->push_current();
-          if (!string_buffer.empty()) p->editorPasteStringVisual();
+          if (!Editor::string_buffer.empty()) p->editorPasteStringVisual();
           else p->editorPasteLineVisual();
           p->command[0] = '\0';
           p->repeat = 0;
