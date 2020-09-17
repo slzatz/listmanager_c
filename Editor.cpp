@@ -344,8 +344,14 @@ void Editor::push_current(void) {
       d.rows.insert(d.rows.begin(), snapshot.begin()+d.fr, snapshot.begin()+d.fr+repeat);
   } else if (d.command == "p") {
       d.undo_method = DELETE_ROWS;
+      d.rows = line_buffer; //this is to redo the paste
+      d.fr++;
+  } else if (d.command == "o" || d.command == "O") {
+      d.undo_method = DELETE_ROWS;
+      d.rows = str2vec(d.inserted_text);
+      //if (d.command == "o") d.fr++;
+      //else d.fr -= d.rows.size();
       //d.rows.insert(d.rows.begin(), line_buffer.begin(), line_buffer.end());
-      d.rows = line_buffer;
   } else {
       d.undo_method = REPLACE_NOTE;
       d.rows = snapshot;
@@ -357,15 +363,15 @@ void Editor::push_current(void) {
   undo_mode = false;
   snapshot = rows; //this is the snapshot used to pick a row or the whole thing
 
-  editorSetMessage("index: %d; cmd: %s; repeat: %d; text: %s; fr: %d; fc: %d rows.size %d undo method: %d", 
+  editorSetMessage("index: %d; cmd: %s; repeat: %d; fr: %d; fc: %d rows.size %d undo method: %d; text: %s", 
                       d_index,
                       d.command.c_str(), 
                       d.repeat, 
-                      d.inserted_text.c_str(),
                       d.fr,
                       d.fc,
                       d.rows.size(),
-                      d.undo_method);
+                      d.undo_method,
+                      d.inserted_text.c_str());
 }
 
 void Editor::undo(void) {
@@ -377,33 +383,24 @@ void Editor::undo(void) {
   }
 
   Diff d = undo_deque.at(d_index);
-  //fr = d.fr;
-  //fc = d.fc;
-  //rows = d.rows;
+
   if (d.undo_method == CHANGE_ROW) {
     rows.at(d.fr) = d.rows.at(0);
   } else if (d.undo_method == ADD_ROWS) {
     rows.insert(rows.begin()+d.fr, d.rows.begin(), d.rows.end());
   } else if (d.undo_method == DELETE_ROWS) {
-      rows.erase(rows.begin()+d.fr, rows.begin()+d.fr+d.rows.size());
+      if (d.command == "O") rows.erase(rows.begin()+d.fr, rows.begin()+d.fr+d.rows.size());
+      else rows.erase(rows.begin()+d.fr+1, rows.begin()+d.fr+d.rows.size()+1);
   } else {
     rows = d.rows;
   }
 
+  fr = d.fr;
+  fc = d.fc;
+
   editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
   d_index++;
 }
-/*
-void Editor::redo(void) {
-
-  d_index--;
-  Diff d = undo_deque.at(d_index);
-  d = undo_deque.at(d_index);
-  fr = d.fr;
-  fc = d.fc;
-  rows = d.rows;
-}
-*/
 
 void Editor::redo(void) {
 
@@ -417,6 +414,7 @@ void Editor::redo(void) {
   Diff &d = undo_deque.at(d_index);
   fr = d.fr;
   fc = d.fc;
+  last_typed = d.inserted_text;
   //rows = d.rows;
   //editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d; text %s", d_index, undo_deque.size(), d.command.c_str(), d.undo_method, d.inserted_text.c_str());
   //return;
@@ -431,43 +429,44 @@ void Editor::redo(void) {
         else editorInsertChar(c);
       }
     }
-    return;
-  }
 
   //'o' 'O':
-  if (cmd_map2.count(d.command)) {
+  } else if (cmd_map2.count(d.command)) {
+
     (this->*cmd_map2[d.command])(d.repeat);
-    return;
-  }
 
   //'x' 'dw': case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
-  if (cmd_map3.count(d.command)) {
+  } else if (cmd_map3.count(d.command)) {
     (this->*cmd_map3[d.command])(d.repeat);
-    return;
-  }
 
   //case C_cw: case C_caw: case 's':
-  if (cmd_map4.count(d.command)) {
+  } else if (cmd_map4.count(d.command)) {
       (this->*cmd_map4[d.command])(d.repeat);
 
     for (char const &c : d.inserted_text) {
       if (c == '\r') editorInsertReturn();
       else editorInsertChar(c);
     }
-    return;
-  }
 
-  if (last_command == "~") {
+  } else if (last_command == "~") {
     E_change_case(d.repeat);
-    return;
+
+  } else if (last_command == "r") {
+    E_replace(d.repeat);
   }
 
-  if (last_command == "r") {
-    E_replace(d.repeat);
-    return;
-  }
-  editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
-  d_index--;
+  // they may have been changed by the actions above
+  fr = d.fr;
+  fc = d.fc;
+
+  editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d inserted_text %s", 
+                    d_index,
+                    undo_deque.size(),
+                    d.command.c_str(),
+                    d.undo_method,
+                    d.inserted_text.c_str());
+
+  //d_index--;???????????????????????????
 }
 
 // only decorates which I think makes sense
@@ -654,12 +653,12 @@ std::string Editor::editorRowsToString(void) {
 }
 
 void Editor::editorInsertChar(int chr) {
+  // does not handle returns which must be intercepted before calling this function
   if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
     editorInsertRow(0, std::string());
   }
   std::string &row = rows.at(fr);
-  row.insert(row.begin() + fc, chr); // this works if row empty
-  //row.at(fc) = chr; // this doesn't work if row is empty
+  row.insert(row.begin() + fc, chr); // works if row is empty
   dirty++;
   fc++;
 }
@@ -2020,6 +2019,29 @@ void Editor::E_O(int repeat) {
   editorInsertNewline(0);
 }
 
+std::vector<std::string> Editor::str2vec(std::string & str) {
+  std::vector<std::string> vec;
+  int pos = 0;
+  int prev_pos = 0;
+  for(;;) {
+    pos = str.find('\r', prev_pos);  
+
+    if (pos == std::string::npos) {
+      vec.push_back(str.substr(prev_pos, str.size() - 1));
+      break;    
+    }
+
+    vec.push_back(str.substr(prev_pos, pos - 1));  
+
+    if (pos == str.size() - 1) {
+      vec.push_back(std::string());
+      break;
+    }
+    prev_pos = pos + 1;
+  }
+  return vec;
+}
+
 //used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1
 void Editor::E_o_escape(int repeat) { 
   for (int n=0; n<repeat; n++) {
@@ -2029,6 +2051,7 @@ void Editor::E_o_escape(int repeat) {
       else editorInsertChar(c);
     }
   }
+  //editorSetMessage("last_typed %s", last_typed);
 }
 
 //used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1

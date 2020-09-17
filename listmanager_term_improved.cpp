@@ -5828,7 +5828,7 @@ bool editorProcessKeypress(void) {
             }
           }
 
-          //cmd_map2 "o" E_o_escape and E_O_escape - deals with repeat
+          //cmd_map2 -> E_o_escape and E_O_escape - here deals with deals with repeat > 1
           if (cmd_map2.count(p->last_command)) {
             (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
             p->push_current(); //

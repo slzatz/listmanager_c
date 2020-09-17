@@ -108,6 +108,7 @@ class Editor {
     void push_base(void);
     void undo(void);
     void redo(void);
+    std::vector<std::string> str2vec(std::string &);
 
 /* EDITOR COMMAND_LINE mode functions */
     void E_write_C(void);
@@ -231,7 +232,7 @@ class Editor {
 
     typedef void (Editor::*eefunc)(int);
     std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
-    std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o}, {"O", &Editor::E_O}};
+    std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
     std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
     std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 };
