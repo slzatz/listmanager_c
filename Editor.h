@@ -14,6 +14,7 @@ struct Diff {
   int repeat;
   std::string command;
   std::vector<std::string> rows;
+  int num_rows; //the row where insert occurs counts 1 and then any rows added with returns
   std::string inserted_text;
   std::string deleted_text; //deleted chars - being recorded by not used right now or perhaps ever!
   std::vector<std::pair<char, int>> diff; //c = changed; d = deleted; a = added
@@ -109,6 +110,7 @@ class Editor {
     void undo(void);
     void redo(void);
     std::vector<std::string> str2vec(std::string &);
+    int get_num_rows(std::string &);
 
 /* EDITOR COMMAND_LINE mode functions */
     void E_write_C(void);

@@ -3091,7 +3091,7 @@ void F_edit(int) {
     //p = editors.back();
     p->id = id;
     get_note(id); //if id == -1 does not try to retrieve note
-    p->snapshot = p->rows; ////undo-related
+    //p->snapshot = p->rows; ////is this necessary?->answer appears to be no (09182020)
  }
 
   int n = editors.size();
@@ -5902,6 +5902,7 @@ bool editorProcessKeypress(void) {
           }
           //p->editorSetMessage(""); // commented out to debug push_current
           //editorSetMessage(p->last_typed.c_str());
+          p->last_typed.clear();//////////// 09182020
           return true; //end case x1b:
     
         // deal with tab in insert mode - was causing segfault  
@@ -5993,6 +5994,8 @@ bool editorProcessKeypress(void) {
         //here's the problem - we need fr and fc now
         p->prev_fr = p->fr;
         p->prev_fc = p->fc;
+
+        p->snapshot = p->rows; ////////////////////////////////////////////09182020
 
         (p->*e_lookup.at(p->command))(p->repeat); //money shot
 
@@ -6432,6 +6435,7 @@ bool editorProcessKeypress(void) {
       }
       //other than p->mode = NORMAL - all should go
       p->last_command = "r";
+      p->push_current();
       //p->last_repeat = p->repeat;
       p->repeat = 0;
       p->command[0] = '\0';

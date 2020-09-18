@@ -9,13 +9,15 @@
 std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
 std::string Editor::string_buffer = {}; //ditto
 
-std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw"};
+std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
+// this is what needs to be done to undo the cmd that was entered
 enum Undo_method {
-  CHANGE_ROW, //x,s,i,a,A
-  REPLACE_NOTE, //when in doubt
+  CHANGE_ROW, //x,s,i,a,A,c,d
   ADD_ROWS, //dd
-  DELETE_ROWS //o,O,p,P
+  DELETE_ROWS, //o,O,p,P
+  CHANGE_ROW_AND_DELETE_ROWS, //i,I,c,s where the person not only inserts text into current line but adds lines via typing return  
+  REPLACE_NOTE = 99//when in doubt
 };
 
 /* Basic Editor actions */
@@ -335,10 +337,12 @@ void Editor::push_current(void) {
   // probably not reason to include last_typed as always "" at this point
   Diff d = {prev_fr, prev_fc, last_repeat, last_command};
   d.inserted_text = last_typed;
+  d.num_rows = get_num_rows(last_typed);
 
   if (line_commands.count(d.command)) {
-      d.undo_method = CHANGE_ROW;
-      d.rows.push_back(snapshot.at(fr));
+    if (d.num_rows == 1) d.undo_method = CHANGE_ROW;
+    else d.undo_method = CHANGE_ROW_AND_DELETE_ROWS;
+    d.rows.push_back(snapshot.at(d.fr));
   } else if (d.command == "dd") {
       d.undo_method = ADD_ROWS;
       d.rows.insert(d.rows.begin(), snapshot.begin()+d.fr, snapshot.begin()+d.fr+repeat);
@@ -348,10 +352,8 @@ void Editor::push_current(void) {
       d.fr++;
   } else if (d.command == "o" || d.command == "O") {
       d.undo_method = DELETE_ROWS;
-      d.rows = str2vec(d.inserted_text);
-      //if (d.command == "o") d.fr++;
-      //else d.fr -= d.rows.size();
-      //d.rows.insert(d.rows.begin(), line_buffer.begin(), line_buffer.end());
+      //d.rows = str2vec(d.inserted_text);
+      //d.num_rows = get_num_rows(d.inserted_text);
   } else {
       d.undo_method = REPLACE_NOTE;
       d.rows = snapshot;
@@ -360,8 +362,8 @@ void Editor::push_current(void) {
 
   undo_deque.push_front(d);
   d_index = 0;
-  undo_mode = false;
-  snapshot = rows; //this is the snapshot used to pick a row or the whole thing
+  //undo_mode = false;
+  //snapshot = rows; //this is the snapshot used to pick a row or the whole thing
 
   editorSetMessage("index: %d; cmd: %s; repeat: %d; fr: %d; fc: %d rows.size %d undo method: %d; text: %s", 
                       d_index,
@@ -389,14 +391,19 @@ void Editor::undo(void) {
   } else if (d.undo_method == ADD_ROWS) {
     rows.insert(rows.begin()+d.fr, d.rows.begin(), d.rows.end());
   } else if (d.undo_method == DELETE_ROWS) {
-      if (d.command == "O") rows.erase(rows.begin()+d.fr, rows.begin()+d.fr+d.rows.size());
-      else rows.erase(rows.begin()+d.fr+1, rows.begin()+d.fr+d.rows.size()+1);
+      //? use num_rows and not rows.size because no reason to create rows
+      if (d.command == "O") rows.erase(rows.begin()+d.fr, rows.begin()+d.fr+d.num_rows);
+      else rows.erase(rows.begin()+d.fr+1, rows.begin()+d.fr+d.num_rows+1);
+  } else if (d.undo_method == CHANGE_ROW_AND_DELETE_ROWS) {
+    rows.at(d.fr) = d.rows.at(0);
+    rows.erase(rows.begin()+d.fr+1, rows.begin()+d.fr+d.num_rows);//not +1 in case of paste
   } else {
     rows = d.rows;
   }
 
   fr = d.fr;
   fc = d.fc;
+  snapshot = rows; // this might be necessary in redo? //or apply the 'patches' to snaphot too???
 
   editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
   d_index++;
@@ -2017,6 +2024,14 @@ void Editor::E_o(int repeat) {
 void Editor::E_O(int repeat) { 
   last_typed.clear();
   editorInsertNewline(0);
+}
+
+int Editor::get_num_rows(std::string & str) {
+  int n = 1;
+  for (int i=0; (i=str.find('\r', i)) != std::string::npos; i++) {
+    n++;
+  }
+  return n;
 }
 
 std::vector<std::string> Editor::str2vec(std::string & str) {
