@@ -100,7 +100,10 @@ typedef struct orow {
 
 std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
 std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
-std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"};
+
+//these are not really move only but are commands that don't change text and shouldn't trigger a new push_current diff record
+//better name something like no_edit_cmds or non_edit_cmds
+std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"}; //could put 'u' ctrl-r here
 std::unordered_set<int> navigation = {
          ARROW_UP,
          ARROW_DOWN,

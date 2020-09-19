@@ -65,8 +65,8 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"p", &Editor::E_paste},
   {"*", &Editor::E_find},
   {"n", &Editor::E_find_next_word},
- // {"u", &Editor::E_undo},
- // {{CTRL_KEY('r')}, &Editor::E_redo},
+ // {"u", &Editor::E_undo}, //currently in case NORMAL but not sure it has to be
+ // {{CTRL_KEY('r')}, &Editor::E_redo}, //ditto - need to be in move_only -> no_edit_cmds
   {".", &Editor::editorDotRepeat},
   {">>", &Editor::E_indent},
   {"<<", &Editor::E_unindent},
@@ -1167,55 +1167,11 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 }
 
 void get_note(int id) {
-  if (id ==-1) return; //maybe should be if (id < 0) and make all context id/tid negative
+  if (id ==-1) return; // id given to new and unsaved entries
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
-
-  /* this all needs to move to get_preview
-  if (O.taskview != BY_SEARCH) {
-    //p->editorRefreshScreen(true);
-    //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    if (lm_browser) {
-      if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-      else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-    }   
-    return;
-  }
-
-  std::stringstream query2;
-  query2 << "SELECT rowid FROM fts WHERE lm_id = " << id << ";";
-
-  int rowid = -1;
-  // callback is *not* called if result (argv) is null
-  if (!db_query(S.fts_db, query2.str().c_str(), rowid_callback, &rowid, &S.err_msg, __func__)) return;
-
-  // split string into a vector of words
-  std::vector<std::string> vec;
-  std::istringstream iss(search_terms);
-  for(std::string ss; iss >> ss; ) vec.push_back(ss);
-  std::stringstream query3;
-  int n = 0;
-  for(auto v: vec) {
-    word_positions.push_back(std::vector<int>{});
-    query3.str(std::string()); // how you clear a stringstream
-    query3 << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
-    if (!db_query(S.fts_db, query3.str().c_str(), offset_callback, &n, &S.err_msg, __func__)) return;
-
-    n++;
-  }
-
-  int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
-  p->editorSetMessage("Word position first: %d; id = %d and row_id = %d", ww, id, rowid);
-
-  p->editorRefreshScreen(true);
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-  }   
-  */
 }
 
 // doesn't appear to be called if row is NULL
@@ -1261,7 +1217,6 @@ int offset_callback (void *n, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-//void fts5_sqlite(std::string search_terms) {
 void search_db(std::string search_terms) {
 
   O.rows.clear();
@@ -6538,11 +6493,11 @@ int main(int argc, char** argv) {
 
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 
-  db_open();
+  db_open(); //for sqlite
   get_conn(); //for pg
-  load_meta(); 
+  load_meta(); //meta html for lm_browser 
 
-  which_db = SQLITE;
+  which_db = SQLITE; //this can go since not using postgres on client
 
   map_context_titles();
   map_folder_titles();
@@ -6556,14 +6511,7 @@ int main(int argc, char** argv) {
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
- // PQfinish(conn); // this should happen when exiting
-
-  // putting this here seems to speed up first search but still slow
-  // might make sense to do the module imports here too
-  // assume the reimports are essentially no-ops
-  //Py_Initialize(); 
-
-  if (lm_browser) popen (system_call.c_str(), "r"); //returns FILE* id
+  //if (lm_browser) ...
 
   signal(SIGWINCH, signalHandler);
   bool text_change;
@@ -6574,6 +6522,9 @@ int main(int argc, char** argv) {
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
   return_cursor();
+
+  //"./lm_browser " + CURRENT_NOTE_FILE;
+  if (lm_browser) popen (system_call.c_str(), "r"); //returns FILE* id
 
   while (1) {
     // just refresh what has changed
