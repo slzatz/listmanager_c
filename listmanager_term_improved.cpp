@@ -39,6 +39,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"O", &Editor::E_O}, //note there is an E_O_escape
   {"x", &Editor::E_x},
   {"dw", &Editor::E_dw},
+  {"daw", &Editor::E_daw},
   {"de", &Editor::E_de},
   {"dG", &Editor::E_dG},
   {"d$", &Editor::E_d$},
