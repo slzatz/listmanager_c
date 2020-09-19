@@ -617,10 +617,12 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.id = atoi(argv[0]); //right now pulling sqlite id not tid
   row.star = (atoi(argv[3]) == 1) ? true: false; //"default"
   row.deleted = (atoi(argv[5]) == 1) ? true: false;
+  row.modified = time_delta(std::string(argv[9], 16));
+
   row.completed = false;
   row.dirty = false;
   row.mark = false;
-  strncpy(row.modified, argv[9], 16);
+
   O.rows.push_back(row);
 
   return 0;
@@ -655,7 +657,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.completed = false;
   row.dirty = false;
   row.mark = false;
-  strncpy(row.modified, argv[11], 16);
+  row.modified = time_delta(std::string(argv[11], 16));
   O.rows.push_back(row);
 
   return 0;
@@ -684,7 +686,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.completed = false;
   row.dirty = false;
   row.mark = false;
-  strncpy(row.modified, argv[4], 16);
+  row.modified = time_delta(std::string(argv[4], 16));
   O.rows.push_back(row);
 
   return 0;
@@ -1006,26 +1008,14 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
+
+  int *sc = static_cast<int*>(sortcolnum);
+  if (argv[*sc] != nullptr) row.modified = time_delta(std::string(argv[*sc], 16));
+  else row.modified.assign(15, ' ');
+
   row.dirty = false;
   row.mark = false;
 
-  //(argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
-  //                                               : strncpy(row.modified, " ", 16);
-
-  //the reason for below is I am thinking about changing row.modified to a std::string but that's lots of changes
-  //wanted to show how it would work
-  int *sc = static_cast<int*>(sortcolnum);
-  std::string row_modified; //would be row.modified if changed to string
-  (argv[*sc] != nullptr) ? row_modified.assign(argv[*sc], 16) : row_modified.assign(16, ' ');
-
-
-
-  //int days = time_delta(row_modified);
-  //strncpy(row.modified, std::to_string(days).c_str(), 16);
-
-  strncpy(row.modified, time_delta(row_modified).c_str(), 16);
-
-  //strncpy(row.modified, row_modified.c_str(), 16);
   O.rows.push_back(row);
 
   return 0;
@@ -1047,11 +1037,14 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
+
+  int *sc = static_cast<int*>(sortcolnum);
+  if (argv[*sc] != nullptr) row.modified = time_delta(std::string(argv[*sc], 16));
+  else row.modified.assign(15, ' ');
+
   row.dirty = false;
   row.mark = false;
-  //(argv[*reinterpret_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*reinterpret_cast<int*>(sortcolnum)], 16)
-  (argv[*static_cast<int*>(sortcolnum)] != nullptr) ? strncpy(row.modified, argv[*static_cast<int*>(sortcolnum)], 16)
-                                                 : strncpy(row.modified, " ", 16);
+
   O.rows.push_back(row);
 
   return 0;
@@ -1123,10 +1116,14 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
+
+  // we're not giving user choice of time column here but could 
+  if (argv[16] != nullptr) row.modified = time_delta(std::string(argv[16], 16));
+  else row.modified.assign(15, ' ');
+
   row.dirty = false;
   row.mark = false;
-  //if changed modified (which should be some generic time name) to string then row.modified.assign(argv[16], 16)
-  strncpy(row.modified, argv[16], 16);
+
   O.rows.push_back(row);
 
   return 0;
@@ -2980,7 +2977,7 @@ void F_refresh(int) {
 }
 
 void F_new(int) {
-  outlineInsertRow(0, "", true, false, false, now().c_str());
+  outlineInsertRow(0, "", true, false, false, now());
   O.fc = O.fr = O.rowoff = 0;
   O.command[0] = '\0';
   O.repeat = 0;
@@ -3466,7 +3463,7 @@ void F_merge(int) {
     O.mode = O.last_mode;
     return;
   }
-  outlineInsertRow(0, "[Merged note]", true, false, false, BASE_DATE);
+  outlineInsertRow(0, "[Merged note]", true, false, false, now());
   insert_row(O.rows.at(0)); 
   p->rows.clear();
   
@@ -3771,7 +3768,7 @@ void gt_N(void) {
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
-  outlineInsertRow(0, "", true, false, false, now().c_str());
+  outlineInsertRow(0, "", true, false, false, now());
   O.fc = O.fr = O.rowoff = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   eraseRightScreen(); //erases the note area
@@ -3891,7 +3888,7 @@ void navigate_cmd_hx(int direction) {
 
 /*** outline operations ***/
 
-void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool completed, const char* modified) {
+void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool completed, std::string&& modified) {
   /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
 
   orow row;
@@ -3902,7 +3899,7 @@ void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool com
   row.deleted = deleted;
   row.completed = completed;
   row.dirty = true;
-  strncpy(row.modified, modified, 16);
+  row.modified = modified;
 
   row.mark = false;
 
@@ -4561,7 +4558,7 @@ void outlineDrawRows(std::string& ab) {
     // believe the +2 is just to give some space from the end of long titles
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, O.divider - OUTLINE_RIGHT_MARGIN + 2); // + offset
     ab.append(buf, strlen(buf));
-    ab.append(row.modified, 16);
+    ab.append(row.modified);
     ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
     ab.append(lf_ret, nchars);
   }
@@ -4653,7 +4650,7 @@ void outlineDrawSearchRows(std::string& ab) {
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - OUTLINE_RIGHT_MARGIN + 2); //wouldn't need offset
     ab.append("\x1b[0m", 4); // return background to normal
     ab.append(buf, strlen(buf));
-    ab.append(row.modified, 16);
+    ab.append(row.modified);
     ab.append(lf_ret, nchars);
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }

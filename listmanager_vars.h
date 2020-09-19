@@ -80,24 +80,6 @@ struct sqlite_db {
 };
 struct sqlite_db S;
 
-/*
-typedef struct orow {
-  std::string title;
-  std::string fts_title;
-  int id; //listmanager db id of the row
-  bool star;
-  bool deleted;
-  bool completed;
-  //bool code; //new to say the note is actually code
-  char modified[16];
-
-  // note the members below are temporary editing flags
-  // and don't need to be reflected in database
-  bool dirty;
-  bool mark;
-} orow;
-*/
-
 std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
 std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
 
@@ -137,8 +119,8 @@ typedef struct orow {
   bool star;
   bool deleted;
   bool completed;
-  //bool code; //new to say the note is actually code
-  char modified[16];
+  //char modified[16];
+  std::string modified;
 
   // note the members below are temporary editing flags
   // and don't need to be reflected in database
@@ -311,7 +293,7 @@ void outlineMoveEndWord2(); //not 'e' but just moves to end of word even if on l
 void outlineGetWordUnderCursor();
 void outlineFindNextWord();
 void outlineChangeCase();
-void outlineInsertRow(int, std::string&&, bool, bool, bool, const char *);
+void outlineInsertRow(int, std::string&&, bool, bool, bool, std::string&&);
 void outlineScroll(void);
 void outlineSave(const std::string &);
 void return_cursor(void);
