@@ -26,6 +26,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"spell",&Editor:: E_spellcheck_C},
   {"spellcheck", &Editor::E_spellcheck_C},
   {"persist", &Editor::E_persist_C},
+  {"run", &Editor::E_run_code_C}
 };
 
 /* EDITOR NORMAL mode command lookup */
@@ -3295,7 +3296,7 @@ void F_updatefolder(int) {
   command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
   O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
-  outlineShowMessage("Select context to add to marked or current entry");
+  outlineShowMessage("Select folder to add to marked or current entry");
 }
 
 void F_delmarks(int) {

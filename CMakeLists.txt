@@ -3,7 +3,7 @@
 # The output executable is listmanager_term_improved_qtc and I moved it from
 # the build directory to ~/c_stuff/listmanager
 
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.18)
 project(listmanager_cpp)
 set(CMAKE_CXX_STANDARD 20)
 find_package(ZeroMQ QUIET)
@@ -29,6 +29,17 @@ execute_process(
 
 add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
 
+include(FetchContent)
+FetchContent_Declare(cpr 
+  GIT_REPOSITORY https://github.com/whoshuu/cpr.git
+  GIT_TAG e627e47727bfa13314dbe43418cf825097a2d38e) # the commit hash for 1.5.0
+FetchContent_MakeAvailable(cpr)
+
+FetchContent_Declare(json
+  GIT_REPOSITORY https://github.com/ArthurSonzogni/nlohmann_json_cmake_fetchcontent #tracking repository - smaller download
+  GIT_TAG v3.9.1)
+FetchContent_MakeAvailable(json)
+
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation -std=c++2a")
@@ -52,7 +63,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
 
 # case is important and tripped me up below related to SQLITE and POSTGRES
 #target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown /usr/local/lib/libfmt.a) 
-target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown fmt::fmt) 
+target_link_libraries(${PROJECT_NAME} ${SQLite3_LIBRARIES} ${PYTHON_LIBRARIES} ${PostgreSQL_LIBRARIES} ${ZeroMQ_LIBRARY} Nuspell::nuspell ${PROJECT_SOURCE_DIR}/libiniparser.a markdown fmt::fmt cpr::cpr nlohmann_json::nlohmann_json) 
 
 # Note that there is a CMakeLists.txt in:  src, src/vendor/imgui, src/vendor/stb_image and src/tests
 # src CMakeLists.txt: target_sources(thecherno PRIVATE Application.cpp IndexBuffer.cpp Renderer.cpp Shader.cpp Texture.cpp VertexArray.cpp VertexBuffer.cpp)

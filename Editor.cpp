@@ -4,6 +4,8 @@
 #include <cstdarg> //va_start etc
 #include <string_view>
 #include <unordered_set>
+#include <nlohmann/json.hpp>
+#include <cpr/cpr.h>
 
 
 std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
@@ -20,6 +22,83 @@ enum Undo_method {
   REPLACE_NOTE = 99//when in doubt
 };
 
+// used by push_current to get the num_rows in inserted text
+int Editor::get_num_rows(std::string & str) {
+  int n = 1;
+  for (int i=0; (i=str.find('\r', i)) != std::string::npos; i++) {
+    n++;
+  }
+  return n;
+}
+
+// puts inserted text into a vector of rows using '\r' to determine lines
+// note doesn't word wrap which is fine since if internal string the '\r'
+// in right place but not necessarily true if externally generated string
+std::vector<std::string> Editor::str2vec(std::string & str) {
+  std::vector<std::string> vec;
+  int pos = 0;
+  int prev_pos = 0;
+  for(;;) {
+    pos = str.find('\r', prev_pos);  
+
+    if (pos == std::string::npos) {
+      vec.push_back(str.substr(prev_pos, str.size() - 1));
+      break;    
+    }
+
+    vec.push_back(str.substr(prev_pos, pos - 1));  
+
+    if (pos == str.size() - 1) {
+      vec.push_back(std::string());
+      break;
+    }
+    prev_pos = pos + 1;
+  }
+  return vec;
+}
+
+std::vector<std::string> Editor::str2vecWW(std::string & str) {
+  std::vector<std::string> vec;
+  int pos = 0;
+  int prev_pos = 0;
+  std::string s;
+  for(;;) {
+    pos = str.find('\r', prev_pos);  
+
+    if (pos == std::string::npos) {
+      //s = str.substr(prev_pos, str.size() - 1);
+      s = str.substr(prev_pos);
+      for(;;) {
+        if (s.size() < screencols) {
+          vec.push_back(s);
+          break;
+        } else {
+          vec.push_back(s.substr(0, screencols - 1));
+          s = s.substr(screencols - 1); 
+        }
+      }  
+      return vec;
+    }
+
+      s = str.substr(prev_pos, pos - 1);
+      for(;;) {
+        if (s.size() < screencols) {
+          vec.push_back(s);
+          break;
+        } else {
+          vec.push_back(s.substr(0, screencols - 1));
+          s = s.substr(screencols - 1); 
+        }
+      }  
+
+    if (pos == str.size() - 1) {
+      vec.push_back(std::string());
+      return vec;
+    }
+    prev_pos = pos + 1;
+  }
+  return vec;
+}
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
   std::string& current_row = rows.at(fr);
@@ -423,10 +502,8 @@ void Editor::redo(void) {
   fc = d.fc;
   last_typed = d.inserted_text;
   //rows = d.rows;
-  //editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d; text %s", d_index, undo_deque.size(), d.command.c_str(), d.undo_method, d.inserted_text.c_str());
-  //return;
 
-  //case 'i': case 'I': case 'a': case 'A': 
+  // i I a A 
   if (cmd_map1.count(d.command)) {
     (this->*cmd_map1[d.command])(d.repeat);
 
@@ -437,16 +514,15 @@ void Editor::redo(void) {
       }
     }
 
-  //'o' 'O':
+  // o O cmd_map2 -> E_o_escape E_O_escape
   } else if (cmd_map2.count(d.command)) {
-
     (this->*cmd_map2[d.command])(d.repeat);
 
-  //'x' 'dw': case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
+  // x dw daw dd de dG d$
   } else if (cmd_map3.count(d.command)) {
     (this->*cmd_map3[d.command])(d.repeat);
 
-  //case C_cw: case C_caw: case 's':
+  // cw caw s
   } else if (cmd_map4.count(d.command)) {
       (this->*cmd_map4[d.command])(d.repeat);
 
@@ -472,8 +548,6 @@ void Editor::redo(void) {
                     d.command.c_str(),
                     d.undo_method,
                     d.inserted_text.c_str());
-
-  //d_index--;???????????????????????????
 }
 
 // only decorates which I think makes sense
@@ -2026,38 +2100,11 @@ void Editor::E_O(int repeat) {
   editorInsertNewline(0);
 }
 
-int Editor::get_num_rows(std::string & str) {
-  int n = 1;
-  for (int i=0; (i=str.find('\r', i)) != std::string::npos; i++) {
-    n++;
-  }
-  return n;
-}
-
-std::vector<std::string> Editor::str2vec(std::string & str) {
-  std::vector<std::string> vec;
-  int pos = 0;
-  int prev_pos = 0;
-  for(;;) {
-    pos = str.find('\r', prev_pos);  
-
-    if (pos == std::string::npos) {
-      vec.push_back(str.substr(prev_pos, str.size() - 1));
-      break;    
-    }
-
-    vec.push_back(str.substr(prev_pos, pos - 1));  
-
-    if (pos == str.size() - 1) {
-      vec.push_back(std::string());
-      break;
-    }
-    prev_pos = pos + 1;
-  }
-  return vec;
-}
-
 //used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1
+//note that when used with a repeat E_o_escape and E_O_escape
+//are equivalent (doesn't matter what direction the newline goes in
+//but not the same if these functions are used to dot.
+//since initial direction of newline matters then.
 void Editor::E_o_escape(int repeat) { 
   for (int n=0; n<repeat; n++) {
     editorInsertNewline(1);
@@ -2066,7 +2113,6 @@ void Editor::E_o_escape(int repeat) {
       else editorInsertChar(c);
     }
   }
-  //editorSetMessage("last_typed %s", last_typed);
 }
 
 //used in INSERT mode after escape is typed and to deal with dot/E.repeat > 1
@@ -2382,4 +2428,68 @@ void Editor::E_italic(int repeat) {
   row.insert(beg, "*");
   row.insert(end+1 , "*");
   fc++;
+}
+using json = nlohmann::json;
+
+void Editor::E_run_code_C(void) {
+  std::string source = editorRowsToString();
+
+  json js = {
+      //{"cmd", "g++-4.8 main.cpp && ./a.out"},
+      {"cmd", "g++ -std=c++20 -O2 -Wall -pedantic -pthread main.cpp && ./a.out"},
+      //{"src", "#include <iostream>\nint main(){ std::cout << \"Hello World\" << std::endl; return 0;}"}
+      {"src", source}
+      };
+
+  auto url = cpr::Url{"http://coliru.stacked-crooked.com/compile"};
+
+#if 0
+  //could not get compiler explorer to work although it does work with python requests
+  json js = {
+    {"source", source},
+    {"compiler", "g82"},
+    {"options", {
+          {"userArguments", "-O3"},
+          {"compilerOptions", {
+                    {"executorRequest", true}
+          }},
+          {"filters", {
+                    {"execute", true}
+          }},
+          {"tools", json::array()},
+          {"libraries", {{ 
+          {"id", "openssl"}, {"version", "111c"}
+      }}}}},
+    {"lang", "c++"},
+    {"allowStoreCodeDebug", true}
+  };
+  std::string j_serial = js.dump();
+  cpr::Response r = cpr::Post(cpr::Url{"https://godbolt.org/api/compiler/g82/compile"},
+  //cpr::Response r = cpr::Post(cpr::Url{"http://httpbin.org/post"},
+            cpr::Body{j_serial}, 
+            cpr::Header{{"Content-Type", "application/json"}}, //doesn't work
+            cpr::Header{{"accept", "application/json"}},  //doesn't work
+            cpr::VerifySsl(0)
+            );
+#endif
+
+  cpr::Response r = cpr::Post(url, cpr::Body{js.dump()},
+            cpr::Header{{"Content-Type", "application/json"}}, 
+            cpr::Header{{"accept", "application/json"}}
+            );
+
+  editorSetMessage("status code: %d", r.status_code);
+
+  rows.push_back("----------------");;
+  rows.push_back("");
+  rows.push_back(r.url); //s
+  rows.push_back(js["cmd"]); //s
+  rows.push_back("");
+  std::vector<std::string> z = str2vecWW(r.text);
+  rows.insert(rows.end(), z.begin(), z.end());
+
+  command_line.clear();
+  mode = NORMAL;
+  editorRefreshScreen(true);
+  dirty++;
 }
