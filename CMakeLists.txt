@@ -32,7 +32,8 @@ add_definitions("-DGIT_BRANCH=${GIT_BRANCH}")
 include(FetchContent)
 FetchContent_Declare(cpr 
   GIT_REPOSITORY https://github.com/whoshuu/cpr.git
-  GIT_TAG e627e47727bfa13314dbe43418cf825097a2d38e) # the commit hash for 1.5.0
+  #GIT_TAG e627e47727bfa13314dbe43418cf825097a2d38e) # the commit hash for 1.5.0
+  GIT_TAG 5e87cb5f45ac99858f0286dc1c35a6cd27c3bcb9) #1.5.1
 FetchContent_MakeAvailable(cpr)
 
 FetchContent_Declare(json
@@ -42,9 +43,8 @@ FetchContent_MakeAvailable(json)
 
 # these 3 lines were from thecherno for his example helloworld
 #set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -std=c++17")
-#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation -std=c++2a")
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation")
-#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wsign-compare -std=c++2a")
+#set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -Wno-stringop-truncation")
+set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wno-sign-compare -fmax-errors=5")
 set (source_dir "${PROJECT_SOURCE_DIR}/")
 
 # the below obviously shouldn't be a GLOB since only one source file

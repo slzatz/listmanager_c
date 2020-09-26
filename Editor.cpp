@@ -6,6 +6,7 @@
 #include <unordered_set>
 #include <nlohmann/json.hpp>
 #include <cpr/cpr.h>
+#include <array>
 
 
 std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
@@ -63,10 +64,9 @@ std::vector<std::string> Editor::str2vecWW(std::string & str) {
   int prev_pos = 0;
   std::string s;
   for(;;) {
-    pos = str.find('\r', prev_pos);  
+    pos = str.find('\n', prev_pos);  
 
     if (pos == std::string::npos) {
-      //s = str.substr(prev_pos, str.size() - 1);
       s = str.substr(prev_pos);
       for(;;) {
         if (s.size() < screencols) {
@@ -80,7 +80,7 @@ std::vector<std::string> Editor::str2vecWW(std::string & str) {
       return vec;
     }
 
-      s = str.substr(prev_pos, pos - 1);
+      s = str.substr(prev_pos, pos - prev_pos); //2nd parameter is length!
       for(;;) {
         if (s.size() < screencols) {
           vec.push_back(s);
@@ -1850,9 +1850,9 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
   update_note();
-  mode = NORMAL;
-  command[0] = '\0';
-  command_line.clear();
+  //mode = NORMAL;
+  //command[0] = '\0';
+  //command_line.clear();
   if (lm_browser) { //lm_browser is global
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
@@ -1911,10 +1911,10 @@ void Editor::E_open_in_vim_C(void) {
 void Editor::E_spellcheck_C(void) {
   spellcheck = !spellcheck;
   if (spellcheck) editorSpellCheck();
-  else editorRefreshScreen(true);
-  mode = NORMAL;
-  command[0] = '\0';
-  command_line.clear();
+  //else editorRefreshScreen(true);
+  //mode = NORMAL;
+  //command[0] = '\0';
+  //command_line.clear();
   editorSetMessage("Spellcheck %s", (spellcheck) ? "on" : "off");
 }
 #else
@@ -1925,8 +1925,6 @@ void E_spellcheck_C(void) {
 
 void Editor::E_persist_C(void) {
   generate_persistent_html_file(id); //global
-  //command[0] = '\0';
-  //command_line.clear();
   mode = NORMAL;
 }
 
@@ -1937,7 +1935,7 @@ void Editor::E_readfile_C(void) {
   else filename = "example.cpp";
   editorReadFileIntoNote(filename);
   editorSetMessage("Note generated from file: %s", filename.c_str());
-  mode = NORMAL;
+  //mode = NORMAL;
 }
 // EDITOR NORMAL mode functions
 void Editor::E_cw(int repeat) {
@@ -2429,11 +2427,23 @@ void Editor::E_italic(int repeat) {
   row.insert(end+1 , "*");
   fc++;
 }
+
+void ReplaceStringInPlace(std::string& subject, const std::string& search,
+                          const std::string& replace) {
+    size_t pos = 0;
+    while ((pos = subject.find(search, pos)) != std::string::npos) {
+         subject.replace(pos, search.length(), replace);
+         pos += replace.length();
+    }
+}
+
 using json = nlohmann::json;
 
 void Editor::E_run_code_C(void) {
   std::string source = editorRowsToString();
 
+//this works with coliru
+#if 0  
   json js = {
       //{"cmd", "g++-4.8 main.cpp && ./a.out"},
       {"cmd", "g++ -std=c++20 -O2 -Wall -pedantic -pthread main.cpp && ./a.out"},
@@ -2442,9 +2452,13 @@ void Editor::E_run_code_C(void) {
       };
 
   auto url = cpr::Url{"http://coliru.stacked-crooked.com/compile"};
+  cpr::Response r = cpr::Post(url, cpr::Body{js.dump()},
+            cpr::Header{{"Content-Type", "application/json"}}, 
+            cpr::Header{{"accept", "application/json"}}
+            );
+#endif
 
-#if 0
-  //could not get compiler explorer to work although it does work with python requests
+  //this works with compiler explorer
   json js = {
     {"source", source},
     {"compiler", "g82"},
@@ -2454,42 +2468,76 @@ void Editor::E_run_code_C(void) {
                     {"executorRequest", true}
           }},
           {"filters", {
-                    {"execute", true}
+                    {"execute", true},
+                    {"directives", true}, //one of both of these needed
+                    {"labels", true} // to get stdout
+
           }},
           {"tools", json::array()},
-          {"libraries", {{ 
-          {"id", "openssl"}, {"version", "111c"}
-      }}}}},
+          {"libraries", json::array({ 
+              {{"id", "openssl"}, {"version", "111c"}},
+              {{"id", "fmt"},{"version", "trunk"}}
+          })},
+      }},
     {"lang", "c++"},
     {"allowStoreCodeDebug", true}
   };
-  std::string j_serial = js.dump();
-  cpr::Response r = cpr::Post(cpr::Url{"https://godbolt.org/api/compiler/g82/compile"},
-  //cpr::Response r = cpr::Post(cpr::Url{"http://httpbin.org/post"},
-            cpr::Body{j_serial}, 
-            cpr::Header{{"Content-Type", "application/json"}}, //doesn't work
-            cpr::Header{{"accept", "application/json"}},  //doesn't work
-            cpr::VerifySsl(0)
-            );
-#endif
 
-  cpr::Response r = cpr::Post(url, cpr::Body{js.dump()},
-            cpr::Header{{"Content-Type", "application/json"}}, 
-            cpr::Header{{"accept", "application/json"}}
+  cpr::Response r = cpr::Post(cpr::Url{"https://godbolt.org/api/compiler/g82/compile"},
+            cpr::Body{js.dump()}, 
+            // both headers in Header or doesn't work
+            cpr::Header{{"Content-Type", "application/json"}, {"Accept", "application/json"}}, // both headers in Header or doesn't work
+            cpr::VerifySsl(0) // cpr issue #445 regarding ssl certificates
             );
 
   editorSetMessage("status code: %d", r.status_code);
 
+  rows.push_back("");
   rows.push_back("----------------");;
-  rows.push_back("");
   rows.push_back(r.url); //s
-  rows.push_back(js["cmd"]); //s
-  rows.push_back("");
-  std::vector<std::string> z = str2vecWW(r.text);
-  rows.insert(rows.end(), z.begin(), z.end());
+  rows.push_back("----------------");;
 
-  command_line.clear();
-  mode = NORMAL;
-  editorRefreshScreen(true);
+  /*
+  // raw returned json for testing 
+  std::vector<std::string> zz = str2vecWW(r.text);
+  rows.insert(rows.end(), zz.begin(), zz.end());
+  rows.push_back("----------------");;
+  */
+
+  std::string str = r.text;
+  //ReplaceStringInPlace(str, "\\u001b", "\x1b");
+  json js1 = json::parse(str);
+
+  if (js1["buildResult"]["code"] == 0) {
+    auto arr = js1["stdout"]; 
+  for (const auto i : arr) {
+    rows.push_back(i["text"]);
+  }
+  }
+  else {
+    // something happens when you extract text as below and the
+    // escapes seem to be "exposed" somehow
+    auto arr = js1["buildResult"]["stderr"];
+
+  for (const auto i : arr) {
+    std::string s = i["text"];
+    rows.push_back(s);
+  }
+  }
+
+  rows.push_back("----------------");;
+
+  /*
+  // for testing
+  // pretty printing full json that is returned
+  // note this process does not seem to change the sequences //u001b 
+  rows.push_back("");
+  std::string s = js1.dump(2); //2 is for pretty printing indent
+  std::vector<std::string> z = str2vecWW(s);
+  rows.insert(rows.end(), z.begin(), z.end());
+  rows.push_back("----------------");;
+  */
+
   dirty++;
+
 }

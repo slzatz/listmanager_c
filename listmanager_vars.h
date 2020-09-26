@@ -130,14 +130,14 @@ typedef struct orow {
 
 struct outlineConfig {
   int cx, cy; //cursor x and y position
-  unsigned int fc, fr; // file x and y position
-  unsigned int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
-  unsigned int coloff; //the number of columns scrolled (aka number of left rows now off-screen
-  unsigned int screenlines; //number of lines in the display available to text
-  unsigned int titlecols;  //number of columns in the display available to text
-  unsigned int totaleditorcols; //Number of columns on right-hand side of screen
-  unsigned int left_screencols; //Number of columns on left-hand side of screen
-  unsigned int divider; //where the dividing line is between note list and editor (takes margins into account)
+  int fc, fr; // file x and y position
+  int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
+  int coloff; //the number of columns scrolled (aka number of left rows now off-screen
+  int screenlines; //number of lines in the display available to text
+  int titlecols;  //number of columns in the display available to text
+  int totaleditorcols; //Number of columns on right-hand side of screen
+  int left_screencols; //Number of columns on left-hand side of screen
+  int divider; //where the dividing line is between note list and editor (takes margins into account)
   std::vector<orow> rows;
   std::vector<std::string> preview_rows;
   std::string context;
@@ -300,7 +300,7 @@ void return_cursor(void);
 void get_preview(int);
 void draw_preview(void);
 void draw_search_preview(void);
-std::string draw_preview_box(unsigned int &, unsigned int &);
+std::string draw_preview_box(int, int);
 std::string generateWWString(std::vector<std::string> &, int, int, std::string);
 void highlight_terms_string(std::string &);
 void get_search_positions(int);

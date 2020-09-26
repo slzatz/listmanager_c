@@ -26,7 +26,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"spell",&Editor:: E_spellcheck_C},
   {"spellcheck", &Editor::E_spellcheck_C},
   {"persist", &Editor::E_persist_C},
-  {"run", &Editor::E_run_code_C}
+  {"run", &Editor::E_run_code_C} // this does change the text/usually COMMAND_LINE doesn't
 };
 
 /* EDITOR NORMAL mode command lookup */
@@ -3067,21 +3067,17 @@ void F_edit(int) {
   }
 
   eraseRightScreen();
-  //for (auto e : editors) e->editorRefreshScreen(true);
 
-
-  
   /*********************************/
   std::string ab;
   //for (auto e : editors) {
-  for (int i=0; i<editors.size(); i++) {  
+  //for (size_t i=0; i<editors.size(); i++) {  
+  for (size_t i=0, max=editors.size(); i!=max; ++i) {  
     Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
-    //char buf[32];
     std::string buf;
     ab.append("\x1b(0"); // Enter line drawing mode
     for (int j=1; j<O.screenlines+1; j++) {
-      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
       buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
       ab.append(buf);
       // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -3089,8 +3085,7 @@ void F_edit(int) {
       ab.append("\x1b[37;1mx");
     }
     //'T' corner = w or right top corner = k
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
-    buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
+    buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); 
     ab.append(buf);
     if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
     else ab.append("\x1b[37;1mw");
@@ -4172,8 +4167,8 @@ void draw_preview(void) {
 
   char buf[50];
   std::string ab;
-  unsigned int width = O.totaleditorcols - 10;
-  unsigned int length = O.screenlines - 10;
+  int width = O.totaleditorcols - 10;
+  int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
@@ -4303,8 +4298,8 @@ void draw_search_preview(void) {
 
   char buf[50];
   std::string ab;
-  unsigned int width = O.totaleditorcols - 10;
-  unsigned int length = O.screenlines - 10;
+  int width = O.totaleditorcols - 10;
+  int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, EDITOR_LEFT_MARGIN + 5);
@@ -4402,7 +4397,7 @@ void highlight_terms_string(std::string &text) {
   }
 }
 
-std::string draw_preview_box(unsigned int &width, unsigned int &length) {
+std::string draw_preview_box(int width, int length) {
   std::string ab;
   //char move_cursor[20];
   fmt::memory_buffer move_cursor;
@@ -4658,9 +4653,6 @@ void outlineDrawSearchRows(std::string& ab) {
 }
 
 void outlineRefreshAllEditors(void) {
-
-  //eraseRightScreen();
-
   //may be a redundant partial erase in each editorRefreshScreen
   for (auto e : editors) e->editorRefreshScreen(true);
     
@@ -6081,9 +6073,13 @@ bool editorProcessKeypress(void) {
         }
 
         if (E_lookup_C.count(cmd)) {
-          //E_lookup_C.at(p->command_line)();
           (p->*E_lookup_C.at(cmd))();
-          return false;
+
+          p->mode = NORMAL;
+          p->command[0] = '\0';
+          p->command_line.clear();
+
+          return true; //note spellcheck and cmd require redraw but not all command line commands (e.g. w)
         }
 
         p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", p->command_line.c_str());
@@ -6529,7 +6525,8 @@ int main(int argc, char** argv) {
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
       scroll = p->editorScroll();
-      redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll);
+      //redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll); //09242020
+      redraw = (text_change || scroll);
       p->editorRefreshScreen(redraw);
       ////////////////////
       if (scroll) {
