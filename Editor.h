@@ -1,6 +1,7 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
+#define SUBNOTE_HEIGHT 20 //height of subnote
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -49,14 +50,9 @@ class Editor {
       spellcheck = false;
       highlight_syntax = true; // should only apply to code
       undo_mode = false;
+      subnote_visible = true;
 
-      // ? whether the screen-related stuff should be in one place
-      /*
-      screenlines = screenlines - 2 - TOP_MARGIN - 10;
-      screencols = -2 + screencols/2 - 10;
-      total_screenlines = screenlines - 2 - TOP_MARGIN;
-      EDITOR_LEFT_MARGIN = screencols/2 + 1;
-      */
+      screenlines = (subnote_visible) ? total_screenlines - SUBNOTE_HEIGHT : total_screenlines;
 }
 
     int cx, cy; //cursor x and y position
@@ -67,7 +63,7 @@ class Editor {
     int screenlines; //number of lines for this Editor
     int screencols;  //number of columns for this Editor
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
-    int total_screenlines; //number of lines in display
+    //int total_screenlines; //number of lines in display -> made this static
     std::vector<std::string> rows;
     //std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
@@ -90,9 +86,12 @@ class Editor {
     int last_visible_row;
     bool spellcheck;
     bool highlight_syntax;
+    bool subnote_visible;
     std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
     static std::string string_buffer; //yanking chars
     static std::vector<std::string> line_buffer; //yanking lines
+    static int total_screenlines; //total screenlines available to Editors vertically
+    static int origin; //x column of Editor section
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
     int id; //listmanager db id of the row
@@ -103,6 +102,7 @@ class Editor {
     bool undo_mode;
     std::vector<std::string> snapshot;
 
+    void set_screenlines(void);
 
 /* undo - redo */
     void push_current(void);

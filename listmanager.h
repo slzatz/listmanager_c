@@ -87,7 +87,7 @@ const std::string mode_text[] = {
 inline bool lm_browser = true;
 inline bool editor_mode = false;
 inline std::map<int, std::string> html_files;
-inline int EDITOR_LEFT_MARGIN; //only used in Editor.cpp and = O.divider + 1
+inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
 void update_note(void); //used by Editor class 

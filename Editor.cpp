@@ -11,9 +11,14 @@
 
 std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
 std::string Editor::string_buffer = {}; //ditto
+int Editor::total_screenlines = 0; //ditto
+int Editor::origin = 0;
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
+void Editor::set_screenlines(void) {
+  screenlines = (subnote_visible) ? total_screenlines - SUBNOTE_HEIGHT : total_screenlines;
+}  
 // this is what needs to be done to undo the cmd that was entered
 enum Undo_method {
   CHANGE_ROW, //x,s,i,a,A,c,d
@@ -877,7 +882,8 @@ void Editor::editorDrawMessageBar(std::string& ab) {
   std::stringstream buf;
 
   // only use of EDITOR_LEFT_MARGIN in Editor.cpp
-  buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  //buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
+  buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << origin << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(message);
@@ -890,7 +896,8 @@ void Editor::editorDrawStatusBar(std::string& ab) {
   char status[200];
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1, left_margin);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1, left_margin);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", total_screenlines + TOP_MARGIN + 1, left_margin);
   ab.append(buf);
 
   //erase from start of an Editor's status bar to the end of the Editor's status bar
@@ -946,18 +953,6 @@ void Editor::editorDrawRows(std::string &ab) {
   // format for positioning cursor is "\x1b[%d;%dH"
   buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
   ab.append(buf.str());
-
-  /* testing moving into editorRefreshScreen
-  // erase the screen
-  for (int i=0; i < screenlines; i++) {
-    ab.append("\x1b[K");
-    ab.append(lf_ret, nchars);
-  }
-  */
-
-  //std::stringstream buf2;
-  //buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
-  //ab.append(buf2.str()); //reposition cursor
 
   if (rows.empty()) return;
 
@@ -1753,6 +1748,7 @@ int Editor::editorGetLinesInRowWW(int r) {
  * to operate on 
  * Produces a text string that starts at the first line of the
  * file and ends on the last visible line
+ * Only used by editorDrawCodeRows
  */
 std::string Editor::editorGenerateWWString(void) {
   if (rows.empty()) return "";
@@ -1911,10 +1907,6 @@ void Editor::E_open_in_vim_C(void) {
 void Editor::E_spellcheck_C(void) {
   spellcheck = !spellcheck;
   if (spellcheck) editorSpellCheck();
-  //else editorRefreshScreen(true);
-  //mode = NORMAL;
-  //command[0] = '\0';
-  //command_line.clear();
   editorSetMessage("Spellcheck %s", (spellcheck) ? "on" : "off");
 }
 #else
