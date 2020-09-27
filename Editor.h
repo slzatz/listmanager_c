@@ -1,7 +1,7 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
-#define SUBNOTE_HEIGHT 20 //height of subnote
+#define LINKED_NOTE_HEIGHT 10 //height of subnote
 #include <vector>
 #include <string>
 #include <unordered_map>
@@ -52,7 +52,9 @@ class Editor {
       undo_mode = false;
       subnote_visible = true;
 
-      screenlines = (subnote_visible) ? total_screenlines - SUBNOTE_HEIGHT : total_screenlines;
+      screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
+      linked_editor = nullptr;
+      is_linked_editor = false;
 }
 
     int cx, cy; //cursor x and y position
@@ -63,6 +65,7 @@ class Editor {
     int screenlines; //number of lines for this Editor
     int screencols;  //number of columns for this Editor
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
+    int top_margin;
     //int total_screenlines; //number of lines in display -> made this static
     std::vector<std::string> rows;
     //std::vector<std::string> prev_rows;
@@ -86,7 +89,6 @@ class Editor {
     int last_visible_row;
     bool spellcheck;
     bool highlight_syntax;
-    bool subnote_visible;
     std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
     static std::string string_buffer; //yanking chars
     static std::vector<std::string> line_buffer; //yanking lines
@@ -101,6 +103,9 @@ class Editor {
     int d_index; //undo_deque index
     bool undo_mode;
     std::vector<std::string> snapshot;
+    Editor *linked_editor;
+    bool is_linked_editor;
+    bool subnote_visible;
 
     void set_screenlines(void);
 

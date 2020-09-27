@@ -1171,15 +1171,24 @@ void get_note(int id) {
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
-  if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
+  //if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query.str().c_str(), note_callback, p, &S.err_msg, __func__)) return;
+
+  if (!p->linked_editor) return;
+
+  std::stringstream query2;
+  //query2 << "SELECT linked_note FROM task WHERE id = " << id;
+  query2 << "SELECT note FROM task WHERE id = " << id;
+  if (!db_query(S.db, query2.str().c_str(), note_callback, p->linked_editor, &S.err_msg, __func__)) return;
 }
 
 // doesn't appear to be called if row is NULL
-int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+int note_callback (void *e, int argc, char **argv, char **azColName) {
 
-  UNUSED(NotUsed);
+  //UNUSED(NotUsed);
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
+  Editor *editor = static_cast<Editor *>(e);
 
   if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
   std::string note(argv[0]);
@@ -1189,10 +1198,11 @@ int note_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   std::string s;
   while (getline(snote, s, '\n')) {
     //snote will not contain the '\n'
-    p->editorInsertRow(p->rows.size(), s);
+    //p->editorInsertRow(p->rows.size(), s);
+    editor->editorInsertRow(editor->rows.size(), s);
   }
 
-  p->dirty = 0;
+  //p->dirty = 0;
   return 0;
 }
 
@@ -3022,7 +3032,20 @@ void F_edit(int) {
       //editors.push_back(std::make_shared<Editor>(E));
       //p = editors.back();
       p->id = id;
+      p->top_margin = TOP_MARGIN + 1;
+      p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+      //get_note(id); //if id == -1 does not try to retrieve note
+
+      p->linked_editor = new Editor;
+      editors.push_back(p->linked_editor);
+      p->linked_editor->id = id;
+      p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+      p->linked_editor->is_linked_editor = true;
+      p->linked_editor->linked_editor = p;
       get_note(id); //if id == -1 does not try to retrieve note
+      
+      
     } else {
       p = *it;
     }    
@@ -3034,18 +3057,30 @@ void F_edit(int) {
     //editors.push_back(std::make_shared<Editor>(E));
     //p = editors.back();
     p->id = id;
+    p->top_margin = TOP_MARGIN + 1;
+    p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+    p->linked_editor = new Editor;
+    editors.push_back(p->linked_editor);
+    p->linked_editor->id = id;
+    p->linked_editor->top_margin = p->total_screenlines - LINKED_NOTE_HEIGHT + 2;
+    p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+    p->linked_editor->is_linked_editor = true;
+    p->linked_editor->linked_editor = p;
     get_note(id); //if id == -1 does not try to retrieve note
     //p->snapshot = p->rows; ////is this necessary?->answer appears to be no (09182020)
  }
 
-  int n = editors.size();
+  //int n = editors.size();
+  int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
-    //z->screenlines as defined below should be static
-    //z->screenlines = screenlines - 2 - TOP_MARGIN;
+    if (z->is_linked_editor) continue;
     z->screencols = -1 + (screencols - O.divider)/n;
-    //z->total_screenlines = screenlines - 2 - TOP_MARGIN;
     z->left_margin = O.divider + i*z->screencols + i;
+
+    z->linked_editor->screencols = z->screencols;
+    z->linked_editor->left_margin = z->left_margin;
+
     i++;
   }
 
@@ -3068,15 +3103,18 @@ void F_edit(int) {
     e->editorRefreshScreen(true);
     std::string buf;
     ab.append("\x1b(0"); // Enter line drawing mode
-    for (int j=1; j<O.screenlines+1; j++) {
-      buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
+    //for (int j=1; j<O.screenlines+1; j++) {
+    for (int j=1; j<e->screenlines+1; j++) {
+      //buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
+      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1 + j, e->left_margin + e->screencols+1);
       ab.append(buf);
       // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
       // only need one 'm'
       ab.append("\x1b[37;1mx");
     }
     //'T' corner = w or right top corner = k
-    buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); 
+    //buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); 
+    buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
     ab.append(buf);
     if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
     else ab.append("\x1b[37;1mw");
@@ -4757,7 +4795,8 @@ void return_cursor() {
   if (editor_mode) {
   // the lines below position the cursor where it should go
     if (p->mode != COMMAND_LINE){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
       snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", Editor::total_screenlines + TOP_MARGIN + 2, p->command_line.size() + O.divider + 2); 
@@ -5883,6 +5922,11 @@ bool editorProcessKeypress(void) {
         return false;
       }
 
+      if (c == CTRL_KEY('k') || c == CTRL_KEY('j')) {
+        p->command[0] = '\0';
+        if (p->linked_editor) p=p->linked_editor;
+        return false;
+      }
       /*leading digit is a multiplier*/
 
       if ((c > 47 && c < 58) && (strlen(p->command) == 0)) {
@@ -6010,7 +6054,8 @@ bool editorProcessKeypress(void) {
               //char buf[32];
               std::string buf;
               ab.append("\x1b(0"); // Enter line drawing mode
-              for (int j=1; j<O.screenlines+1; j++) {
+              //for (int j=1; j<O.screenlines+1; j++) {
+              for (int j=1; j<e->screenlines+1; j++) {
                 //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
                 buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
                 ab.append(buf);

@@ -17,7 +17,7 @@ int Editor::origin = 0;
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
 void Editor::set_screenlines(void) {
-  screenlines = (subnote_visible) ? total_screenlines - SUBNOTE_HEIGHT : total_screenlines;
+  screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
 }  
 // this is what needs to be done to undo the cmd that was entered
 enum Undo_method {
@@ -630,7 +630,7 @@ void Editor::editorSpellCheck(void) {
 
   //reposition the cursor back to where it belongs
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + left_margin + 1); //03022019
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + 1); //03022019
   write(STDOUT_FILENO, buf, strlen(buf));
 }
 
@@ -638,7 +638,7 @@ void Editor::editorSpellCheck(void) {
 void Editor::editorHighlightWord(int r, int c, int len) {
   std::string &row = rows.at(r);
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
-  int y = editorGetScreenYFromRowColWW(r, c) + TOP_MARGIN + 1 - line_offset; // added line offset 12-25-2019
+  int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
     << row.substr(c, len)
@@ -838,7 +838,7 @@ void Editor::editorRefreshScreen(bool redraw) {
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, left_margin + 1); //03022019 added len
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", top_margin, left_margin + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
   if (redraw) {
@@ -849,7 +849,8 @@ void Editor::editorRefreshScreen(bool redraw) {
     //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
     snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
     snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols);//09062020 added the -1: keeps lines from being erased
-    for (int i=0; i < total_screenlines; i++) {
+    //for (int i=0; i < .total_screenlines; i++) {
+    for (int i=0; i < screenlines; i++) {
       //ab.append("\x1b[K"); does everything to right of cursor - not good in multi-editor world
       //ab.append("\x1b[40X");
       ab.append(erase_chars);
@@ -863,12 +864,13 @@ void Editor::editorRefreshScreen(bool redraw) {
     //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
+
   editorDrawStatusBar(ab);
   editorDrawMessageBar(ab);
 
   // the lines below position the cursor where it should go
   if (mode != COMMAND_LINE){
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + left_margin + 1); //03022019
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + 1); //03022019
     ab.append(buf, strlen(buf));
   }
 
@@ -883,7 +885,7 @@ void Editor::editorDrawMessageBar(std::string& ab) {
 
   // only use of EDITOR_LEFT_MARGIN in Editor.cpp
   //buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
-  buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << origin << "H";
+  buf  << "\x1b[" << total_screenlines + top_margin + 1 << ";" << origin << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(message);
@@ -897,7 +899,8 @@ void Editor::editorDrawStatusBar(std::string& ab) {
   // position the cursor at the beginning of the editor status bar at correct indent
   char buf[32];
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1, left_margin);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", total_screenlines + TOP_MARGIN + 1, left_margin);
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", total_screenlines + top_margin, left_margin);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + top_margin, left_margin + 1);
   ab.append(buf);
 
   //erase from start of an Editor's status bar to the end of the Editor's status bar
@@ -951,7 +954,8 @@ void Editor::editorDrawRows(std::string &ab) {
 
   std::stringstream buf;
   // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
+  buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
+  //if (subnote_visible) buf ,, TOP_MARGIN + total_screenlines - SUBNOTE_HEIGHT
   ab.append(buf.str());
 
   if (rows.empty()) return;
@@ -1132,11 +1136,11 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
   std::stringstream buf;
   // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
+  buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
   ab.append(buf.str());
 
   std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 1 << ";" <<  left_margin + 1 << "H";
+  buf2 << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   //std::string line;
