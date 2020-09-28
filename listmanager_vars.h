@@ -230,7 +230,7 @@ void F_readfile(int pos);
 void F_valgrind(int pos); // pos not used
 void F_quit_app(int pos); // pos not used
 void F_quit_app_ex(int pos); // pos not used
-void F_merge(int pos); // pos not used
+//void F_merge(int pos); // pos not used
 void F_help(int pos);
 void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used
@@ -460,7 +460,7 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"q", F_quit_app},
   {"quit!", F_quit_app_ex},
   {"q!", F_quit_app_ex},
-  {"merge", F_merge},
+  //{"merge", F_merge},
   {"help", F_help},
   {"h", F_help},
   {"persist", F_persist},

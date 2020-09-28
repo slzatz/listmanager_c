@@ -91,7 +91,7 @@ inline std::map<int, std::string> html_files;
 inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
-void update_note(void); //used by Editor class 
+void update_note(bool); //used by Editor class 
 std::string get_title(int id);
 
 

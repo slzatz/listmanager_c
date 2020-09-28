@@ -17,8 +17,15 @@ int Editor::origin = 0;
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
 void Editor::set_screenlines(void) {
-  screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
-}  
+
+  if(linked_editor) {
+    if (is_subeditor) screenlines = LINKED_NOTE_HEIGHT;
+    else screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+  } else {
+    screenlines = Editor::total_screenlines;
+  }
+}
+
 // this is what needs to be done to undo the cmd that was entered
 enum Undo_method {
   CHANGE_ROW, //x,s,i,a,A,c,d
@@ -740,7 +747,8 @@ std::string Editor::editorRowsToString(void) {
 
 void Editor::editorInsertChar(int chr) {
   // does not handle returns which must be intercepted before calling this function
-  if (rows.empty()) { // creation of NO_ROWS may make this unnecessary
+  // necessary even with NO_ROWS because putting new entries into insert mode
+  if (rows.empty()) { 
     editorInsertRow(0, std::string());
   }
   std::string &row = rows.at(fr);
@@ -930,7 +938,7 @@ void Editor::editorDrawStatusBar(std::string& ab) {
     std::string title = get_title(id);
     std::string truncated_title = title.substr(0, 30);
     if (dirty) truncated_title.append("[+]"); 
-    len = snprintf(status, sizeof(status), "%d - %s ... %s", id, truncated_title.c_str(), (is_subnote) ? "subnote" : "");
+    len = snprintf(status, sizeof(status), "%d - %s ... %s", id, truncated_title.c_str(), (is_subeditor) ? "subeditor" : "");
     }
 
   if (len > screencols) len = screencols;
@@ -955,7 +963,6 @@ void Editor::editorDrawRows(std::string &ab) {
   std::stringstream buf;
   // format for positioning cursor is "\x1b[%d;%dH"
   buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
-  //if (subnote_visible) buf ,, TOP_MARGIN + total_screenlines - SUBNOTE_HEIGHT
   ab.append(buf.str());
 
   if (rows.empty()) return;
@@ -1849,10 +1856,11 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 /************************************* end of WW ************************************************/
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
-  update_note();
-  //mode = NORMAL;
-  //command[0] = '\0';
-  //command_line.clear();
+  update_note(is_subeditor);
+  editorSetMessage("");
+
+  if (is_subeditor) return;
+
   if (lm_browser) { //lm_browser is global
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
@@ -2488,16 +2496,17 @@ void Editor::E_run_code_C(void) {
 
   editorSetMessage("status code: %d", r.status_code);
 
-  rows.push_back("");
-  rows.push_back("----------------");;
-  rows.push_back(r.url); //s
-  rows.push_back("----------------");;
+  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  s_rows.push_back("");
+  s_rows.push_back("----------------");;
+  s_rows.push_back(r.url); //s
+  s_rows.push_back("----------------");;
 
   /*
   // raw returned json for testing 
   std::vector<std::string> zz = str2vecWW(r.text);
-  rows.insert(rows.end(), zz.begin(), zz.end());
-  rows.push_back("----------------");;
+  s_rows.insert(s_rows.end(), zz.begin(), zz.end());
+  s_rows.push_back("----------------");;
   */
 
   std::string str = r.text;
@@ -2507,7 +2516,7 @@ void Editor::E_run_code_C(void) {
   if (js1["buildResult"]["code"] == 0) {
     auto arr = js1["stdout"]; 
   for (const auto i : arr) {
-    rows.push_back(i["text"]);
+    s_rows.push_back(i["text"]);
   }
   }
   else {
@@ -2517,21 +2526,21 @@ void Editor::E_run_code_C(void) {
 
   for (const auto i : arr) {
     std::string s = i["text"];
-    rows.push_back(s);
+    s_rows.push_back(s);
   }
   }
 
-  rows.push_back("----------------");;
+  s_rows.push_back("----------------");;
 
   /*
   // for testing
   // pretty printing full json that is returned
   // note this process does not seem to change the sequences //u001b 
-  rows.push_back("");
+  s_rows.push_back("");
   std::string s = js1.dump(2); //2 is for pretty printing indent
   std::vector<std::string> z = str2vecWW(s);
-  rows.insert(rows.end(), z.begin(), z.end());
-  rows.push_back("----------------");;
+  s_rows.insert(s_rows.end(), z.begin(), z.end());
+  s_rows.push_back("----------------");;
   */
 
   dirty++;

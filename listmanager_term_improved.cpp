@@ -110,14 +110,19 @@ void signalHandler(int signum) {
 
   eraseScreenRedrawLines();
 
-  int n = editors.size();
+  //int n = editors.size();
+  int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
-    //z->screenlines = screenlines - 2 - TOP_MARGIN;
-    z->set_screenlines();
+    if (z->is_subeditor) continue;
     z->screencols = -1 + (screencols - O.divider)/n;
-    //z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-    z->left_margin = O.divider + i*z->screencols + i; //was +1
+    z->left_margin = O.divider + i*z->screencols + i;
+    z->set_screenlines();
+
+    z->linked_editor->screencols = z->screencols;
+    z->linked_editor->left_margin = z->left_margin;
+    z->linked_editor->set_screenlines();
+
     i++;
   }
 
@@ -1171,14 +1176,12 @@ void get_note(int id) {
 
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
-  //if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
   if (!db_query(S.db, query.str().c_str(), note_callback, p, &S.err_msg, __func__)) return;
 
   if (!p->linked_editor) return;
 
   std::stringstream query2;
-  //query2 << "SELECT linked_note FROM task WHERE id = " << id;
-  query2 << "SELECT note FROM task WHERE id = " << id;
+  query2 << "SELECT subnote FROM task WHERE id = " << id;
   if (!db_query(S.db, query2.str().c_str(), note_callback, p->linked_editor, &S.err_msg, __func__)) return;
 }
 
@@ -1805,10 +1808,13 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-void update_note(void) {
+//void update_note(void) {
+void update_note(bool is_subnote) {
 
   std::string text = p->editorRowsToString();
   std::stringstream query;
+
+  std::string column = (is_subnote) ? "subnote" : "note";
 
   // need to escape single quotes with two single quotes
   size_t pos = text.find("'");
@@ -1817,11 +1823,9 @@ void update_note(void) {
     pos = text.find("'", pos + 2);
   }
 
-  //int id = get_id();
-
-  //query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-  query << "UPDATE task SET note='" << text << "', modified=datetime('now', '-" << TZ_OFFSET << " hours'), "
-        << "startdate=datetime('now', '-" << TZ_OFFSET << " hours')WHERE id=" << p->id;
+  query << "UPDATE task SET " << column << "='" << text << "', modified=datetime('now', '-" 
+        << TZ_OFFSET << " hours'), " << "startdate=datetime('now', '-"
+        << TZ_OFFSET << " hours')WHERE id=" << p->id;
 
   sqlite3 *db;
   char *err_msg = 0;
@@ -1839,12 +1843,18 @@ void update_note(void) {
   if (rc != SQLITE_OK ) {
     outlineShowMessage("SQL error: %s", err_msg);
     sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Updated note for item %d", p->id);
-    outlineRefreshScreen();
+    return;
   }
 
+  p->dirty = 0;
+
   sqlite3_close(db);
+
+  if (is_subnote) {
+    outlineShowMessage("Updated *sub*note for item %d", p->id);
+    outlineRefreshScreen();
+    return;
+  }
 
   /***************fts virtual table update*********************/
 
@@ -1873,7 +1883,6 @@ void update_note(void) {
    
   sqlite3_close(db);
 
-  p->dirty = 0;
 }
 
 void update_task_context(std::string &new_context, int id) {
@@ -3037,7 +3046,7 @@ void F_edit(int) {
       p->linked_editor->id = id;
       p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
       p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-      p->linked_editor->is_subnote = true;
+      p->linked_editor->is_subeditor = true;
       p->linked_editor->linked_editor = p;
       get_note(id); //if id == -1 does not try to retrieve note
       
@@ -3056,7 +3065,7 @@ void F_edit(int) {
     p->linked_editor->id = id;
     p->linked_editor->top_margin = p->total_screenlines - LINKED_NOTE_HEIGHT + 2;
     p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-    p->linked_editor->is_subnote = true;
+    p->linked_editor->is_subeditor = true;
     p->linked_editor->linked_editor = p;
     get_note(id); //if id == -1 does not try to retrieve note
  }
@@ -3065,7 +3074,7 @@ void F_edit(int) {
   int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
-    if (z->is_subnote) continue;
+    if (z->is_subeditor) continue;
     z->screencols = -1 + (screencols - O.divider)/n;
     z->left_margin = O.divider + i*z->screencols + i;
 
@@ -3467,6 +3476,7 @@ void F_valgrind(int) {
 }
 
 //probably should be removed altogether
+/*
 void F_merge(int) {
   int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
   if (count < 2) {
@@ -3494,6 +3504,7 @@ void F_merge(int) {
   O.repeat = 0;
   O.mode = NORMAL;
 }
+*/
 
 void F_help(int pos) {
   if (!pos) {             
@@ -5911,6 +5922,11 @@ bool editorProcessKeypress(void) {
       if (c == CTRL_KEY('k') || c == CTRL_KEY('j')) {
         p->command[0] = '\0';
         if (p->linked_editor) p=p->linked_editor;
+        else return false;
+
+        if (p->rows.empty()) p->mode = NO_ROWS;
+        else p->mode = NORMAL;
+
         return false;
       }
       /*leading digit is a multiplier*/
@@ -6004,7 +6020,7 @@ bool editorProcessKeypress(void) {
         // note that right now we are not calling editor commands like E_write_close_C
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
-          if (cmd == "x") update_note();
+          if (cmd == "x") update_note(p->is_subeditor); //should be p->E_write_C();
 
           if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
@@ -6021,13 +6037,17 @@ bool editorProcessKeypress(void) {
           if (auto n = editors.size(); n > 1) {
 
             p->editorSetMessage("");
-            delete p;
+            if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
             editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+
+            delete p; //p given new value below
+
             p = editors[0]; //kluge should move in some logical fashion
+            /* This has to be changed !!!!!! */
             n--;
             int i = 0;
             for (auto z : editors) {
-              if (z->is_subnote) continue;
+              if (z->is_subeditor) continue;
               z->screencols = -1 + (screencols - O.divider)/n;
               z->left_margin = O.divider + i*z->screencols + i;
 
@@ -6067,6 +6087,7 @@ bool editorProcessKeypress(void) {
             /*********************************/
           } else {
             p->editorSetMessage("");
+            if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
 
             delete p;
             p = nullptr;

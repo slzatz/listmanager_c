@@ -50,11 +50,11 @@ class Editor {
       spellcheck = false;
       highlight_syntax = true; // should only apply to code
       undo_mode = false;
-      subnote_visible = true;
+      //subnote_visible = true;
 
-      screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
+      //screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
       linked_editor = nullptr;
-      is_subnote = false;
+      is_subeditor = false;
 }
 
     int cx, cy; //cursor x and y position
@@ -104,8 +104,8 @@ class Editor {
     bool undo_mode;
     std::vector<std::string> snapshot;
     Editor *linked_editor;
-    bool is_subnote;
-    bool subnote_visible;
+    bool is_subeditor;
+    //bool subnote_visible;
 
     void set_screenlines(void);
 
