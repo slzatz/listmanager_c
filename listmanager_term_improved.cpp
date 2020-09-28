@@ -129,26 +129,38 @@ void signalHandler(int signum) {
     }
   }
 
-  /*
-  int n = editors.size()/2;
-  int i = 0;
-  for (auto z : editors) {
-    if (z->is_subeditor) continue;
-    z->screencols = -1 + (screencols - O.divider)/n;
-    z->left_margin = O.divider + i*z->screencols + i;
-    z->set_screenlines();
-
-    z->linked_editor->screencols = z->screencols;
-    z->linked_editor->left_margin = z->left_margin;
-    z->linked_editor->set_screenlines();
-
-    i++;
-  }
-  */
-
   outlineRefreshScreen();
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
+
+  /************redraw editors and lines************/
+  /*******used in F_edit and editor COMMAND_LINE quit code and should be in function************/
+  std::string ab;
+  for (size_t i=0, max=editors.size(); i!=max; ++i) {  
+    Editor *&e = editors.at(i);
+    e->editorRefreshScreen(true);
+    std::string buf;
+    ab.append("\x1b(0"); // Enter line drawing mode
+    for (int j=1; j<e->screenlines+1; j++) {
+      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1 + j, e->left_margin + e->screencols+1);
+      ab.append(buf);
+      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+      // only need one 'm'
+      ab.append("\x1b[37;1mx");
+    }
+    //'T' corner = w or right top corner = k
+    buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
+    ab.append(buf);
+    if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+    else ab.append("\x1b[37;1mw");
+
+    //exit line drawing mode
+    ab.append("\x1b(B");
+  }
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  ab.append("\x1b[0m"); //or else subsequent editors are bold
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  /*********************************/
 
   if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
     get_preview(O.rows.at(O.fr).id);
@@ -3105,25 +3117,10 @@ void F_edit(int) {
     z->screencols = s_cols;
     z->set_screenlines();
   }
-  /*
-  int n = editors.size()/2;
-  int i = 0;
-  for (auto z : editors) {
-    if (z->is_subeditor) continue;
-    z->screencols = -1 + (screencols - O.divider)/n;
-    z->left_margin = O.divider + i*z->screencols + i;
-
-    z->linked_editor->screencols = z->screencols;
-    z->linked_editor->left_margin = z->left_margin;
-
-    i++;
-  }
-  */
 
   if (p->rows.empty()) {
     p->mode = INSERT;
     p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-    //p->editorRefreshScreen(false);
   } else {
     p->mode = NORMAL;
   }
@@ -5941,6 +5938,8 @@ bool editorProcessKeypress(void) {
         int index = std::distance(editors.begin(), it);
         if (index) {
           p = editors[index - 1];
+          if (p->rows.empty()) p->mode = NO_ROWS;
+          else p->mode = NORMAL;
         } else {editor_mode = false;
           get_preview(O.rows.at(O.fr).id); 
           return false;
@@ -5952,6 +5951,8 @@ bool editorProcessKeypress(void) {
         auto it = std::find(editors.begin(), editors.end(), p);
         int index = std::distance(editors.begin(), it);
         if (index < editors.size() - 1) p = editors[index + 1];
+        if (p->rows.empty()) p->mode = NO_ROWS;
+        else p->mode = NORMAL;
         return false;
       }
 
