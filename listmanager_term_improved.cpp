@@ -110,7 +110,26 @@ void signalHandler(int signum) {
 
   eraseScreenRedrawLines();
 
-  //int n = editors.size();
+  if (!editors.empty()) {
+
+    std::unordered_set<int> temp;
+    for (auto z : editors) {
+      temp.insert(z->id);
+    }
+
+    int s_cols = -1 + (screencols - O.divider)/temp.size();
+    temp.clear();
+    int i = -1;
+    for (auto z : editors) {
+      auto ret = temp.insert(z->id);
+      if (ret.second == true) i++;
+      z->left_margin = O.divider + i*s_cols + i;
+      z->screencols = s_cols;
+      z->set_screenlines(); //also sets top margin
+    }
+  }
+
+  /*
   int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
@@ -125,6 +144,7 @@ void signalHandler(int signum) {
 
     i++;
   }
+  */
 
   outlineRefreshScreen();
   outlineDrawStatusBar();
@@ -3070,7 +3090,22 @@ void F_edit(int) {
     get_note(id); //if id == -1 does not try to retrieve note
  }
 
-  //int n = editors.size();
+  std::unordered_set<int> temp;
+  for (auto z : editors) {
+    temp.insert(z->id);
+  }
+
+  int s_cols = -1 + (screencols - O.divider)/temp.size();
+  temp.clear();
+  int i = -1;
+  for (auto z : editors) {
+    auto ret = temp.insert(z->id);
+    if (ret.second == true) i++;
+    z->left_margin = O.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->set_screenlines();
+  }
+  /*
   int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
@@ -3083,6 +3118,7 @@ void F_edit(int) {
 
     i++;
   }
+  */
 
   if (p->rows.empty()) {
     p->mode = INSERT;
@@ -6043,8 +6079,25 @@ bool editorProcessKeypress(void) {
             delete p; //p given new value below
 
             p = editors[0]; //kluge should move in some logical fashion
-            /* This has to be changed !!!!!! */
-            n--;
+
+            std::unordered_set<int> temp;
+            for (auto z : editors) {
+              temp.insert(z->id);
+            }
+
+            int s_cols = -1 + (screencols - O.divider)/temp.size();
+            temp.clear();
+            int i = -1;
+            for (auto z : editors) {
+              auto ret = temp.insert(z->id);
+              if (ret.second == true) i++;
+              z->left_margin = O.divider + i*s_cols + i;
+              z->screencols = s_cols;
+              z->set_screenlines(); //also sets top margin
+            }
+
+            /*
+            n--; // I don't think this was ever right!!
             int i = 0;
             for (auto z : editors) {
               if (z->is_subeditor) continue;
@@ -6056,6 +6109,8 @@ bool editorProcessKeypress(void) {
 
               i++;
             }
+            */
+
             /**********also in F_edit - should be in a function ***********************/
             std::string ab;
             for (auto &e : editors) {

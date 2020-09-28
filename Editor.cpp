@@ -16,13 +16,19 @@ int Editor::origin = 0;
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
-void Editor::set_screenlines(void) {
+void Editor::set_screenlines(void) { //also sets top margin
 
   if(linked_editor) {
-    if (is_subeditor) screenlines = LINKED_NOTE_HEIGHT;
-    else screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+    if (is_subeditor) {
+      screenlines = LINKED_NOTE_HEIGHT;
+      top_margin = total_screenlines - LINKED_NOTE_HEIGHT + 2;
+    } else {
+      screenlines = total_screenlines - LINKED_NOTE_HEIGHT - 1;
+      top_margin =  TOP_MARGIN + 1;
+    }
   } else {
-    screenlines = Editor::total_screenlines;
+    screenlines = total_screenlines;
+    top_margin =  TOP_MARGIN + 1;
   }
 }
 
@@ -868,7 +874,7 @@ void Editor::editorRefreshScreen(bool redraw) {
     //ab.append("\x1b[5;100;200;100$z");
 
     //Temporary kluge tid for code folder = 18
-    if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK)) editorDrawCodeRows(ab);
+    if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
     //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
@@ -2497,6 +2503,8 @@ void Editor::E_run_code_C(void) {
   editorSetMessage("status code: %d", r.status_code);
 
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  // lets clear the current rows although might revisit this
+  s_rows.clear();
   s_rows.push_back("");
   s_rows.push_back("----------------");;
   s_rows.push_back(r.url); //s
@@ -2543,6 +2551,9 @@ void Editor::E_run_code_C(void) {
   s_rows.push_back("----------------");;
   */
 
-  dirty++;
+  linked_editor->fr = 0;
+  linked_editor->fc = 0;
+  linked_editor->editorRefreshScreen(true);
+  linked_editor->dirty++;
 
 }
