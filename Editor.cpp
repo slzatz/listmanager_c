@@ -930,7 +930,7 @@ void Editor::editorDrawStatusBar(std::string& ab) {
     std::string title = get_title(id);
     std::string truncated_title = title.substr(0, 30);
     if (dirty) truncated_title.append("[+]"); 
-    len = snprintf(status, sizeof(status), "%d - %s ...", id, truncated_title.c_str());
+    len = snprintf(status, sizeof(status), "%d - %s ... %s", id, truncated_title.c_str(), (is_subnote) ? "subnote" : "");
     }
 
   if (len > screencols) len = screencols;

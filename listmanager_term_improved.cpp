@@ -1202,7 +1202,7 @@ int note_callback (void *e, int argc, char **argv, char **azColName) {
     editor->editorInsertRow(editor->rows.size(), s);
   }
 
-  //p->dirty = 0;
+  editor->dirty = 0; //assume editorInsertRow increments dirty so this needed
   return 0;
 }
 
@@ -3025,23 +3025,19 @@ void F_edit(int) {
                        [&id](auto& pp) { return pp->id == id; }); //auto&& also works
 
     if (it == editors.end()) {
-      //Editor E;
-      //editors.push_back(&E);
       p = new Editor;
       editors.push_back(p);
       //editors.push_back(std::make_shared<Editor>(E));
-      //p = editors.back();
       p->id = id;
       p->top_margin = TOP_MARGIN + 1;
       p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
-      //get_note(id); //if id == -1 does not try to retrieve note
 
       p->linked_editor = new Editor;
       editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
       p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
       p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-      p->linked_editor->is_linked_editor = true;
+      p->linked_editor->is_subnote = true;
       p->linked_editor->linked_editor = p;
       get_note(id); //if id == -1 does not try to retrieve note
       
@@ -3050,12 +3046,8 @@ void F_edit(int) {
       p = *it;
     }    
   } else {
-    //Editor E;
     p = new Editor;
-    //editors.push_back(&E);
     editors.push_back(p);
-    //editors.push_back(std::make_shared<Editor>(E));
-    //p = editors.back();
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
     p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
@@ -3064,17 +3056,16 @@ void F_edit(int) {
     p->linked_editor->id = id;
     p->linked_editor->top_margin = p->total_screenlines - LINKED_NOTE_HEIGHT + 2;
     p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-    p->linked_editor->is_linked_editor = true;
+    p->linked_editor->is_subnote = true;
     p->linked_editor->linked_editor = p;
     get_note(id); //if id == -1 does not try to retrieve note
-    //p->snapshot = p->rows; ////is this necessary?->answer appears to be no (09182020)
  }
 
   //int n = editors.size();
   int n = editors.size()/2;
   int i = 0;
   for (auto z : editors) {
-    if (z->is_linked_editor) continue;
+    if (z->is_subnote) continue;
     z->screencols = -1 + (screencols - O.divider)/n;
     z->left_margin = O.divider + i*z->screencols + i;
 
@@ -3096,16 +3087,12 @@ void F_edit(int) {
 
   /*********************************/
   std::string ab;
-  //for (auto e : editors) {
-  //for (size_t i=0; i<editors.size(); i++) {  
   for (size_t i=0, max=editors.size(); i!=max; ++i) {  
     Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
     std::string buf;
     ab.append("\x1b(0"); // Enter line drawing mode
-    //for (int j=1; j<O.screenlines+1; j++) {
     for (int j=1; j<e->screenlines+1; j++) {
-      //buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
       buf = fmt::format("\x1b[{};{}H", e->top_margin - 1 + j, e->left_margin + e->screencols+1);
       ab.append(buf);
       // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -3113,7 +3100,6 @@ void F_edit(int) {
       ab.append("\x1b[37;1mx");
     }
     //'T' corner = w or right top corner = k
-    //buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); 
     buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
     ab.append(buf);
     if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
@@ -6018,7 +6004,6 @@ bool editorProcessKeypress(void) {
         // note that right now we are not calling editor commands like E_write_close_C
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
-        //if (p->command_line == "q" || p->command_line == "quit") {
           if (cmd == "x") update_note();
 
           if (cmd == "q!" || cmd == "quit!") {
@@ -6032,31 +6017,33 @@ bool editorProcessKeypress(void) {
           }
 
           eraseRightScreen();
+
           if (auto n = editors.size(); n > 1) {
+
+            p->editorSetMessage("");
+            delete p;
             editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
             p = editors[0]; //kluge should move in some logical fashion
             n--;
             int i = 0;
             for (auto z : editors) {
-              //z->screenlines = screenlines - 2 - TOP_MARGIN;
+              if (z->is_subnote) continue;
               z->screencols = -1 + (screencols - O.divider)/n;
-              //z->total_screenlines = screenlines - 2 - TOP_MARGIN;
-              z->left_margin = O.divider +  i*z->screencols + i; //was +1
-              //z->editorRefreshScreen(true);
+              z->left_margin = O.divider + i*z->screencols + i;
+
+              z->linked_editor->screencols = z->screencols;
+              z->linked_editor->left_margin = z->left_margin;
+
               i++;
             }
             /**********also in F_edit - should be in a function ***********************/
             std::string ab;
             for (auto &e : editors) {
-            //for (int i=0; i<editors.size(); i++) {  
-              //Editor *&e = editors.at(i);
               e->editorRefreshScreen(true);
-              //char buf[32];
               std::string buf;
               ab.append("\x1b(0"); // Enter line drawing mode
               //for (int j=1; j<O.screenlines+1; j++) {
               for (int j=1; j<e->screenlines+1; j++) {
-                //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, e->left_margin + e->screencols+1); 
                 buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
                 ab.append(buf);
                 // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -6079,12 +6066,16 @@ bool editorProcessKeypress(void) {
             write(STDOUT_FILENO, ab.c_str(), ab.size());
             /*********************************/
           } else {
+            p->editorSetMessage("");
+
+            delete p;
+            p = nullptr;
+
             editors.clear(); // there's only one so also could just erase editors0]
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id);
           }
-        //editorRefreshScreen(false); // don't need to redraw rows
-          p->editorSetMessage("");
+
           return false;
         }
 
@@ -6542,6 +6533,7 @@ int main(int argc, char** argv) {
     // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
+      if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
       scroll = p->editorScroll();
       //redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll); //09242020
       redraw = (text_change || scroll);

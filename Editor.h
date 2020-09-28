@@ -54,7 +54,7 @@ class Editor {
 
       screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
       linked_editor = nullptr;
-      is_linked_editor = false;
+      is_subnote = false;
 }
 
     int cx, cy; //cursor x and y position
@@ -104,7 +104,7 @@ class Editor {
     bool undo_mode;
     std::vector<std::string> snapshot;
     Editor *linked_editor;
-    bool is_linked_editor;
+    bool is_subnote;
     bool subnote_visible;
 
     void set_screenlines(void);
