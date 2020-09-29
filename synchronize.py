@@ -423,6 +423,7 @@ def synchronize(report_only=True):
         task.tag = st.tag
         task.completed = st.completed if st.completed else None
         task.note = st.note
+        task.subnote = st.subnote
         task.modified = st.modified # usually not necessary - done by sqla onupdate but might be needed if no changes detected ie keywords change
 
         local_session.commit() #new/updated client task commit
@@ -451,7 +452,7 @@ def synchronize(report_only=True):
             
         if action == "created":
             title = task.title
-            note = task.note
+            note = task.note # not indexing subnote
             if not note:
                 note = ""
             # not sure escaping the single quotes is necessary here since probably already escaped but not sure
@@ -503,6 +504,7 @@ def synchronize(report_only=True):
         task.tag = ct.tag
         task.completed = ct.completed if ct.completed else None
         task.note = ct.note
+        task.subnote = ct.subnote
         task.modified = ct.modified # not necessary - done by sqla onupdate but might be if no changes detected ie keywords change
 
         remote_session.commit() #new/updated client task commit
