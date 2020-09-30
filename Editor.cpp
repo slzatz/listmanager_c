@@ -16,110 +16,91 @@ int Editor::origin = 0;
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
+// used by %
 std::pair<int,int> Editor::move_to_right_brace(void) {
   int r = fr;
   int c = fc + 1;
   int count = 1;
   int max = rows.size();
-  //bool found = false;
 
   for (;;) {
 
-    //if (found) break;
+  std::string &row = rows.at(r);
 
-    if (r == max) {
-      editorSetMessage("Couldn't find matching brace");
-      return std::make_pair(fr,fc);
-    }
-
-    std::string &row = rows.at(r);
-
-    for (;;) {
-
-      if (c >= row.size()) { //fc + 1 can be greater than row.size on first pass from INSERT if bracket at end of line
-        r++;
-        c = 0;
-        break;
+    // right now this function only called from NORMAL mode by typing '%'
+    // note that function that deals with INSERT needs  c >= row.size() because
+    // brace could be at end of line and fc could be row.size() before doing fc + 1
+    if (c == row.size()) { 
+      r++;
+      if (r == max) {
+        editorSetMessage("Couldn't find matching brace");
+        return std::make_pair(fr,fc);
       }
-
-      if (row.at(c) == '}') {
-        count -= 1;
-        if (count == 0) {
-          //found = true;
-          //break;
-          return std::make_pair(r,c);
-        }   
-      } else if (row.at(c) == '{') count += 1;
-
-      c++;
+      c = 0;
+      continue;
     }
+
+    if (row.at(c) == '}') {
+      count -= 1;
+      if (count == 0) return std::make_pair(r,c);
+    } else if (row.at(c) == '{') count += 1;
+
+    c++;
   }
-
-  //return std::make_pair(r,c);
-
 }
 
+//triggered by % in NORMAL mode
 void Editor::E_move_to_matching_brace(int repeat) {
   std::pair<int,int> pos;
   if (rows.at(fr).at(fc) == '{') 
-      //auto [r,c] = move_to_right_brace();
       pos = move_to_right_brace();
   else if (rows.at(fr).at(fc) == '}') 
-      //auto [r,c] = move_to_left_brace();
       pos = move_to_left_brace();
-  //fr = r;
-  //fc = c;
   fr = pos.first;
   fc = pos.second;
 }
 
+//'automatically' happens in NORMAL and INSERT mode
 bool Editor::find_match_for_left_brace(bool back) {
   int r = fr;
   int c = fc + 1;
   int count = 1;
   int max = rows.size();
-  bool found = false;
 
   for (;;) {
 
-    if (found) break;
-
-    if (r == max) {
-      editorSetMessage("Couldn't find matching brace");
-      return false;
-    }
-
     std::string &row = rows.at(r);
 
-    for (;;) {
-
-      if (c >= row.size()) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
-        r++;
-        c = 0;
-        break;
+    // need >= because brace could be at end of line and in INSERT mode
+    // fc could be row.size() [ie beyond the last char in the line
+    // and so doing fc + 1 above leads to c > row.size()
+    if (c >= row.size()) {
+      r++;
+      if (r == max) {
+        editorSetMessage("Couldn't find matching brace");
+        return false;
       }
-
-      if (row.at(c) == '}') {
-        count -= 1;
-        if (count == 0) {
-          found = true;
-          break;
-        }   
-      } else if (row.at(c) == '{') count += 1;
-
-      c++;
+      c = 0;
+      continue;
     }
+
+    if (row.at(c) == '}') {
+      count -= 1;
+      if (count == 0) break;
+    } else if (row.at(c) == '{') count += 1;
+
+    c++;
   }
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
     << "}";
     //<< "\x1b[0m";
 
   x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" //"\x1b[48;5;31m"
     << "{"
     << "\x1b[0m";
   write(STDOUT_FILENO, s.str().c_str(), s.str().size());
@@ -127,6 +108,7 @@ bool Editor::find_match_for_left_brace(bool back) {
   return true;
 }
 
+// used by %
 std::pair<int,int> Editor::move_to_left_brace(void) {
   int r = fr;
   int c = fc - 1;
@@ -156,6 +138,7 @@ std::pair<int,int> Editor::move_to_left_brace(void) {
   }
 }
 
+//'automatically' happens in NORMAL and INSERT mode
 bool Editor::find_match_for_right_brace(bool back) {
   int r = fr;
   int c = fc - 1 - back;
@@ -186,13 +169,13 @@ bool Editor::find_match_for_right_brace(bool back) {
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
     << "{";
     //<< "\x1b[0m";
 
   x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
     << "}"
     << "\x1b[0m";
   write(STDOUT_FILENO, s.str().c_str(), s.str().size());
