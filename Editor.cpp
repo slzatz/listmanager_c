@@ -16,6 +16,63 @@ int Editor::origin = 0;
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
+std::pair<int,int> Editor::move_to_right_brace(void) {
+  int r = fr;
+  int c = fc + 1;
+  int count = 1;
+  int max = rows.size();
+  //bool found = false;
+
+  for (;;) {
+
+    //if (found) break;
+
+    if (r == max) {
+      editorSetMessage("Couldn't find matching brace");
+      return std::make_pair(fr,fc);
+    }
+
+    std::string &row = rows.at(r);
+
+    for (;;) {
+
+      if (c >= row.size()) { //fc + 1 can be greater than row.size on first pass from INSERT if bracket at end of line
+        r++;
+        c = 0;
+        break;
+      }
+
+      if (row.at(c) == '}') {
+        count -= 1;
+        if (count == 0) {
+          //found = true;
+          //break;
+          return std::make_pair(r,c);
+        }   
+      } else if (row.at(c) == '{') count += 1;
+
+      c++;
+    }
+  }
+
+  //return std::make_pair(r,c);
+
+}
+
+void Editor::E_move_to_matching_brace(int repeat) {
+  std::pair<int,int> pos;
+  if (rows.at(fr).at(fc) == '{') 
+      //auto [r,c] = move_to_right_brace();
+      pos = move_to_right_brace();
+  else if (rows.at(fr).at(fc) == '}') 
+      //auto [r,c] = move_to_left_brace();
+      pos = move_to_left_brace();
+  //fr = r;
+  //fc = c;
+  fr = pos.first;
+  fc = pos.second;
+}
+
 bool Editor::find_match_for_left_brace(bool back) {
   int r = fr;
   int c = fc + 1;
@@ -70,33 +127,62 @@ bool Editor::find_match_for_left_brace(bool back) {
   return true;
 }
 
+std::pair<int,int> Editor::move_to_left_brace(void) {
+  int r = fr;
+  int c = fc - 1;
+  int count = 1;
+
+  std::string row = rows.at(r);
+
+  for (;;) {
+
+    if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
+      r--;
+      if (r == -1) {
+        editorSetMessage("Couldn't find matching brace");
+        return std::make_pair(fr,fc);
+      }
+      row = rows.at(r);
+      c = row.size() - 1;
+      continue;
+    }
+
+    if (row.at(c) == '{') {
+      count -= 1;
+      if (count == 0) return std::make_pair(r,c);
+    } else if (row.at(c) == '}') count += 1;
+
+    c--;
+  }
+}
+
 bool Editor::find_match_for_right_brace(bool back) {
   int r = fr;
   int c = fc - 1 - back;
   int count = 1;
 
-    std::string row = rows.at(r);
+  std::string row = rows.at(r);
 
-    for (;;) {
+  for (;;) {
 
-      if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
-        r--;
-        if (r == -1) {
-          editorSetMessage("Couldn't find matching brace");
-          return false;
-        }
-        row = rows.at(r);
-        c = row.size() - 1;
-        continue;
+    if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
+      r--;
+      if (r == -1) {
+        editorSetMessage("Couldn't find matching brace");
+        return false;
       }
-
-      if (row.at(c) == '{') {
-        count -= 1;
-        if (count == 0) break;
-      } else if (row.at(c) == '}') count += 1;
-
-      c--;
+      row = rows.at(r);
+      c = row.size() - 1;
+      continue;
     }
+
+    if (row.at(c) == '{') {
+      count -= 1;
+      if (count == 0) break;
+    } else if (row.at(c) == '}') count += 1;
+
+    c--;
+  }
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;

@@ -111,7 +111,10 @@ class Editor {
 
     void set_screenlines(void);
     bool find_match_for_left_brace(bool back=false);
+    std::pair<int,int> move_to_right_brace(void);
     bool find_match_for_right_brace(bool back=false);
+    std::pair<int,int> move_to_left_brace(void);
+    
 
 /* undo - redo */
     void push_current(void);
@@ -186,6 +189,7 @@ class Editor {
     void E_find_next_word(int);
     void E_undo(int);
     void E_redo(int);
+    void E_move_to_matching_brace(int);
 
     void editorInsertNewline(int);
     void editorDelChar(void);
