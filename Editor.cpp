@@ -16,6 +16,104 @@ int Editor::origin = 0;
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
+bool Editor::find_match_for_left_brace(bool back) {
+  int r = fr;
+  int c = fc + 1;
+  int count = 1;
+  int max = rows.size();
+  bool found = false;
+
+  for (;;) {
+
+    if (found) break;
+
+    if (r == max) {
+      editorSetMessage("Couldn't find matching brace");
+      return false;
+    }
+
+    std::string &row = rows.at(r);
+
+    for (;;) {
+
+      if (c >= row.size()) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
+        r++;
+        c = 0;
+        break;
+      }
+
+      if (row.at(c) == '}') {
+        count -= 1;
+        if (count == 0) {
+          found = true;
+          break;
+        }   
+      } else if (row.at(c) == '{') count += 1;
+
+      c++;
+    }
+  }
+  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
+  int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
+  std::stringstream s;
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << "}";
+    //<< "\x1b[0m";
+
+  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
+  y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << "{"
+    << "\x1b[0m";
+  write(STDOUT_FILENO, s.str().c_str(), s.str().size());
+  editorSetMessage("r = %d   c = %d", r, c);
+  return true;
+}
+
+bool Editor::find_match_for_right_brace(bool back) {
+  int r = fr;
+  int c = fc - 1 - back;
+  int count = 1;
+
+    std::string row = rows.at(r);
+
+    for (;;) {
+
+      if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
+        r--;
+        if (r == -1) {
+          editorSetMessage("Couldn't find matching brace");
+          return false;
+        }
+        row = rows.at(r);
+        c = row.size() - 1;
+        continue;
+      }
+
+      if (row.at(c) == '{') {
+        count -= 1;
+        if (count == 0) break;
+      } else if (row.at(c) == '}') count += 1;
+
+      c--;
+    }
+  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
+  int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
+  std::stringstream s;
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << "{";
+    //<< "\x1b[0m";
+
+  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
+  y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
+  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
+    << "}"
+    << "\x1b[0m";
+  write(STDOUT_FILENO, s.str().c_str(), s.str().size());
+  editorSetMessage("r = %d   c = %d", r, c);
+  return true;
+}
+
 void Editor::set_screenlines(void) { //also sets top margin
 
   if(linked_editor) {
@@ -844,10 +942,10 @@ void Editor::editorFindNextWord(void) {
     fr = y;
   }
 }
-
+ 
 // called by get_note (and others) and in main while loop
 // redraw == true means draw the rows
-void Editor::editorRefreshScreen(bool redraw) {
+void Editor::editorRefreshScreen(bool draw) {
   char buf[32];
   std::string ab;
 
@@ -855,7 +953,7 @@ void Editor::editorRefreshScreen(bool redraw) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", top_margin, left_margin + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
-  if (redraw) {
+  if (draw) {
     // erase the screen - problem erases everything to the right - is there a rectangular erase??????
     char lf_ret[10];
     char erase_chars[10];
@@ -891,7 +989,22 @@ void Editor::editorRefreshScreen(bool redraw) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
   // can't do this until ab is written or will just overwite highlights
-  if (redraw && spellcheck) editorSpellCheck();
+  if (draw && spellcheck) editorSpellCheck();
+  //if (!last_typed.empty() && last_typed.back() == '{') find_match_for_forward_brace();
+  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '{') {//happens at end of row in INSERT mode
+    redraw = find_match_for_left_brace();
+   // editorSetMessage("redraw = %d", redraw);
+  } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '{') {
+    redraw = find_match_for_left_brace(true);
+  } else {redraw = false;}
+  if (redraw) return;
+  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '}') {//happens at end of row in INSERT mode
+    redraw = find_match_for_right_brace();
+   // editorSetMessage("redraw = %d", redraw);
+  } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '}') {
+    redraw = find_match_for_right_brace(true);
+  } else {redraw = false;}
+  //editorSetMessage("redraw = %d", redraw);
 }
 
 void Editor::editorDrawMessageBar(std::string& ab) {
@@ -1863,6 +1976,7 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
   update_note(is_subeditor);
+  //p->dirty = 0 is in update_note but dirty = 0 is probably better here.
   editorSetMessage("");
 
   if (is_subeditor) return;

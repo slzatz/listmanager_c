@@ -49,6 +49,7 @@ class Editor {
       first_visible_row = 0;
       spellcheck = false;
       highlight_syntax = true; // should only apply to code
+      redraw = false;
       undo_mode = false;
       //subnote_visible = true;
 
@@ -89,6 +90,7 @@ class Editor {
     int last_visible_row;
     bool spellcheck;
     bool highlight_syntax;
+    bool redraw;
     std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
     static std::string string_buffer; //yanking chars
     static std::vector<std::string> line_buffer; //yanking lines
@@ -108,6 +110,8 @@ class Editor {
     //bool subnote_visible;
 
     void set_screenlines(void);
+    bool find_match_for_left_brace(bool back=false);
+    bool find_match_for_right_brace(bool back=false);
 
 /* undo - redo */
     void push_current(void);

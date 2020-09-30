@@ -1878,7 +1878,7 @@ void update_note(bool is_subnote) {
     return;
   }
 
-  p->dirty = 0;
+  p->dirty = 0; //should probably be in E_write_C nor here.
 
   sqlite3_close(db);
 
@@ -5899,6 +5899,7 @@ bool editorProcessKeypress(void) {
         default:
           p->editorInsertChar(c);
           p->last_typed += c;
+          //if (c == '{') p->find_match_for_forward_brace();
           // not 100% clear but should deal with O, o which can't be dealt with as single line
           //p->undo_deque[0].last_typed += c;
           return true;
@@ -6613,7 +6614,7 @@ int main(int argc, char** argv) {
       if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
       scroll = p->editorScroll();
       //redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll); //09242020
-      redraw = (text_change || scroll);
+      redraw = (text_change || scroll || p->redraw);
       p->editorRefreshScreen(redraw);
       ////////////////////
       if (scroll) {
