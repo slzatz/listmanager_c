@@ -135,7 +135,7 @@ void signalHandler(int signum) {
   outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
 
   /************redraw editors and lines************/
-  /*******used in F_edit and editor COMMAND_LINE quit code and should be in function************/
+  /*******also used in F_edit and editor COMMAND_LINE quit code and should be in function************/
   std::string ab;
   for (size_t i=0, max=editors.size(); i!=max; ++i) {  
     Editor *&e = editors.at(i);
@@ -3128,7 +3128,7 @@ void F_edit(int) {
 
   eraseRightScreen();
 
-  /*********************************/
+  /****also used in SignalHandler and COMMAND_LINE quit code and should be in function*****************************/
   std::string ab;
   for (size_t i=0, max=editors.size(); i!=max; ++i) {  
     Editor *&e = editors.at(i);
@@ -4042,10 +4042,11 @@ void eraseRightScreen(void) {
   fmt::memory_buffer lf_ret;
   //note O.divider -1 would take out center divider line and don't want to do that
   fmt::format_to(lf_ret, "\r\n\x1b[{}C", O.divider);
-  for (int i=0; i < screenlines - TOP_MARGIN; i++) {
+  for (int i=0; i < screenlines - TOP_MARGIN; i++) { 
     ab.append("\x1b[K");
     ab.append(lf_ret.data(), lf_ret.size());
   }
+    ab.append("\x1b[K"); //added 09302020 to erase the last line (message line)
 
   // redraw top horizontal line which has t's so needs to be erased
   ab.append("\x1b(0"); // Enter line drawing mode
@@ -5743,6 +5744,7 @@ bool editorProcessKeypress(void) {
           p->command[0] = '\0';
           p->repeat = 0;
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          // ? p->redraw = true;
           return true;
       }
 
@@ -5900,9 +5902,6 @@ bool editorProcessKeypress(void) {
         default:
           p->editorInsertChar(c);
           p->last_typed += c;
-          //if (c == '{') p->find_match_for_forward_brace();
-          // not 100% clear but should deal with O, o which can't be dealt with as single line
-          //p->undo_deque[0].last_typed += c;
           return true;
      
       } //end inner switch for outer case INSERT
@@ -6073,13 +6072,19 @@ bool editorProcessKeypress(void) {
 
           eraseRightScreen();
 
-          if (auto n = editors.size(); n > 1) {
+          //if (auto n = editors.size(); n > 1) {
 
-            p->editorSetMessage("");
-            if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
-            editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+          //p->editorSetMessage(""); //now handled by eraseRightScreen
+          //if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
+          editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+          if (p->linked_editor) {
+             editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
+             delete p->linked_editor;
+          }
 
-            delete p; //p given new value below
+          delete p; //p given new value below
+
+          if (!editors.empty()) {
 
             p = editors[0]; //kluge should move in some logical fashion
 
@@ -6099,28 +6104,14 @@ bool editorProcessKeypress(void) {
               z->set_screenlines(); //also sets top margin
             }
 
-            /*
-            n--; // I don't think this was ever right!!
-            int i = 0;
-            for (auto z : editors) {
-              if (z->is_subeditor) continue;
-              z->screencols = -1 + (screencols - O.divider)/n;
-              z->left_margin = O.divider + i*z->screencols + i;
-
-              z->linked_editor->screencols = z->screencols;
-              z->linked_editor->left_margin = z->left_margin;
-
-              i++;
-            }
-            */
-
-            /**********also in F_edit - should be in a function ***********************/
+            /**********also used in F_edit and signalHandler should be in a function ***********************/
             std::string ab;
             for (auto &e : editors) {
               e->editorRefreshScreen(true);
               std::string buf;
-              ab.append("\x1b(0"); // Enter line drawing mode
-              //for (int j=1; j<O.screenlines+1; j++) {
+              //
+              // Enter line drawing mode
+              ab.append("\x1b(0"); 
               for (int j=1; j<e->screenlines+1; j++) {
                 buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
                 ab.append(buf);
@@ -6143,16 +6134,12 @@ bool editorProcessKeypress(void) {
             ab.append("\x1b[0m"); //or else subsequent editors are bold
             write(STDOUT_FILENO, ab.c_str(), ab.size());
             /*********************************/
-          } else {
-            p->editorSetMessage("");
-            if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
 
-            delete p;
+          } else { // we've quit the last remaining editor(s)
             p = nullptr;
-
-            editors.clear(); // there's only one so also could just erase editors0]
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id);
+            return_cursor(); //because main while loop if started in editor_mode -- need this 09302020
           }
 
           return false;
@@ -6615,10 +6602,11 @@ int main(int argc, char** argv) {
       if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
       scroll = p->editorScroll();
       //redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll); //09242020
-      redraw = (text_change || scroll || p->redraw);
+      redraw = (text_change || scroll || p->redraw); //instead of p->redraw => clear_highlights
+      //clear_highlights = p->editorRefreshScreen(redraw)
       p->editorRefreshScreen(redraw);
       ////////////////////
-      if (scroll) {
+      if (lm_browser && scroll) {
         zmq::message_t message(20);
         snprintf ((char *) message.data(), 20, "%d", p->line_offset*25); //25 - complete hack but works ok
         publisher.send(message, zmq::send_flags::dontwait);

@@ -1610,6 +1610,7 @@ bool Editor::editorScroll(void) {
   // it's either helpful or worth it but this is a placeholder for the idea
 
   // returns true if display needs to scroll and false if it doesn't
+  // could just be redraw = true or do nothing since don't want to override if already true.
   if (line_offset == prev_line_offset) return false;
   else {prev_line_offset = line_offset; return true;}
 }
