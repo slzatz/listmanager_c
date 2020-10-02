@@ -190,6 +190,7 @@ class Editor {
     void E_undo(int);
     void E_redo(int);
     void E_move_to_matching_brace(int);
+    void E_resize(int);
 
     void editorInsertNewline(int);
     void editorDelChar(void);

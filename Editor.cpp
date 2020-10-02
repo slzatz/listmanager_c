@@ -2355,6 +2355,32 @@ void Editor::E_tilde(int repeat) {
   E_change_case(repeat);
 }
 
+void Editor::E_resize(int flag) {
+  if (!linked_editor) return;
+
+  Editor *& z = linked_editor;
+  int subnote_height;
+  if (flag) {
+    subnote_height = (abs(screenlines - z->screenlines) < 5) 
+      ? LINKED_NOTE_HEIGHT
+      : total_screenlines/2;
+  } else {
+    char c = command[1];
+    subnote_height = (c == '=') ? total_screenlines/2 : LINKED_NOTE_HEIGHT;
+  }
+  if (!is_subeditor) {
+    screenlines = total_screenlines - subnote_height - 1;
+    z->screenlines = subnote_height;
+    z->top_margin = total_screenlines - subnote_height + 2;
+  } else {
+    z->screenlines = total_screenlines - subnote_height - 1;
+    screenlines = subnote_height;
+    top_margin = total_screenlines - subnote_height + 2;
+  }
+  z->editorRefreshScreen(true);
+  editorRefreshScreen(true);
+}
+
 void Editor::E_J(int repeat) {
   fc = rows.at(fr).size();
   repeat = (repeat == 1) ? 2 : repeat;

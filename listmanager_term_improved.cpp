@@ -12,6 +12,17 @@ typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
 std::vector<Editor *> editors;
 
+std::unordered_set<int> navigation = {
+         ARROW_UP,
+         ARROW_DOWN,
+         ARROW_LEFT,
+         ARROW_RIGHT,
+         'h',
+         'j',
+         'k',
+         'l'
+};
+
 /* EDITOR COMMAND_LINE mode lookup */
 std::unordered_map<std::string, efunc> E_lookup_C {
   {"write", &Editor::E_write_C},
@@ -81,6 +92,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
  // {{0x8}, &Editor::E_goto_outline},
   {"%", &Editor::E_move_to_matching_brace},
   {{0x13}, &Editor::E_save_note},
+  {"save", &Editor::E_save_note},
 };
 
 /* now defined as inline in Editor.h - could be const  if access was cmd_mapN.at(command)
@@ -3096,7 +3108,7 @@ void F_edit(int) {
     p->linked_editor = new Editor;
     editors.push_back(p->linked_editor);
     p->linked_editor->id = id;
-    p->linked_editor->top_margin = p->total_screenlines - LINKED_NOTE_HEIGHT + 2;
+    p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
     p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
     p->linked_editor->is_subeditor = true;
     p->linked_editor->linked_editor = p;
@@ -5158,8 +5170,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       //also means that any key sequence ending in something
       //that matches below will perform command
 
-      //might be able to put these into hex char - nope too large
-
+      // needs to be here because needs to pick up repeat
+      //Arrows + h,j,k,l
       if (navigation.count(c)) {
           for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
           O.command[0] = '\0'; 
@@ -5732,6 +5744,12 @@ bool editorProcessKeypress(void) {
           p->repeat = 0;
           return false;
 
+        case CTRL_KEY('w'):  
+          p->E_resize(1);
+          p->command[0] = '\0';
+          p->repeat = 0;
+          return false;
+
         case 'i':
         case 'I':
         case 'a':
@@ -5928,6 +5946,13 @@ bool editorProcessKeypress(void) {
         return true;
       }
 
+      if (c == CTRL_KEY('w')) {
+        p->E_resize(1);
+        p->command[0] = '\0';
+        p->repeat = 0;
+        return true;
+      }
+
       if (c == CTRL_KEY('h')) {
         p->command[0] = '\0';
         if (editors.size() == 1) {
@@ -5990,9 +6015,27 @@ bool editorProcessKeypress(void) {
       p->command[n+1] = '\0';
       }
 
+      /* this and next if should probably be dropped
+       * and just use CTRL_KEY('w') to toggle
+       * size of windows
+       */
+
+      if (std::string_view(p->command) == std::string({0x17,'='})) {
+        p->E_resize(0);
+        p->command[0] = '\0';
+        p->repeat = 0;
+        return false;
+      }
+
+      if (std::string_view(p->command) == std::string({0x17,'_'})) {
+        p->E_resize(0);
+        p->command[0] = '\0';
+        p->repeat = 0;
+        return false;
+      }
+
       if (e_lookup.count(p->command)) {
-        //if (!move_only.count(p->command)) p->push_current(); 
-        //here's the problem - we need fr and fc now
+
         p->prev_fr = p->fr;
         p->prev_fc = p->fc;
 
@@ -6023,6 +6066,8 @@ bool editorProcessKeypress(void) {
         }    
       }
 
+      // needs to be here because needs to pick up repeat
+      //Arrows + h,j,k,l
       if (navigation.count(c)) {
           for (int j=0; j<p->repeat; j++) p->editorMoveCursor(c);
           p->command[0] = '\0';

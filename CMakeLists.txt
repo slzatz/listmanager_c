@@ -34,7 +34,8 @@ include(FetchContent)
 FetchContent_Declare(cpr 
   GIT_REPOSITORY https://github.com/whoshuu/cpr.git
   #GIT_TAG e627e47727bfa13314dbe43418cf825097a2d38e) # the commit hash for 1.5.0
-  GIT_TAG 5e87cb5f45ac99858f0286dc1c35a6cd27c3bcb9) #1.5.1
+  #GIT_TAG 5e87cb5f45ac99858f0286dc1c35a6cd27c3bcb9) #1.5.1 - this is what I had been using
+  GIT_TAG 9ee57777424c55d655b290fbfc1eb0cc10047d86)
 FetchContent_MakeAvailable(cpr)
 
 FetchContent_Declare(json
