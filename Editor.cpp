@@ -2681,9 +2681,10 @@ void Editor::E_run_code_C(void) {
   //this works with compiler explorer
   json js = {
     {"source", source},
-    {"compiler", "g82"},
+    //{"compiler", "g102"},
     {"options", {
-          {"userArguments", "-O3"},
+          //{"userArguments", "-O3"},
+          {"userArguments", "-std=c++2a"},
           {"compilerOptions", {
                     {"executorRequest", true}
           }},
@@ -2703,7 +2704,7 @@ void Editor::E_run_code_C(void) {
     {"allowStoreCodeDebug", true}
   };
 
-  cpr::Response r = cpr::Post(cpr::Url{"https://godbolt.org/api/compiler/g82/compile"},
+  cpr::Response r = cpr::Post(cpr::Url{"https://godbolt.org/api/compiler/g102/compile"},
             cpr::Body{js.dump()}, 
             // both headers in Header or doesn't work
             cpr::Header{{"Content-Type", "application/json"}, {"Accept", "application/json"}}, // both headers in Header or doesn't work
