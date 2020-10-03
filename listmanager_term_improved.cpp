@@ -535,6 +535,7 @@ std::string time_delta(std::string t) {
   return s;
 }
 
+/********************Beginning sqlite************************************/
 bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
    if (rc != SQLITE_OK) {
@@ -628,11 +629,9 @@ void get_containers(void) {
       return;
   }
   
-  std::stringstream query;
-  query << "SELECT * FROM " << table << " ORDER BY " << column  << " COLLATE NOCASE ASC;";
-
+  std::string query = fmt::format("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
   bool no_rows = true;
-  if (!db_query(S.db, query.str().c_str(), callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query.c_str(), callback, &no_rows, &S.err_msg, __func__)) return;
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
@@ -1582,25 +1581,17 @@ void display_container_info(int id) {
   int count = 0;
 
   query << count_query << id;
-  int rc = sqlite3_exec(S.db, query.str().c_str(), count_callback, &count, &S.err_msg);
     
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.db);
-  } 
+  // note count obtained here but passed to the next callback so it can be printed
+  if (!db_query(S.db, query.str().c_str(), count_callback, &count, &S.err_msg)) return;
 
   std::stringstream query2;
   query2 << "SELECT * FROM " << table << " WHERE id = " << id;
 
   // callback is *not* called if result (argv) is null
- rc = sqlite3_exec(S.db, query2.str().c_str(), callback, &count, &S.err_msg);
 
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("In display_container_info: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-    sqlite3_free(S.err_msg);
-    sqlite3_close(S.fts_db);
-  }
+  if (!db_query(S.db, query2.str().c_str(), callback, &count, &S.err_msg)) return;
+
 }
 
 int count_callback (void *count, int argc, char **argv, char **azColName) {
@@ -1853,13 +1844,10 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-//void update_note(void) {
 void update_note(bool is_subnote) {
 
-  std::string text = p->editorRowsToString();
-  std::stringstream query;
-
   std::string column = (is_subnote) ? "subnote" : "note";
+  std::string text = p->editorRowsToString();
 
   // need to escape single quotes with two single quotes
   size_t pos = text.find("'");
@@ -1868,204 +1856,76 @@ void update_note(bool is_subnote) {
     pos = text.find("'", pos + 2);
   }
 
+  std::string query = fmt::format("UPDATE task SET {}='{}', modified=datetime('now', '-{} hours'), startdate=datetime('now', '-{} hours') where id={}",
+                                   column, text, TZ_OFFSET, TZ_OFFSET, p->id);
+
+  /*
   query << "UPDATE task SET " << column << "='" << text << "', modified=datetime('now', '-" 
         << TZ_OFFSET << " hours'), " << "startdate=datetime('now', '-"
         << TZ_OFFSET << " hours')WHERE id=" << p->id;
+  */
 
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-    return;
-  }
-
-  p->dirty = 0; //should probably be in E_write_C nor here.
-
-  sqlite3_close(db);
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg)) return;
 
   if (is_subnote) {
     outlineShowMessage("Updated *sub*note for item %d", p->id);
     outlineRefreshScreen();
     return;
   }
-
   /***************fts virtual table update*********************/
+  query = fmt::format("Update fts SET note='{}' WHERE lm_id={}", text, p->id);
+  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-    outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  std::stringstream query2;
-  //query.clear(); //this clear clears eof and fail flags so query.str(std::string());query.clear()
-  query2 << "Update fts SET note='" << text << "' WHERE lm_id=" << p->id;
-
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL fts error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Updated note and fts entry for item %d", p->id);
-    outlineRefreshScreen();
-    p->editorSetMessage("Note update succeeeded"); 
-  }
-   
-  sqlite3_close(db);
-
+  outlineShowMessage("Updated note and fts entry for item %d", p->id);
+  outlineRefreshScreen();
 }
 
 void update_task_context(std::string &new_context, int id) {
 
-  std::stringstream query;
-  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int context_tid = context_map.at(new_context);
-  query << "UPDATE task SET context_tid=" << context_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
 
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
+  std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now', '-{} hours') WHERE id={}",
+                                    context_tid, TZ_OFFSET, id);
 
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Setting context to %s succeeded", new_context.c_str());
-  }
-
-  sqlite3_close(db);
+  db_query(S.db, query.c_str(), 0, 0, &S.err_msg);
 }
 
 void update_task_folder(std::string& new_folder, int id) {
 
-  std::stringstream query;
-  //id = (id == -1) ? get_id() : id; //get_id should probably just be replaced by O.rows.at(O.fr).id
   int folder_tid = folder_map.at(new_folder);
-  query << "UPDATE task SET folder_tid=" << folder_tid << ", modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
+  std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now', '-{} hours') WHERE id={}",
+                                    folder_tid, TZ_OFFSET, id);
 
-  sqlite3 *db;
-  char *err_msg = 0;
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Setting folder to %s succeeded", new_folder.c_str());
-  }
-
-  sqlite3_close(db);
+  db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__);
 }
 
 void toggle_completed(void) {
 
   orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
   int id = get_id();
 
-  query << "UPDATE task SET completed=" << ((row.completed) ? "NULL" : "date()") << ", "
-        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') "
-        << "WHERE id=" << id;
+  std::string query = fmt::format("UPDATE task SET completed={}, modified=datetime('now', '-{} hours') WHERE id={}", 
+                                  (row.completed) ? "NULL" : "date()", TZ_OFFSET, id); 
 
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle completed succeeded");
-    row.completed = !row.completed;
-  }
-
-  sqlite3_close(db);
-    
+  row.completed = !row.completed;
+  outlineShowMessage("Toggle completed succeeded");
 }
 
 void touch(void) {
-
-  std::stringstream query;
   int id = get_id();
+  std::string query = fmt::format("UPDATE task SET modified=datetime('now', '-{} hours') WHERE id={}", 
+                                  TZ_OFFSET, id); 
 
-  query << "UPDATE task SET modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id;
-
-  sqlite3 *db;
-  char *err_msg = 0;
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
     
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("'Touch' succeeded");
-  }
-
-  sqlite3_close(db);
-
+  outlineShowMessage("'Touch' succeeded");
 }
 
 void toggle_deleted(void) {
 
   orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
   int id = get_id();
   std::string table;
 
@@ -2087,42 +1947,18 @@ void toggle_deleted(void) {
       return;
   }
 
-  query << "UPDATE " << table << " SET deleted=" << ((row.deleted) ? "False" : "True") << ", "
-        <<  "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
+  std::string query = fmt::format("UPDATE {} SET deleted={}, modified=datetime('now', '-{} hours') WHERE id={}",
+                   table, (row.deleted) ? "False" : "True", TZ_OFFSET, id);
 
-  // ? whether should move all tasks out here or in sync
-  // UPDATE task SET folder_tid = 1 WHERE folder_tid = 4;
-  sqlite3 *db;
-  char *err_msg = 0;
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
     
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle deleted succeeded");
-    row.deleted = !row.deleted;
-  }
-
-  sqlite3_close(db);
-
+  outlineShowMessage("Toggle deleted succeeded");
+  row.deleted = !row.deleted;
 }
 
 void toggle_star(void) {
 
   orow& row = O.rows.at(O.fr);
-
-  std::stringstream query;
   int id = get_id();
   std::string table;
   std::string column;
@@ -2154,31 +1990,13 @@ void toggle_star(void) {
       return;
   }
 
-  query << "UPDATE " << table << " SET " << column << "=" << ((row.star) ? "False" : "True") << ", "
-        << "modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << id; //tid
+  std::string query = fmt::format("UPDATE {} SET {}={}, modified=datetime('now', '-{} hours') WHERE id={}",
+                                   table, column, (row.star) ? "False" : "True", TZ_OFFSET, id);
 
-  sqlite3 *db;
-  char *err_msg = 0;
-    
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-    
-  if (rc != SQLITE_OK) {
-        
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return;
-  }
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-    
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error: %s", err_msg);
-    sqlite3_free(err_msg);
-  } else {
-    outlineShowMessage("Toggle star succeeded");
-    row.star = !row.star;
-  }
-  sqlite3_close(db);
+  outlineShowMessage("Toggle star succeeded");
+  row.star = !row.star;
 }
 
 void update_row(void) {
@@ -2190,69 +2008,33 @@ void update_row(void) {
     return;
   }
 
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
-
-    sqlite3 *db;
-    char *err_msg = 0;
-      
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-      
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-  
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-    
-    /**************fts virtual table update**********************/
-
-    rc = sqlite3_open(FTS_DB.c_str(), &db);
-    if (rc != SQLITE_OK) {
-          
-      outlineShowMessage("Cannot open fts database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-  
-    std::stringstream query2;
-    query2 << "UPDATE fts SET title='" << title << "' WHERE lm_id=" << row.id;
-    rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-      
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-      } else {
-        outlineShowMessage("Updated title and fts title entry for item %d", row.id);
-      }
-  
-      sqlite3_close(db);
-
-  } else { //row.id == -1
+  if (row.id == -1) {
     insert_row(row);
+    return;
   }
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos) {
+    title.replace(pos, 1, "''");
+    pos = title.find("'", pos + 2);
+  }
+
+  std::string query = fmt::format("UPDATE task SET title='{}', modified=datetime('now', '-{} hours') WHERE id={}",
+                                     title, TZ_OFFSET, row.id);
+
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+  row.dirty = false;
+
+  /***************fts virtual table update*********************/
+  query = fmt::format("Update fts SET title='{}' WHERE lm_id={}", title, row.id);
+  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+  outlineShowMessage("Updated title and fts entry for item %d", row.id);
+  outlineRefreshScreen();
 }
 
+/********************* Need to keep cleaning up sql from here ********************************/
 void update_container(void) {
 
   orow& row = O.rows.at(O.fr);

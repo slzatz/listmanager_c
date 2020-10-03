@@ -2046,7 +2046,8 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
   update_note(is_subeditor);
-  //p->dirty = 0 is in update_note but dirty = 0 is probably better here.
+  //problem - can't have dirty apply to both note and subnote
+  dirty = 0; //is in update_note but dirty = 0 is probably better here.
   editorSetMessage("");
 
   if (is_subeditor) return;
