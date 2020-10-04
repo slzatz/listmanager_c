@@ -30,6 +30,16 @@
 #include <fmt/format.h>
 #include <fmt/chrono.h>
 
+void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
+
+template<typename... Args>
+void outlineShowMessage3(fmt::string_view format_str, const Args & ... args) {
+  fmt::format_args argspack = fmt::make_format_args(args...);
+  //std::string s = fmt::vformat(format_str, argspack);
+  //outlineShowMessage2(s);
+  outlineShowMessage2(fmt::vformat(format_str, argspack));
+}
+
 const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
@@ -193,6 +203,7 @@ void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRe
 void outlineDrawFilters(std::string&); // doesn't do any erasing; done in outlineRefreshRows
 void outlineDrawSearchRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
 void outlineShowMessage(const char *fmt, ...); //erases outline message area and writes message so can be called separately
+//void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 void outlineRefreshScreen(void); //erases outline area and sort/time screen columns and writes outline rows so can be called separately
 void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);

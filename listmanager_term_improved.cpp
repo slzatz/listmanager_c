@@ -2628,17 +2628,21 @@ void F_open(int pos) { //C_open - by context
     }
 
     if (!success) {
-      outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
+      //outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
+      outlineShowMessage2(fmt::format("{} is not a valid  context!", &O.command_line.c_str()[pos + 1]));
       O.mode = NORMAL;
       return;
     }
 
   } else {
-    outlineShowMessage("You did not provide a context!");
+    //outlineShowMessage("You did not provide a context!");
+    outlineShowMessage2("You did not provide a context!");
     O.mode = NORMAL;
     return;
   }
-  outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+  //outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+  //outlineShowMessage2(fmt::format("'{}' will be opened", O.context.c_str()));
+  outlineShowMessage3("'{}' will be opened, Steve", O.context.c_str());
   command_history.push_back(O.command_line);
   page_hx_idx++;
   page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
@@ -4736,6 +4740,18 @@ void outlineShowMessage(const char *fmt, ...) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+void outlineShowMessage2(const std::string &s) {
+  std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
+                                 O.screenlines + 2 + TOP_MARGIN,
+                                 O.divider,
+                                 O.screenlines + 2 + TOP_MARGIN);
+
+  if (s.length() > O.divider) buf.append(s, O.divider) ;
+  else buf.append(s);
+
+  write(STDOUT_FILENO, buf.c_str(), buf.size());
+}
+
 //Note: outlineMoveCursor worries about moving cursor beyond the size of the row
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
@@ -6416,7 +6432,8 @@ int main(int argc, char** argv) {
 
   outlineRefreshScreen(); // now just draws rows
   outlineDrawStatusBar();
-  outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
+  //outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
+  outlineShowMessage3("rows: {}  columns: {}", screenlines, screencols);
   return_cursor();
 
   //"./lm_browser " + CURRENT_NOTE_FILE;
