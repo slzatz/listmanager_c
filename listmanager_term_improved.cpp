@@ -37,6 +37,9 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"spell",&Editor:: E_spellcheck_C},
   {"spellcheck", &Editor::E_spellcheck_C},
   {"persist", &Editor::E_persist_C},
+  {"read", &Editor::E_readfile_C},
+  {"readfile", &Editor::E_readfile_C},
+
   {"run", &Editor::E_run_code_C} // this does change the text/usually COMMAND_LINE doesn't
 };
 
@@ -3284,6 +3287,7 @@ void F_saveoutline(int pos) {
   }
 }
 
+/*
 // should be only an editor function
 void F_readfile(int pos) {
   std::string filename;
@@ -3293,6 +3297,7 @@ void F_readfile(int pos) {
   outlineShowMessage("Note generated from file: %s", filename.c_str());
   O.mode = NORMAL;
 }
+*/
 
 void F_persist(int pos) {
   generate_persistent_html_file(O.rows.at(O.fr).id);
@@ -5119,6 +5124,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       //return; //end of case VISUAL (return here would not be executed)
 
     case REPLACE: 
+
+      if (O.repeat == 0) O.repeat = 1; //10062020
 
       if (c == '\x1b') {
         O.command[0] = '\0';
