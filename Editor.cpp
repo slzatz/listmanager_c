@@ -2661,6 +2661,12 @@ void ReplaceStringInPlace(std::string& subject, const std::string& search,
 using json = nlohmann::json;
 
 void Editor::E_run_code_C(void) {
+
+  if(is_subeditor) {
+    editorSetMessage("You're in the subeditor!");
+    return;
+  }
+
   std::string source = editorRowsToString();
 
 //this works with coliru
