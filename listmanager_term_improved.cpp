@@ -73,7 +73,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"[s", &Editor::E_next_misspelling},
   {"]s", &Editor::E_prev_misspelling},
   {"z=", &Editor::E_suggestions},
-  {":", &Editor::E_change2command_line},
+  //{":", &Editor::E_change2command_line}, //commented out because in NORMAL switch statement
   {"V", &Editor::E_change2visual_line},
   {"v", &Editor::E_change2visual},
   {{0x16}, &Editor::E_change2visual_block},
@@ -5537,22 +5537,17 @@ bool editorProcessKeypress(void) {
     case NO_ROWS:
 
       switch(c) {
-        case ':':
-          p->mode = COMMAND_LINE;
-          p->command_line.clear();
-          p->command[0] = '\0';
-          p->editorSetMessage(":");
-          return false;
 
         case '\x1b':
           p->command[0] = '\0';
           p->repeat = 0;
           return false;
 
-        case CTRL_KEY('w'):  
-          p->E_resize(1);
+        case ':':
+          p->mode = COMMAND_LINE;
+          p->command_line.clear();
           p->command[0] = '\0';
-          p->repeat = 0;
+          p->editorSetMessage(":");
           return false;
 
         case 'i':
@@ -5569,6 +5564,23 @@ bool editorProcessKeypress(void) {
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           // ? p->redraw = true;
           return true;
+
+        case CTRL_KEY('w'):  
+          p->E_resize(1);
+          p->command[0] = '\0';
+          p->repeat = 0;
+          return false;
+
+        case CTRL_KEY('k'):  
+        case CTRL_KEY('j'):  
+          p->command[0] = '\0';
+          if (p->linked_editor) p=p->linked_editor;
+          else return false;
+
+          if (p->rows.empty()) p->mode = NO_ROWS;
+          else p->mode = NORMAL;
+
+          return false;
       }
 
       return false;
@@ -5732,71 +5744,81 @@ bool editorProcessKeypress(void) {
       return true; // end of case INSERT: - should not be executed
 
     case NORMAL: 
+
+      switch(c) {
  
-      if (c == '\x1b') {
-        p->command[0] = '\0';
-        p->repeat = 0;
-        return false;
-      }
-
-      if (c == 'u') {
-        p->command[0] = '\0';
-        p->undo();
-        return true;
-      }
-
-      if (c == CTRL_KEY('r')) {
-        p->command[0] = '\0';
-        p->redo();
-        return true;
-      }
-
-      if (c == CTRL_KEY('w')) {
-        p->E_resize(1);
-        p->command[0] = '\0';
-        p->repeat = 0;
-        return true;
-      }
-
-      if (c == CTRL_KEY('h')) {
-        p->command[0] = '\0';
-        if (editors.size() == 1) {
-          editor_mode = false;
-          get_preview(O.rows.at(O.fr).id); 
+        case '\x1b':
+          p->command[0] = '\0';
+          p->repeat = 0;
           return false;
-        }
-        auto it = std::find(editors.begin(), editors.end(), p);
-        int index = std::distance(editors.begin(), it);
-        if (index) {
-          p = editors[index - 1];
+
+        case ':':
+          p->mode = COMMAND_LINE;
+          p->command_line.clear();
+          p->command[0] = '\0';
+          p->editorSetMessage(":");
+          return false;
+
+        case 'u':
+          p->command[0] = '\0';
+          p->undo();
+          return true;
+
+        case CTRL_KEY('r'):
+          p->command[0] = '\0';
+          p->redo();
+          return true;
+
+        case CTRL_KEY('w'):
+          p->E_resize(1);
+          p->command[0] = '\0';
+          p->repeat = 0;
+          return true;
+
+        case CTRL_KEY('h'):
+          p->command[0] = '\0';
+          if (editors.size() == 1) {
+            editor_mode = false;
+            get_preview(O.rows.at(O.fr).id); 
+            return false;
+          }
+          {
+            auto it = std::find(editors.begin(), editors.end(), p);
+            int index = std::distance(editors.begin(), it);
+            if (index) {
+              p = editors[index - 1];
+              if (p->rows.empty()) p->mode = NO_ROWS;
+              else p->mode = NORMAL;
+            } else {editor_mode = false;
+              get_preview(O.rows.at(O.fr).id); 
+              return false;
+            }
+          }
+      
+        case  CTRL_KEY('l'):
+          p->command[0] = '\0';
+          {
+            auto it = std::find(editors.begin(), editors.end(), p);
+            int index = std::distance(editors.begin(), it);
+            if (index < editors.size() - 1) p = editors[index + 1];
+            if (p->rows.empty()) p->mode = NO_ROWS;
+            else p->mode = NORMAL;
+          }
+          return false;
+
+        case  CTRL_KEY('k'):
+        case  CTRL_KEY('j'):
+          p->command[0] = '\0';
+          if (p->linked_editor) p=p->linked_editor;
+          else return false;
+
           if (p->rows.empty()) p->mode = NO_ROWS;
           else p->mode = NORMAL;
-        } else {editor_mode = false;
-          get_preview(O.rows.at(O.fr).id); 
+
           return false;
-        }
-      }
-      
-      if (c == CTRL_KEY('l')) {
-        p->command[0] = '\0';
-        auto it = std::find(editors.begin(), editors.end(), p);
-        int index = std::distance(editors.begin(), it);
-        if (index < editors.size() - 1) p = editors[index + 1];
-        if (p->rows.empty()) p->mode = NO_ROWS;
-        else p->mode = NORMAL;
-        return false;
-      }
 
-      if (c == CTRL_KEY('k') || c == CTRL_KEY('j')) {
-        p->command[0] = '\0';
-        if (p->linked_editor) p=p->linked_editor;
-        else return false;
+      } //end switch
 
-        if (p->rows.empty()) p->mode = NO_ROWS;
-        else p->mode = NORMAL;
-
-        return false;
-      }
       /*leading digit is a multiplier*/
 
       if ((c > 47 && c < 58) && (strlen(p->command) == 0)) {
@@ -5815,14 +5837,15 @@ bool editorProcessKeypress(void) {
       }
       if ( p->repeat == 0 ) p->repeat = 1;
       {
-      int n = strlen(p->command);
-      p->command[n] = c;
-      p->command[n+1] = '\0';
+        int n = strlen(p->command);
+        p->command[n] = c;
+        p->command[n+1] = '\0';
       }
 
       /* this and next if should probably be dropped
        * and just use CTRL_KEY('w') to toggle
-       * size of windows
+       * size of windows and right now can't reach
+       * them given CTRL('w') above
        */
 
       if (std::string_view(p->command) == std::string({0x17,'='})) {
@@ -5922,10 +5945,7 @@ bool editorProcessKeypress(void) {
 
           eraseRightScreen();
 
-          //if (auto n = editors.size(); n > 1) {
-
           //p->editorSetMessage(""); //now handled by eraseRightScreen
-          //if (p->linked_editor) p->linked_editor->linked_editor = nullptr;
           editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
           if (p->linked_editor) {
              editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
@@ -5993,7 +6013,7 @@ bool editorProcessKeypress(void) {
           }
 
           return false;
-        }
+        } //end quit_cmds
 
         if (E_lookup_C.count(cmd)) {
           (p->*E_lookup_C.at(cmd))();
