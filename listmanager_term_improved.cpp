@@ -2037,7 +2037,6 @@ void update_row(void) {
   outlineRefreshScreen();
 }
 
-/********************* Need to keep cleaning up sql from here ********************************/
 void update_container(void) {
 
   orow& row = O.rows.at(O.fr);
@@ -2047,46 +2046,26 @@ void update_container(void) {
     return;
   }
 
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << ((O.view == CONTEXT) ? "context" : "folder")
-          << " SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
-
-    sqlite3 *db;
-    char *err_msg = 0;
-
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-
-  } else { //row.id == -1
+  if (row.id == -1) {
     insert_container(row);
+    return;
   }
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos) {
+    title.replace(pos, 1, "''");
+    pos = title.find("'", pos + 2);
+  }
+
+  std::string query = fmt::format("UPDATE {} SET title='{}', modified=datetime('now', '-{} hours') WHERE id={}",
+                                   (O.view == CONTEXT) ? "context" : "folder",
+                                    title, TZ_OFFSET, row.id);
+
+  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+  row.dirty = false;
+  outlineShowMessage("Successfully updated row %d", row.id);
 }
 
 void update_keyword(void) {
@@ -2098,48 +2077,26 @@ void update_keyword(void) {
     return;
   }
 
-  if (row.id != -1) {
-    std::string title = row.title;
-    size_t pos = title.find("'");
-    while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-    query << "UPDATE "
-          << "keyword "
-          << "SET name='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id; //I think id is correct
-
-    sqlite3 *db;
-    char *err_msg = 0;
-
-    int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-    if (rc != SQLITE_OK) {
-      outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-      sqlite3_close(db);
-      return;
-    }
-
-    rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-    if (rc != SQLITE_OK ) {
-      outlineShowMessage("SQL error: %s", err_msg);
-      sqlite3_free(err_msg);
-    } else {
-      row.dirty = false;
-      outlineShowMessage("Successfully updated row %d", row.id);
-    }
-
-    sqlite3_close(db);
-
-  } else { //row.id == -1
+  if (row.id == -1) {
     insert_keyword(row);
+    return;
   }
-}
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos) {
+    title.replace(pos, 1, "''");
+    pos = title.find("'", pos + 2);
+  }
 
+  std::string query = fmt::format("UPDATE keyword SET name='{}', modified=datetime('now', '-{} hours') WHERE id={}",
+                                   title, TZ_OFFSET, row.id);
+
+  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+
+  row.dirty = false;
+  outlineShowMessage("Successfully updated row %d", row.id);
+}
+/********************start here to clean up sql ****************************/
 int insert_keyword(orow& row) {
 
   std::string title = row.title;
@@ -2447,6 +2404,8 @@ void update_rows(void) {
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
   outlineShowMessage("%s",  msg);
 }
+
+/*************************end sql**************************************/
 
 void update_solr(void) {
 
