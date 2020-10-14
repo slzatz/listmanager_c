@@ -2056,8 +2056,8 @@ void Editor::E_write_C(void) {
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  auto it = html_files.find(id); //O is global and so is html_files but not sure needed
-  if (it != html_files.end()) update_html_file("assets/" + it->second);
+  //auto it = html_files.find(id); //O is global and so is html_files but not sure needed
+  //if (it != html_files.end()) update_html_file("assets/" + it->second);
   editorSetMessage("");
 }
 

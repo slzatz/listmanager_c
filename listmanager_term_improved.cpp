@@ -3,6 +3,7 @@
 #include "Editor.h"
 #include <cstdarg> //va_start etc.
 #include <string_view>
+#include <zmq.hpp>
 
 //Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
@@ -11,6 +12,10 @@ Editor *p;
 typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
 std::vector<Editor *> editors;
+
+zmq::context_t context(1);
+zmq::socket_t publisher(context, ZMQ_PUB);
+zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -333,10 +338,17 @@ void update_html_zmq(std::string &&fn) {
 }
 
 void update_html_code_file(std::string &&fn) {
+  std::string note;
+  if (editor_mode) note = p->editorRowsToString();
+  else note = outlinePreviewRowsToString();
   std::ofstream myfile;
   myfile.open("code_file"); 
-  myfile << outlinePreviewRowsToString();
+  myfile << note;
   myfile.close();
+  std::ofstream myfile2;
+  myfile2.open("/home/slzatz/pylspclient/examples/test.cpp"); 
+  myfile2 << note;
+  myfile2.close();
   std::stringstream html;
   std::string line;
 
@@ -2062,12 +2074,15 @@ void update_container(void) {
                                    (O.view == CONTEXT) ? "context" : "folder",
                                     title, TZ_OFFSET, row.id);
 
-  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   row.dirty = false;
   outlineShowMessage("Successfully updated row %d", row.id);
 }
 
+/* note that after changing a keyword's name would really have to update every entry
+ * in the fts_db that had a tag that included that keyword
+ */
 void update_keyword(void) {
 
   orow& row = O.rows.at(O.fr);
@@ -2091,70 +2106,39 @@ void update_keyword(void) {
   std::string query = fmt::format("UPDATE keyword SET name='{}', modified=datetime('now', '-{} hours') WHERE id={}",
                                    title, TZ_OFFSET, row.id);
 
-  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   row.dirty = false;
   outlineShowMessage("Successfully updated row %d", row.id);
 }
-/********************start here to clean up sql ****************************/
+/*Inserting a new keyword should not require any fts_db update. Just like any keyword
+ *added to an entry - the tag created is entered into fts_db when that keyword is
+ *attached to an entry.
+*/
 int insert_keyword(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
+  while(pos != std::string::npos) {
       title.replace(pos, 1, "''");
       pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO "
-        << "keyword "
-        << "("
-        << "name, "
-        << "star, "
-        << "deleted, "
-        << "modified, "
-        << "tid"
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " " << row.star << ","
-        << " False," //default for context and private for folder
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //modified
-        //<< " " << temporary_tid << ");"; //tid originally 100 but that is a legit client tid server id
-        << " " << 0 << ");"; //unproven belief that you don't have to have multiple tids if you insert multiple keywords
-
-  //temporary_tid++;
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    outlineShowMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    outlineShowMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
   }
-  row.id =  sqlite3_last_insert_rowid(db);
+
+  //note below that the temp tid is zero for all inserted keywords
+  std::string query = fmt::format("INSERT INTO keyword (name, star, deleted, modified, tid) " \
+                                   "VALUES ('{}', {}, False, datetime('now', '-{} hours'), 0);",
+                                   title, row.star, TZ_OFFSET);
+
+  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return -1;
+
+  row.id =  sqlite3_last_insert_rowid(S.db);
   row.dirty = false;
-
-  sqlite3_close(db);
-
   outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
 
   return row.id;
 }
 
+// sqlite cleanup start here
 int insert_row(orow& row) {
 
   std::string title = row.title;
@@ -2164,6 +2148,16 @@ int insert_row(orow& row) {
       title.replace(pos, 1, "''");
       pos = title.find("'", pos + 2);
     }
+
+  std::string queryx = fmt::format("INSERT INTO task (priority, title, folder_tid, context_tid, " \
+                                   "star, added, note, deleted, created, modified) " \
+                                   "VALUES (3, '{0}', {1}, {2}, True, date(), '', False, " \
+                                   "datetime('now', '-{3} hours'), " \
+                                   "datetime('now', '-{3} hours'));", 
+                                   title,
+                                   (O.folder == "") ? 1 : folder_map.at(O.folder),
+                                   (O.context == "") ? 1 : context_map.at(O.context),
+                                   TZ_OFFSET);
 
   std::stringstream query;
   query << "INSERT INTO task ("
@@ -2510,6 +2504,12 @@ int readKey() {
 
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
+    zmq::message_t update;
+    auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+    if (result) {
+      std::string s{static_cast<char*>(update.data())};
+      outlineShowMessage3(s);
+    }
   }
 
   /* if the character read was an escape, need to figure out if it was
@@ -4831,6 +4831,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\r': //also does escape into NORMAL mode
           if (O.view == TASK)  {
             update_row();
+            //updating because title changed
             if (lm_browser) {
               if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
               else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
@@ -5890,9 +5891,9 @@ bool editorProcessKeypress(void) {
         // note that right now we are not calling editor commands like E_write_close_C
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
-          if (cmd == "x") update_note(p->is_subeditor); //should be p->E_write_C();
-
-          if (cmd == "q!" || cmd == "quit!") {
+          if (cmd == "x") {
+            update_note(p->is_subeditor); //should be p->E_write_C();
+          } else if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
           } else if (p->dirty) {
               p->mode = NORMAL;
@@ -6378,7 +6379,9 @@ void initOutline() {
 int main(int argc, char** argv) { 
 
   publisher.bind("tcp://*:5556");
-  publisher.bind("ipc://scroll.ipc"); 
+  subscriber.connect("tcp://localhost:5557");
+  subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0);
+  //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this
 
   //publisher.bind("tcp://*:5557");
   //publisher.bind("ipc://html.ipc"); 
@@ -6428,6 +6431,8 @@ int main(int argc, char** argv) {
   while (1) {
     // just refresh what has changed
     if (editor_mode) {
+
+
       text_change = editorProcessKeypress(); 
       if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
       scroll = p->editorScroll();
@@ -6450,6 +6455,15 @@ int main(int argc, char** argv) {
 
     outlineDrawStatusBar();
     return_cursor();
+
+    /*
+    zmq::message_t update;
+    auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+    if (result) {
+      std::string s{static_cast<char*>(update.data())};
+      outlineShowMessage3(s);
+    }
+    */
   }
   return 0;
 }

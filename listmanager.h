@@ -16,7 +16,7 @@
   #define NUSPELL
 #endif
 
-#include <zmq.hpp>
+//#include <zmq.hpp>
 
 //#include <memory> //unique pointer, shared pointer etc.
 

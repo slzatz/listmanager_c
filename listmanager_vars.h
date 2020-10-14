@@ -29,6 +29,7 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <fmt/chrono.h>
+//#include <zmq.hpp>
 
 void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 
@@ -120,8 +121,8 @@ struct config {
 };
 struct config c;
 
-zmq::context_t context (1);
-zmq::socket_t publisher (context, ZMQ_PUB);
+//zmq::context_t context(1);
+//zmq::socket_t publisher(context, ZMQ_PUB);
 
 PGconn *conn = nullptr;
 
@@ -341,7 +342,7 @@ void get_items(int);
 void get_containers(void); //has an if that determines callback: context_callback or folder_callback
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
-void update_note(void); //used by Editor class 
+void update_note(bool); //used by Editor class 
 //void solr_find(void);
 void search_db(std::string); //void fts5_sqlite(std::string);
 void search_db2(std::string); //just searches documentation - should be combined with above
