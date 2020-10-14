@@ -4,6 +4,7 @@
 #include <cstdarg> //va_start etc.
 #include <string_view>
 #include <zmq.hpp>
+#include <thread>
 
 //Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
@@ -2504,12 +2505,14 @@ int readKey() {
 
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
+    /*
     zmq::message_t update;
     auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
     if (result) {
       std::string s{static_cast<char*>(update.data())};
       outlineShowMessage3(s);
     }
+    */
   }
 
   /* if the character read was an escape, need to figure out if it was
@@ -3343,6 +3346,7 @@ void F_quit_app(int) {
     Py_FinalizeEx();
     if (which_db == SQLITE) sqlite3_close(S.db);
     else PQfinish(conn);
+    //subs_thread.join();
     exit(0);
   }
 }
@@ -6426,7 +6430,20 @@ int main(int argc, char** argv) {
   return_cursor();
 
   //"./lm_browser " + CURRENT_NOTE_FILE;
-  if (lm_browser) popen (system_call.c_str(), "r"); //returns FILE* id
+  if (lm_browser) popen(system_call.c_str(), "r"); //returns FILE* id
+
+  std::thread subs_thread([]() {
+      while (1) {
+        zmq::message_t update;
+        auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        if (result) {
+          std::string s{static_cast<char*>(update.data())};
+          outlineShowMessage3(s);
+        }
+      }
+    }
+   );
+
 
   while (1) {
     // just refresh what has changed
