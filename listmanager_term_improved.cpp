@@ -2505,14 +2505,6 @@ int readKey() {
 
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
-    /*
-    zmq::message_t update;
-    auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
-    if (result) {
-      std::string s{static_cast<char*>(update.data())};
-      outlineShowMessage3(s);
-    }
-    */
   }
 
   /* if the character read was an escape, need to figure out if it was
@@ -6435,10 +6427,17 @@ int main(int argc, char** argv) {
   std::thread subs_thread([]() {
       while (1) {
         zmq::message_t update;
-        auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        //auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        auto result = subscriber.recv(update);
         if (result) {
-          std::string s{static_cast<char*>(update.data())};
-          outlineShowMessage3(s);
+          std::string s{static_cast<char*>(update.data()), update.size()};
+          try {
+            auto js = nlohmann::json::parse(s); // this should be the input to the function to decorate errors
+            if (p) p->decorate_errors(js);
+          } catch (nlohmann::json::parse_error& e) {
+            outlineShowMessage(e.what());
+          }
+          //outlineShowMessage3(s);
         }
       }
     }

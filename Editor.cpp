@@ -4,7 +4,7 @@
 #include <cstdarg> //va_start etc
 #include <string_view>
 #include <unordered_set>
-#include <nlohmann/json.hpp>
+//#include <nlohmann/json.hpp>
 #include <cpr/cpr.h>
 #include <array>
 
@@ -2058,7 +2058,8 @@ void Editor::E_write_C(void) {
   }   
   //auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   //if (it != html_files.end()) update_html_file("assets/" + it->second);
-  editorSetMessage("");
+
+  //editorSetMessage("");//////////////////////////////////////////
 }
 
 /* the following are not being called and were written for single editor
@@ -2774,4 +2775,32 @@ void Editor::E_run_code_C(void) {
   linked_editor->editorRefreshScreen(true);
   linked_editor->dirty++;
 
+}
+
+void Editor::decorate_errors(json diagnostics) {
+  if (diagnostics.empty()) return;
+  std::string s = diagnostics.dump();
+  int start_line = diagnostics[0]["range"]["start"]["line"];
+  int start_char = diagnostics[0]["range"]["start"]["character"];
+  int end_line = diagnostics[0]["range"]["end"]["line"];
+  int end_char = diagnostics[0]["range"]["end"]["character"];
+  //editorSetMessage(s.c_str());
+  editorSetMessage("start line: %d, start char: %d, end line: %d, end char: %d", start_line, start_char, end_line, end_char);
+  std::string &row = rows.at(start_line);
+  if (start_char >= row.size()) {
+    start_char = row.size()-1;
+    end_char = row.size();
+    //this could be better by putting highlight after end of line
+    //fragment = " ";
+    //int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 2;
+    //
+  std::string fragment = row.substr(start_char, end_char - start_char);
+  int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1;
+  int y = editorGetScreenYFromRowColWW(start_line, start_char) + top_margin - line_offset; // added line offset 12-25-2019
+
+  std::stringstream ss;
+  ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";
+  write(STDOUT_FILENO, ss.str().c_str(), ss.str().size());
+
+  editorRefreshScreen(false);
 }

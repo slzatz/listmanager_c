@@ -6,6 +6,7 @@
 #include <string>
 #include <unordered_map>
 #include <deque>
+#include <nlohmann/json.hpp>
 //#include "listmanager.h" //////
 
 
@@ -136,6 +137,7 @@ class Editor {
     void E_persist_C(void);
     void E_readfile_C(void);
     void E_run_code_C(void);
+    void decorate_errors(nlohmann::json);
 
     /* EDITOR mode NORMAL functions */
     void E_i(int);
