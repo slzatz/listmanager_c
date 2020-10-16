@@ -2794,7 +2794,7 @@ void Editor::decorate_errors(json diagnostics) {
     fragment = " ";
     end_of_line = 1;
   } else {
-    std::string fragment = row.substr(start_char, end_char - start_char);
+    fragment = row.substr(start_char, end_char - start_char);
   }
   int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1 + end_of_line;
   int y = editorGetScreenYFromRowColWW(start_line, start_char) + top_margin - line_offset; // added line offset 12-25-2019

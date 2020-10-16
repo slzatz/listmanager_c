@@ -6428,17 +6428,19 @@ int main(int argc, char** argv) {
       while (1) {
         zmq::message_t update;
         //auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        //auto result = subscriber.recv(update);
+        //if (result) { //the above should just block so no need for if
         auto result = subscriber.recv(update);
-        if (result) {
-          std::string s{static_cast<char*>(update.data()), update.size()};
-          try {
-            auto js = nlohmann::json::parse(s); // this should be the input to the function to decorate errors
-            if (p) p->decorate_errors(js);
-          } catch (nlohmann::json::parse_error& e) {
-            outlineShowMessage(e.what());
-          }
-          //outlineShowMessage3(s);
+        if (result == -1) continue; //not sure this is necessary
+        std::string s{static_cast<char*>(update.data()), update.size()};
+        try {
+          auto js = nlohmann::json::parse(s); // this should be the input to the function to decorate errors
+          if (p) p->decorate_errors(js);
+        } catch (nlohmann::json::parse_error& e) {
+          outlineShowMessage(e.what());
         }
+          //outlineShowMessage3(s);
+        //}
       }
     }
    );
