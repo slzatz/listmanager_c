@@ -223,6 +223,7 @@ class Editor {
     void editorDrawStatusBar(std::string &);
     void editorDrawRows(std::string &);
     void editorDrawCodeRows(std::string &);
+    void draw_visual(std::string &);
     void editorHighlightWordsByPosition(void);
     void editorYankLine(int);
     void editorYankString(void);
