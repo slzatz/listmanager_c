@@ -26,9 +26,9 @@
 #include <set>
 #include <chrono>
 #include <iomanip>  //provides get_time used in time_delta function
-#include <fmt/core.h>
-#include <fmt/format.h>
-#include <fmt/chrono.h>
+//#include <fmt/core.h>
+//#include <fmt/format.h>
+//#include <fmt/chrono.h>
 //#include <zmq.hpp>
 
 void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately

@@ -1036,7 +1036,7 @@ void Editor::editorRefreshScreen(bool draw) {
 
     //Temporary kluge tid for code folder = 18
     //if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
-    if (get_folder_tid(id) == 18 && !(mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
+    if (get_folder_tid(id) == 18 && !(is_subeditor)) editorDrawCodeRows(ab);
     //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
@@ -1363,6 +1363,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
       ab.append(lf_ret);    
     }
   }
+
   if (mode == VISUAL) {
 
     int h_light[2] = {0,0};
@@ -1381,6 +1382,17 @@ void Editor::editorDrawCodeRows(std::string &ab) {
     ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment;
     ab.append(ss.str());
   }
+
+  if (mode == VISUAL_BLOCK) {
+    int x = editorGetScreenXFromRowColWW(vb0[1], vb0[0]) + left_margin + 1;
+    int y = editorGetScreenYFromRowColWW(vb0[1], vb0[0]) + top_margin - line_offset; 
+    ab.append("\x1b[48;5;244m");
+    for (int n=0; n < (fr-vb0[1] + 1);++n) {
+      ab.append(fmt::format("\x1b[{};{}H", y + n, x));
+      ab.append(rows.at(vb0[1] + n).substr(vb0[0], fc - vb0[0] + 1));
+    }
+  }
+
   ab.append("\x1b[0m");
 }
 

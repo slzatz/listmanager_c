@@ -10,6 +10,9 @@
 #include "process.h" // https://github.com/skystrife/procxx used by Editor.cpp and list...improved.cpp
 #include <map> //there is an inline map
 #include <nlohmann/json.hpp>
+#include <fmt/core.h>
+#include <fmt/format.h>
+#include <fmt/chrono.h>
 
 #if __has_include (<nuspell/dictionary.hxx>)
   #include <nuspell/dictionary.hxx>
