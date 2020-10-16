@@ -1027,21 +1027,16 @@ void Editor::editorRefreshScreen(bool draw) {
     char lf_ret[10];
     char erase_chars[10];
     // \x1b[NC moves cursor forward by N columns
-    //int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
     snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
     snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", screencols);//09062020 added the -1: keeps lines from being erased
-    //for (int i=0; i < .total_screenlines; i++) {
     for (int i=0; i < screenlines; i++) {
-      //ab.append("\x1b[K"); does everything to right of cursor - not good in multi-editor world
-      //ab.append("\x1b[40X");
       ab.append(erase_chars);
-      //ab.append(lf_ret, nchars);
       ab.append(lf_ret);
     }
-    //ab.append("\x1b[5;100;200;100$z");
 
     //Temporary kluge tid for code folder = 18
-    if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
+    //if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
+    if (get_folder_tid(id) == 18 && !(mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
     //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
@@ -1057,23 +1052,20 @@ void Editor::editorRefreshScreen(bool draw) {
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 
-  // can't do this until ab is written or will just overwite highlights
+  // can't do the below until ab is written or will just overwite highlights
   if (draw && spellcheck) editorSpellCheck();
-  //if (!last_typed.empty() && last_typed.back() == '{') find_match_for_forward_brace();
-  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '{') {//happens at end of row in INSERT mode
+
+  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '{') { //happens at end of row in INSERT mode
     redraw = find_match_for_left_brace();
-   // editorSetMessage("redraw = %d", redraw);
   } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '{') {
     redraw = find_match_for_left_brace(true);
   } else {redraw = false;}
   if (redraw) return;
-  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '}') {//happens at end of row in INSERT mode
+  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '}') { //happens at end of row in INSERT mode
     redraw = find_match_for_right_brace();
-   // editorSetMessage("redraw = %d", redraw);
   } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '}') {
     redraw = find_match_for_right_brace(true);
   } else {redraw = false;}
-  //editorSetMessage("redraw = %d", redraw);
 }
 
 void Editor::editorDrawMessageBar(std::string& ab) {
@@ -1311,7 +1303,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
   // below is a quick hack folder tid = 18 -> code
   if (get_folder_tid(id) == 18) {
-   procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
                              "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
    // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
     highlight.exec();
@@ -1349,8 +1341,47 @@ void Editor::editorDrawCodeRows(std::string &ab) {
     }
     n++;
   }
-  ab.append("\x1b[0m");
+  
+  if (mode == VISUAL_LINE) {
 
+    int h_light[2] = {0,0};
+    if (highlight[1] < highlight[0]) { 
+      h_light[1] = highlight[0];
+      h_light[0] = highlight[1];
+    } else {
+      h_light[0] = highlight[0];
+      h_light[1] = highlight[1];
+    }
+
+    int x = left_margin + 1;
+    int y = editorGetScreenYFromRowColWW(h_light[0], 0) + top_margin - line_offset; 
+    std::stringstream ss;
+    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m";
+    ab.append(ss.str());
+    for (int n=0; n < (h_light[1]-h_light[0] + 1);++n) {
+      ab.append(rows.at(h_light[0] + n));
+      ab.append(lf_ret);    
+    }
+  }
+  if (mode == VISUAL) {
+
+    int h_light[2] = {0,0};
+    if (highlight[1] < highlight[0]) { 
+      h_light[1] = highlight[0];
+      h_light[0] = highlight[1];
+    } else {
+      h_light[0] = highlight[0];
+      h_light[1] = highlight[1];
+    }
+
+    int x = editorGetScreenXFromRowColWW(fr, h_light[0]) + left_margin + 1;
+    int y = editorGetScreenYFromRowColWW(fr, h_light[0]) + top_margin - line_offset; 
+    std::string fragment = rows.at(fr).substr(h_light[0], h_light[1] - h_light[0]);
+    std::stringstream ss;
+    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment;
+    ab.append(ss.str());
+  }
+  ab.append("\x1b[0m");
 }
 
 /* leaving for a while but shouldn't be used anymore - ? only used for search

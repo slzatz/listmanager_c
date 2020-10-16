@@ -6445,12 +6445,9 @@ int main(int argc, char** argv) {
     }
    );
 
-
   while (1) {
     // just refresh what has changed
     if (editor_mode) {
-
-
       text_change = editorProcessKeypress(); 
       if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
       scroll = p->editorScroll();
@@ -6458,6 +6455,7 @@ int main(int argc, char** argv) {
       redraw = (text_change || scroll || p->redraw); //instead of p->redraw => clear_highlights
       //clear_highlights = p->editorRefreshScreen(redraw)
       p->editorRefreshScreen(redraw);
+
       ////////////////////
       if (lm_browser && scroll) {
         zmq::message_t message(20);
@@ -6465,6 +6463,7 @@ int main(int argc, char** argv) {
         publisher.send(message, zmq::send_flags::dontwait);
       }
       ////////////////////
+
     } else if (O.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       outlineScroll();
@@ -6473,15 +6472,6 @@ int main(int argc, char** argv) {
 
     outlineDrawStatusBar();
     return_cursor();
-
-    /*
-    zmq::message_t update;
-    auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
-    if (result) {
-      std::string s{static_cast<char*>(update.data())};
-      outlineShowMessage3(s);
-    }
-    */
   }
   return 0;
 }
