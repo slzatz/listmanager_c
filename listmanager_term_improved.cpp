@@ -18,6 +18,9 @@ zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
 
+std::atomic<bool> run_thread = true;
+std::thread subs_thread;
+
 std::unordered_set<int> navigation = {
          ARROW_UP,
          ARROW_DOWN,
@@ -3336,10 +3339,19 @@ void F_quit_app(int) {
     write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
     write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
     Py_FinalizeEx();
-    if (which_db == SQLITE) sqlite3_close(S.db);
-    else PQfinish(conn);
-    //subs_thread.join();
+    sqlite3_close(S.db);
+    PQfinish(conn);
+    run_thread = false;
     exit(0);
+    // the above exits cleanly without joining or shutting sockets
+    // I believe that is because the thread dies
+    /*
+    context.close();
+    subscriber.close();
+    publisher.close();
+    subs_thread.join();
+    exit(0);
+    */
   }
 }
 
@@ -3347,6 +3359,13 @@ void F_quit_app_ex(int) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
+  sqlite3_close(S.db);
+  PQfinish(conn);
+  run_thread = false;
+  subs_thread.join();
+  subscriber.close();
+  context.close();
+  publisher.close();
   exit(0);
 }
 
@@ -6424,14 +6443,14 @@ int main(int argc, char** argv) {
   //"./lm_browser " + CURRENT_NOTE_FILE;
   if (lm_browser) popen(system_call.c_str(), "r"); //returns FILE* id
 
+  // ? should use zmq_poll - having problem exiting
   std::thread subs_thread([]() {
-      while (1) {
+      while (run_thread) {
         zmq::message_t update;
-        //auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        auto result = subscriber.recv(update, zmq::recv_flags::dontwait);
+        if (result) { //the above should just block so no need for if
         //auto result = subscriber.recv(update);
-        //if (result) { //the above should just block so no need for if
-        auto result = subscriber.recv(update);
-        if (result == -1) continue; //not sure this is necessary
+        //if (result == -1) continue; //not sure this is necessary
         std::string s{static_cast<char*>(update.data()), update.size()};
         try {
           auto js = nlohmann::json::parse(s); // this should be the input to the function to decorate errors
@@ -6439,8 +6458,7 @@ int main(int argc, char** argv) {
         } catch (nlohmann::json::parse_error& e) {
           outlineShowMessage(e.what());
         }
-          //outlineShowMessage3(s);
-        //}
+        }
       }
     }
    );
