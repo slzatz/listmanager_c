@@ -6440,8 +6440,8 @@ int main(int argc, char** argv) {
   outlineShowMessage3("rows: {}  columns: {}", screenlines, screencols);
   return_cursor();
 
-  //"./lm_browser " + CURRENT_NOTE_FILE;
-  if (lm_browser) popen(system_call.c_str(), "r"); //returns FILE* id
+  //if (lm_browser) popen(system_call.c_str(), "w"); //returns FILE* id
+  if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
   // ? should use zmq_poll - having problem exiting
   std::thread subs_thread([]() {

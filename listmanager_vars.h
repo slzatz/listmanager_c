@@ -45,7 +45,8 @@ const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
 
-std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
+//std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
+std::string system_call = "./lm_browser current.html";
 std::string meta;
 int which_db;
 //int EDITOR_LEFT_MARGIN; //in listmanager.h - needed by Editor.cpp
