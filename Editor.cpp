@@ -2627,7 +2627,8 @@ void Editor::E_run_code_C(void) {
           {"tools", json::array()},
           {"libraries", json::array({ 
               {{"id", "openssl"}, {"version", "111c"}},
-              {{"id", "fmt"},{"version", "trunk"}}
+              {{"id", "fmt"},{"version", "trunk"}},
+              {{"id", "nlohmann_json"},{"version", "360"}}
           })},
       }},
     {"lang", "c++"},
@@ -2700,8 +2701,14 @@ void Editor::E_run_code_C(void) {
 }
 
 void Editor::decorate_errors(json diagnostics) {
-  if (diagnostics.empty()) return;
-  std::string s = diagnostics.dump();
+  if (diagnostics.empty()) {
+    editorSetMessage("There were no errors");
+    editorRefreshScreen(false);
+    return;
+  }
+
+  //std::string s = diagnostics.dump(); //used for debugging
+
   int start_line = diagnostics[0]["range"]["start"]["line"];
   int start_char = diagnostics[0]["range"]["start"]["character"];
   int end_line = diagnostics[0]["range"]["end"]["line"];
