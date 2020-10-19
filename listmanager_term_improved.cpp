@@ -343,6 +343,40 @@ void update_html_zmq(std::string &&fn) {
 
 void update_html_code_file(std::string &&fn) {
   std::string note;
+  // Not sure it makes any sense to update the
+  // HTML when working with a code file
+  // but you would want it updated in preview
+  // would save writing to two separate files
+  // Done below
+
+  std::ofstream myfile;
+  if (editor_mode) {
+    note = p->editorRowsToString();
+    myfile.open("/home/slzatz/pylspclient/test.cpp"); 
+    myfile << note;
+    myfile.close();
+  } else {  
+    note = outlinePreviewRowsToString();
+    std::stringstream html;
+    std::string line;
+
+    procxx::process highlight("highlight", "code_file", "--out-format=html", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { html << line << '\n';}
+  
+    int fd;
+    if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+      lock.l_type = F_WRLCK;  
+      if (fcntl(fd, F_SETLK, &lock) != -1) {
+      write(fd, html.str().c_str(), html.str().size());
+      lock.l_type = F_UNLCK;
+      fcntl(fd, F_SETLK, &lock);
+      } else outlineShowMessage("Couldn't lock file");
+    } else outlineShowMessage("Couldn't open file");
+  } 
+
+  /* old code - should be deleted soon/////////////////////////////
   if (editor_mode) note = p->editorRowsToString();
   else note = outlinePreviewRowsToString();
   std::ofstream myfile;
@@ -350,7 +384,7 @@ void update_html_code_file(std::string &&fn) {
   myfile << note;
   myfile.close();
   std::ofstream myfile2;
-  myfile2.open("/home/slzatz/pylspclient/examples/test.cpp"); 
+  myfile2.open("/home/slzatz/pylspclient/src/test.cpp"); 
   myfile2 << note;
   myfile2.close();
   std::stringstream html;
@@ -362,11 +396,9 @@ void update_html_code_file(std::string &&fn) {
     while(getline(highlight.output(), line)) { html << line << '\n';}
     //while(getline(highlight.output(), line)) { html << line << "<br>";}
 
-  /*
-  std::string meta_(meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  */
+  //std::string meta_(meta);
+  //std::size_t p = meta_.find("</title>");
+  //meta_.insert(p, title);
   
   int fd;
   //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
@@ -378,8 +410,10 @@ void update_html_code_file(std::string &&fn) {
     fcntl(fd, F_SETLK, &lock);
     } else outlineShowMessage("Couldn't lock file");
   } else outlineShowMessage("Couldn't open file");
+  */
 
 }
+
 void generate_persistent_html_file(int id) {
   std::string  fn = O.rows.at(O.fr).title.substr(0, 20);
     std::string illegal_chars = "\\/:?\"<>|\n ";
@@ -5921,7 +5955,8 @@ bool editorProcessKeypress(void) {
           eraseRightScreen();
 
           //p->editorSetMessage(""); //now handled by eraseRightScreen
-          editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+          //editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
+          std::erase(editors, p); //c++20
           if (p->linked_editor) {
              editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
              delete p->linked_editor;
@@ -6442,6 +6477,7 @@ int main(int argc, char** argv) {
 
   //if (lm_browser) popen(system_call.c_str(), "w"); //returns FILE* id
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
+  //std::system("./clangd_zmq.py &"); //this caused mucho problems ...
 
   // ? should use zmq_poll - having problem exiting
   std::thread subs_thread([]() {
