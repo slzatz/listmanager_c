@@ -1292,7 +1292,8 @@ int note_callback (void *e, int argc, char **argv, char **azColName) {
 
   if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
   std::string note(argv[0]);
-  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  //note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::erase(note, '\r'); //c++20
   std::stringstream snote;
   snote << note;
   std::string s;
@@ -4018,7 +4019,8 @@ int preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
 
   if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
   std::string note(argv[0]);
-  note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  //note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::erase(note, '\r'); //c++20
   std::stringstream snote;
   snote << note;
   std::string s;
@@ -5958,7 +5960,8 @@ bool editorProcessKeypress(void) {
           //editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
           std::erase(editors, p); //c++20
           if (p->linked_editor) {
-             editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
+             //editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
+             std::erase(editors, p->linked_editor); //c++20
              delete p->linked_editor;
           }
 
