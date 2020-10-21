@@ -111,10 +111,10 @@ class Editor {
     //bool subnote_visible;
 
     void set_screenlines(void);
-    bool find_match_for_left_brace(bool back=false);
-    std::pair<int,int> move_to_right_brace(void);
-    bool find_match_for_right_brace(bool back=false);
-    std::pair<int,int> move_to_left_brace(void);
+    bool find_match_for_left_brace(char, bool back=false);
+    std::pair<int,int> move_to_right_brace(char);
+    bool find_match_for_right_brace(char, bool back=false);
+    std::pair<int,int> move_to_left_brace(char);
     
 
 /* undo - redo */

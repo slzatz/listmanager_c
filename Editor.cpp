@@ -7,6 +7,7 @@
 //#include <nlohmann/json.hpp>
 #include <cpr/cpr.h>
 #include <array>
+#include <unordered_map>
 
 
 std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
@@ -17,11 +18,14 @@ int Editor::origin = 0;
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
 // used by %
-std::pair<int,int> Editor::move_to_right_brace(void) {
+std::pair<int,int> Editor::move_to_right_brace(char left_brace) {
   int r = fr;
   int c = fc + 1;
   int count = 1;
   int max = rows.size();
+
+  const std::unordered_map<char,char> m{{'{','}'}, {'(',')'}, {'[',']'}};
+  char right_brace = m.at(left_brace);
 
   for (;;) {
 
@@ -40,10 +44,10 @@ std::pair<int,int> Editor::move_to_right_brace(void) {
       continue;
     }
 
-    if (row.at(c) == '}') {
+    if (row.at(c) == right_brace) {
       count -= 1;
       if (count == 0) return std::make_pair(r,c);
-    } else if (row.at(c) == '{') count += 1;
+    } else if (row.at(c) == left_brace) count += 1;
 
     c++;
   }
@@ -52,20 +56,34 @@ std::pair<int,int> Editor::move_to_right_brace(void) {
 //triggered by % in NORMAL mode
 void Editor::E_move_to_matching_brace(int repeat) {
   std::pair<int,int> pos;
-  if (rows.at(fr).at(fc) == '{') 
-      pos = move_to_right_brace();
-  else if (rows.at(fr).at(fc) == '}') 
-      pos = move_to_left_brace();
-  fr = pos.first;
-  fc = pos.second;
+  char c = rows.at(fr).at(fc);
+  const std::string left = "{([";
+  auto it = left.find(c);
+  if (it != std::string::npos) { 
+    pos = move_to_right_brace(c);
+    fr = pos.first;
+    fc = pos.second;
+  } else { 
+    const std::string right = "})]";
+    it = right.find(c);
+    if (it != std::string::npos) {
+      pos = move_to_left_brace(c);
+      fr = pos.first;
+      fc = pos.second;
+    }
+  }  
 }
 
 //'automatically' happens in NORMAL and INSERT mode
-bool Editor::find_match_for_left_brace(bool back) {
+bool Editor::find_match_for_left_brace(char left_brace, bool back) {
   int r = fr;
   int c = fc + 1;
   int count = 1;
   int max = rows.size();
+
+  //char right_brace = (left_brace == '{') ? '}' : ')';
+  const std::unordered_map<char,char> m{{'{','}'}, {'(',')'}};
+  char right_brace = m.at(left_brace);
 
   for (;;) {
 
@@ -84,10 +102,10 @@ bool Editor::find_match_for_left_brace(bool back) {
       continue;
     }
 
-    if (row.at(c) == '}') {
+    if (row.at(c) == right_brace) {
       count -= 1;
       if (count == 0) break;
-    } else if (row.at(c) == '{') count += 1;
+    } else if (row.at(c) == left_brace) count += 1;
 
     c++;
   }
@@ -95,13 +113,13 @@ bool Editor::find_match_for_left_brace(bool back) {
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
-    << "}";
+    << right_brace;
     //<< "\x1b[0m";
 
   x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" //"\x1b[48;5;31m"
-    << "{"
+    << left_brace
     << "\x1b[0m";
   write(STDOUT_FILENO, s.str().c_str(), s.str().size());
   editorSetMessage("r = %d   c = %d", r, c);
@@ -109,10 +127,13 @@ bool Editor::find_match_for_left_brace(bool back) {
 }
 
 // used by %
-std::pair<int,int> Editor::move_to_left_brace(void) {
+std::pair<int,int> Editor::move_to_left_brace(char right_brace) {
   int r = fr;
   int c = fc - 1;
   int count = 1;
+
+  const std::unordered_map<char,char> m{{'}','{'}, {')','('}, {']','['}};
+  char left_brace = m.at(right_brace);
 
   std::string row = rows.at(r);
 
@@ -129,22 +150,25 @@ std::pair<int,int> Editor::move_to_left_brace(void) {
       continue;
     }
 
-    if (row.at(c) == '{') {
+    if (row.at(c) == left_brace) {
       count -= 1;
       if (count == 0) return std::make_pair(r,c);
-    } else if (row.at(c) == '}') count += 1;
+    } else if (row.at(c) == right_brace) count += 1;
 
     c--;
   }
 }
 
 //'automatically' happens in NORMAL and INSERT mode
-bool Editor::find_match_for_right_brace(bool back) {
+bool Editor::find_match_for_right_brace(char right_brace, bool back) {
   int r = fr;
   int c = fc - 1 - back;
   int count = 1;
 
   std::string row = rows.at(r);
+  //char left_brace = (right_brace == '}') ? '{' : '(';
+  const std::unordered_map<char,char> m{{'}','{'}, {')','('}};
+  char left_brace = m.at(right_brace);
 
   for (;;) {
 
@@ -159,10 +183,10 @@ bool Editor::find_match_for_right_brace(bool back) {
       continue;
     }
 
-    if (row.at(c) == '{') {
+    if (row.at(c) == left_brace) {
       count -= 1;
       if (count == 0) break;
-    } else if (row.at(c) == '}') count += 1;
+    } else if (row.at(c) == right_brace) count += 1;
 
     c--;
   }
@@ -170,13 +194,13 @@ bool Editor::find_match_for_right_brace(bool back) {
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
-    << "{";
+    << left_brace;
     //<< "\x1b[0m";
 
   x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
-    << "}"
+    << right_brace
     << "\x1b[0m";
   write(STDOUT_FILENO, s.str().c_str(), s.str().size());
   editorSetMessage("r = %d   c = %d", r, c);
@@ -1058,16 +1082,44 @@ void Editor::editorRefreshScreen(bool draw) {
   // can't do the below until ab is written or will just overwite highlights
   if (draw && spellcheck) editorSpellCheck();
 
-  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '{') { //happens at end of row in INSERT mode
-    redraw = find_match_for_left_brace();
-  } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '{') {
-    redraw = find_match_for_left_brace(true);
-  } else {redraw = false;}
-  if (redraw) return;
-  if (!rows.empty() && !rows.at(fr).empty() && rows.at(fr).size() > fc && rows.at(fr).at(fc) == '}') { //happens at end of row in INSERT mode
-    redraw = find_match_for_right_brace();
-  } else if (fc > 0 && mode == INSERT && rows.at(fr).at(fc-1) == '}') {
-    redraw = find_match_for_right_brace(true);
+  /***** below is automatic match braces ******/
+  if (rows.empty() || rows.at(fr).empty()) return;
+
+  std::string braces = "{}()";
+  if (fc == rows.at(fr).size()) fc -= 1; //must be in insert mode and must be beyond last char
+  char c = rows.at(fr).at(fc);
+  size_t pos = braces.find(c);
+  if ((pos != std::string::npos)) {
+    switch(c) {
+      case '{':
+      case '(':  
+        redraw = find_match_for_left_brace(c);
+        return;
+      case '}':
+      case ')':
+        redraw = find_match_for_right_brace(c);
+        return;
+      //case '(':  
+      default://should not need this
+        return;
+    }
+  } else if (fc > 0 && mode == INSERT) {
+      size_t pos = braces.find(rows.at(fr).at(fc-1));
+      if ((pos != std::string::npos)) {
+        switch(rows.at(fr).at(fc-1)) {
+          case '{':
+          case '(':  
+            redraw = find_match_for_left_brace(c, true);
+            return;
+          case '}':
+          case ')':
+            redraw = find_match_for_right_brace(c, true);
+            return;
+          //case '(':  
+          default://should not need this
+            return;
+      }        
+    } else {redraw = false;}
   } else {redraw = false;}
 }
 
@@ -2572,6 +2624,7 @@ void Editor::E_italic(int repeat) {
   fc++;
 }
 
+// not in use at the moment
 void ReplaceStringInPlace(std::string& subject, const std::string& search,
                           const std::string& replace) {
     size_t pos = 0;
