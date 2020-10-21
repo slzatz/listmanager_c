@@ -599,7 +599,7 @@ bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, ch
    return true;
 }
 
-bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
+bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
    if (rc != SQLITE_OK) {
      outlineShowMessage("SQL error in %s: %s", func, errmsg);
@@ -615,7 +615,7 @@ void map_context_titles(void) {
   std::string query("SELECT tid,title FROM context;");
 
   bool no_rows = true;
-  if (!db_query(S.db, query.c_str(), context_titles_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query, context_titles_callback, &no_rows, &S.err_msg, __func__)) return;
   if (no_rows) outlineShowMessage("There were no context titles to map!");
 }
 
@@ -638,7 +638,7 @@ void map_folder_titles(void) {
   std::string query("SELECT tid,title FROM folder;");
 
   bool no_rows = true;
-  if (!db_query(S.db, query.c_str(), folder_titles_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query, folder_titles_callback, &no_rows, &S.err_msg, __func__)) return;
   if (no_rows) outlineShowMessage("There were no folder titles to map!");
 }
 
@@ -684,7 +684,7 @@ void get_containers(void) {
   
   std::string query = fmt::format("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
   bool no_rows = true;
-  if (!db_query(S.db, query.c_str(), callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query, callback, &no_rows, &S.err_msg, __func__)) return;
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
@@ -799,13 +799,19 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
+  /*
   std::stringstream query;
   query << "SELECT keyword.name "
            "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
            "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
+ */
 
-   std::vector<std::string> task_keywords = {}; ////////////////////////////
-   bool success =  db_query(S.db, query.str(), task_keywords_callback, &task_keywords, &S.err_msg);
+   std::string query = fmt::format("SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
+                                   "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
+                                   O.rows.at(O.fr).id);
+
+   std::vector<std::string> task_keywords = {}; 
+   bool success =  db_query(S.db, query, task_keywords_callback, &task_keywords, &S.err_msg);
    if (task_keywords.empty() || !success) return std::make_pair(std::string(), std::vector<std::string>());
 
    std::string delim = "";
@@ -831,26 +837,45 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id) {
 
-    std::stringstream query;
-    query << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " 
+  /*
+  std::stringstream query;
+  query << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " 
           << task_id << ", keyword.id FROM keyword WHERE keyword.id = " 
           << keyword_id << ";";
-    if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+  */
 
-    std::stringstream query2;
-    // updates task modified column so we know that something changed with the task
-    query2 << "UPDATE task SET modified = datetime('now', '-"
+  std::string query = fmt::format("INSERT INTO task_keyword (task_id, keyword_id) "
+                                  "SELECT {}, keyword.id FROM keyword WHERE keyword.id={};",
+                                  task_id, keyword_id);
+
+  if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
+
+  /*
+  std::stringstream query2;
+  query2 << "UPDATE task SET modified = datetime('now', '-"
            << TZ_OFFSET << " hours') WHERE id =" << task_id << ";";
-    if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+  */
+
+  // updates task modified column so we know that something changed with the task
+  query = fmt::format("UPDATE task SET modified=datetime('now', '-{} hours') "
+                      "WHERE id={};", TZ_OFFSET, task_id);
+
+  if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
 
     /**************fts virtual table update**********************/
 
-    std::string s = get_task_keywords().first;
-    std::stringstream query3;
-    query3 << "Update fts SET tag='" << s << "' WHERE lm_id=" << task_id << ";";
-    if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+  std::string s = get_task_keywords().first;
+
+  /*
+  std::stringstream query3;
+  query3 << "Update fts SET tag='" << s << "' WHERE lm_id=" << task_id << ";";
+  */
+
+  query = fmt::format("Update fts SET tag='{}' WHERE lm_id={};", s, task_id);
+  if (!db_query(S.fts_db, query, 0, 0, &S.err_msg, __func__)) return;
 }
 
+/*******************start here to clean up sqlite code************************/
 //void add_task_keyword(const std::string &kw, int id) {
 //overload that takes keyword name and task_id
 void add_task_keyword(std::string &kws, int id) {
@@ -1155,15 +1180,15 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   return 0;
 }
 
-// called as part of :find -> search_db -> fts5_callback -> get_items_by_id -> by_id_data_callback
-void get_items_by_id(std::stringstream &query) {
+// called as part of :find -> search_db -> fts5_callback -> search_db -> get_items_by_id -> by_id_data_callback
+void get_items_by_id(std::string query) {
   /*
    * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
 
   bool no_rows = true;
-  if (!db_query(S.db, query.str().c_str(), by_id_data_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.db, query, by_id_data_callback, &no_rows, &S.err_msg, __func__)) return;
 
   O.view = TASK;
 
@@ -1333,23 +1358,26 @@ void search_db(std::string search_terms) {
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
 
+  /*
   std::stringstream fts_query;
+  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
+            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
+  */
+
   /*
    * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
-  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            //<< search_terms << "' ORDER BY rank";
-            //<< search_terms << "' ORDER BY rank LIMIT " << 50;
-            //<< search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0) LIMIT " << 50;
-            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
+  std::string fts_query = fmt::format("SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') "
+                                      "FROM fts WHERE fts MATCH '{}' ORDER BY bm25(fts, 2.0, 1.0, 5.0);",
+                                      search_terms);
 
   fts_ids.clear();
   fts_titles.clear();
   fts_counter = 0;
 
   bool no_rows = true;
-  if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
+  if (!db_query(S.fts_db, fts_query, fts5_callback, &no_rows, &S.err_msg, __func__)) return;
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
@@ -1375,7 +1403,7 @@ void search_db(std::string search_terms) {
   }
   query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  get_items_by_id(query);
+  get_items_by_id(query.str());
 
   //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
   //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
@@ -1426,7 +1454,7 @@ void search_db2(std::string search_terms) {
   }
   query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
 
-  get_items_by_id(query);
+  get_items_by_id(query.str());
 }
 
 int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
