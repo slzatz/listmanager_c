@@ -1,6 +1,7 @@
 #include "listmanager.h"
 #include "listmanager_vars.h"
 #include "Editor.h"
+#include "Dbase.h"
 #include <cstdarg> //va_start etc.
 #include <string_view>
 #include <zmq.hpp>
@@ -375,43 +376,6 @@ void update_html_code_file(std::string &&fn) {
       } else outlineShowMessage("Couldn't lock file");
     } else outlineShowMessage("Couldn't open file");
   } 
-
-  /* old code - should be deleted soon/////////////////////////////
-  if (editor_mode) note = p->editorRowsToString();
-  else note = outlinePreviewRowsToString();
-  std::ofstream myfile;
-  myfile.open("code_file"); 
-  myfile << note;
-  myfile.close();
-  std::ofstream myfile2;
-  myfile2.open("/home/slzatz/pylspclient/src/test.cpp"); 
-  myfile2 << note;
-  myfile2.close();
-  std::stringstream html;
-  std::string line;
-
-   procxx::process highlight("highlight", "code_file", "--out-format=html", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { html << line << '\n';}
-    //while(getline(highlight.output(), line)) { html << line << "<br>";}
-
-  //std::string meta_(meta);
-  //std::size_t p = meta_.find("</title>");
-  //meta_.insert(p, title);
-  
-  int fd;
-  //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
-  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &lock) != -1) {
-    write(fd, html.str().c_str(), html.str().size());
-    lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock);
-    } else outlineShowMessage("Couldn't lock file");
-  } else outlineShowMessage("Couldn't open file");
-  */
-
 }
 
 void generate_persistent_html_file(int id) {
@@ -461,6 +425,16 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
   // PQfinish(conn);
 }
 /* Begin sqlite database functions */
+
+Sqlite lm_db(SQLITE_DB);
+Sqlite fts_db(FTS_DB);
+
+void run_sql(void) {
+  if (!lm_db.run()) {
+    outlineShowMessage("SQL error: %s", lm_db.errmsg);
+    return;
+  }  
+}
 
 void db_open(void) {
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
@@ -1275,6 +1249,7 @@ void merge_note(int id) {
   //}
 }
 
+/*** appears not to be in use ****/
 std::string get_title(int id) {
   std::string title;
   std::stringstream query;
@@ -1296,6 +1271,35 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 void get_note(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
+  lm_db.query("SELECT note FROM task WHERE id = {}", id);
+  lm_db.callback = note_callback;
+  lm_db.pArg = p;
+  run_sql();
+  /*
+  if (!lm_db.run()) {
+    outlineShowMessage("SQL error: %s", lm_db.errmsg);
+    return;
+  } 
+  */
+  //outlineShowMessage("pArg: %x", lm_db.pArg);
+
+  if (!p->linked_editor) return;
+
+  lm_db.query("SELECT subnote FROM task WHERE id = {}", id);
+  lm_db.callback = note_callback;
+  lm_db.pArg = p->linked_editor;
+  run_sql();
+  /*
+  if (!lm_db.run()) {
+    outlineShowMessage("SQL error: %s", lm_db.errmsg);
+    return;
+  } 
+  */
+}
+
+void get_note_(int id) {
+  if (id ==-1) return; // id given to new and unsaved entries
+
   std::stringstream query;
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), note_callback, p, &S.err_msg, __func__)) return;
@@ -1306,7 +1310,6 @@ void get_note(int id) {
   query2 << "SELECT subnote FROM task WHERE id = " << id;
   if (!db_query(S.db, query2.str().c_str(), note_callback, p->linked_editor, &S.err_msg, __func__)) return;
 }
-
 // doesn't appear to be called if row is NULL
 int note_callback (void *e, int argc, char **argv, char **azColName) {
 
