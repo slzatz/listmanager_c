@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# note usage is not ./activate but is source activate or . activate
+source /home/slzatz/listmanager_cpp/bin/activate
+export PYTHONPATH="/home/slzatz/listmanager_cpp/"
+
