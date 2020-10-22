@@ -50,6 +50,9 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"read", &Editor::E_readfile_C},
   {"readfile", &Editor::E_readfile_C},
 
+  {"compile", &Editor::E_compile_C},
+  {"runl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
+  {"runlocal", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"run", &Editor::E_run_code_C} // this does change the text/usually COMMAND_LINE doesn't
 };
 
@@ -358,12 +361,17 @@ void update_html_code_file(std::string &&fn) {
     myfile.close();
   } else {  
     note = outlinePreviewRowsToString();
-    std::stringstream html;
-    std::string line;
+    std::ofstream myfile;
+    myfile.open("code_file");
+    myfile << note;
+    myfile.close();
 
     procxx::process highlight("highlight", "code_file", "--out-format=html", 
                              "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
     highlight.exec();
+
+    std::stringstream html;
+    std::string line;
     while(getline(highlight.output(), line)) { html << line << '\n';}
   
     int fd;
@@ -1275,13 +1283,6 @@ void get_note(int id) {
   lm_db.callback = note_callback;
   lm_db.pArg = p;
   run_sql();
-  /*
-  if (!lm_db.run()) {
-    outlineShowMessage("SQL error: %s", lm_db.errmsg);
-    return;
-  } 
-  */
-  //outlineShowMessage("pArg: %x", lm_db.pArg);
 
   if (!p->linked_editor) return;
 
@@ -1289,12 +1290,6 @@ void get_note(int id) {
   lm_db.callback = note_callback;
   lm_db.pArg = p->linked_editor;
   run_sql();
-  /*
-  if (!lm_db.run()) {
-    outlineShowMessage("SQL error: %s", lm_db.errmsg);
-    return;
-  } 
-  */
 }
 
 void get_note_(int id) {
