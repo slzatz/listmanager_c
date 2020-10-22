@@ -123,7 +123,7 @@ class Editor {
     void undo(void);
     void redo(void);
     std::vector<std::string> str2vec(std::string &);
-    std::vector<std::string> str2vecWW(std::string &);
+    std::vector<std::string> str2vecWW(std::string);
     int get_num_rows(std::string &);
 
 /* EDITOR COMMAND_LINE mode functions */
@@ -137,6 +137,8 @@ class Editor {
     void E_persist_C(void);
     void E_readfile_C(void);
     void E_run_code_C(void);
+    void E_runlocal_C(void);
+    void E_compile_C(void);
     void decorate_errors(nlohmann::json);
 
     /* EDITOR mode NORMAL functions */

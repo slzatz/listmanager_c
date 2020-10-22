@@ -267,7 +267,7 @@ std::vector<std::string> Editor::str2vec(std::string & str) {
   return vec;
 }
 
-std::vector<std::string> Editor::str2vecWW(std::string & str) {
+std::vector<std::string> Editor::str2vecWW(std::string str) {
   std::vector<std::string> vec;
   int pos = 0;
   int prev_pos = 0;
@@ -938,6 +938,7 @@ std::string Editor::editorRowsToString(void) {
 
   std::string z = "";
   for (auto i: rows) {
+      //if (!i.empty()) z += i; //10-21-2020
       z += i;
       z += '\n';
   }
@@ -1104,7 +1105,8 @@ void Editor::editorRefreshScreen(bool draw) {
         return;
     }
   } else if (fc > 0 && mode == INSERT) {
-      size_t pos = braces.find(rows.at(fr).at(fc-1));
+      char c = rows.at(fr).at(fc-1);
+      size_t pos = braces.find(c);
       if ((pos != std::string::npos)) {
         switch(rows.at(fr).at(fc-1)) {
           case '{':
@@ -2727,10 +2729,10 @@ void Editor::E_run_code_C(void) {
     // escapes seem to be "exposed" somehow
     auto arr = js1["buildResult"]["stderr"];
 
-  for (const auto i : arr) {
-    std::string s = i["text"];
-    s_rows.push_back(s);
-  }
+    for (const auto i : arr) {
+      std::string s = i["text"];
+      s_rows.push_back(s);
+    }
   }
 
   s_rows.push_back("----------------");;
@@ -2753,6 +2755,56 @@ void Editor::E_run_code_C(void) {
 
 }
 
+void Editor::E_compile_C(void) {
+
+  if(is_subeditor) {
+    editorSetMessage("You're in the subeditor!");
+    return;
+  }
+  std::stringstream text;
+  std::string line;
+  chdir("/home/slzatz/pylspclient/");
+  //procxx::process make("make", "-f /home/slzatz/pylspclient/Makefile");
+  procxx::process make("make");
+  make.exec();
+  while(getline(make.output(), line)) { text << line << '\n';}
+  std::vector<std::string> zz = str2vecWW(text.str());
+  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  s_rows.clear();
+  s_rows.push_back("----------------");;
+  s_rows.insert(s_rows.end(), zz.begin(), zz.end());
+  s_rows.push_back("----------------");;
+
+  linked_editor->fr = 0;
+  linked_editor->fc = 0;
+  linked_editor->editorRefreshScreen(true);
+  linked_editor->dirty++;
+  chdir("/home/slzatz/listmanager_cpp/");
+}
+
+void Editor::E_runlocal_C(void) {
+
+  if(is_subeditor) {
+    editorSetMessage("You're in the subeditor!");
+    return;
+  }
+  std::stringstream text;
+  std::string line;
+  procxx::process run("/home/slzatz/pylspclient/test_cpp");
+  run.exec();
+  while(getline(run.output(), line)) { text << line << '\n';}
+  std::vector<std::string> zz = str2vecWW(text.str());
+  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  s_rows.clear();
+  s_rows.push_back("----------------");;
+  s_rows.insert(s_rows.end(), zz.begin(), zz.end());
+  s_rows.push_back("----------------");;
+
+  linked_editor->fr = 0;
+  linked_editor->fc = 0;
+  linked_editor->editorRefreshScreen(true);
+  linked_editor->dirty++;
+}
 void Editor::decorate_errors(json diagnostics) {
   if (diagnostics.empty()) {
     editorSetMessage("There were no errors");
