@@ -5744,7 +5744,7 @@ bool editorProcessKeypress(void) {
           }
           }
 
-          /*falls through to here*/
+          /*Escape whatever else happens falls through to here*/
           p->mode = NORMAL;
           p->repeat = 0;
           p->last_typed = std::string(); //probably messes up dot but dot could use last cmd from diff

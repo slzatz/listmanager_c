@@ -1087,8 +1087,9 @@ void Editor::editorRefreshScreen(bool draw) {
   if (rows.empty() || rows.at(fr).empty()) return;
 
   std::string braces = "{}()";
-  if (fc == rows.at(fr).size()) fc -= 1; //must be in insert mode and must be beyond last char
-  char c = rows.at(fr).at(fc);
+  char c;
+  if (fc == rows.at(fr).size()) c = rows.at(fr).at(fc-1); //must be in insert mode and must be beyond last char
+  else c = rows.at(fr).at(fc);
   size_t pos = braces.find(c);
   if ((pos != std::string::npos)) {
     switch(c) {
