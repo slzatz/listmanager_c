@@ -96,6 +96,7 @@ inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in 
 inline std::vector<std::vector<int>> word_positions = {};
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
 void update_note(bool); //used by Editor class 
+void update_code_file(void);
 std::string get_title(int id);
 
 

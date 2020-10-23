@@ -347,43 +347,38 @@ void update_html_zmq(std::string &&fn) {
 
 void update_html_code_file(std::string &&fn) {
   std::string note;
-  // Not sure it makes any sense to update the
-  // HTML when working with a code file
-  // but you would want it updated in preview
-  // would save writing to two separate files
-  // Done below
-
   std::ofstream myfile;
-  if (editor_mode) {
-    note = p->editorRowsToString();
-    myfile.open("/home/slzatz/pylspclient/test.cpp"); 
-    myfile << note;
-    myfile.close();
-  } else {  
-    note = outlinePreviewRowsToString();
-    std::ofstream myfile;
-    myfile.open("code_file");
-    myfile << note;
-    myfile.close();
+  note = outlinePreviewRowsToString();
+  myfile.open("code_file");
+  myfile << note;
+  myfile.close();
 
-    procxx::process highlight("highlight", "code_file", "--out-format=html", 
+  procxx::process highlight("highlight", "code_file", "--out-format=html", 
                              "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-    highlight.exec();
+  highlight.exec();
 
-    std::stringstream html;
-    std::string line;
-    while(getline(highlight.output(), line)) { html << line << '\n';}
-  
-    int fd;
-    if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-      lock.l_type = F_WRLCK;  
-      if (fcntl(fd, F_SETLK, &lock) != -1) {
-      write(fd, html.str().c_str(), html.str().size());
-      lock.l_type = F_UNLCK;
-      fcntl(fd, F_SETLK, &lock);
-      } else outlineShowMessage("Couldn't lock file");
-    } else outlineShowMessage("Couldn't open file");
-  } 
+  std::stringstream html;
+  std::string line;
+  while(getline(highlight.output(), line)) { html << line << '\n';}
+ 
+  int fd;
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, html.str().c_str(), html.str().size());
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else outlineShowMessage("Couldn't lock file");
+  } else outlineShowMessage("Couldn't open file");
+}
+
+void update_code_file(void) {
+  std::string note;
+  std::ofstream myfile;
+  note = p->editorRowsToString();
+  myfile.open("/home/slzatz/pylspclient/test.cpp"); 
+  myfile << note;
+  myfile.close();
 }
 
 void generate_persistent_html_file(int id) {
@@ -4911,7 +4906,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             //updating because title changed
             if (lm_browser) {
               if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-              else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+              //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
             }   
           } else if (O.view == CONTEXT || O.view == FOLDER) update_container();
           else if (O.view == KEYWORD) update_keyword();

@@ -404,6 +404,7 @@ void generate_persistent_html_file(int);
 void load_meta(void);
 void update_html_file(std::string &&);
 void update_html_code_file(std::string &&);
+void update_code_file(void);
 //void editorSaveNoteToFile(const std::string &);
 //void editorReadFileIntoNote(const std::string &); 
 
