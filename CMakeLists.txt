@@ -7,6 +7,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(ZeroMQ QUIET)
 
+set(BUILD_CPR_TESTS OFF)
+
 if(NOT ZeroMQ_FOUND)
   message(STATUS "CMake libzmq package not found, trying again with pkg-config (normal install of zeromq)")
   list (APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR}/libzmq-pkg-config)
