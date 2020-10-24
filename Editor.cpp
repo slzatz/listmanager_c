@@ -1146,7 +1146,7 @@ void Editor::editorDrawStatusBar(std::string& ab) {
   char buf[32];
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + TOP_MARGIN + 1, left_margin);
   //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", total_screenlines + top_margin, left_margin);
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + top_margin, left_margin + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", screenlines + top_margin, left_margin + 1); //+1
   ab.append(buf);
 
   //erase from start of an Editor's status bar to the end of the Editor's status bar
@@ -1179,9 +1179,9 @@ void Editor::editorDrawStatusBar(std::string& ab) {
     len = snprintf(status, sizeof(status), "%d - %s ... %s", id, truncated_title.c_str(), (is_subeditor) ? "subeditor" : "");
     }
 
-  if (len > screencols) len = screencols;
+  if (len > screencols - 1) len = screencols - 1;
   ab.append(status, len);
-  while (len < screencols) {
+  while (len < screencols - 1) {
       ab.append(" ", 1);
       len++;
     }

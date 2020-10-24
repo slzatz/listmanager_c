@@ -5,7 +5,6 @@
 #define TZ_OFFSET 4 // time zone offset - either 4 or 5
 #define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
-
 // to use GIT_BRANCH in makefile (from cmake)
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
@@ -27,18 +26,12 @@
 #include <set>
 #include <chrono>
 #include <iomanip>  //provides get_time used in time_delta function
-//#include <fmt/core.h>
-//#include <fmt/format.h>
-//#include <fmt/chrono.h>
-//#include <zmq.hpp>
 
 void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 
 template<typename... Args>
 void outlineShowMessage3(fmt::string_view format_str, const Args & ... args) {
   fmt::format_args argspack = fmt::make_format_args(args...);
-  //std::string s = fmt::vformat(format_str, argspack);
-  //outlineShowMessage2(s);
   outlineShowMessage2(fmt::vformat(format_str, argspack));
 }
 
@@ -50,14 +43,11 @@ const std::string DB_INI = "db.ini";
 std::string system_call = "./lm_browser current.html";
 std::string meta;
 int which_db;
-//int EDITOR_LEFT_MARGIN; //in listmanager.h - needed by Editor.cpp
 struct termios orig_termios;
 int screenlines, screencols, new_screenlines, new_screencols;
 std::stringstream display_text;
 int initial_file_row = 0; //for arrowing or displaying files
-//bool editor_mode;
 std::string search_terms;
-//std::vector<std::vector<int>> word_positions; //inline
 std::vector<int> fts_ids;
 int fts_counter;
 std::string search_string; //word under cursor works with *, n, N etc.
@@ -75,7 +65,6 @@ std::vector<std::string> page_history; // the history of commands to make it eas
 size_t cmd_hx_idx = 0;
 size_t page_hx_idx = 0;
 //std::map<int, std::string> html_files;
-//bool lm_browser = true;
 int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;
@@ -100,19 +89,6 @@ std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s"
 //better name something like no_edit_cmds or non_edit_cmds
 std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"}; //could put 'u' ctrl-r here
 
-/*
-std::unordered_set<int> navigation = {
-         ARROW_UP,
-         ARROW_DOWN,
-         ARROW_LEFT,
-         ARROW_RIGHT,
-         'h',
-         'j',
-         'k',
-         'l'
-};
-*/
-
 struct config {
   std::string user;
   std::string password;
@@ -123,9 +99,6 @@ struct config {
 };
 struct config c;
 
-//zmq::context_t context(1);
-//zmq::socket_t publisher(context, ZMQ_PUB);
-
 PGconn *conn = nullptr;
 
 typedef struct orow {
@@ -135,7 +108,6 @@ typedef struct orow {
   bool star;
   bool deleted;
   bool completed;
-  //char modified[16];
   std::string modified;
 
   // note the members below are temporary editing flags
@@ -248,7 +220,6 @@ void F_readfile(int pos);
 void F_valgrind(int pos); // pos not used
 void F_quit_app(int pos); // pos not used
 void F_quit_app_ex(int pos); // pos not used
-//void F_merge(int pos); // pos not used
 void F_help(int pos);
 void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used

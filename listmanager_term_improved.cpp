@@ -179,7 +179,7 @@ void signalHandler(int signum) {
 void draw_editors(void) {
   std::string ab;
   //for (auto &e : editors) {
-  for (size_t i=0, max=editors.size(); i!=max; ++i) {  
+  for (size_t i=0, max=editors.size(); i!=max; ++i) {
     Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
     std::string buf;
@@ -191,13 +191,15 @@ void draw_editors(void) {
       // only need one 'm'
       ab.append("\x1b[37;1mx");
     }
-    //'T' corner = w or right top corner = k
-    buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
-    ab.append(buf);
-    if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
-    //if (&editors.back() == &e) ab.append("\x1b[37;1mk"); // works if you do for (auto &e ...)
-    else ab.append("\x1b[37;1mw");
-
+    if (!e->is_subeditor) {
+      //'T' corner = w or right top corner = k
+      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
+      ab.append(buf);
+      //if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+      if (e->left_margin + e->screencols > screencols - 4) ab.append("\x1b[37;1mk"); //draw corner 5
+      //if (&editors.back() == &e) ab.append("\x1b[37;1mk"); // works if you do for (auto &e ...)
+      else ab.append("\x1b[37;1mw");
+    }
     //exit line drawing mode
     ab.append("\x1b(B");
   }
@@ -1243,22 +1245,6 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-void merge_note(int id) {
-  std::stringstream query;
-
-  query << "SELECT note FROM task WHERE id = " << id;
-
-  if (!db_query(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg, __func__)) return;
-
-  //int rc = sqlite3_exec(S.db, query.str().c_str(), note_callback, nullptr, &S.err_msg);
-
-  //if (rc != SQLITE_OK ) {
-  //  outlineShowMessage("In merge_note: %s SQL error: %s", FTS_DB.c_str(), S.err_msg);
-  //  sqlite3_free(S.err_msg);
-  //  sqlite3_close(S.db);
-  //}
-}
-
 /*** appears not to be in use ****/
 std::string get_title(int id) {
   std::string title;
@@ -1269,15 +1255,15 @@ std::string get_title(int id) {
 }
 
 int title_callback (void *title, int argc, char **argv, char **azColName) {
-
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
-
   std::string *t = static_cast<std::string*>(title);
   *t = std::string(argv[0]);
   return 0;
 }
 
+// using class version of sqlite code; previous approach is below
+// not sure I want to convert to this
 void get_note(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
@@ -2895,15 +2881,16 @@ void F_edit(int) {
       p->top_margin = TOP_MARGIN + 1;
       p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
-      p->linked_editor = new Editor;
-      editors.push_back(p->linked_editor);
-      p->linked_editor->id = id;
-      p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-      p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-      p->linked_editor->is_subeditor = true;
-      p->linked_editor->linked_editor = p;
+      if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+        p->linked_editor = new Editor;
+        editors.push_back(p->linked_editor);
+        p->linked_editor->id = id;
+        p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+        p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+        p->linked_editor->is_subeditor = true;
+        p->linked_editor->linked_editor = p;
+      } 
       get_note(id); //if id == -1 does not try to retrieve note
-      
       
     } else {
       p = *it;
@@ -2914,13 +2901,16 @@ void F_edit(int) {
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
     p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
-    p->linked_editor = new Editor;
-    editors.push_back(p->linked_editor);
-    p->linked_editor->id = id;
-    p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-    p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-    p->linked_editor->is_subeditor = true;
-    p->linked_editor->linked_editor = p;
+
+    if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+      p->linked_editor = new Editor;
+      editors.push_back(p->linked_editor);
+      p->linked_editor->id = id;
+      p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+      p->linked_editor->is_subeditor = true;
+      p->linked_editor->linked_editor = p;
+    }
     get_note(id); //if id == -1 does not try to retrieve note
  }
 
@@ -2931,7 +2921,7 @@ void F_edit(int) {
 
   int s_cols = -1 + (screencols - O.divider)/temp.size();
   temp.clear();
-  int i = -1;
+  int i = -1; //i = number of columns of editors -1
   for (auto z : editors) {
     auto ret = temp.insert(z->id);
     if (ret.second == true) i++;
@@ -2939,6 +2929,8 @@ void F_edit(int) {
     z->screencols = s_cols;
     z->set_screenlines();
   }
+
+  //rightmostr_left_margin = O.divider + i*s_cols + i
 
   if (p->rows.empty()) {
     p->mode = INSERT;
@@ -3280,18 +3272,6 @@ void F_saveoutline(int pos) {
   }
 }
 
-/*
-// should be only an editor function
-void F_readfile(int pos) {
-  std::string filename;
-  if (pos) filename = O.command_line.substr(pos+1);
-  else filename = "example.cpp";
-  p->editorReadFileIntoNote(filename);
-  outlineShowMessage("Note generated from file: %s", filename.c_str());
-  O.mode = NORMAL;
-}
-*/
-
 void F_persist(int pos) {
   generate_persistent_html_file(O.rows.at(O.fr).id);
   O.mode = NORMAL;
@@ -3304,37 +3284,6 @@ void F_valgrind(int) {
   O.last_mode = O.mode;
   O.mode = FILE_DISPLAY;
 }
-
-//probably should be removed altogether
-/*
-void F_merge(int) {
-  int count = count_if(O.rows.begin(), O.rows.end(), [](const orow &row){return row.mark;});
-  if (count < 2) {
-    outlineShowMessage("Number of marked items = %d", count);
-    O.mode = O.last_mode;
-    return;
-  }
-  outlineInsertRow(0, "[Merged note]", true, false, false, now());
-  insert_row(O.rows.at(0)); 
-  p->rows.clear();
-  
-  int n = 0;
-  auto it = O.rows.begin();
-  for(;;) {
-    it = find_if(it+1, O.rows.end(), [](const orow &row){return row.mark;});
-    if (it != O.rows.end()) merge_note(it->id);
-    else break;
-    n++;
-  }
-  outlineShowMessage("Number of notes merged = %d", n);
-  O.fc = O.fr = O.rowoff = 0; //O.fr = 0 needs to come before update_note
-  p->editorRefreshScreen(true);
-  update_note();
-  O.command[0] = '\0';
-  O.repeat = 0;
-  O.mode = NORMAL;
-}
-*/
 
 void F_help(int pos) {
   if (!pos) {             
@@ -5995,6 +5944,7 @@ bool editorProcessKeypress(void) {
           } else { // we've quit the last remaining editor(s)
             p = nullptr;
             editor_mode = false;
+            eraseRightScreen();
             get_preview(O.rows.at(O.fr).id);
             return_cursor(); //because main while loop if started in editor_mode -- need this 09302020
           }
