@@ -51,9 +51,13 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"readfile", &Editor::E_readfile_C},
 
   {"compile", &Editor::E_compile_C},
+  {"c", &Editor::E_compile_C},
+  {"make", &Editor::E_compile_C},
+  {"rl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"runl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"runlocal", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
-  {"run", &Editor::E_run_code_C} // this does change the text/usually COMMAND_LINE doesn't
+  {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
+  {"run", &Editor::E_run_code_C} //compile and run on Compiler Explorer 
 };
 
 /* EDITOR NORMAL mode command lookup */
@@ -162,9 +166,19 @@ void signalHandler(int signum) {
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
 
-  /************redraw editors and lines************/
-  /*******also used in F_edit and editor COMMAND_LINE quit code and should be in function************/
+  draw_editors();
+
+  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
+    get_preview(O.rows.at(O.fr).id);
+
+  for (auto e : editors) e->editorRefreshScreen(true);
+
+  return_cursor();
+}
+
+void draw_editors(void) {
   std::string ab;
+  //for (auto &e : editors) {
   for (size_t i=0, max=editors.size(); i!=max; ++i) {  
     Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
@@ -181,6 +195,7 @@ void signalHandler(int signum) {
     buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
     ab.append(buf);
     if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
+    //if (&editors.back() == &e) ab.append("\x1b[37;1mk"); // works if you do for (auto &e ...)
     else ab.append("\x1b[37;1mw");
 
     //exit line drawing mode
@@ -189,14 +204,6 @@ void signalHandler(int signum) {
   ab.append("\x1b[?25h", 6); //shows the cursor
   ab.append("\x1b[0m"); //or else subsequent editors are bold
   write(STDOUT_FILENO, ab.c_str(), ab.size());
-  /*********************************/
-
-  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
-    get_preview(O.rows.at(O.fr).id);
-
-  for (auto e : editors) e->editorRefreshScreen(true);
-
-  return_cursor();
 }
 
 void parse_ini_file(std::string ini_name)
@@ -2941,34 +2948,7 @@ void F_edit(int) {
   }
 
   eraseRightScreen();
-
-  /****also used in SignalHandler and COMMAND_LINE quit code and should be in function*****************************/
-  std::string ab;
-  for (size_t i=0, max=editors.size(); i!=max; ++i) {  
-    Editor *&e = editors.at(i);
-    e->editorRefreshScreen(true);
-    std::string buf;
-    ab.append("\x1b(0"); // Enter line drawing mode
-    for (int j=1; j<e->screenlines+1; j++) {
-      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1 + j, e->left_margin + e->screencols+1);
-      ab.append(buf);
-      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-      // only need one 'm'
-      ab.append("\x1b[37;1mx");
-    }
-    //'T' corner = w or right top corner = k
-    buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
-    ab.append(buf);
-    if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
-    else ab.append("\x1b[37;1mw");
-
-    //exit line drawing mode
-    ab.append("\x1b(B");
-  }
-  ab.append("\x1b[?25h", 6); //shows the cursor
-  ab.append("\x1b[0m"); //or else subsequent editors are bold
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-  /*********************************/
+  draw_editors();
 
   O.command[0] = '\0';
   O.mode = NORMAL;
@@ -3442,7 +3422,9 @@ void goto_editor_N(void) {
   }
 
   eraseRightScreen();
-  for (auto &e : editors) e->editorRefreshScreen(true);
+  draw_editors();
+
+  //for (auto &e : editors) e->editorRefreshScreen(true);
   editor_mode = true;
 }
 
@@ -5817,12 +5799,14 @@ bool editorProcessKeypress(void) {
           {
             auto it = std::find(editors.begin(), editors.end(), p);
             int index = std::distance(editors.begin(), it);
+            p->editorSetMessage("index: %d", index);
             if (index) {
               p = editors[index - 1];
               if (p->rows.empty()) p->mode = NO_ROWS;
               else p->mode = NORMAL;
+              return false;
             } else {editor_mode = false;
-              get_preview(O.rows.at(O.fr).id); 
+              get_preview(O.rows.at(O.fr).id); // with change in while loop should not get overwritten
               return false;
             }
           }
@@ -5975,13 +5959,10 @@ bool editorProcessKeypress(void) {
               return false;
           }
 
-          eraseRightScreen();
+          //eraseRightScreen(); //moved below on 10-24-2020
 
-          //p->editorSetMessage(""); //now handled by eraseRightScreen
-          //editors.erase(std::remove(editors.begin(), editors.end(), p), editors.end());
           std::erase(editors, p); //c++20
           if (p->linked_editor) {
-             //editors.erase(std::remove(editors.begin(), editors.end(), p->linked_editor), editors.end());
              std::erase(editors, p->linked_editor); //c++20
              delete p->linked_editor;
           }
@@ -6008,36 +5989,8 @@ bool editorProcessKeypress(void) {
               z->set_screenlines(); //also sets top margin
             }
 
-            /**********also used in F_edit and signalHandler should be in a function ***********************/
-            std::string ab;
-            for (auto &e : editors) {
-              e->editorRefreshScreen(true);
-              std::string buf;
-              //
-              // Enter line drawing mode
-              ab.append("\x1b(0"); 
-              for (int j=1; j<e->screenlines+1; j++) {
-                buf = fmt::format("\x1b[{};{}H", TOP_MARGIN + j, e->left_margin +e->screencols+1);
-                ab.append(buf);
-                // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-                // only need one 'm'
-                ab.append("\x1b[37;1mx");
-              }
-              //'T' corner = w or right top corner = k
-              //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
-              buf = fmt::format("\x1b[{};{}H", TOP_MARGIN, e->left_margin + e->screencols+1); //may not need offset
-              ab.append(buf);
-              //if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
-              if (&editors.back() == &e) ab.append("\x1b[37;1mk");
-              else ab.append("\x1b[37;1mw");
-
-              //exit line drawing mode
-              ab.append("\x1b(B");
-            }
-            ab.append("\x1b[?25h", 6); //shows the cursor
-            ab.append("\x1b[0m"); //or else subsequent editors are bold
-            write(STDOUT_FILENO, ab.c_str(), ab.size());
-            /*********************************/
+            eraseRightScreen(); //moved down here on 10-24-2020
+            draw_editors();
 
           } else { // we've quit the last remaining editor(s)
             p = nullptr;
@@ -6527,11 +6480,13 @@ int main(int argc, char** argv) {
     // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
-      if (!p) continue; // needed when last editor is destroyed editor_mode will be false at this point 09282020
+      //
+      // editorProcessKeypress can take you out of editor mode (either ctrl-H or closing last editor
+      if (!editor_mode) continue;
+      //if (!p) continue; // commented out in favor of the above on 10-24-2020
+      //
       scroll = p->editorScroll();
-      //redraw = (p->mode == COMMAND_LINE) ? false : (text_change || scroll); //09242020
       redraw = (text_change || scroll || p->redraw); //instead of p->redraw => clear_highlights
-      //clear_highlights = p->editorRefreshScreen(redraw)
       p->editorRefreshScreen(redraw);
 
       ////////////////////
