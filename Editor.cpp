@@ -53,6 +53,39 @@ std::pair<int,int> Editor::move_to_right_brace(char left_brace) {
   }
 }
 
+// used by %
+std::pair<int,int> Editor::move_to_left_brace(char right_brace) {
+  int r = fr;
+  int c = fc - 1;
+  int count = 1;
+
+  const std::unordered_map<char,char> m{{'}','{'}, {')','('}, {']','['}};
+  char left_brace = m.at(right_brace);
+
+  std::string row = rows.at(r);
+
+  for (;;) {
+
+    if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
+      r--;
+      if (r == -1) {
+        editorSetMessage("Couldn't find matching brace");
+        return std::make_pair(fr,fc);
+      }
+      row = rows.at(r);
+      c = row.size() - 1;
+      continue;
+    }
+
+    if (row.at(c) == left_brace) {
+      count -= 1;
+      if (count == 0) return std::make_pair(r,c);
+    } else if (row.at(c) == right_brace) count += 1;
+
+    c--;
+  }
+}
+
 //triggered by % in NORMAL mode
 void Editor::E_move_to_matching_brace(int repeat) {
   std::pair<int,int> pos;
@@ -126,38 +159,6 @@ bool Editor::find_match_for_left_brace(char left_brace, bool back) {
   return true;
 }
 
-// used by %
-std::pair<int,int> Editor::move_to_left_brace(char right_brace) {
-  int r = fr;
-  int c = fc - 1;
-  int count = 1;
-
-  const std::unordered_map<char,char> m{{'}','{'}, {')','('}, {']','['}};
-  char left_brace = m.at(right_brace);
-
-  std::string row = rows.at(r);
-
-  for (;;) {
-
-    if (c == -1) { //fc + 1 can be greater than row.size on first pass from INSERT if { at end of line
-      r--;
-      if (r == -1) {
-        editorSetMessage("Couldn't find matching brace");
-        return std::make_pair(fr,fc);
-      }
-      row = rows.at(r);
-      c = row.size() - 1;
-      continue;
-    }
-
-    if (row.at(c) == left_brace) {
-      count -= 1;
-      if (count == 0) return std::make_pair(r,c);
-    } else if (row.at(c) == right_brace) count += 1;
-
-    c--;
-  }
-}
 
 //'automatically' happens in NORMAL and INSERT mode
 bool Editor::find_match_for_right_brace(char right_brace, bool back) {
@@ -653,6 +654,15 @@ void Editor::push_current(void) {
   //undo_mode = false;
   //snapshot = rows; //this is the snapshot used to pick a row or the whole thing
 
+  std::string temp_str = d.inserted_text;
+
+  // \r is present and \n is not present
+  size_t pos = temp_str.find('\r');
+  while(pos != std::string::npos) {
+    temp_str.replace(pos, 1, "\\r");
+    pos = temp_str.find('\r', pos + 2);
+  }
+
   editorSetMessage("index: %d; cmd: %s; repeat: %d; fr: %d; fc: %d rows.size %d undo method: %d; text: %s", 
                       d_index,
                       d.command.c_str(), 
@@ -661,7 +671,7 @@ void Editor::push_current(void) {
                       d.fc,
                       d.rows.size(),
                       d.undo_method,
-                      d.inserted_text.c_str());
+                      temp_str.c_str());
 }
 
 void Editor::undo(void) {
@@ -1083,23 +1093,33 @@ void Editor::editorRefreshScreen(bool draw) {
   // can't do the below until ab is written or will just overwite highlights
   if (draw && spellcheck) editorSpellCheck();
 
-  /***** below is automatic match braces ******/
   if (rows.empty() || rows.at(fr).empty()) return;
 
+  if (get_folder_tid(id) != 18) return;
+
+  // below is code to automatically find matching brace - should be in separate member function
   std::string braces = "{}()";
   char c;
-  if (fc == rows.at(fr).size()) c = rows.at(fr).at(fc-1); //must be in insert mode and must be beyond last char
-  else c = rows.at(fr).at(fc);
+  bool back;
+  //if below handles case when in insert mode and brace is last char
+  //in a row and cursor is beyond that last char (which is a brace)
+  if (fc == rows.at(fr).size()) {
+    c = rows.at(fr).at(fc-1); 
+    back = true;
+  } else {
+    c = rows.at(fr).at(fc);
+    back = false;
+  }
   size_t pos = braces.find(c);
   if ((pos != std::string::npos)) {
     switch(c) {
       case '{':
       case '(':  
-        redraw = find_match_for_left_brace(c);
+        redraw = find_match_for_left_brace(c, back);
         return;
       case '}':
       case ')':
-        redraw = find_match_for_right_brace(c);
+        redraw = find_match_for_right_brace(c, back);
         return;
       //case '(':  
       default://should not need this
