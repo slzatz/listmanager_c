@@ -7,6 +7,9 @@
 #include <zmq.hpp>
 #include <thread>
 
+#include "outline_commandline_functions.h"
+#include "outline_normal_functions.h"
+
 //Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
 //std::shared_ptr<Editor> p(nullptr);
@@ -1475,6 +1478,7 @@ int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColNam
   return 0;
 }
 
+/*
 void display_item_info(int id) {
 
   if (id ==-1) return;
@@ -1490,6 +1494,7 @@ void display_item_info(int id) {
 
   if (tid) display_item_info_pg(tid);
 }
+*/
 
 void display_item_info(void) {
 
@@ -2919,6 +2924,7 @@ void F_edit(int) {
     temp.insert(z->id);
   }
 
+  // this could be improved - lose at least one column for each additional editor
   int s_cols = -1 + (screencols - O.divider)/temp.size();
   temp.clear();
   int i = -1; //i = number of columns of editors -1
@@ -2931,6 +2937,7 @@ void F_edit(int) {
   }
 
   //rightmostr_left_margin = O.divider + i*s_cols + i
+  eraseRightScreen(); //erases editor area + statusbar + msg
 
   if (p->rows.empty()) {
     p->mode = INSERT;
@@ -2939,7 +2946,6 @@ void F_edit(int) {
     p->mode = NORMAL;
   }
 
-  eraseRightScreen();
   draw_editors();
 
   O.command[0] = '\0';
@@ -3780,23 +3786,15 @@ void outlineSave(const std::string& fname) {
   outlineShowMessage("saved to outline.txt");
 }
 
-// erases note
+// erases right screen including statusbar and msg line
 void eraseRightScreen(void) {
-  //char lf_ret[10];
-  //or
-
-  //there may be an issue reusing the same memory buffer once it's created
-  //so they may be reserved for use not in loops etc where you are changing
-  //the value
-
 
   std::string ab;
 
   ab.append("\x1b[?25l"); //hides the cursor
-  //char buf[32];
 
   //below positions cursor such that top line is erased the first time through
-  //for loop although could really start on second line since need to redraw
+  //for loop although ? could really start on second line since need to redraw
   //horizontal line anyway
   fmt::memory_buffer buf;
   fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + 1); //need +1 or erase top T
@@ -3812,12 +3810,13 @@ void eraseRightScreen(void) {
   }
     ab.append("\x1b[K"); //added 09302020 to erase the last line (message line)
 
-  // redraw top horizontal line which has t's so needs to be erased
+  // redraw top horizontal line which has t's and was erased above
+  // ? if the individual editors draw top lines do we need to just
+  // erase but not draw
   ab.append("\x1b(0"); // Enter line drawing mode
   //for (int j=1; j<screencols/2; j++) {
   //for (int j=1; j<O.divider; j++) {
   for (int j=1; j<O.totaleditorcols+1; j++) { //added +1 0906/2020
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, O.divider + j); //don't think need offset
     //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + j);
     std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, O.divider + j);
     ab.append(buf2);
@@ -5575,6 +5574,9 @@ bool editorProcessKeypress(void) {
         case BACKSPACE:
           //p->push_current(); //p->editorCreateSnapshot();
           p->editorBackspace();
+          //not handling backspace correctly in last_typed
+          //when backspace beyond currently entered text
+          if (!p->last_typed.empty()) p->last_typed.pop_back();
           return true;
     
         case DEL_KEY:

@@ -187,6 +187,8 @@ void outlineRefreshAllEditors(void);
 std::string outlinePreviewRowsToString(void);
 
 /* OUTLINE COMMAND_LINE functions */
+/* include outline_commandline_functions.h now include in listman...improved.cpp
+ 
 void F_open(int);
 void F_openfolder(int);
 void F_openkeyword(int);
@@ -223,8 +225,10 @@ void F_quit_app_ex(int pos); // pos not used
 void F_help(int pos);
 void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used
+*/
 
 /* OUTLINE mode NORMAL functions */
+/* include outline_normal_functions.h now include in listman...improved.cpp
 void goto_editor_N(void); //should this be in case NORMAL as ctrl_key('l')?
 void return_N(void);
 void w_N(void);
@@ -262,6 +266,7 @@ void d$_N(void);
 void gg_N(void);
 void gt_N(void);
 //void edit_N(void);
+*/
 
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
@@ -384,10 +389,11 @@ void update_code_file(void);
 void update_solr(void); //works but not in use
 void open_in_vim(void);
 
-typedef void (*pfunc)(int);
-typedef void (*zfunc)(void);
+//typedef void (*pfunc)(int);
+//typedef void (*zfunc)(void);
 
 /* OUTLINE COMMAND_LINE mode command lookup */
+/*
 std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open}, //open_O
   {"o", F_open},
@@ -457,8 +463,9 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"clear", F_clear},
 
 };
-
+*/
 /* OUTLINE NORMAL mode command lookup */
+/*
 std::unordered_map<std::string, zfunc> n_lookup {
   //{{0xC}, goto_editor_N}, //also works
   {{CTRL_KEY('l')}, goto_editor_N},
@@ -508,3 +515,4 @@ std::unordered_map<std::string, zfunc> n_lookup {
   {"^", caret_N},
 
 };
+*/
