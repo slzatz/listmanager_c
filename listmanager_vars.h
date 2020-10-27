@@ -306,7 +306,7 @@ void update_task_folder(std::string &, int);
 int get_id(void);
 void get_note(int);
 std::string get_title(int);
-void update_row(void);
+void update_title(void);
 void update_rows(void);
 void toggle_deleted(void);
 void toggle_star(void);

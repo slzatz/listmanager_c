@@ -2072,7 +2072,7 @@ void toggle_star(void) {
   row.star = !row.star;
 }
 
-void update_row(void) {
+void update_title(void) {
 
   orow& row = O.rows.at(O.fr);
 
@@ -2105,6 +2105,12 @@ void update_row(void) {
 
   outlineShowMessage("Updated title and fts entry for item %d", row.id);
   outlineRefreshScreen();
+
+  // moved here 10262020
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
+  }   
 }
 
 void update_container(void) {
@@ -2200,11 +2206,11 @@ int insert_keyword(orow& row) {
 int insert_row(orow& row) {
 
   std::string title = row.title;
-  size_t pos = title.find("'");
+  size_t pos = title.find('\'');
   while(pos != std::string::npos)
     {
       title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
+      pos = title.find('\'', pos + 2);
     }
 
   std::string queryx = fmt::format("INSERT INTO task (priority, title, folder_tid, context_tid, " \
@@ -2840,6 +2846,7 @@ void F_new(int) {
   eraseRightScreen(); //erases the note area
   O.mode = INSERT;
 
+  O.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
   int fd;
   std::string fn = "assets/" + CURRENT_NOTE_FILE;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
@@ -3387,7 +3394,7 @@ void return_N(void) {
   orow& row = O.rows.at(O.fr);
 
   if(row.dirty){
-    if (O.view == TASK) update_row();
+    if (O.view == TASK) update_title();
     else if (O.view == CONTEXT || O.view == FOLDER) update_container();
     else if (O.view == KEYWORD) update_keyword();
     O.command[0] = '\0'; //11-26-2019
@@ -3594,11 +3601,14 @@ void gt_N(void) {
 
 //case 'O': //Same as C_new in COMMAND_LINE mode
 void O_N(void) {
+  /*
   outlineInsertRow(0, "", true, false, false, now());
   O.fc = O.fr = O.rowoff = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   eraseRightScreen(); //erases the note area
   O.mode = INSERT;
+  */
+  F_new(0); //zero means nothing but need b/o F_new(int)
 }
 
 //case ':':
@@ -4832,12 +4842,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\r': //also does escape into NORMAL mode
           if (O.view == TASK)  {
-            update_row();
-            //updating because title changed
-            if (lm_browser) {
-              if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-              //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
-            }   
+            update_title();
+            //updating lm_browser file because title changed
+            // moved to update_title which should be update_title
+            //if (lm_browser) {
+             // if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              ////else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
+            //}   
           } else if (O.view == CONTEXT || O.view == FOLDER) update_container();
           else if (O.view == KEYWORD) update_keyword();
           O.command[0] = '\0'; //11-26-2019
