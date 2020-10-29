@@ -27,12 +27,13 @@ zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 //zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
 
+bool run = true; //main while loop
 std::atomic<bool> run_thread = true;
 std::atomic<bool> code_changed = false;
 void do_something(std::string);
 void readsome(pstream &, int);
 char buf[1024]; //char buf[1024]{};
-std::thread t0;
+//std::thread t0;
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -3473,19 +3474,24 @@ void F_quit_app(int) {
     O.mode = NORMAL;
     outlineShowMessage("No db write since last change");
   } else {
+    /*
     write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
     write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
     Py_FinalizeEx();
     sqlite3_close(S.db);
     PQfinish(conn);
+    */
     run_thread = false;
 
     //this is necessary to allow thread to shut down server
-    std::this_thread::sleep_for((std::chrono::seconds(2)));
+    //std::this_thread::sleep_for((std::chrono::seconds(1)));
+    run = false;
 
     // note that thread is not joinable but still leaving this
-    if (t0.joinable()) t0.join();
-    exit(0);
+    // I believe because it is default constructed globally
+    // so available outside of main although not really necessary
+    //if (t0.joinable()) t0.join();
+    //exit(0);
     // the above exits cleanly 
 
     /* need to figure out if need any of the below
@@ -3505,7 +3511,7 @@ void F_quit_app_ex(int) {
   sqlite3_close(S.db);
   PQfinish(conn);
   run_thread = false;
-  t0.join();
+  //t0.join();
   //subscriber.close();
   context.close();
   publisher.close();
@@ -6641,7 +6647,7 @@ std::thread t0([&]() {
 */
   std::thread t0(lsp_thread);
 
-  while (1) {
+  while (run) {
     // just refresh what has changed
     if (editor_mode) {
       text_change = editorProcessKeypress(); 
@@ -6671,5 +6677,11 @@ std::thread t0([&]() {
     outlineDrawStatusBar();
     return_cursor();
   }
+  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+  Py_FinalizeEx();
+  sqlite3_close(S.db);
+  PQfinish(conn);
+  t0.join();
   return 0;
 }
