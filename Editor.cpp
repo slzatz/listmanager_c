@@ -2049,8 +2049,9 @@ void Editor::E_write_C(void) {
 
   if (is_subeditor) return;
 
-  if (get_folder_tid(id) == 18) update_code_file();
-  else if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  //if (get_folder_tid(id) == 18) update_code_file(); //now happening in update_note
+  //else if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser && get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
 
   //auto it = html_files.find(id); //O is global and so is html_files but not sure needed
   //if (it != html_files.end()) update_html_file("assets/" + it->second);

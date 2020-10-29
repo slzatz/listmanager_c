@@ -70,6 +70,7 @@ class Editor {
     int top_margin;
     //int total_screenlines; //number of lines in display -> made this static
     std::vector<std::string> rows;
+    std::string code; //used by lsp thread and intended to avoid unnecessary calls to editorRowsToString
     //std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
     char message[120]; //status msg is a character array max 80 char

@@ -2,6 +2,7 @@
 #include "listmanager_vars.h"
 #include "Editor.h"
 #include "Dbase.h"
+#include "pstream.h"
 #include <cstdarg> //va_start etc.
 #include <string_view>
 #include <zmq.hpp>
@@ -9,6 +10,10 @@
 
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
+
+
+using namespace redi;
+using json = nlohmann::json;
 
 //Editor E; //this instantiates it - with () it looks like a function definition with type Editor
 Editor *p;
@@ -20,10 +25,14 @@ std::vector<Editor *> editors;
 
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
-zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
+//zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
 
 std::atomic<bool> run_thread = true;
-std::thread subs_thread;
+std::atomic<bool> code_changed = false;
+void do_something(std::string);
+void readsome(pstream &, int);
+char buf[1024]; //char buf[1024]{};
+std::thread t0;
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -35,6 +44,52 @@ std::unordered_set<int> navigation = {
          'k',
          'l'
 };
+
+/****************************************************/
+void readsome(pstream &pp, int i) {
+  std::streamsize n;
+  //fmt::print("\nbeginning read {}\n", i);
+  std::string str{};
+  std::string header{};
+  //std::cout << '\n';
+  std::getline(pp, header);
+  //str = header;
+  //std::cout << "getline: " << str << '\n';
+  std::getline(pp, header);
+  //str += header;
+  //std::cout << "getline: " << str << '\n';
+  //char buf[1024];
+  //std::streamsize n;
+  while ((n = pp.out().readsome(buf, sizeof(buf))) > 0) {
+    // n will always be zero eventually
+     //std::cout.write(buf, n).flush(); //when n = 0 nothing shown even though buffer has stuff
+     //s += std::string{buf, (size_t)n};
+     str += std::string{buf, static_cast<size_t>(n)};
+  }
+  // should always be non-empty
+  //if (str.size()) do_something(str);
+  json js = json::parse(str);
+  if (js.contains("method")) {
+    if (js["method"] == "textDocument/publishDiagnostics") {
+      json diagnostics = js["params"]["diagnostics"];
+      if (p) p->decorate_errors(diagnostics);
+  //buf[0] = '\0';
+  //fmt::print("\nend read {}\n", i);
+}
+}
+}
+
+void do_something(std::string s) {
+  //std::string_view sv{buf};
+  json js = json::parse(s);
+  if (js.contains("method")) {
+    if (js["method"] == "textDocument/publishDiagnostics") {
+      json diagnostics = js["params"]["diagnostics"][0];
+      //std::cout << "\n\ndiagnostics:\n" << diagnostics.dump(2);
+    }
+  }
+}
+/****************************************************/
 
 /* EDITOR COMMAND_LINE mode lookup */
 std::unordered_map<std::string, efunc> E_lookup_C {
@@ -357,6 +412,7 @@ void update_html_zmq(std::string &&fn) {
   link_id = 0;
 }
 
+// right now only called when previewing a code file
 void update_html_code_file(std::string &&fn) {
   std::string note;
   std::ofstream myfile;
@@ -384,6 +440,7 @@ void update_html_code_file(std::string &&fn) {
   } else outlineShowMessage("Couldn't open file");
 }
 
+// if c++ lsp works, this can go away
 void update_code_file(void) {
   std::string note;
   std::ofstream myfile;
@@ -1922,6 +1979,11 @@ void update_note(bool is_subnote) {
   std::string column = (is_subnote) ? "subnote" : "note";
   std::string text = p->editorRowsToString();
 
+  if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+    p->code = text;
+    code_changed = true;
+  }
+
   // need to escape single quotes with two single quotes
   size_t pos = text.find("'");
   while(pos != std::string::npos) {
@@ -3340,6 +3402,7 @@ void F_quit_app(int) {
     sqlite3_close(S.db);
     PQfinish(conn);
     run_thread = false;
+    t0.join();
     exit(0);
     // the above exits cleanly without joining or shutting sockets
     // I believe that is because the thread dies
@@ -3360,8 +3423,8 @@ void F_quit_app_ex(int) {
   sqlite3_close(S.db);
   PQfinish(conn);
   run_thread = false;
-  subs_thread.join();
-  subscriber.close();
+  t0.join();
+  //subscriber.close();
   context.close();
   publisher.close();
   exit(0);
@@ -6369,8 +6432,8 @@ void initOutline() {
 int main(int argc, char** argv) { 
 
   publisher.bind("tcp://*:5556");
-  subscriber.connect("tcp://localhost:5557");
-  subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0);
+  //subscriber.connect("tcp://localhost:5557");
+  //subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0);
   //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this
 
   //publisher.bind("tcp://*:5557");
@@ -6420,6 +6483,7 @@ int main(int argc, char** argv) {
   //std::system("./clangd_zmq.py &"); //this caused mucho problems ...
 
   // ? should use zmq_poll - having problem exiting
+  /*
   std::thread subs_thread([]() {
       while (run_thread) {
         zmq::message_t update;
@@ -6438,7 +6502,83 @@ int main(int argc, char** argv) {
       }
     }
    );
+  */
 
+
+std::thread t0([&]() {  
+  const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+  pstream clangd("clangd --log=error", mode); //verbose or error or info
+  std::string s;
+  json js;
+  std::string header;
+  int pid = ::getpid();
+
+  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///home/slzatz/pylspclient/", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "python-lsp", "uri": "file:///home/slzatz/pylspclient/"}]}})";
+
+  js = json::parse(s);
+  js["params"]["processId"] = pid + 1;
+  s = js.dump();
+
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  //fmt::print("\nsending initialization message to clangd:\n{}\n", s);
+  clangd.write(s.c_str(), s.size()).flush();
+
+
+//initialization from client produces a capabilities response
+//from the server which is read below
+  readsome(clangd, 1); //this could block
+  
+  //Client sends initialized response
+  s = R"({"jsonrpc": "2.0", "method": "initialized", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  //fmt::print("\nsending initialized message to clangd:\n{}\n", s);
+  clangd.write(s.c_str(), s.size()).flush();
+  
+  //client sends didOpen notification
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
+  js = json::parse(s);
+  js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
+  s = js.dump();
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  //fmt::print("\nsending didOpen message to clangd:\n{}\n", s);
+  clangd.write(s.c_str(), s.size()).flush();
+  
+  readsome(clangd, 3); //reads initial diagnostics
+  
+  int j = 1;
+  
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "version": 2}, "contentChanges": [{"text": ""}]}})";
+  js = json::parse(s);
+  while (run_thread) {
+    if (code_changed) {
+      js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
+      js["params"]["textDocument"]["version"] = ++j; //text ? if it escapes automatically
+      s = js.dump();
+      header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+      s = header + s;
+      //fmt::print("\nsending didChange message to clangd:\n{}\n", s);
+      clangd.write(s.c_str(), s.size()).flush();
+  
+      readsome(clangd, j);
+      code_changed = false;
+    }
+    std::this_thread::sleep_for((std::chrono::milliseconds(50)));
+  }
+  
+  s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  std::this_thread::sleep_for((std::chrono::seconds(1)));
+  s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+
+});
   while (1) {
     // just refresh what has changed
     if (editor_mode) {
