@@ -208,6 +208,58 @@ bool Editor::find_match_for_right_brace(char right_brace, bool back) {
   return true;
 }
 
+void Editor::draw_highlighted_braces(void) {
+
+  // below is code to automatically find matching brace - should be in separate member function
+  std::string braces = "{}()";
+  char c;
+  bool back;
+  //if below handles case when in insert mode and brace is last char
+  //in a row and cursor is beyond that last char (which is a brace)
+  if (fc == rows.at(fr).size()) {
+    c = rows.at(fr).at(fc-1); 
+    back = true;
+  } else {
+    c = rows.at(fr).at(fc);
+    back = false;
+  }
+  size_t pos = braces.find(c);
+  if ((pos != std::string::npos)) {
+    switch(c) {
+      case '{':
+      case '(':  
+        redraw = find_match_for_left_brace(c, back);
+        return;
+      case '}':
+      case ')':
+        redraw = find_match_for_right_brace(c, back);
+        return;
+      //case '(':  
+      default://should not need this
+        return;
+    }
+  } else if (fc > 0 && mode == INSERT) {
+      char c = rows.at(fr).at(fc-1);
+      size_t pos = braces.find(c);
+      if ((pos != std::string::npos)) {
+        switch(rows.at(fr).at(fc-1)) {
+          case '{':
+          case '(':  
+            redraw = find_match_for_left_brace(c, true);
+            return;
+          case '}':
+          case ')':
+            redraw = find_match_for_right_brace(c, true);
+            return;
+          //case '(':  
+          default://should not need this
+            return;
+      }        
+    } else {redraw = false;}
+  } else {redraw = false;}
+
+}
+
 void Editor::set_screenlines(void) { //also sets top margin
 
   if(linked_editor) {
@@ -1072,10 +1124,7 @@ void Editor::editorRefreshScreen(bool draw) {
       ab.append(lf_ret);
     }
 
-    //Temporary kluge tid for code folder = 18
-    //if (get_folder_tid(id) == 18 && !(mode == VISUAL || mode == VISUAL_LINE || mode == VISUAL_BLOCK || is_subeditor)) editorDrawCodeRows(ab);
     if (get_folder_tid(id) == 18 && !(is_subeditor)) editorDrawCodeRows(ab);
-    //if (highlight_syntax == true) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
 
@@ -1095,8 +1144,9 @@ void Editor::editorRefreshScreen(bool draw) {
 
   if (rows.empty() || rows.at(fr).empty()) return;
 
-  if (get_folder_tid(id) != 18) return;
+  if (get_folder_tid(id) == 18) draw_highlighted_braces();
 
+  /*
   // below is code to automatically find matching brace - should be in separate member function
   std::string braces = "{}()";
   char c;
@@ -1144,6 +1194,7 @@ void Editor::editorRefreshScreen(bool draw) {
       }        
     } else {redraw = false;}
   } else {redraw = false;}
+  */
 }
 
 void Editor::editorDrawMessageBar(std::string& ab) {
@@ -2826,39 +2877,43 @@ void Editor::E_runlocal_C(void) {
   linked_editor->editorRefreshScreen(true);
   linked_editor->dirty++;
 }
+
 void Editor::decorate_errors(json diagnostics) {
-  if (diagnostics.empty()) {
-    editorSetMessage("There were no errors");
-    editorRefreshScreen(false);
-    return;
-  }
 
-  //std::string s = diagnostics.dump(); //used for debugging
+  std::string msg;
+  if (!diagnostics.empty()) {
+    //std::string s = diagnostics.dump(); //used for debugging
 
-  int start_line = diagnostics[0]["range"]["start"]["line"];
-  int start_char = diagnostics[0]["range"]["start"]["character"];
-  //int end_line = diagnostics[0]["range"]["end"]["line"];
-  int end_char = diagnostics[0]["range"]["end"]["character"];
-  std::string msg = diagnostics[0]["message"];
-  //editorSetMessage(s.c_str());
-  std::string &row = rows.at(start_line);
-  std::string fragment;
-  int end_of_line = 0;
-  if (start_char >= row.size()) {
-    start_char = row.size()-1;
-    fragment = " ";
-    end_of_line = 1;
+    int start_line = diagnostics[0]["range"]["start"]["line"];
+    int start_char = diagnostics[0]["range"]["start"]["character"];
+    //int end_line = diagnostics[0]["range"]["end"]["line"]; //currently not used
+    int end_char = diagnostics[0]["range"]["end"]["character"];
+    msg = diagnostics[0]["message"];
+    //editorSetMessage(s.c_str());
+    std::string &row = rows.at(start_line);
+    std::string fragment;
+    int end_of_line = 0;
+    if (start_char >= row.size()) {
+      start_char = row.size()-1;
+      fragment = " ";
+      end_of_line = 1;
+    } else {
+      fragment = row.substr(start_char, end_char - start_char);
+    }
+    int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1 + end_of_line;
+    int y = editorGetScreenYFromRowColWW(start_line, start_char) + top_margin - line_offset; // added line offset 12-25-2019
+
+    std::stringstream ss;
+    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";
+    write(STDOUT_FILENO, ss.str().c_str(), ss.str().size());
   } else {
-    fragment = row.substr(start_char, end_char - start_char);
+    msg = "There were no errors";
   }
-  int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1 + end_of_line;
-  int y = editorGetScreenYFromRowColWW(start_line, start_char) + top_margin - line_offset; // added line offset 12-25-2019
-
-  std::stringstream ss;
-  ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";
-  write(STDOUT_FILENO, ss.str().c_str(), ss.str().size());
 
   //editorSetMessage("start line: %d, start char: %d, end line: %d, end char: %d", start_line, start_char, end_line, end_char);
   editorSetMessage(msg.c_str());
-  editorRefreshScreen(false);
+  editorRefreshScreen(false); //in Normal mode
+  // for some reason have to hide the cursor before showing or it doesn't show
+  write(STDOUT_FILENO, "\x1b[?25l", 6); //hide the cursor
+  write(STDOUT_FILENO, "\x1b[?25h", 6); //show the cursor
 }

@@ -116,6 +116,7 @@ class Editor {
     std::pair<int,int> move_to_right_brace(char);
     bool find_match_for_right_brace(char, bool back=false);
     std::pair<int,int> move_to_left_brace(char);
+    void draw_highlighted_braces(void);
     
 
 /* undo - redo */
