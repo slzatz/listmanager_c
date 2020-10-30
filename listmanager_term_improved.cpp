@@ -7,6 +7,8 @@
 #include <string_view>
 #include <zmq.hpp>
 #include <thread>
+#include <algorithm>
+#include <ranges>
 
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
@@ -520,11 +522,11 @@ void update_html_code_file(std::string &&fn) {
 
 // if c++ lsp works, this can go away
 void update_code_file(void) {
-  std::string note;
+  //std::string note;
   std::ofstream myfile;
-  note = p->editorRowsToString();
+  //note = p->editorRowsToString();
   myfile.open("/home/slzatz/pylspclient/test.cpp"); 
-  myfile << note;
+  myfile << p->code;
   myfile.close();
 }
 
@@ -1713,15 +1715,21 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   ab.append(lf_ret, nchars);
 
   int context_tid = atoi(argv[6]);
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+  //auto it = std::find_if(std::begin(context_map), std::end(context_map),
+  //                       [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+
+  auto it = std::ranges::find_if(context_map, [&context_tid](auto& z) {return z.second == context_tid;});
+
   sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
   int folder_tid = atoi(argv[5]);
-  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  //auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+  //                       [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+
+  auto it2 = std::ranges::find_if(folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
+
   sprintf(str,"folder: %s", it2->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -1861,8 +1869,11 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(lf_ret, nchars);
 
   int tid = atoi(argv[1]);
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
-                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+  //auto it = std::find_if(std::begin(context_map), std::end(context_map),
+  //                       [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+
+  auto it = std::ranges::find_if(context_map, [&tid](auto& z) {return z.second == tid;});
+
   sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -1947,8 +1958,12 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   ab.append(lf_ret, nchars);
 
   int tid = atoi(argv[1]);
-  auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
-                         [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+
+  //auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
+  //                        [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+
+  auto it = std::ranges::find_if(folder_map, [&tid](auto& z) {return z.second == tid;});
+
   sprintf(str,"folder: %s", it->first.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -2060,6 +2075,7 @@ void update_note(bool is_subnote) {
   if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
     p->code = text;
     code_changed = true;
+    update_code_file();
   }
 
   // need to escape single quotes with two single quotes
@@ -3484,7 +3500,7 @@ void F_quit_app(int) {
     run_thread = false;
 
     //this is necessary to allow thread to shut down server
-    //std::this_thread::sleep_for((std::chrono::seconds(1)));
+    std::this_thread::sleep_for((std::chrono::seconds(2)));
     run = false;
 
     // note that thread is not joinable but still leaving this
@@ -6553,8 +6569,6 @@ int main(int argc, char** argv) {
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
-  //if (lm_browser) ...
-
   signal(SIGWINCH, signalHandler);
   bool text_change;
   bool scroll;
@@ -6569,82 +6583,6 @@ int main(int argc, char** argv) {
   //if (lm_browser) popen(system_call.c_str(), "w"); //returns FILE* id
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
-  /*
-std::thread t0([&]() {  
-  const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
-  pstream clangd("clangd --log=error", mode); //verbose or error or info
-  std::string s;
-  json js;
-  std::string header;
-  int pid = ::getpid();
-
-  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///home/slzatz/pylspclient/", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "python-lsp", "uri": "file:///home/slzatz/pylspclient/"}]}})";
-
-  js = json::parse(s);
-  js["params"]["processId"] = pid + 1;
-  s = js.dump();
-
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  //fmt::print("\nsending initialization message to clangd:\n{}\n", s);
-  clangd.write(s.c_str(), s.size()).flush();
-
-
-//initialization from client produces a capabilities response
-//from the server which is read below
-  readsome(clangd, 1); //this could block
-  
-  //Client sends initialized response
-  s = R"({"jsonrpc": "2.0", "method": "initialized", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  //fmt::print("\nsending initialized message to clangd:\n{}\n", s);
-  clangd.write(s.c_str(), s.size()).flush();
-  
-  //client sends didOpen notification
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
-  js = json::parse(s);
-  js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
-  s = js.dump();
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  //fmt::print("\nsending didOpen message to clangd:\n{}\n", s);
-  clangd.write(s.c_str(), s.size()).flush();
-  
-  readsome(clangd, 3); //reads initial diagnostics
-  
-  int j = 1;
-  
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "version": 2}, "contentChanges": [{"text": ""}]}})";
-  js = json::parse(s);
-  while (run_thread) {
-    if (code_changed) {
-      js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
-      js["params"]["textDocument"]["version"] = ++j; //text ? if it escapes automatically
-      s = js.dump();
-      header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-      s = header + s;
-      //fmt::print("\nsending didChange message to clangd:\n{}\n", s);
-      clangd.write(s.c_str(), s.size()).flush();
-  
-      readsome(clangd, j);
-      code_changed = false;
-    }
-    std::this_thread::sleep_for((std::chrono::milliseconds(50)));
-  }
-  
-  s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  clangd.write(s.c_str(), s.size()).flush();
-  std::this_thread::sleep_for((std::chrono::seconds(1)));
-  s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  clangd.write(s.c_str(), s.size()).flush();
-
-});
-*/
   std::thread t0(lsp_thread);
 
   while (run) {
