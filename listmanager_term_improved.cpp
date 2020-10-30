@@ -27,15 +27,12 @@ std::vector<Editor *> editors;
 
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
-//zmq::socket_t subscriber(context, ZMQ_SUB); /////10132020
 
 bool run = true; //main while loop
 std::atomic<bool> run_thread = true;
 std::atomic<bool> code_changed = false;
-void do_something(std::string);
 void readsome(pstream &, int);
 char buf[1024]; //char buf[1024]{};
-//std::thread t0;
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -69,29 +66,16 @@ void readsome(pstream &pp, int i) {
      //s += std::string{buf, (size_t)n};
      str += std::string{buf, static_cast<size_t>(n)};
   }
-  // should always be non-empty
-  //if (str.size()) do_something(str);
   json js = json::parse(str);
   if (js.contains("method")) {
     if (js["method"] == "textDocument/publishDiagnostics") {
       json diagnostics = js["params"]["diagnostics"];
       if (p) p->decorate_errors(diagnostics);
-  //buf[0] = '\0';
   //fmt::print("\nend read {}\n", i);
-}
-}
-}
-
-void do_something(std::string s) {
-  //std::string_view sv{buf};
-  json js = json::parse(s);
-  if (js.contains("method")) {
-    if (js["method"] == "textDocument/publishDiagnostics") {
-      json diagnostics = js["params"]["diagnostics"][0];
-      //std::cout << "\n\ndiagnostics:\n" << diagnostics.dump(2);
     }
   }
 }
+
 /****************************************************/
 void lsp_thread(void) {  
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
@@ -6536,12 +6520,7 @@ void initOutline() {
 int main(int argc, char** argv) { 
 
   publisher.bind("tcp://*:5556");
-  //subscriber.connect("tcp://localhost:5557");
-  //subscriber.setsockopt(ZMQ_SUBSCRIBE, "", 0);
   //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this
-
-  //publisher.bind("tcp://*:5557");
-  //publisher.bind("ipc://html.ipc"); 
 
   lock.l_whence = SEEK_SET;
   lock.l_start = 0;
@@ -6563,7 +6542,6 @@ int main(int argc, char** argv) {
   enableRawMode();
   initOutline();
   eraseScreenRedrawLines();
-  //EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
   Editor::origin = O.divider + 1; //only used in Editor.cpp
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
@@ -6574,13 +6552,11 @@ int main(int argc, char** argv) {
   bool scroll;
   bool redraw;
 
-  outlineRefreshScreen(); // now just draws rows
+  outlineRefreshScreen(); 
   outlineDrawStatusBar();
-  //outlineShowMessage("rows: %d  cols: %d", screenlines, screencols);
   outlineShowMessage3("rows: {}  columns: {}", screenlines, screencols);
   return_cursor();
 
-  //if (lm_browser) popen(system_call.c_str(), "w"); //returns FILE* id
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
   std::thread t0(lsp_thread);

@@ -2837,7 +2837,7 @@ void Editor::decorate_errors(json diagnostics) {
 
   int start_line = diagnostics[0]["range"]["start"]["line"];
   int start_char = diagnostics[0]["range"]["start"]["character"];
-  int end_line = diagnostics[0]["range"]["end"]["line"];
+  //int end_line = diagnostics[0]["range"]["end"]["line"];
   int end_char = diagnostics[0]["range"]["end"]["character"];
   std::string msg = diagnostics[0]["message"];
   //editorSetMessage(s.c_str());
