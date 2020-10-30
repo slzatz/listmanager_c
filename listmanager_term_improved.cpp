@@ -12,6 +12,7 @@
 
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
+#include "editor_normal_function_map.h"
 
 
 using namespace redi;
@@ -183,6 +184,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
 };
 
 /* EDITOR NORMAL mode command lookup */
+/*
 std::unordered_map<std::string, eefunc> e_lookup {
 
   {"i", &Editor::E_i}, 
@@ -236,6 +238,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {{0x13}, &Editor::E_save_note},
   {"save", &Editor::E_save_note},
 };
+*/
 
 /* now defined as inline in Editor.h - could be const  if access was cmd_mapN.at(command)
 std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
@@ -4773,12 +4776,12 @@ void return_cursor() {
       // below restores the cursor position based on O.cx and O.cy + margin
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h", 6); // show cursor 
+      //ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
     } else { //O.mode == COMMAND_LINE
       snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
       ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h", 6); // show cursor 
+      //ab.append("\x1b[?25h", 6); // show cursor 
     }
   }
   ab.append("\x1b[0m"); //return background to normal
