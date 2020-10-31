@@ -10,10 +10,13 @@
 #include <algorithm>
 #include <ranges>
 
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/cfg/env.h>
+
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
 #include "editor_normal_function_map.h"
-
 
 using namespace redi;
 using json = nlohmann::json;
@@ -25,6 +28,8 @@ Editor *p;
 typedef void (Editor::*efunc)(void);
 typedef void (Editor::*eefunc)(int);
 std::vector<Editor *> editors;
+
+auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
 
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
@@ -49,32 +54,29 @@ std::unordered_set<int> navigation = {
 /****************************************************/
 void readsome(pstream &pp, int i) {
   std::streamsize n;
-  //fmt::print("\nbeginning read {}\n", i);
-  std::string str{};
+  //logger->info("begin read {}\n", i);
+  std::string s{}; //used for body of server message
+  std::string h{}; //used to log header of server message
   std::string header{};
-  //std::cout << '\n';
   std::getline(pp, header);
-  //str = header;
-  //std::cout << "getline: " << str << '\n';
+  h = header;
   std::getline(pp, header);
-  //str += header;
-  //std::cout << "getline: " << str << '\n';
-  //char buf[1024];
-  //std::streamsize n;
+  h += header;
   while ((n = pp.out().readsome(buf, sizeof(buf))) > 0) {
     // n will always be zero eventually
-     //std::cout.write(buf, n).flush(); //when n = 0 nothing shown even though buffer has stuff
-     //s += std::string{buf, (size_t)n};
-     str += std::string{buf, static_cast<size_t>(n)};
+     s += std::string{buf, static_cast<size_t>(n)};
   }
-  json js = json::parse(str);
+ 
+  logger->info("read clange message {}:\n{}\n{}\n", i, h, s);
+
+  json js = json::parse(s);
   if (js.contains("method")) {
     if (js["method"] == "textDocument/publishDiagnostics") {
       json diagnostics = js["params"]["diagnostics"];
       if (p) p->decorate_errors(diagnostics);
-  //fmt::print("\nend read {}\n", i);
     }
   }
+  //logger->info("end of read (decorate_errors called if method=publishDiagnostics)");  
 }
 
 /****************************************************/
@@ -94,8 +96,8 @@ void lsp_thread(void) {
 
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
-  //fmt::print("\nsending initialization message to clangd:\n{}\n", s);
   clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent initialization message to clangd:\n{}\n", s);
 
 
 //initialization from client produces a capabilities response
@@ -106,8 +108,8 @@ void lsp_thread(void) {
   s = R"({"jsonrpc": "2.0", "method": "initialized", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
-  //fmt::print("\nsending initialized message to clangd:\n{}\n", s);
   clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent initialized message to clangd:\n{}\n", s);
   
   //client sends didOpen notification
   s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
@@ -116,8 +118,8 @@ void lsp_thread(void) {
   s = js.dump();
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
-  //fmt::print("\nsending didOpen message to clangd:\n{}\n", s);
   clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent didOpen message to clangd:\n{}\n", s);
   
   readsome(clangd, 3); //reads initial diagnostics
   
@@ -134,8 +136,8 @@ void lsp_thread(void) {
       s = js.dump();
       header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
       s = header + s;
-      //fmt::print("\nsending didChange message to clangd:\n{}\n", s);
       clangd.write(s.c_str(), s.size()).flush();
+      logger->info("sent didChange message to clangd:\n{}\n", s);
   
       readsome(clangd, j);
       code_changed = false;
@@ -146,11 +148,13 @@ void lsp_thread(void) {
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent shutdown:\n\n");
   std::this_thread::sleep_for((std::chrono::seconds(1)));
   s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent exit:\n\n");
 
   //below doesn't seem to be necessary but doesn't appear to cause a problem
   clangd.close();
@@ -182,70 +186,6 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
   {"run", &Editor::E_run_code_C} //compile and run on Compiler Explorer 
 };
-
-/* EDITOR NORMAL mode command lookup */
-/*
-std::unordered_map<std::string, eefunc> e_lookup {
-
-  {"i", &Editor::E_i}, 
-  {"I", &Editor::E_I},
-  {"a", &Editor::E_a},
-  {"A", &Editor::E_A},
-  {"o", &Editor::E_o}, //note there is an E_o_escape
-  {"O", &Editor::E_O}, //note there is an E_O_escape
-  {"x", &Editor::E_x},
-  {"dw", &Editor::E_dw},
-  {"daw", &Editor::E_daw},
-  {"de", &Editor::E_de},
-  {"dG", &Editor::E_dG},
-  {"d$", &Editor::E_d$},
-  {"dd", &Editor::E_dd},
-  {"cw", &Editor::E_cw},
-  {"caw", &Editor::E_caw},
-  {"s", &Editor::E_s},
-  {"~", &Editor::E_tilde},
-  {"J", &Editor::E_J},
-  {"w", &Editor::E_w},
-  {"e", &Editor::E_e},
-  {"b", &Editor::E_b},
-  {"0", &Editor::E_0},
-  {"$", &Editor::E_$},
-  {"r", &Editor::e_replace},
-  {"[s", &Editor::E_next_misspelling},
-  {"]s", &Editor::E_prev_misspelling},
-  {"z=", &Editor::E_suggestions},
-  //{":", &Editor::E_change2command_line}, //commented out because in NORMAL switch statement
-  {"V", &Editor::E_change2visual_line},
-  {"v", &Editor::E_change2visual},
-  {{0x16}, &Editor::E_change2visual_block},
-  {"p", &Editor::E_paste},
-  {"*", &Editor::E_find},
-  {"n", &Editor::E_find_next_word},
- // {"u", &Editor::E_undo}, //currently in case NORMAL but not sure it has to be
- // {{CTRL_KEY('r')}, &Editor::E_redo}, //ditto - need to be in move_only -> no_edit_cmds
-  {".", &Editor::editorDotRepeat},
-  {">>", &Editor::E_indent},
-  {"<<", &Editor::E_unindent},
-  {{0x2}, &Editor::E_bold},
-  {{0x5}, &Editor::E_emphasis},
-  {{0x9}, &Editor::E_italic},
-  {"yy", &Editor::editorYankLine},
-  {"gg", &Editor::E_gg},
-  {"G", &Editor::E_G},
-  {{0x1A}, &Editor::E_toggle_smartindent},
- // {{0x8}, &Editor::E_goto_outline},
-  {"%", &Editor::E_move_to_matching_brace},
-  {{0x13}, &Editor::E_save_note},
-  {"save", &Editor::E_save_note},
-};
-*/
-
-/* now defined as inline in Editor.h - could be const  if access was cmd_mapN.at(command)
-std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
-std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
-std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
-std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
-*/
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -303,9 +243,9 @@ void signalHandler(int signum) {
 
 void draw_editors(void) {
   std::string ab;
-  //for (auto &e : editors) {
-  for (size_t i=0, max=editors.size(); i!=max; ++i) {
-    Editor *&e = editors.at(i);
+  for (auto &e : editors) {
+  //for (size_t i=0, max=editors.size(); i!=max; ++i) {
+    //Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
     std::string buf;
     ab.append("\x1b(0"); // Enter line drawing mode
@@ -320,9 +260,7 @@ void draw_editors(void) {
       //'T' corner = w or right top corner = k
       buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
       ab.append(buf);
-      //if (i == editors.size() - 1) ab.append("\x1b[37;1mk");
-      if (e->left_margin + e->screencols > screencols - 4) ab.append("\x1b[37;1mk"); //draw corner 5
-      //if (&editors.back() == &e) ab.append("\x1b[37;1mk"); // works if you do for (auto &e ...)
+      if (e->left_margin + e->screencols > screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
       else ab.append("\x1b[37;1mw");
     }
     //exit line drawing mode
@@ -358,10 +296,9 @@ void get_conn(void) {
 
   if (PQstatus(conn) != CONNECTION_OK){
     if (PQstatus(conn) == CONNECTION_BAD) {
-        
-        fprintf(stderr, "Connection to database failed: %s\n",
-            PQerrorMessage(conn));
-        do_exit(conn);
+      fprintf(stderr, "Connection to database failed: %s\n",
+      PQerrorMessage(conn));
+      do_exit(conn);
     }
   } 
 }
@@ -412,13 +349,6 @@ void update_html_file(std::string &&fn) {
   mkd_document(blob, &doc);
   html << meta_ << doc << "</article></body><html>";
   
-  /*
-  std::ofstream myfile;
-  myfile.open(fn); //filename
-  myfile << html.str().c_str();
-  myfile.close();
-  */
-
   int fd;
   //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
@@ -507,11 +437,9 @@ void update_html_code_file(std::string &&fn) {
   } else outlineShowMessage("Couldn't open file");
 }
 
-// if c++ lsp works, this can go away
+// this is for local compilation and running
 void update_code_file(void) {
-  //std::string note;
   std::ofstream myfile;
-  //note = p->editorRowsToString();
   myfile.open("/home/slzatz/pylspclient/test.cpp"); 
   myfile << p->code;
   myfile.close();
@@ -562,31 +490,6 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
   PQclear(res);
   return std::make_pair(s, task_keywords);
   // PQfinish(conn);
-}
-/* Begin sqlite database functions */
-
-Sqlite lm_db(SQLITE_DB);
-Sqlite fts_db(FTS_DB);
-
-void run_sql(void) {
-  if (!lm_db.run()) {
-    outlineShowMessage("SQL error: %s", lm_db.errmsg);
-    return;
-  }  
-}
-
-void db_open(void) {
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.db);
-    exit(1);
-  }
-
-  rc = sqlite3_open(FTS_DB.c_str(), &S.fts_db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.fts_db);
-    exit(1);
-  }
 }
 
 void display_item_info_pg(int id) {
@@ -671,15 +574,12 @@ void display_item_info_pg(int id) {
 
 std::string now(void) {
   std::time_t t = std::time(nullptr);
-  //int adj_t = (int)t - 14400;
-  //return fmt::format("{:%Y-%m-%d %H:%M}", fmt::localtime(t));
   return fmt::format("{:%H:%M}", fmt::localtime(t));
 }
 
 std::string time_delta(std::string t) {
   struct std::tm tm = {};
   std::istringstream iss;
-  //std::stringstream iss;
   iss.str(t);
   iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
   auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
@@ -702,6 +602,31 @@ std::string time_delta(std::string t) {
 }
 
 /********************Beginning sqlite************************************/
+
+Sqlite lm_db(SQLITE_DB);
+Sqlite fts_db(FTS_DB);
+
+void run_sql(void) {
+  if (!lm_db.run()) {
+    outlineShowMessage("SQL error: %s", lm_db.errmsg);
+    return;
+  }  
+}
+
+void db_open(void) {
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
+  if (rc != SQLITE_OK) {
+    sqlite3_close(S.db);
+    exit(1);
+  }
+
+  rc = sqlite3_open(FTS_DB.c_str(), &S.fts_db);
+  if (rc != SQLITE_OK) {
+    sqlite3_close(S.fts_db);
+    exit(1);
+  }
+}
+
 bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
    if (rc != SQLITE_OK) {
@@ -725,11 +650,20 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
+  lm_db.query("SELECT tid,title FROM context;");
+  bool no_rows = true;
+  lm_db.params(context_titles_callback, &no_rows);
+  run_sql();
+  if (no_rows) outlineShowMessage("There were no context titles to map!");
+
+  /*
+  // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM context;");
 
   bool no_rows = true;
   if (!db_query(S.db, query, context_titles_callback, &no_rows, &S.err_msg, __func__)) return;
   if (no_rows) outlineShowMessage("There were no context titles to map!");
+  */
 }
 
 int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -748,11 +682,20 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
 void map_folder_titles(void) {
 
   // note it's tid because it's sqlite
+  lm_db.query("SELECT tid,title FROM folder;");
+  bool no_rows = true;
+  lm_db.params(folder_titles_callback, &no_rows);
+  run_sql();
+  if (no_rows) outlineShowMessage("There were no folder titles to map!");
+
+  /*
+  // note it's tid because it's sqlite
   std::string query("SELECT tid,title FROM folder;");
 
   bool no_rows = true;
   if (!db_query(S.db, query, folder_titles_callback, &no_rows, &S.err_msg, __func__)) return;
   if (no_rows) outlineShowMessage("There were no folder titles to map!");
+  */
 }
 
 int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -795,9 +738,20 @@ void get_containers(void) {
       return;
   }
   
+  lm_db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
+  bool no_rows = true;
+  lm_db.params(callback, &no_rows);
+  run_sql();
+
+
+
+
+
+  /*
   std::string query = fmt::format("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
   bool no_rows = true;
   if (!db_query(S.db, query, callback, &no_rows, &S.err_msg, __func__)) return;
+  */
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
@@ -912,13 +866,6 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
-  /*
-  std::stringstream query;
-  query << "SELECT keyword.name "
-           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
-           "WHERE " << O.rows.at(O.fr).id << " =  task_keyword.task_id;";
- */
-
    std::string query = fmt::format("SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
                                    "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
                                    O.rows.at(O.fr).id);
@@ -950,24 +897,11 @@ int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id) {
 
-  /*
-  std::stringstream query;
-  query << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " 
-          << task_id << ", keyword.id FROM keyword WHERE keyword.id = " 
-          << keyword_id << ";";
-  */
-
   std::string query = fmt::format("INSERT INTO task_keyword (task_id, keyword_id) "
                                   "SELECT {}, keyword.id FROM keyword WHERE keyword.id={};",
                                   task_id, keyword_id);
 
   if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
-
-  /*
-  std::stringstream query2;
-  query2 << "UPDATE task SET modified = datetime('now', '-"
-           << TZ_OFFSET << " hours') WHERE id =" << task_id << ";";
-  */
 
   // updates task modified column so we know that something changed with the task
   query = fmt::format("UPDATE task SET modified=datetime('now', '-{} hours') "
@@ -978,11 +912,6 @@ void add_task_keyword(int keyword_id, int task_id) {
     /**************fts virtual table update**********************/
 
   std::string s = get_task_keywords().first;
-
-  /*
-  std::stringstream query3;
-  query3 << "Update fts SET tag='" << s << "' WHERE lm_id=" << task_id << ";";
-  */
 
   query = fmt::format("Update fts SET tag='{}' WHERE lm_id={};", s, task_id);
   if (!db_query(S.fts_db, query, 0, 0, &S.err_msg, __func__)) return;
@@ -6521,6 +6450,13 @@ void initOutline() {
 }
 
 int main(int argc, char** argv) { 
+
+  //auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log");
+  //spdlog::cfg::load_env_levels();
+  // ./listmanager_cpp SPDLOG_LEVEL=info
+
+  spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
+  logger->info("********************** New Launch **************************");
 
   publisher.bind("tcp://*:5556");
   //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this

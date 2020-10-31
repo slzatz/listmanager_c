@@ -20,6 +20,7 @@ find_package(PythonLibs REQUIRED)
 find_package(PostgreSQL REQUIRED)
 find_package(Nuspell)
 find_package(fmt)
+find_package(spdlog)
 
 execute_process(
   COMMAND git rev-parse --abbrev-ref HEAD
@@ -63,10 +64,10 @@ target_include_directories(${PROJECT_NAME}
                            PUBLIC ${PostgreSQL_INCLUDE_DIRS}
                            PUBLIC ${ZeroMQ_INCLUDE_DIR})
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
-target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
-target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
-target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
+#target_include_directories(${PROJECT_NAME} PUBLIC ${SQLITE3_INCLUDE_DIRS})
+#target_include_directories(${PROJECT_NAME} PUBLIC ${PYTHON_INCLUDE_DIRS})
+#target_include_directories(${PROJECT_NAME} PUBLIC ${PostgreSQL_INCLUDE_DIRS})
+#target_include_directories(${PROJECT_NAME} PUBLIC ${ZeroMQ_INCLUDE_DIR})
 
 # case is important in names like SQLite3_LIBRARIES
 target_link_libraries(${PROJECT_NAME}
@@ -79,5 +80,6 @@ target_link_libraries(${PROJECT_NAME}
                       markdown
                       fmt::fmt
                       cpr::cpr
-                      nlohmann_json::nlohmann_json) 
+                      nlohmann_json::nlohmann_json
+                      spdlog::spdlog) 
 
