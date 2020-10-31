@@ -24,6 +24,12 @@ bool Sqlite::run() {
    return true;
 }
 
+void Sqlite::params(sq_callback cb, void * arg) {
+  callback = cb;
+  pArg = arg;
+}
+
+
 /*
 Sqlite lm_db(LM_DB);
 Sqlite fts_db(FTS_DB);

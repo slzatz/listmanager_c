@@ -9,12 +9,14 @@ class Sqlite {
   public:
     Sqlite(std:: string db_path);
 
-  template<typename... Args>
-  void query(fmt::string_view format_str, const Args & ... args) {
-    fmt::format_args argspack = fmt::make_format_args(args...);
-    sql = fmt::vformat(format_str, argspack);
-}
+    template<typename... Args>
+    void query(fmt::string_view format_str, const Args & ... args) {
+      fmt::format_args argspack = fmt::make_format_args(args...);
+      sql = fmt::vformat(format_str, argspack);
+    }
+
     bool run();
+    void params(sq_callback, void *);
 
  // private:
     sqlite3 *db;
