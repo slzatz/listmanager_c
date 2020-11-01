@@ -5627,8 +5627,49 @@ bool editorProcessKeypress(void) {
           p->repeat = 0;
           return false;
 
+        case CTRL_KEY('h'):
+          p->command[0] = '\0';
+          if (editors.size() == 1) {
+            editor_mode = false;
+            get_preview(O.rows.at(O.fr).id); 
+            return false;
+          }
+          {
+            if (p->is_subeditor) p = p->linked_editor;
+            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+            auto it = std::find(temp.begin(), temp.end(), p);
+            int index = std::distance(temp.begin(), it);
+            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
+            if (index) {
+              p = temp[index - 1];
+              if (p->rows.empty()) p->mode = NO_ROWS;
+              else p->mode = NORMAL;
+              return false;
+            } else {editor_mode = false;
+              get_preview(O.rows.at(O.fr).id); // with change in while loop should not get overwritten
+              return false;
+            }
+          }
+      
+        case  CTRL_KEY('l'):
+          p->command[0] = '\0';
+          {
+            if (p->is_subeditor) p = p->linked_editor;
+            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+            auto it = std::find(temp.begin(), temp.end(), p);
+            int index = std::distance(temp.begin(), it);
+            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
+            if (index < temp.size() - 1) p = temp[index + 1];
+            if (p->rows.empty()) p->mode = NO_ROWS;
+            else p->mode = NORMAL;
+          }
+          return false;
+
         case CTRL_KEY('k'):  
         case CTRL_KEY('j'):  
+          Editor::editorSetMessage("Editor <-> subEditor");
           p->command[0] = '\0';
           if (p->linked_editor) p=p->linked_editor;
           else return false;
@@ -5842,11 +5883,14 @@ bool editorProcessKeypress(void) {
             return false;
           }
           {
-            auto it = std::find(editors.begin(), editors.end(), p);
-            int index = std::distance(editors.begin(), it);
-            p->editorSetMessage("index: %d", index);
+            if (p->is_subeditor) p = p->linked_editor;
+            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+            auto it = std::find(temp.begin(), temp.end(), p);
+            int index = std::distance(temp.begin(), it);
+            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
             if (index) {
-              p = editors[index - 1];
+              p = temp[index - 1];
               if (p->rows.empty()) p->mode = NO_ROWS;
               else p->mode = NORMAL;
               return false;
@@ -5859,9 +5903,15 @@ bool editorProcessKeypress(void) {
         case  CTRL_KEY('l'):
           p->command[0] = '\0';
           {
-            auto it = std::find(editors.begin(), editors.end(), p);
-            int index = std::distance(editors.begin(), it);
-            if (index < editors.size() - 1) p = editors[index + 1];
+            if (p->is_subeditor) p = p->linked_editor;
+            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+            auto it = std::find(temp.begin(), temp.end(), p);
+            int index = std::distance(temp.begin(), it);
+            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
+            //p->editorSetMessage("index: %d", index);
+            //p->editorRefreshScreen(false); // needs to be here because p moves!
+            if (index < temp.size() - 1) p = temp[index + 1];
             if (p->rows.empty()) p->mode = NO_ROWS;
             else p->mode = NORMAL;
           }
@@ -5869,6 +5919,7 @@ bool editorProcessKeypress(void) {
 
         case  CTRL_KEY('k'):
         case  CTRL_KEY('j'):
+          Editor::editorSetMessage("Editor <-> subEditor");
           p->command[0] = '\0';
           if (p->linked_editor) p=p->linked_editor;
           else return false;
