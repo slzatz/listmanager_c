@@ -73,7 +73,7 @@ class Editor {
     std::string code; //used by lsp thread and intended to avoid unnecessary calls to editorRowsToString
     //std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
-    char message[120]; //status msg is a character array max 80 char
+    //char message[120]; //status msg is a character array max 80 char
     int highlight[2];
     int vb0[3];
     int mode;
@@ -94,6 +94,7 @@ class Editor {
     bool highlight_syntax;
     bool redraw;
     std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
+    static char message[120]; //status msg is a character array max 80 char
     static std::string string_buffer; //yanking chars
     static std::vector<std::string> line_buffer; //yanking lines
     static int total_screenlines; //total screenlines available to Editors vertically
@@ -210,7 +211,7 @@ class Editor {
     void editorMoveBeginningWord(void);
     void editorDecorateWord(int);
     void editorDecorateVisual(int);
-    void editorSetMessage(const char *fmt, ...);
+    static void editorSetMessage(const char *fmt, ...);
     void editorSpellCheck(void);
     void editorHighlightWord(int, int, int);
     void editorReadFileIntoNote(const std::string &);

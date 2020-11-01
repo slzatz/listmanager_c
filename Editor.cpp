@@ -9,11 +9,12 @@
 #include <array>
 #include <unordered_map>
 
-
-std::vector<std::string> Editor::line_buffer = {}; //static members of Editor class
-std::string Editor::string_buffer = {}; //ditto
-int Editor::total_screenlines = 0; //ditto
+// static members of Editor class
+std::vector<std::string> Editor::line_buffer = {}; 
+std::string Editor::string_buffer = {}; 
+int Editor::total_screenlines = 0; 
 int Editor::origin = 0;
+char Editor::message[120]{};
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
 
