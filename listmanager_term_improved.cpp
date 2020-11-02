@@ -16,7 +16,7 @@
 
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
-#include "editor_normal_function_map.h"
+#include "editor_function_map.h"
 
 using namespace redi;
 using json = nlohmann::json;
@@ -25,8 +25,8 @@ using json = nlohmann::json;
 Editor *p;
 //std::shared_ptr<Editor> p(nullptr);
 
-typedef void (Editor::*efunc)(void);
-typedef void (Editor::*eefunc)(int);
+//typedef void (Editor::*efunc)(void);
+//typedef void (Editor::*eefunc)(int);
 std::vector<Editor *> editors;
 
 auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
@@ -161,10 +161,11 @@ void lsp_thread(void) {
 }
 
 /* EDITOR COMMAND_LINE mode lookup */
+/*
 std::unordered_map<std::string, efunc> E_lookup_C {
   {"write", &Editor::E_write_C},
   {"w", &Editor::E_write_C},
- /* all below handled (right now) in editor command line switch statement*/
+ // all below handled (right now) in editor command line switch statement
  // {"x", &Editor::E_write_close_C},
  // {"quit", &Editor::E_quit_C},
  // {"q",&Editor:: E_quit_C},
@@ -186,6 +187,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
   {"run", &Editor::E_run_code_C} //compile and run on Compiler Explorer 
 };
+*/
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
