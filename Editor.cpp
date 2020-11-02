@@ -1387,9 +1387,11 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
 void Editor::draw_visual(std::string &ab) {
 
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+
   if (mode == VISUAL_LINE) {
 
-    char lf_ret[10];
     // \x1b[NC moves cursor forward by N columns
     snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
 
@@ -1407,9 +1409,24 @@ void Editor::draw_visual(std::string &ab) {
     std::stringstream ss;
     ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m";
     ab.append(ss.str());
+
+    /*******problem is these are not word wrapped**********/
+    /*
     for (int n=0; n < (h_light[1]-h_light[0] + 1);++n) {
       ab.append(rows.at(h_light[0] + n));
       ab.append(lf_ret);    
+    }
+    */
+
+    for (int n=0; n < (h_light[1]-h_light[0] + 1); ++n) {
+      int row_num = h_light[0] + n;
+      int pos = 0;
+      for (int line=1; line <= editorGetLinesInRowWW(row_num); ++line) {
+        int line_char_count = editorGetLineCharCountWW(row_num, line);
+        ab.append(rows.at(row_num).substr(pos, line_char_count));
+        ab.append(lf_ret);    
+        pos += line_char_count;
+      }
     }
   }
 
@@ -1425,11 +1442,48 @@ void Editor::draw_visual(std::string &ab) {
     }
 
     int x = editorGetScreenXFromRowColWW(fr, h_light[0]) + left_margin + 1;
+    int xx = editorGetScreenXFromRowColWW(fr, h_light[0]);
+
     int y = editorGetScreenYFromRowColWW(fr, h_light[0]) + top_margin - line_offset; 
     std::string fragment = rows.at(fr).substr(h_light[0], h_light[1] - h_light[0]);
     std::stringstream ss;
-    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment;
+    //ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment;
+    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m";
     ab.append(ss.str());
+    int lines_in_row = editorGetLinesInRowWW(fr);
+    if (lines_in_row == 1) {
+      ab.append(fragment);
+      editorSetMessage("In only one line in the row");
+    } else if (editorGetLineInRowWW(fr, h_light[0]) == editorGetLineInRowWW(fr, h_light[1])) {
+      ab.append(fragment);
+      editorSetMessage("multiline but beginning and end in same line");
+    } else {
+      int pos = h_light[0];
+      int start_line = editorGetLineInRowWW(fr, h_light[0]);
+      int line_char_count = editorGetLineCharCountWW(fr, start_line);
+      editorSetMessage("fragment = %s; xx = %d, pos = %d; lcc = %d", fragment.c_str(), xx, pos, line_char_count);
+      //ab.append(fragment, 0, line_char_count - pos);
+      ab.append(fragment, 0, line_char_count - xx);
+      ab.append(lf_ret);    
+      //fragment = fragment.substr(line_char_count - pos);
+      fragment = fragment.substr(line_char_count - xx);
+      //int pos = h_light[0];
+      //std::string remaining = fragment;
+      //editorSetMessage("fragment = %s; xx = %d, pos = %d; lcc = %d", fragment.c_str(), xx, pos, line_char_count);
+      for (int line=1+start_line; line <= editorGetLinesInRowWW(fr); ++line) {
+        int line_char_count = editorGetLineCharCountWW(fr, line);
+        if (fragment.size() < line_char_count) {
+          ab.append(fragment);
+          //editorSetMessage("Got here");
+          break;
+        } else {
+          //ab.append(fragment.substr(pos, line_char_count - pos));
+          ab.append(fragment.substr(0, line_char_count));
+          ab.append(lf_ret);    
+          fragment = fragment.substr(line_char_count);
+        }
+      }
+    }  
   }
 
   if (mode == VISUAL_BLOCK) {
