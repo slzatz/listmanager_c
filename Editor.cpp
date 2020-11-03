@@ -1441,13 +1441,12 @@ void Editor::draw_visual(std::string &ab) {
       h_light[1] = highlight[1];
     }
 
-    int x = editorGetScreenXFromRowColWW(fr, h_light[0]) + left_margin + 1;
-    int xx = editorGetScreenXFromRowColWW(fr, h_light[0]);
-
+    // someday cleanup the multiple calls to editorGetLineInRow
+    int pos = editorGetScreenXFromRowColWW(fr, h_light[0]);
+    int x = pos + left_margin + 1;
     int y = editorGetScreenYFromRowColWW(fr, h_light[0]) + top_margin - line_offset; 
-    std::string fragment = rows.at(fr).substr(h_light[0], h_light[1] - h_light[0]);
+    std::string fragment = rows.at(fr).substr(h_light[0], h_light[1] - h_light[0] + 1);
     std::stringstream ss;
-    //ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment;
     ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m";
     ab.append(ss.str());
     int lines_in_row = editorGetLinesInRowWW(fr);
@@ -1458,26 +1457,19 @@ void Editor::draw_visual(std::string &ab) {
       ab.append(fragment);
       editorSetMessage("multiline but beginning and end in same line");
     } else {
-      int pos = h_light[0];
       int start_line = editorGetLineInRowWW(fr, h_light[0]);
       int line_char_count = editorGetLineCharCountWW(fr, start_line);
-      editorSetMessage("fragment = %s; xx = %d, pos = %d; lcc = %d", fragment.c_str(), xx, pos, line_char_count);
-      //ab.append(fragment, 0, line_char_count - pos);
-      ab.append(fragment, 0, line_char_count - xx);
+      //editorSetMessage("fragment = %s; pos = %d; lcc = %d", fragment.c_str(), pos, line_char_count);
+      ab.append(fragment, 0, line_char_count - pos);
       ab.append(lf_ret);    
-      //fragment = fragment.substr(line_char_count - pos);
-      fragment = fragment.substr(line_char_count - xx);
-      //int pos = h_light[0];
-      //std::string remaining = fragment;
-      //editorSetMessage("fragment = %s; xx = %d, pos = %d; lcc = %d", fragment.c_str(), xx, pos, line_char_count);
+      fragment = fragment.substr(line_char_count - pos);
+      editorSetMessage("fragment = %s; pos = %d; lcc = %d", fragment.c_str(), pos, line_char_count);
       for (int line=1+start_line; line <= editorGetLinesInRowWW(fr); ++line) {
         int line_char_count = editorGetLineCharCountWW(fr, line);
         if (fragment.size() < line_char_count) {
           ab.append(fragment);
-          //editorSetMessage("Got here");
           break;
         } else {
-          //ab.append(fragment.substr(pos, line_char_count - pos));
           ab.append(fragment.substr(0, line_char_count));
           ab.append(lf_ret);    
           fragment = fragment.substr(line_char_count);

@@ -5129,13 +5129,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
   
       switch (c) {
   
-        case ARROW_UP:
-        case ARROW_DOWN:
+        //case ARROW_UP:
+        //case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
         case 'h':
-        case 'j':
-        case 'k':
+        //case 'j':
+        //case 'k':
         case 'l':
           outlineMoveCursor(c);
           O.highlight[1] = O.fc; //this needs to be getFileCol
@@ -6328,13 +6328,13 @@ bool editorProcessKeypress(void) {
 
       switch (c) {
     
-        case ARROW_UP:
-        case ARROW_DOWN:
+        //case ARROW_UP:
+        //case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
         case 'h':
-        case 'j':
-        case 'k':
+        //case 'j':
+        //case 'k':
         case 'l':
           p->editorMoveCursor(c);
           p->highlight[1] = p->fc;
