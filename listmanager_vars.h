@@ -2,7 +2,7 @@
 #define TIME_COL_WIDTH 18 // need this if going to have modified col
 #define UNUSED(x) (void)(x)
 #define MAX 500 // max rows to bring back
-#define TZ_OFFSET 4 // time zone offset - either 4 or 5
+#define TZ_OFFSET 5 // time zone offset - either 4 or 5
 #define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 // to use GIT_BRANCH in makefile (from cmake)
