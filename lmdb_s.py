@@ -40,7 +40,7 @@ task_table = Table('task',metadata,
               Column('repeat', Integer),
               Column('deleted', Boolean, default=False),
               Column('created', DateTime, default=datetime.datetime.now), 
-              Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+              Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
               Column('startdate', DateTime), # this has been hijacked to represent the true date the item was created originally
               #Column('starttime', Time),
               Column('remind', Integer) # number of minutes prior to duedate that reminder will be sent
@@ -70,7 +70,7 @@ context_table = Table('context', metadata,
                  Column('title', String(32), unique=True, nullable=False), 
                  Column('default', Boolean, default=False),
                  Column('created', DateTime, default=datetime.datetime.now), 
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
                  Column('deleted', Boolean, default=False),  # need to add this to delete contexts on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),
@@ -85,7 +85,7 @@ folder_table = Table('folder', metadata,
                  Column('archived', Boolean, default=False),
                  Column('order', Integer),
                  Column('created', DateTime, default=datetime.datetime.now), 
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
                  Column('deleted', Boolean, default=False),  # need to add this to delete folders on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),
@@ -106,7 +106,7 @@ keyword_table = Table('keyword', metadata,
                  Column('tid', Integer, unique=True, nullable=False),
                  Column('star', Boolean, default=False),
                  Column('deleted', Boolean, default=False),
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
                  )
 
 taskkeyword_table = Table('task_keyword', metadata,

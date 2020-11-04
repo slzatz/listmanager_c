@@ -906,8 +906,8 @@ void add_task_keyword(int keyword_id, int task_id) {
   if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
 
   // updates task modified column so we know that something changed with the task
-  query = fmt::format("UPDATE task SET modified=datetime('now', '-{} hours') "
-                      "WHERE id={};", TZ_OFFSET, task_id);
+  query = fmt::format("UPDATE task SET modified=datetime('now') "
+                      "WHERE id={};", task_id);
 
   if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
 
@@ -949,7 +949,7 @@ void add_task_keyword(std::string &kws, int id) {
      * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*/
 
     query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
-          <<  kw << "', " << 0 << ", true, datetime('now', '-" << TZ_OFFSET << " hours'), false);"; 
+          <<  kw << "', " << 0 << ", true, datetime('now'), false);"; 
 
     if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -959,7 +959,7 @@ void add_task_keyword(std::string &kws, int id) {
 
     std::stringstream query3;
     // updates task modified column so we know that something changed with the task
-    query3 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << id << ";";
+    query3 << "UPDATE task SET modified = datetime('now') WHERE id =" << id << ";";
     if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
     /**************fts virtual table update**********************/
@@ -1019,7 +1019,7 @@ void F_deletekeywords(int) {
 
   std::stringstream query2;
   // updates task modified column so know that something changed with the task
-  query2 << "UPDATE task SET modified = datetime('now', '-" << TZ_OFFSET << " hours') WHERE id =" << O.rows.at(O.fr).id << ";";
+  query2 << "UPDATE task SET modified = datetime('now') WHERE id =" << O.rows.at(O.fr).id << ";";
   if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   /**************fts virtual table update**********************/
@@ -2003,14 +2003,9 @@ void update_note(bool is_subnote) {
     pos = text.find("'", pos + 2);
   }
 
-  std::string query = fmt::format("UPDATE task SET {}='{}', modified=datetime('now', '-{} hours'), startdate=datetime('now', '-{} hours') where id={}",
-                                   column, text, TZ_OFFSET, TZ_OFFSET, p->id);
-
-  /*
-  query << "UPDATE task SET " << column << "='" << text << "', modified=datetime('now', '-" 
-        << TZ_OFFSET << " hours'), " << "startdate=datetime('now', '-"
-        << TZ_OFFSET << " hours')WHERE id=" << p->id;
-  */
+  std::string query = fmt::format("UPDATE task SET {}='{}', modified=datetime('now'), "
+                                  "startdate=datetime('now', '-{} hours') where id={}",
+                                   column, text, TZ_OFFSET, p->id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg)) return;
 
@@ -2031,8 +2026,8 @@ void update_task_context(std::string &new_context, int id) {
 
   int context_tid = context_map.at(new_context);
 
-  std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now', '-{} hours') WHERE id={}",
-                                    context_tid, TZ_OFFSET, id);
+  std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now') WHERE id={}",
+                                    context_tid, id);
 
   db_query(S.db, query.c_str(), 0, 0, &S.err_msg);
 }
@@ -2040,8 +2035,8 @@ void update_task_context(std::string &new_context, int id) {
 void update_task_folder(std::string& new_folder, int id) {
 
   int folder_tid = folder_map.at(new_folder);
-  std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now', '-{} hours') WHERE id={}",
-                                    folder_tid, TZ_OFFSET, id);
+  std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now') WHERE id={}",
+                                    folder_tid, id);
 
   db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__);
 }
@@ -2051,8 +2046,8 @@ void toggle_completed(void) {
   orow& row = O.rows.at(O.fr);
   int id = get_id();
 
-  std::string query = fmt::format("UPDATE task SET completed={}, modified=datetime('now', '-{} hours') WHERE id={}", 
-                                  (row.completed) ? "NULL" : "date()", TZ_OFFSET, id); 
+  std::string query = fmt::format("UPDATE task SET completed={}, modified=datetime('now') WHERE id={}", 
+                                  (row.completed) ? "NULL" : "date()", id); 
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -2062,8 +2057,8 @@ void toggle_completed(void) {
 
 void touch(void) {
   int id = get_id();
-  std::string query = fmt::format("UPDATE task SET modified=datetime('now', '-{} hours') WHERE id={}", 
-                                  TZ_OFFSET, id); 
+  std::string query = fmt::format("UPDATE task SET modified=datetime('now') WHERE id={}", 
+                                  id); 
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
     
@@ -2094,8 +2089,8 @@ void toggle_deleted(void) {
       return;
   }
 
-  std::string query = fmt::format("UPDATE {} SET deleted={}, modified=datetime('now', '-{} hours') WHERE id={}",
-                   table, (row.deleted) ? "False" : "True", TZ_OFFSET, id);
+  std::string query = fmt::format("UPDATE {} SET deleted={}, modified=datetime('now') WHERE id={}",
+                   table, (row.deleted) ? "False" : "True", id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
     
@@ -2137,8 +2132,8 @@ void toggle_star(void) {
       return;
   }
 
-  std::string query = fmt::format("UPDATE {} SET {}={}, modified=datetime('now', '-{} hours') WHERE id={}",
-                                   table, column, (row.star) ? "False" : "True", TZ_OFFSET, id);
+  std::string query = fmt::format("UPDATE {} SET {}={}, modified=datetime('now') WHERE id={}",
+                                   table, column, (row.star) ? "False" : "True", id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -2167,8 +2162,8 @@ void update_title(void) {
     pos = title.find("'", pos + 2);
   }
 
-  std::string query = fmt::format("UPDATE task SET title='{}', modified=datetime('now', '-{} hours') WHERE id={}",
-                                     title, TZ_OFFSET, row.id);
+  std::string query = fmt::format("UPDATE task SET title='{}', modified=datetime('now') WHERE id={}",
+                                     title, row.id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
   row.dirty = false;
@@ -2208,9 +2203,9 @@ void update_container(void) {
     pos = title.find("'", pos + 2);
   }
 
-  std::string query = fmt::format("UPDATE {} SET title='{}', modified=datetime('now', '-{} hours') WHERE id={}",
+  std::string query = fmt::format("UPDATE {} SET title='{}', modified=datetime('now') WHERE id={}",
                                    (O.view == CONTEXT) ? "context" : "folder",
-                                    title, TZ_OFFSET, row.id);
+                                    title, row.id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -2241,8 +2236,8 @@ void update_keyword(void) {
     pos = title.find("'", pos + 2);
   }
 
-  std::string query = fmt::format("UPDATE keyword SET name='{}', modified=datetime('now', '-{} hours') WHERE id={}",
-                                   title, TZ_OFFSET, row.id);
+  std::string query = fmt::format("UPDATE keyword SET name='{}', modified=datetime('now') WHERE id={}",
+                                   title, row.id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
@@ -2264,8 +2259,8 @@ int insert_keyword(orow& row) {
 
   //note below that the temp tid is zero for all inserted keywords
   std::string query = fmt::format("INSERT INTO keyword (name, star, deleted, modified, tid) " \
-                                   "VALUES ('{}', {}, False, datetime('now', '-{} hours'), 0);",
-                                   title, row.star, TZ_OFFSET);
+                                   "VALUES ('{}', {}, False, datetime('now'), 0);",
+                                   title, row.star);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return -1;
 
@@ -2291,7 +2286,7 @@ int insert_row(orow& row) {
                                    "star, added, note, deleted, created, modified) " \
                                    "VALUES (3, '{0}', {1}, {2}, True, date(), '', False, " \
                                    "datetime('now', '-{3} hours'), " \
-                                   "datetime('now', '-{3} hours'));", 
+                                   "datetime('now'));", 
                                    title,
                                    (O.folder == "") ? 1 : folder_map.at(O.folder),
                                    (O.context == "") ? 1 : context_map.at(O.context),
@@ -2324,7 +2319,7 @@ int insert_row(orow& row) {
         << "''," //note
         << " False," //deleted
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now', '-" << TZ_OFFSET << " hours')" // modified
+        << " datetime('now')" // modified
         //<< " date()" //startdate
         << ");"; // RETURNING id;",
 
@@ -2421,7 +2416,7 @@ int insert_container(orow& row) {
         << "'" << title << "'," //title
         << " False," //deleted
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," // modified
+        << " datetime('now')," // modified
         //<< " 99999," //tid
         << " " << temporary_tid << "," //tid originally 100 but that is a legit client tid server id
         << " False," //default for context and private for folder
@@ -2482,7 +2477,7 @@ void update_rows(void) {
       }
 
       std::stringstream query;
-      query << "UPDATE task SET title='" << title << "', modified=datetime('now', '-" << TZ_OFFSET << " hours') WHERE id=" << row.id;
+      query << "UPDATE task SET title='" << title << "', modified=datetime('now') WHERE id=" << row.id;
 
       sqlite3 *db;
       char *err_msg = 0;

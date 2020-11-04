@@ -33,7 +33,8 @@ def synchronize(report_only=True):
     log+= "LISTMANAGER SYNCRONIZATION\n"
     log+= "Server you are synching with is {}\n".format(p.remote_engine)
     log+= "Local Time is {0}\n\n".format(datetime.datetime.now())
-    delta = datetime.datetime.now() - last_client_sync
+    log+= "UTC Time is {0}\n\n".format(datetime.datetime.utcnow())
+    delta = datetime.datetime.utcnow() - last_client_sync
     log+= "The last time client was synced (based on client clock) was {}, which was {} days and {} minutes ago.\n".format(last_client_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
     log+= "The last time server was synced (based on server clock) was {}, which was {} days and {} minutes ago.\n".format(last_server_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
 
@@ -424,7 +425,8 @@ def synchronize(report_only=True):
         task.completed = st.completed if st.completed else None
         task.note = st.note
         task.subnote = st.subnote
-        task.modified = st.modified # usually not necessary - done by sqla onupdate but might be needed if no changes detected ie keywords change
+        #task.modified = st.modified 
+        task.modified = datetime.datetime.utcnow()
 
         local_session.commit() #new/updated client task commit
 
@@ -505,7 +507,8 @@ def synchronize(report_only=True):
         task.completed = ct.completed if ct.completed else None
         task.note = ct.note
         task.subnote = ct.subnote
-        task.modified = ct.modified # not necessary - done by sqla onupdate but might be if no changes detected ie keywords change
+        #task.modified = ct.modified # not necessary - done by sqla onupdate but might be if no changes detected ie keywords change
+        task.modified = datetime.datetime.utcnow()
 
         remote_session.commit() #new/updated client task commit
 
@@ -732,7 +735,7 @@ def synchronize(report_only=True):
     # note that if we want to find unused keywords, this query does it:  SELECT name from keyword WHERE keyword.id NOT IN (SELECT keyword_id from task_keyword)
 
 
-    client_sync.timestamp = datetime.datetime.now() + datetime.timedelta(seconds=5) # giving a little buffer if the db takes time to update on client or server
+    client_sync.timestamp = datetime.datetime.utcnow() + datetime.timedelta(seconds=5) # giving a little buffer if the db takes time to update on client or server
 
     # saw definitively that the resulting timestamp could be earlier than when the server tasks were modified -- no idea why
     #connection = p.remote_engine.connect()
@@ -741,18 +744,19 @@ def synchronize(report_only=True):
 
     # if you thought server and client sync times were close enough you wouldn't have to do this
     # and would have just one sync time
-    task = remote_session.query(p.Task).get(1) #Call Spectacles ...
-    priority = task.priority
-    task.priority = priority + 1 if priority < 3 else 0
-    remote_session.commit()
-    server_sync.timestamp = task.modified + datetime.timedelta(seconds=5) # not sure why this is necessary but it really is
+    #task = remote_session.query(p.Task).get(1) #Call Spectacles ...
+    #priority = task.priority
+    #task.priority = priority + 1 if priority < 3 else 0
+    #remote_session.commit()
+    #server_sync.timestamp = task.modified + datetime.timedelta(seconds=5) # not sure why this is necessary but it really is
+    server_sync.timestamp = remote_session.execute("SELECT now()").fetchone()[0] + datetime.timedelta(seconds=5)
 
     local_session.commit()  
 
     log+="New Sync times\n"
-    log+="client timestamp: {}\n".format(client_sync.timestamp.isoformat(' '))
-    log+="server timestamp: {}\n".format(server_sync.timestamp.isoformat(' '))
-    log+= "Time is {0}\n\n".format(datetime.datetime.now())
+    log+="Client UTC timestamp: {}\n".format(client_sync.timestamp.isoformat(' '))
+    log+="Server UTC timestamp: {}\n".format(server_sync.timestamp.isoformat(' '))
+    log+= "Local time is {0}\n\n".format(datetime.datetime.now())
 
     log+=("\n\n***************** END SYNC *******************************************")
 

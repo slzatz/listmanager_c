@@ -33,7 +33,7 @@ task_table = Table('task',metadata,
               Column('repeat', Integer),
               Column('deleted', Boolean, default=False),
               Column('created', DateTime, default=datetime.datetime.now), 
-              Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+              Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
               Column('startdate', DateTime),
               Column('remind', Integer)
 )
@@ -63,7 +63,7 @@ context_table = Table('context', metadata,
                  Column('title', String(32), unique=True, nullable=False), 
                  Column('default', Boolean, default=False),
                  Column('created', DateTime, default=datetime.datetime.now), 
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
                  Column('deleted', Boolean, default=False),  # need to add this to delete contexts on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),
@@ -79,7 +79,7 @@ folder_table = Table('folder', metadata,
                  Column('archived', Boolean, default=False),
                  Column('order', Integer),
                  Column('created', DateTime, default=datetime.datetime.now), 
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now),
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow),
                  Column('deleted', Boolean, default=False),  # need to add this to delete folders on client
                  Column('icon', String(32)),
                  Column('textcolor', Integer),
@@ -91,7 +91,7 @@ keyword_table = Table('keyword', metadata,
                  Column('name', String(25), unique=True, nullable=False), #note tag is <=65
                  Column('star', Boolean, default=False),
                  Column('deleted', Boolean, default=False),
-                 Column('modified', DateTime, default=datetime.datetime.now, onupdate=datetime.datetime.now)
+                 Column('modified', DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 )
 taskkeyword_table = Table('task_keyword', metadata,
                       Column('task_id', Integer, ForeignKey('task.id'), primary_key=True), 
