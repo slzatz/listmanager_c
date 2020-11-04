@@ -585,11 +585,20 @@ std::string time_delta(std::string t) {
   iss.str(t);
   iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
   auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
-  auto now = std::chrono::system_clock::now();
+
+  //auto now = std::chrono::utc_clock::now(); //unfortunately c++20 and not available yet
+  auto now = std::chrono::system_clock::now(); //this needs to be utc
   std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
+
+  /* this didn't work as a kluge
+  //from https://stackoverflow.com/questions/63501664/current-utc-time-point-in-c
+  auto now =std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()); 
+  std::chrono::duration<double> elapsed_seconds = now.time_since_epoch()-tp.time_since_epoch(); //in seconds but with stuff to right of decimal
+  */
+
   auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
-  //int adj_secs = (int)int_secs.count() + 14400; //time zone adjustment of 4 hours - needs to be cleaned up
-  int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 1 hour works - no idea why!
+  //int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 1 hour works - no idea why!
+  int adj_secs = (int)int_secs.count() + 18000; //kluge that requires tz adjustment; need utc_clock
 
   std::string s;
 
