@@ -30,13 +30,17 @@ def synchronize(report_only=True):
     last_client_sync = client_sync.timestamp 
     last_server_sync = server_sync.timestamp 
 
-    log+= "LISTMANAGER SYNCRONIZATION\n"
-    log+= "Server you are synching with is {}\n".format(p.remote_engine)
-    log+= "Local Time is {0}\n\n".format(datetime.datetime.now())
+    #log+= "LISTMANAGER SYNCRONIZATION\n"
+    #log+= "Server you are synching with is {}\n".format(p.remote_engine)
+    log+= "Local Time is {0}\n".format(datetime.datetime.now())
     log+= "UTC Time is {0}\n\n".format(datetime.datetime.utcnow())
     delta = datetime.datetime.utcnow() - last_client_sync
-    log+= "The last time client was synced (based on client clock) was {}, which was {} days and {} minutes ago.\n".format(last_client_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
-    log+= "The last time server was synced (based on server clock) was {}, which was {} days and {} minutes ago.\n".format(last_server_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
+
+    log+= "Client last synced (UTC client clock): {} -> {} days and {:.0f} minutes ago.\n".format(
+                                last_client_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
+
+    log+= "Server last synced (UTC server clock): {} -> {} days and {:.0f} minutes ago.\n\n".format(
+                                last_server_sync.isoformat(' ')[:19], delta.days, delta.seconds/60)
 
     # SERVER CHANGES
     #server_updated_contexts: new and modified
@@ -45,9 +49,9 @@ def synchronize(report_only=True):
 
     if server_updated_contexts:
         nn+=len(server_updated_contexts)
-        log+=f"Updated (new and modified) server Contexts since the last sync: {len(server_updated_contexts)}.\n"
+        log+=f"Updated (new and modified) server Contexts since last sync: {len(server_updated_contexts)}.\n"
     else:
-        log+="There were no updated (new and modified) server Contexts since the last sync.\n" 
+        log+="No updated (new and modified) server Contexts the last sync.\n" 
 
     #server_deleted_contexts
     server_deleted_contexts = remote_session.query(p.Context).filter(and_(
@@ -55,9 +59,9 @@ def synchronize(report_only=True):
       
     if server_deleted_contexts:
         nn+=len(server_deleted_contexts)
-        log+=f"Deleted server Contexts since the last sync: {len(server_deleted_contexts)}.\n"
+        log+=f"Deleted server Contexts since last sync: {len(server_deleted_contexts)}.\n"
     else:
-        log+="There were no server Contexts deleted since the last sync.\n" 
+        log+="No server Contexts deleted since last sync.\n" 
 
     #server_updated_folders: new and modified
     server_updated_folders = remote_session.query(p.Folder).filter(and_(
@@ -65,9 +69,9 @@ def synchronize(report_only=True):
 
     if server_updated_folders:
         nn+=len(server_updated_folders)
-        log+=f"Updated (new and modified) server Folders since the last sync: {len(server_updated_folders)}.\n"
+        log+=f"Updated (new and modified) server Folders since last sync: {len(server_updated_folders)}.\n"
     else:
-        log+="There were no updated (new and modified) server Folders since the last sync.\n" 
+        log+="No updated (new and modified) server Folders since last sync.\n" 
 
     #server_deleted_folders
     server_deleted_folders = remote_session.query(p.Folder).filter(and_(
@@ -75,9 +79,9 @@ def synchronize(report_only=True):
       
     if server_deleted_folders:
         nn+=len(server_deleted_folders)
-        log+=f"Deleted server Folders since the last sync: {len(server_deleted_folders)}.\n"
+        log+=f"Deleted server Folders since last sync: {len(server_deleted_folders)}.\n"
     else:
-        log+="There were no server Folders deleted since the last sync.\n" 
+        log+="No server Folders deleted since last sync.\n" 
 
     #server_updated_keywords: new and modified
     server_updated_keywords = remote_session.query(p.Keyword).filter(and_(
@@ -85,9 +89,9 @@ def synchronize(report_only=True):
 
     if server_updated_keywords:
         nn+=len(server_updated_keywords)
-        log+=f"Updated (new and modified) server Keywords since the last sync: {len(server_updated_keywords)}.\n"
+        log+=f"Updated (new and modified) server Keywords since last sync: {len(server_updated_keywords)}.\n"
     else:
-        log+="There were no updated (new and modified) server Keywords since the last sync.\n" 
+        log+="No updated (new and modified) server Keywords since last sync.\n" 
 
     #server_deleted_keywords
     server_deleted_keywords = remote_session.query(p.Keyword).filter(and_(
@@ -95,9 +99,9 @@ def synchronize(report_only=True):
       
     if server_deleted_keywords:
         nn+=len(server_deleted_keywords)
-        log+=f"Deleted server Keywords since the last sync: {len(server_deleted_keywords)}.\n"
+        log+=f"Deleted server Keywords since last sync: {len(server_deleted_keywords)}.\n"
     else:
-        log+="There were no server Keywords deleted since the last sync.\n" 
+        log+="No server Keywords deleted since last sync.\n" 
 
     #server_updated_tasks: new and modified
     server_updated_tasks = remote_session.query(p.Task).filter(and_(
@@ -105,9 +109,9 @@ def synchronize(report_only=True):
 
     if server_updated_tasks:
         nn+=len(server_updated_tasks)
-        log+="Updated (new and modified) server Tasks since the last sync: {0}.\n".format(len(server_updated_tasks))
+        log+="Updated (new and modified) server Tasks since last sync: {0}.\n".format(len(server_updated_tasks))
     else:
-        log+="There were no updated (new and modified) server Tasks since the last sync.\n" 
+        log+="No updated (new and modified) server Tasks since last sync.\n" 
 
     #server_deleted_tasks
     server_deleted_tasks = remote_session.query(p.Task).filter(and_(
@@ -115,11 +119,11 @@ def synchronize(report_only=True):
       
     if server_deleted_tasks:
         nn+=len(server_deleted_tasks)
-        log+="Deleted server Tasks since the last sync: {0}.\n".format(len(server_deleted_tasks))
+        log+="Deleted server Tasks since last sync: {0}.\n".format(len(server_deleted_tasks))
     else:
-        log+="There were no server Tasks deleted since the last sync.\n" 
+        log+="No server Tasks deleted since last sync.\n" 
 
-    log+="\nThe total number of server postgresql changes is {0}.\n\n".format(nn)
+    log+="\nTotal number of server postgres changes is {0}.\n\n".format(nn)
 
     # CLIENT CHANGES
     #client_updated_contexts: new and modified
@@ -128,9 +132,9 @@ def synchronize(report_only=True):
 
     if client_updated_contexts:
         nn+=len(client_updated_contexts)
-        log+=f"Updated (new and modified) client Contexts since the last sync: {len(client_updated_contexts)}.\n"
+        log+=f"Updated (new and modified) client Contexts since last sync: {len(client_updated_contexts)}.\n"
     else:
-        log+="There were no updated (new and modified) client Contexts since the last sync.\n" 
+        log+="No updated (new and modified) client Contexts since last sync.\n" 
 
     #client_deleted_contexts
     client_deleted_contexts = local_session.query(Context).filter(and_(
@@ -138,9 +142,9 @@ def synchronize(report_only=True):
       
     if client_deleted_contexts:
         nn+=len(client_deleted_contexts)
-        log+=f"Deleted client Contexts since the last sync: {len(client_deleted_contexts)}.\n"
+        log+=f"Deleted client Contexts since last sync: {len(client_deleted_contexts)}.\n"
     else:
-        log+="There were no client Contexts deleted since the last sync.\n" 
+        log+="No client Contexts deleted since last sync.\n" 
 
     #client_updated_folders: new and modified
     client_updated_folders = local_session.query(Folder).filter(and_(
@@ -148,9 +152,9 @@ def synchronize(report_only=True):
 
     if client_updated_folders:
         nn+=len(client_updated_folders)
-        log+=f"Updated (new and modified) client Folders since the last sync: {len(client_updated_folders)}.\n"
+        log+=f"Updated (new and modified) client Folders since last sync: {len(client_updated_folders)}.\n"
     else:
-        log+="There were no updated (new and modified) client Folders since the last sync.\n" 
+        log+="No updated (new and modified) client Folders since last sync.\n" 
 
     #client_deleted_folders
     client_deleted_folders = local_session.query(Folder).filter(and_(
@@ -158,9 +162,9 @@ def synchronize(report_only=True):
       
     if client_deleted_folders:
         nn+=len(client_deleted_folders)
-        log+=f"Deleted client Folders since the last sync: {len(client_deleted_folders)}.\n"
+        log+=f"Deleted client Folders since last sync: {len(client_deleted_folders)}.\n"
     else:
-        log+="There were no client Folders deleted since the last sync.\n" 
+        log+="No client Folders deleted since last sync.\n" 
 
     #client_updated_keywords: new and modified
     client_updated_keywords = local_session.query(Keyword).filter(and_(
@@ -168,9 +172,9 @@ def synchronize(report_only=True):
 
     if client_updated_keywords:
         nn+=len(client_updated_keywords)
-        log+=f"Updated (new and modified) client Keywords since the last sync: {len(client_updated_keywords)}.\n"
+        log+=f"Updated (new and modified) client Keywords since last sync: {len(client_updated_keywords)}.\n"
     else:
-        log+="There were no updated (new and modified) client Keywords since the last sync.\n" 
+        log+="No updated (new and modified) client Keywords since last sync.\n" 
 
     #client_deleted_keywords
     client_deleted_keywords = local_session.query(Keyword).filter(and_(
@@ -178,9 +182,9 @@ def synchronize(report_only=True):
       
     if client_deleted_keywords:
         nn+=len(client_deleted_keywords)
-        log+=f"Deleted client Keyword since the last sync: {len(client_deleted_keywords)}.\n"
+        log+=f"Deleted client Keyword since last sync: {len(client_deleted_keywords)}.\n"
     else:
-        log+="There were no client Keyword deleted since the last sync.\n" 
+        log+="No client Keyword deleted since last sync.\n" 
 
     #client_updated_tasks: new and modified 
     client_updated_tasks = local_session.query(Task).filter(and_(
@@ -188,19 +192,19 @@ def synchronize(report_only=True):
 
     if client_updated_tasks:
         nn+=len(client_updated_tasks)
-        log+=f"Updated (new and modified) client Tasks since the last sync: {len(client_updated_tasks)}.\n"
+        log+=f"Updated (new and modified) client Tasks since last sync: {len(client_updated_tasks)}.\n"
     else:
-        log+="There were no updated (new and modified) client Tasks since the last sync.\n" 
+        log+="No updated (new and modified) client Tasks since last sync.\n" 
 
     #client_deleted_tasks
     client_deleted_tasks = local_session.query(Task).filter(Task.deleted==True).all()
     if client_deleted_tasks:
         nn+=len(client_deleted_tasks)
-        log+="Deleted client Tasks since the last sync: {0}.\n".format(len(client_deleted_tasks))
+        log+="Deleted client Tasks since last sync: {0}.\n".format(len(client_deleted_tasks))
     else:
-        log+="There were no client Tasks deleted since the last sync.\n" 
+        log+="No client Tasks deleted since last sync.\n" 
 
-    log+="\nThe total number of server and client changes is {0}.\n".format(nn)
+    log+="\nTotal number of server and client changes is {0}.\n".format(nn)
 
     if report_only:
         with open('log', 'w') as f:
