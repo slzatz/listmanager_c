@@ -29,12 +29,18 @@ void Sqlite::params(sq_callback cb, void * arg) {
   pArg = arg;
 }
 
+int Query::step(void) {
+  return sqlite3_step(res);
+ }
+std::string Query::column_text(int col) {
+  return std::string(reinterpret_cast<const char *>(sqlite3_column_text(res, col)));
+}
 
-/*
-Sqlite lm_db(LM_DB);
-Sqlite fts_db(FTS_DB);
+int Query::column_int(int col) {
+  return sqlite3_column_int(res, col);
+}
 
-void do_something() {
-  lm_db.query("fjalkdsf {} lkdsjflskdjflds {} lksdjfldsj {}", x, y, z);
-  lm_db.run_query()
-*/  
+bool Query::column_bool(int col) {
+  return (sqlite3_column_int(res, col) == 1) ? true : false;
+}
+
