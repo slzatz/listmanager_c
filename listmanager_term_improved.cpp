@@ -614,12 +614,12 @@ std::string time_delta(std::string t) {
 
 /********************Beginning sqlite************************************/
 
-Sqlite lm_db(SQLITE_DB);
+Sqlite db(SQLITE_DB);
 Sqlite fts_db(FTS_DB);
 
 void run_sql(void) {
-  if (!lm_db.run()) {
-    outlineShowMessage("SQL error: %s", lm_db.errmsg);
+  if (!db.run()) {
+    outlineShowMessage("SQL error: %s", db.errmsg);
     return;
   }  
 }
@@ -661,20 +661,18 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
-  lm_db.query("SELECT tid,title FROM context;");
+  /*
+  db.query("SELECT tid,title FROM context;");
   bool no_rows = true;
-  lm_db.params(context_titles_callback, &no_rows);
+  db.params(context_titles_callback, &no_rows);
   run_sql();
   if (no_rows) outlineShowMessage("There were no context titles to map!");
+ */
 
-  /*
-  // note it's tid because it's sqlite
-  std::string query("SELECT tid,title FROM context;");
-
-  bool no_rows = true;
-  if (!db_query(S.db, query, context_titles_callback, &no_rows, &S.err_msg, __func__)) return;
-  if (no_rows) outlineShowMessage("There were no context titles to map!");
-  */
+  Query q(db, "SELECT tid,title FROM context;"); 
+  while (q.step() == SQLITE_ROW) {
+   context_map[q.column_text(1)] = q.column_int(0);
+  }
 }
 
 int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -692,21 +690,19 @@ int context_titles_callback(void *no_rows, int argc, char **argv, char **azColNa
 
 void map_folder_titles(void) {
 
-  // note it's tid because it's sqlite
-  lm_db.query("SELECT tid,title FROM folder;");
+  /*
+  db.query("SELECT tid,title FROM folder;");
   bool no_rows = true;
-  lm_db.params(folder_titles_callback, &no_rows);
+  db.params(folder_titles_callback, &no_rows);
   run_sql();
   if (no_rows) outlineShowMessage("There were no folder titles to map!");
-
-  /*
-  // note it's tid because it's sqlite
-  std::string query("SELECT tid,title FROM folder;");
-
-  bool no_rows = true;
-  if (!db_query(S.db, query, folder_titles_callback, &no_rows, &S.err_msg, __func__)) return;
-  if (no_rows) outlineShowMessage("There were no folder titles to map!");
   */
+
+  // note it's tid because it's sqlite
+  Query q(db, "SELECT tid,title FROM folder;"); 
+  while (q.step() == SQLITE_ROW) {
+   folder_map[q.column_text(1)] = q.column_int(0);
+  }
 }
 
 int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -749,14 +745,10 @@ void get_containers(void) {
       return;
   }
   
-  lm_db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
+  db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
   bool no_rows = true;
-  lm_db.params(callback, &no_rows);
+  db.params(callback, &no_rows);
   run_sql();
-
-
-
-
 
   /*
   std::string query = fmt::format("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
@@ -1334,16 +1326,16 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 void get_note(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
-  lm_db.query("SELECT note FROM task WHERE id = {}", id);
-  lm_db.callback = note_callback;
-  lm_db.pArg = p;
+  db.query("SELECT note FROM task WHERE id = {}", id);
+  db.callback = note_callback;
+  db.pArg = p;
   run_sql();
 
   if (!p->linked_editor) return;
 
-  lm_db.query("SELECT subnote FROM task WHERE id = {}", id);
-  lm_db.callback = note_callback;
-  lm_db.pArg = p->linked_editor;
+  db.query("SELECT subnote FROM task WHERE id = {}", id);
+  db.callback = note_callback;
+  db.pArg = p->linked_editor;
   run_sql();
 }
 
