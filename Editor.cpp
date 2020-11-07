@@ -1405,26 +1405,28 @@ void Editor::draw_visual(std::string &ab) {
     }
 
     int x = left_margin + 1;
-    int y = editorGetScreenYFromRowColWW(h_light[0], 0) + top_margin - line_offset; 
+    //int y = editorGetScreenYFromRowColWW(h_light[0], 0) + top_margin - line_offset; 
+    int y = editorGetScreenYFromRowColWW(h_light[0], 0) - line_offset;
     std::stringstream ss;
-    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m";
+    if (y >= 0)
+      ss << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m";
+    else
+      ss << "\x1b[" <<  top_margin << ";" << x << "H" << "\x1b[48;5;244m";
     ab.append(ss.str());
-
-    /*******problem is these are not word wrapped**********/
-    /*
-    for (int n=0; n < (h_light[1]-h_light[0] + 1);++n) {
-      ab.append(rows.at(h_light[0] + n));
-      ab.append(lf_ret);    
-    }
-    */
 
     for (int n=0; n < (h_light[1]-h_light[0] + 1); ++n) {
       int row_num = h_light[0] + n;
       int pos = 0;
       for (int line=1; line <= editorGetLinesInRowWW(row_num); ++line) {
+        if (y < 0) {
+          y += 1;
+          continue;
+        }
+        if (y == screenlines) break; //out for should be done (theoretically) - 1
         int line_char_count = editorGetLineCharCountWW(row_num, line);
         ab.append(rows.at(row_num).substr(pos, line_char_count));
         ab.append(lf_ret);    
+        y += 1;
         pos += line_char_count;
       }
     }
