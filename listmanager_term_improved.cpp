@@ -615,7 +615,7 @@ std::string time_delta(std::string t) {
 /********************Beginning sqlite************************************/
 
 Sqlite db(SQLITE_DB);
-Sqlite fts_db(FTS_DB);
+Sqlite fts(FTS_DB);
 
 void run_sql(void) {
   if (!db.run()) {
@@ -661,61 +661,28 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
-  /*
-  db.query("SELECT tid,title FROM context;");
-  bool no_rows = true;
-  db.params(context_titles_callback, &no_rows);
-  run_sql();
-  if (no_rows) outlineShowMessage("There were no context titles to map!");
- */
-
   Query q(db, "SELECT tid,title FROM context;"); 
-  while (q.step() == SQLITE_ROW) {
-   context_map[q.column_text(1)] = q.column_int(0);
+  if (q.result != SQLITE_OK) {
+    outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
+    return;
   }
-}
 
-int context_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc);
-  UNUSED(azColName);
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  context_map[std::string(argv[1])] = atoi(argv[0]);
-
-  return 0;
+  while (q.step() == SQLITE_ROW) {
+    context_map[q.column_text(1)] = q.column_int(0);
+  }
 }
 
 void map_folder_titles(void) {
 
-  /*
-  db.query("SELECT tid,title FROM folder;");
-  bool no_rows = true;
-  db.params(folder_titles_callback, &no_rows);
-  run_sql();
-  if (no_rows) outlineShowMessage("There were no folder titles to map!");
-  */
-
   // note it's tid because it's sqlite
   Query q(db, "SELECT tid,title FROM folder;"); 
-  while (q.step() == SQLITE_ROW) {
-   folder_map[q.column_text(1)] = q.column_int(0);
+  if (q.result != SQLITE_OK) {
+    outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
+    return;
   }
-}
-
-int folder_titles_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc);
-  UNUSED(azColName);
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  folder_map[std::string(argv[1])] = atoi(argv[0]);
-
-  return 0;
+  while (q.step() == SQLITE_ROW) {
+    folder_map[q.column_text(1)] = q.column_int(0);
+  }
 }
 
 void get_containers(void) {
@@ -749,12 +716,6 @@ void get_containers(void) {
   bool no_rows = true;
   db.params(callback, &no_rows);
   run_sql();
-
-  /*
-  std::string query = fmt::format("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
-  bool no_rows = true;
-  if (!db_query(S.db, query, callback, &no_rows, &S.err_msg, __func__)) return;
-  */
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
@@ -869,58 +830,46 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
-   std::string query = fmt::format("SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
-                                   "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
-                                   O.rows.at(O.fr).id);
+  Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
+              "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
+              O.rows.at(O.fr).id);
 
-   std::vector<std::string> task_keywords = {}; 
-   bool success =  db_query(S.db, query, task_keywords_callback, &task_keywords, &S.err_msg);
-   if (task_keywords.empty() || !success) return std::make_pair(std::string(), std::vector<std::string>());
+  std::vector<std::string> task_keywords = {}; 
+  while (q.step() == SQLITE_ROW) {
+    task_keywords.push_back(q.column_text(0));
+ }
 
-   std::string delim = "";
-   std::string s = "";
-   for (const auto &kw : task_keywords) {
-     s += delim += kw;
-     delim = ",";
-   }
-   return std::make_pair(s, task_keywords);
-}
+  if (task_keywords.empty()) return std::make_pair(std::string(), std::vector<std::string>());
 
-int task_keywords_callback(void *ptr, int argc, char **argv, char **azColName) {
-
-  std::vector<std::string>* task_keys = static_cast<std::vector<std::string> *>(ptr);
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  task_keys->push_back(std::string(argv[0]));
-
-  return 0; //you need this
+  std::string delim = "";
+  std::string s = "";
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
+  }
+  return std::make_pair(s, task_keywords);
 }
 
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id) {
 
-  std::string query = fmt::format("INSERT INTO task_keyword (task_id, keyword_id) "
-                                  "SELECT {}, keyword.id FROM keyword WHERE keyword.id={};",
-                                  task_id, keyword_id);
+  Query q(db, "INSERT INTO task_keyword (task_id, keyword_id) "
+              "SELECT {}, keyword.id FROM keyword WHERE keyword.id={};",
+              task_id, keyword_id);
 
-  if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
-
-  // updates task modified column so we know that something changed with the task
-  query = fmt::format("UPDATE task SET modified=datetime('now') "
-                      "WHERE id={};", task_id);
-
-  if (!db_query(S.db, query, 0, 0, &S.err_msg, __func__)) return;
-
-    /**************fts virtual table update**********************/
+  if (int res = q.step(); res != SQLITE_DONE) {
+    outlineShowMessage3("Problem in 'add_task_keyword'; result code: {}", res);
+    return;
+  }
+  // *************fts virtual table update**********************
 
   std::string s = get_task_keywords().first;
+  Query q1(fts, "Update fts SET tag='{}' WHERE lm_id={};", s, task_id);
 
-  query = fmt::format("Update fts SET tag='{}' WHERE lm_id={};", s, task_id);
-  if (!db_query(S.fts_db, query, 0, 0, &S.err_msg, __func__)) return;
+  if (int res = q1.step(); res != SQLITE_DONE)
+               outlineShowMessage3("Problem inserting in fts; result code: {}", res);
 }
 
-/*******************start here to clean up sqlite code************************/
 //void add_task_keyword(const std::string &kw, int id) {
 //overload that takes keyword name and task_id
 void add_task_keyword(std::string &kws, int id) {
@@ -972,19 +921,24 @@ void add_task_keyword(std::string &kws, int id) {
   }
 }
 
+//returns keyword id
+int keyword_exists(const std::string &name) {
+  Query q(db, "SELECT keyword.id FROM keyword WHERE keyword.name='{}';", name); 
+  if (q.result != SQLITE_OK) {
+    outlineShowMessage3("Problem in 'keyword_exists'; result code: {}", q.result);
+    return -1;
+  }
+  // if there are no rows returned q.step() returns SQLITE_DONE = 101; SQLITE_ROW = 100
+  if (q.step() == SQLITE_ROW) return q.column_int(0);
+  else return -1;
+}
+/*
 int keyword_exists(std::string &name) {  
   std::stringstream query;
   query << "SELECT keyword.id from keyword WHERE keyword.name = '" << name << "';";
   int keyword_id = 0;
   if (!db_query(S.db, query.str().c_str(), container_id_callback, &keyword_id, &S.err_msg, __func__)) return -1;
   return keyword_id;
-}
-
-/*
-int keyword_id_callback(void *keyword_id, int argc, char **argv, char **azColName) {
-  int *id = static_cast<int*>(keyword_id);
-  *id = atoi(argv[0]);
-  return 0;
 }
 */
 

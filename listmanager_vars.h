@@ -336,7 +336,7 @@ void display_item_info(int);
 void display_item_info(void); //ctrl-i in NORMAL mode 0x9
 void display_item_info_pg(int);
 void display_container_info(int);
-int keyword_exists(std::string &);  
+int keyword_exists(const std::string &);  
 int folder_exists(std::string &);
 int context_exists(std::string &);
 std::string time_delta(std::string);
