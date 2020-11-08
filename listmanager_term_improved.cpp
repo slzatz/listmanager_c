@@ -3358,25 +3358,12 @@ void F_quit_app(int) {
     O.mode = NORMAL;
     outlineShowMessage("No db write since last change");
   } else {
-    /*
-    write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-    write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-    Py_FinalizeEx();
-    sqlite3_close(S.db);
-    PQfinish(conn);
-    */
     run_thread = false;
 
-    //this is necessary to allow thread to shut down server
-    std::this_thread::sleep_for((std::chrono::seconds(2)));
+    //thought sleep was  necessary to allow thread to shut down server
+    //but doesn't seem to be
+    //std::this_thread::sleep_for((std::chrono::seconds(2)));
     run = false;
-
-    // note that thread is not joinable but still leaving this
-    // I believe because it is default constructed globally
-    // so available outside of main although not really necessary
-    //if (t0.joinable()) t0.join();
-    //exit(0);
-    // the above exits cleanly 
 
     /* need to figure out if need any of the below
     context.close();
@@ -6539,5 +6526,6 @@ int main(int argc, char** argv) {
   sqlite3_close(S.db);
   PQfinish(conn);
   t0.join();
+  //t0.detach();
   return 0;
 }
