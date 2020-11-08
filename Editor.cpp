@@ -1371,9 +1371,13 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   buf2 << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
   ab.append(buf2.str()); //reposition cursor
 
-  //std::string line;
-  display.clear();
-  display.seekg(0, std::ios::beg);
+  // this to deal with wrapped comments using // so whole comment is in italics
+  std::string s = display.str();
+  std::replace(s.begin(), s.end(), '\t', '\n');
+
+  //display.clear();
+  //display.seekg(0, std::ios::beg);
+  display.str(s);
   int n = 0;
   while(std::getline(display, line, '\n')) {
     if (n >= line_offset) {
@@ -2057,8 +2061,11 @@ std::string Editor::editorGenerateWWString(void) {
   for (;;) {
     if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
 
+    char ret = '\n';
     std::string row = rows.at(filerow);
-    
+    // if you put a \n in the middle of a comment the wrapped portion won't be italic
+    if (row.find("//") != std::string::npos) ret = '\t';
+
     if (row.empty()) {
       if (y == screenlines - 1) return ab;
       ab.append("\n");
@@ -2094,7 +2101,7 @@ std::string Editor::editorGenerateWWString(void) {
 
       ab.append(row, prev_pos+1, pos-prev_pos);
       if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-      ab.append("\n");
+      ab.append(1, ret); // ret that could be in middle of comment
       y++;
     }
   }
