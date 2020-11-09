@@ -109,6 +109,7 @@ void Editor::E_move_to_matching_brace(int repeat) {
 }
 
 //'automatically' happens in NORMAL and INSERT mode
+//return true -> redraw; false -> don't redraw
 bool Editor::find_match_for_left_brace(char left_brace, bool back) {
   int r = fr;
   int c = fc + 1;
@@ -143,10 +144,12 @@ bool Editor::find_match_for_left_brace(char left_brace, bool back) {
 
     c++;
   }
+  int y = editorGetScreenYFromRowColWW(r, c) - line_offset; 
+  if (y == screenlines) return false; 
+
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
-  int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
+  s << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m"
     << right_brace;
     //<< "\x1b[0m";
 
@@ -192,10 +195,12 @@ bool Editor::find_match_for_right_brace(char right_brace, bool back) {
 
     c--;
   }
+  int y = editorGetScreenYFromRowColWW(r, c) - line_offset; 
+  if (y < 0) return false;
+
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
-  int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
-  s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
+  s << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m"
     << left_brace;
     //<< "\x1b[0m";
 
