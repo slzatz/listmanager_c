@@ -41,6 +41,7 @@ void F_quit_app_ex(int pos); // pos not used
 void F_help(int pos);
 void F_persist(int pos); // pos not used
 void F_clear(int pos); // pos not used
+void F_copy_entry(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
@@ -110,6 +111,7 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"help", F_help},
   {"h", F_help},
   {"persist", F_persist},
+  {"copy", F_copy_entry},
   {"clear", F_clear},
 
 };

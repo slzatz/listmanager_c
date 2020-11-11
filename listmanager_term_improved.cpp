@@ -160,34 +160,6 @@ void lsp_thread(void) {
   clangd.close();
 }
 
-/* EDITOR COMMAND_LINE mode lookup */
-/*
-std::unordered_map<std::string, efunc> E_lookup_C {
-  {"write", &Editor::E_write_C},
-  {"w", &Editor::E_write_C},
- // all below handled (right now) in editor command line switch statement
- // {"x", &Editor::E_write_close_C},
- // {"quit", &Editor::E_quit_C},
- // {"q",&Editor:: E_quit_C},
- // {"quit!", &Editor::E_quit0_C},
- // {"q!", &Editor::E_quit0_C},
-  {"vim", &Editor::E_open_in_vim_C},
-  {"spell",&Editor:: E_spellcheck_C},
-  {"spellcheck", &Editor::E_spellcheck_C},
-  {"persist", &Editor::E_persist_C},
-  {"read", &Editor::E_readfile_C},
-  {"readfile", &Editor::E_readfile_C},
-
-  {"compile", &Editor::E_compile_C},
-  {"c", &Editor::E_compile_C},
-  {"make", &Editor::E_compile_C},
-  {"rl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
-  {"runl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
-  {"runlocal", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
-  {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
-  {"run", &Editor::E_run_code_C} //compile and run on Compiler Explorer 
-};
-*/
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -658,14 +630,91 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
    return true;
 }
 
+void F_copy_entry(int) {
+
+  int id = O.rows.at(O.fr).id;
+  Query q(db, "SELECT * FROM task WHERE id={}", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    outlineShowMessage3("Problem retrieving entry info in copy_entry: {}", res);
+    return;
+  }
+  int priority = q.column_int(2);
+  std::string title = "Copy of " + q.column_text(3);
+  int folder_tid = q.column_int(5);
+  int context_tid = q.column_int(6);
+  bool star = q.column_bool(8);
+
+  size_t pos;
+  pos = title.find('\'');
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find('\'', pos + 2);
+    }
+
+  std::string note = q.column_text(12);
+  pos = note.find("'");
+  while(pos != std::string::npos) {
+    note.replace(pos, 1, "''");
+    pos = note.find("'", pos + 2);
+  }
+
+  Query q1(db, "INSERT INTO task (priority, title, folder_tid, context_tid, "
+                                   "star, added, note, deleted, created, modified) "
+                                   "VALUES ({0}, '{1}', {2}, {3}, {4}, date(), '{5}', False, "
+                                   "datetime('now', '-{6} hours'), "
+                                   "datetime('now'));", 
+                                   priority,
+                                   title,
+                                   folder_tid,
+                                   context_tid,
+                                   star,
+                                   note,
+                                   TZ_OFFSET);
+
+  //outlineShowMessage3("{}", q1.sql);
+  //return;
+  if (int res = q1.step(); res != SQLITE_DONE) {
+    outlineShowMessage3("Problem inserting in copy_entry: {}", res);
+    return;
+  }
+
+  int new_id =  sqlite3_last_insert_rowid(db.db);
+
+  Query q2(db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
+              id);
+
+  std::vector<int> task_keyword_ids = {}; 
+  while (q2.step() == SQLITE_ROW) {
+    task_keyword_ids.push_back(q2.column_int(0));
+  }
+
+  for (const int &k : task_keyword_ids) {
+    add_task_keyword(k, new_id, false); //don't update fts
+  }
+
+  /***************fts virtual table update*********************/
+  std::string tag = get_task_keywords(new_id).first;
+  Query q3(fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
+               title, note, tag, new_id); 
+
+  if (int res = q3.step(); res != SQLITE_DONE) {
+    outlineShowMessage3("Problem inserting in fts in copy_entry: {}", res);
+    return;
+  }
+  get_items(MAX);
+}
+
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
-  Query q(db, "SELECT tid,title FROM context;"); 
+  Query q(db, "SELECT tid, title FROM context;"); 
+  /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
     return;
   }
+  */
 
   while (q.step() == SQLITE_ROW) {
     context_map[q.column_text(1)] = q.column_int(0);
@@ -676,10 +725,13 @@ void map_folder_titles(void) {
 
   // note it's tid because it's sqlite
   Query q(db, "SELECT tid,title FROM folder;"); 
+  /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
     return;
   }
+  */
+
   while (q.step() == SQLITE_ROW) {
     folder_map[q.column_text(1)] = q.column_int(0);
   }
@@ -828,6 +880,28 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
+
+  Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
+              "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
+              id);
+
+  std::vector<std::string> task_keywords = {}; 
+  while (q.step() == SQLITE_ROW) {
+    task_keywords.push_back(q.column_text(0));
+ }
+
+  if (task_keywords.empty()) return std::make_pair(std::string(), std::vector<std::string>());
+
+  std::string delim = "";
+  std::string s = "";
+  for (const auto &kw : task_keywords) {
+    s += delim += kw;
+    delim = ",";
+  }
+  return std::make_pair(s, task_keywords);
+}
+
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
   Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
@@ -851,23 +925,27 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 }
 
 //overload that takes keyword_id and task_id
-void add_task_keyword(int keyword_id, int task_id) {
+void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
 
-  Query q(db, "INSERT INTO task_keyword (task_id, keyword_id) "
-              "SELECT {}, keyword.id FROM keyword WHERE keyword.id={};",
+  Query q(db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) VALUES ({}, {});",
+              //"SELECT {0}, keyword.id FROM keyword WHERE keyword.id={1};",
               task_id, keyword_id);
 
   if (int res = q.step(); res != SQLITE_DONE) {
-    outlineShowMessage3("Problem in 'add_task_keyword'; result code: {}", res);
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    outlineShowMessage3("Problem in 'add_task_keyword': {}", error);
     return;
   }
+
+   Query q1(db,"UPDATE task SET modified = datetime('now') WHERE id={};", task_id);
+   q1.step();
   // *************fts virtual table update**********************
+  if (!update_fts) return;
+  std::string s = get_task_keywords(task_id).first;
+  Query q2(fts, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
 
-  std::string s = get_task_keywords().first;
-  Query q1(fts, "Update fts SET tag='{}' WHERE lm_id={};", s, task_id);
-
-  if (int res = q1.step(); res != SQLITE_DONE)
-               outlineShowMessage3("Problem inserting in fts; result code: {}", res);
+  if (int res = q2.step(); res != SQLITE_DONE)
+        outlineShowMessage3("Problem inserting in fts; result code: {}", res);
 }
 
 //void add_task_keyword(const std::string &kw, int id) {
@@ -904,7 +982,7 @@ void add_task_keyword(std::string &kws, int id) {
     if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
     std::stringstream query2;
-    query2 << "INSERT INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
+    query2 << "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
     if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
     std::stringstream query3;
@@ -916,7 +994,7 @@ void add_task_keyword(std::string &kws, int id) {
 
     std::string s = get_task_keywords().first;
     std::stringstream query4;
-    query4 << "Update fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
+    query4 << "UPDATE fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
     if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
   }
 }
@@ -979,7 +1057,7 @@ void F_deletekeywords(int) {
 
   /**************fts virtual table update**********************/
   std::stringstream query3;
-  query3 << "Update fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+  query3 << "UPDATE fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
   if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   outlineShowMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", O.rows.at(O.fr).id);
@@ -1258,7 +1336,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-/*** appears not to be in use ****/
+/*** not used right now ****/
 std::string get_title(int id) {
   std::string title;
   std::stringstream query;
@@ -1970,7 +2048,7 @@ void update_note(bool is_subnote) {
     return;
   }
   /***************fts virtual table update*********************/
-  query = fmt::format("Update fts SET note='{}' WHERE lm_id={}", text, p->id);
+  query = fmt::format("UPDATE fts SET note='{}' WHERE lm_id={}", text, p->id);
   if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   outlineShowMessage("Updated note and fts entry for item %d", p->id);
@@ -2221,7 +2299,7 @@ int insert_keyword(orow& row) {
 
   row.id =  sqlite3_last_insert_rowid(S.db);
   row.dirty = false;
-  outlineShowMessage("Successfully inserted new context with id %d and indexed it", row.id);
+  outlineShowMessage("Successfully inserted new keyword with id %d and indexed it", row.id);
 
   return row.id;
 }
@@ -2849,9 +2927,9 @@ void F_x(int) {
 
 void F_refresh(int) {
   if (O.view == TASK) {
-    outlineShowMessage("Steve, tasks will be refreshed");
+    outlineShowMessage("Entries will be refreshed");
     if (O.taskview == BY_SEARCH)
-      ;//search_db();
+      search_db(search_terms);
     else
       get_items(MAX);
   } else {
