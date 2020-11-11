@@ -902,6 +902,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
   return std::make_pair(s, task_keywords);
 }
 
+/*
 std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
 
   Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
@@ -923,6 +924,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
   }
   return std::make_pair(s, task_keywords);
 }
+*/
 
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
@@ -992,7 +994,7 @@ void add_task_keyword(std::string &kws, int id) {
 
     /**************fts virtual table update**********************/
 
-    std::string s = get_task_keywords().first;
+    std::string s = get_task_keywords(id).first; // 11-10-2020
     std::stringstream query4;
     query4 << "UPDATE fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
     if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
@@ -1065,7 +1067,8 @@ void F_deletekeywords(int) {
 }
 
 void get_linked_items(int max) {
-  std::vector<std::string> task_keywords = get_task_keywords().second;
+  int id = O.rows.at(O.fr).id;
+  std::vector<std::string> task_keywords = get_task_keywords(id).second;
   if (task_keywords.empty()) return;
 
   std::stringstream query;
@@ -1701,7 +1704,8 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
 
-  std::string s = get_task_keywords().first;
+  int id = O.rows.at(O.fr).id;
+  std::string s = get_task_keywords(id).first;
   sprintf(str,"keywords: %s", s.c_str());
   ab.append(str, strlen(str));
   ab.append(lf_ret, nchars);
@@ -3182,7 +3186,8 @@ void F_recent(int) {
 }
 
 void F_linked(int) {
-  std::string keywords = get_task_keywords().first;
+  int id = O.rows.at(O.fr).id;
+  std::string keywords = get_task_keywords(id).first;
   if (keywords.empty()) {
     outlineShowMessage("The current entry has no keywords");
   } else {
@@ -4643,7 +4648,7 @@ void outlineDrawStatusBar(void) {
     //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
 
     // needs to be here because O.rows could be empty
-    std::string keywords = (O.view == TASK) ? get_task_keywords().first : ""; // see before and in switch
+    std::string keywords = (O.view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
 
     // because video is reversted [42 sets text to green and 49 undoes it
     // also [0;35;7m -> because of 7m it reverses background and foreground

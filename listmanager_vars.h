@@ -319,7 +319,7 @@ void update_container(void);
 void update_keyword(void);
 void get_items(int); 
 void get_containers(void); //has an if that determines callback: context_callback or folder_callback
-std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
+//std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
 std::pair<std::string, std::vector<std::string>> get_task_keywords(int); // used in F_copy_entry
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 void update_note(bool); //used by Editor class 
