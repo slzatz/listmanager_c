@@ -4,6 +4,7 @@
 #include "Dbase.h"
 #include "pstream.h"
 #include <cstdarg> //va_start etc.
+#include <stop_token>
 #include <string_view>
 #include <zmq.hpp>
 #include <thread>
@@ -80,7 +81,8 @@ void readsome(pstream &pp, int i) {
 }
 
 /****************************************************/
-void lsp_thread(void) {  
+void lsp_thread(std::stop_token st) {
+//void lsp_thread(void) {  
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
   pstream clangd("clangd --log=error", mode); //verbose or error or info
   std::string s;
@@ -129,7 +131,8 @@ void lsp_thread(void) {
 
   js = json::parse(s);
   
-  while (run_thread) {
+  while (!st.stop_requested()) {
+  //while (run_thread) {
     if (code_changed) {
       js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
       js["params"]["textDocument"]["version"] = ++j; //text ? if it escapes automatically
@@ -1588,6 +1591,76 @@ void display_item_info(int id) {
 */
 
 void display_item_info(void) {
+  int id = O.rows.at(O.fr).id;
+  std::string s{};
+  int width = O.totaleditorcols - 10;
+  int length = O.screenlines - 10;
+  Query q(db, "SELECT * FROM task WHERE id={};", id);
+  q.step();
+
+  // \x1b[NC moves cursor forward by N columns
+  std::string lf_ret = fmt::format("\r\n\x1b[{}C", O.divider + 6);
+  s.append(fmt::format("id: {}{}", q.column_int(0), lf_ret));
+
+  int tid = q.column_int(1);
+  //s.append(fmt::format("tid: {}{}", q.column_int(1), lf_ret));
+  s.append(fmt::format("tid: {}{}", tid, lf_ret));
+  
+  std::string title = fmt::format("title: {}", q.column_text(3));
+  if (title.size() > width) {
+    title = title.substr(0, width - 3).append("...");
+  }
+  //coloring labels will take some work b/o gray background
+  //s.append(fmt::format("{}title:{} {}{}", COLOR_1, "\x1b[m", title, lf_ret));
+  s.append(fmt::format("{}{}", title, lf_ret));
+
+
+  int context_tid = q.column_int(6);
+  auto it = std::ranges::find_if(context_map, [&context_tid](auto& z) {return z.second == context_tid;});
+  s.append(fmt::format("context: {}{}", it->first, lf_ret));
+
+  int folder_tid = q.column_int(6);
+  auto it2 = std::ranges::find_if(folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
+  s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
+
+  s.append(fmt::format("star: {}{}", q.column_bool(8), lf_ret));
+  s.append(fmt::format("deleted: {}{}", q.column_bool(14), lf_ret));
+  s.append(fmt::format("completed: {}{}", q.column_bool(10), lf_ret));
+
+  s.append(fmt::format("modified: {}{}", q.column_text(16), lf_ret));
+  s.append(fmt::format("added: {}{}", q.column_text(9), lf_ret));
+
+  s.append(fmt::format("keywords: {}", get_task_keywords(id).first, lf_ret));
+
+  std::string ab{};
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  //ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 6));
+ 
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 7));
+
+  //erase set number of chars on each line
+  std::string erase_chars = fmt::format("\x1b[{}X", O.totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 7));
+
+  ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width));
+  ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+  ab.append(s);
+  ab.append(draw_preview_box(width, length));
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  
+  // display_item_info_pg needs to be updated if it is going to be used
+  //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
+}
+
+/*
+void display_item_info(void) {
 
   if (O.rows.empty()) return;
 
@@ -1601,7 +1674,7 @@ void display_item_info(void) {
   //int rc = sqlite3_exec(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg);
   if (!db_query(S.db, query.str().c_str(), display_item_info_callback, &tid, &S.err_msg)) return;
 
-  //if (tid) display_item_info_pg(tid); ////***** remember to remove this guard
+  //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
 }
 
 int display_item_info_callback(void *tid, int argc, char **argv, char **azColName) {
@@ -1611,7 +1684,6 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
     
-  /*
   0: id = 1
   1: tid = 1
   2: priority = 3
@@ -1631,7 +1703,6 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
   16: modified = 2016-08-05 23:05:16.256135
   17: startdate = 2009-07-04
   18: remind = NULL
-  */
 
   char lf_ret[10];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
@@ -1720,7 +1791,7 @@ int display_item_info_callback(void *tid, int argc, char **argv, char **azColNam
 
   return 0;
 }
-
+*/
 void display_container_info(int id) {
   if (id ==-1) return;
 
@@ -3441,7 +3512,8 @@ void F_quit_app(int) {
     O.mode = NORMAL;
     outlineShowMessage("No db write since last change");
   } else {
-    run_thread = false;
+    //run_thread = false;
+    //t0.request_stop(); //in main
 
     //thought sleep was  necessary to allow thread to shut down server
     //but doesn't seem to be
@@ -4112,7 +4184,7 @@ void draw_preview(void) {
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 6);
-  ab.append("\x1b[?25l"); //hides the cursor
+  //ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
@@ -5348,6 +5420,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\x1b':
           O.mode = O.last_mode;
+          eraseRightScreen();
           if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
           else display_container_info(O.rows.at(O.fr).id);
           O.command[0] = '\0';
@@ -6571,7 +6644,8 @@ int main(int argc, char** argv) {
 
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
-  std::thread t0(lsp_thread);
+  //std::thread t0(lsp_thread);
+  std::jthread t0(lsp_thread);
 
   while (run) {
     // just refresh what has changed
@@ -6603,12 +6677,13 @@ int main(int argc, char** argv) {
     outlineDrawStatusBar();
     return_cursor();
   }
+  t0.request_stop(); /////
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
   sqlite3_close(S.db);
   PQfinish(conn);
-  t0.join();
+  //t0.join();
   //t0.detach();
   return 0;
 }
