@@ -1619,7 +1619,7 @@ void display_item_info(void) {
   auto it = std::ranges::find_if(context_map, [&context_tid](auto& z) {return z.second == context_tid;});
   s.append(fmt::format("context: {}{}", it->first, lf_ret));
 
-  int folder_tid = q.column_int(6);
+  int folder_tid = q.column_int(5);
   auto it2 = std::ranges::find_if(folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
   s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
 
