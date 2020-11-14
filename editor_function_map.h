@@ -52,6 +52,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {"gg", &Editor::E_gg},
   {"G", &Editor::E_G},
   {{0x1A}, &Editor::E_toggle_smartindent},
+  {{CTRL_KEY('p')}, &Editor::E_CTRL_P},
  // {{0x8}, &Editor::E_goto_outline},
   {"%", &Editor::E_move_to_matching_brace},
   {{0x13}, &Editor::E_save_note},

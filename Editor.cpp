@@ -8,6 +8,7 @@
 #include <cpr/cpr.h>
 #include <array>
 #include <unordered_map>
+#include "base64.hpp"
 
 // static members of Editor class
 std::vector<std::string> Editor::line_buffer = {}; 
@@ -2977,4 +2978,38 @@ void Editor::decorate_errors(json diagnostics) {
   // for some reason have to hide the cursor before showing or it doesn't show
   write(STDOUT_FILENO, "\x1b[?25l", 6); //hide the cursor
   write(STDOUT_FILENO, "\x1b[?25h", 6); //show the cursor
+}
+
+void Editor::E_CTRL_P(int) {
+  std::string s = editorPasteFromClipboard();
+  if (rows.empty() || s.empty()) return; //static
+  std::string& row = rows.at(fr);
+
+  row.insert(row.begin() + fc, s.begin(), s.end()); //static
+  fc += s.size(); //static
+  dirty++;
+}
+
+std::string Editor::editorPasteFromClipboard(void) {
+  char buf[1024]{};
+  int fd = open("/dev/tty", O_RDWR);
+  write(fd, "\x1b]52;c;?\07", 9);
+  //ssize_t size = read(fd, &buf, sizeof buf);
+  read(fd, &buf, sizeof buf);
+  close(fd);
+  std::string s{buf};
+  std::string s1 = s.substr(7);
+  size_t pos = s1.find_last_of('=');
+  if (pos != std::string::npos) {
+    s1.erase(pos + 1);
+  } else {
+    for (;;) {
+      if (s1.size() % 4 == 0) break;
+      s1.erase(s1.size() - 1);
+      if (s1.empty()) break;
+    }
+  }
+  auto decoded = base64::decode(s1);
+  std::string s2(std::begin(decoded), std::end(decoded));
+  return s2;
 }

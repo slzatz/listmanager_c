@@ -198,6 +198,7 @@ class Editor {
     void E_redo(int);
     void E_move_to_matching_brace(int);
     void E_resize(int);
+    void E_CTRL_P(int);
 
     void editorInsertNewline(int);
     void editorDelChar(void);
@@ -212,6 +213,7 @@ class Editor {
     void editorDecorateWord(int);
     void editorDecorateVisual(int);
     static void editorSetMessage(const char *fmt, ...);
+    static std::string editorPasteFromClipboard(void);
     void editorSpellCheck(void);
     void editorHighlightWord(int, int, int);
     void editorReadFileIntoNote(const std::string &);
