@@ -6241,13 +6241,13 @@ bool editorProcessKeypress(void) {
             p->fr = p->highlight[0]; 
             p->editorYankLine(p->repeat);
     
-            for (int i = 0; i < p->repeat; i++) p->editorDelRow(p->highlight[0]);
+            for (int i=0; i < p->repeat; i++) p->editorDelRow(p->highlight[0]);
           }
 
           p->fc = 0;
           p->command[0] = '\0';
           p->repeat = p->last_repeat = 0;
-          p->mode = NORMAL;
+          if (p->mode != NO_ROWS) p->mode = NORMAL;
           p->editorSetMessage("");
           return true;
     

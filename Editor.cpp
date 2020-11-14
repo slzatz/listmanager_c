@@ -1032,9 +1032,8 @@ void Editor::editorDelRow(int r) {
   if (rows.empty()) return; // creation of NO_ROWS may make this unnecessary
 
   rows.erase(rows.begin() + r);
-  if (rows.size() == 0) {
+  if (rows.empty()) {
     fr = fc = cy = cx = line_offset = prev_line_offset = first_visible_row = last_visible_row = 0;
-
     mode = NO_ROWS;
     return;
   }
