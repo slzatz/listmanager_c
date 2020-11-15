@@ -2992,7 +2992,7 @@ void Editor::E_CTRL_P(int) {
 std::string Editor::editorPasteFromClipboard(void) {
   char buf[1024]{};
   int fd = open("/dev/tty", O_RDWR);
-  write(fd, "\x1b]52;c;?\07", 9);
+  write(fd, "\x1b]52;c;?\x07", 9);
   //ssize_t size = read(fd, &buf, sizeof buf);
   read(fd, &buf, sizeof buf);
   close(fd);
@@ -3011,4 +3011,41 @@ std::string Editor::editorPasteFromClipboard(void) {
   auto decoded = base64::decode(s1);
   std::string s2(std::begin(decoded), std::end(decoded));
   return s2;
+}
+
+void Editor::convert2base64(std::vector<std::string> &cb) {
+  std::string s = std::accumulate(cb.begin(), cb.end(), std::string{}); 
+  std::vector<unsigned char> data(std::begin(s), std::end(s));
+  auto encoded = base64::encode(data);
+  int fd = open("/dev/tty", O_RDWR);
+  write(fd, "\x1b]52;c;!\x07", 9); //clear buffer if it's concatenating
+  std::string s1 = fmt::format("\x1b]52;c;{}\x07", encoded);
+  write(fd, s1.c_str(), s1.size());
+  close(fd);
+}
+
+void Editor::copyStringToClipboard(void) {
+  // doesn't cross rows right now
+  std::string& row = rows.at(fr);
+
+  int h_light[2] = {0,0};
+
+  if (highlight[1] < highlight[0]) { //note highlight[1] should == fc
+    h_light[1] = highlight[0];
+    h_light[0] = highlight[1];
+  } else {
+    h_light[0] = highlight[0];
+    h_light[1] = highlight[1];
+  }
+
+  std::string::const_iterator first = row.begin() + h_light[0];
+  std::string::const_iterator last = row.begin() + h_light[1] + 1;
+  std::string s{std::string(first, last)};
+  std::vector<unsigned char> data(std::begin(s), std::end(s));
+  auto encoded = base64::encode(data);
+  int fd = open("/dev/tty", O_RDWR);
+  write(fd, "\x1b]52;c;!\x07", 9); //clear buffer if it's concatenating
+  std::string s1 = fmt::format("\x1b]52;c;{}\x07", encoded);
+  write(fd, s1.c_str(), s1.size());
+  close(fd);
 }

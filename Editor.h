@@ -214,6 +214,8 @@ class Editor {
     void editorDecorateVisual(int);
     static void editorSetMessage(const char *fmt, ...);
     static std::string editorPasteFromClipboard(void);
+    static void convert2base64(std::vector<std::string> &cb);
+    void copyStringToClipboard(void);
     void editorSpellCheck(void);
     void editorHighlightWord(int, int, int);
     void editorReadFileIntoNote(const std::string &);

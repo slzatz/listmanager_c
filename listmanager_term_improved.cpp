@@ -6261,6 +6261,24 @@ bool editorProcessKeypress(void) {
           p->editorSetMessage("");
           return true;
     
+        case CTRL_KEY('c'):  
+          {
+          int fr = p->highlight[0];
+          int n = p->highlight[1] - fr + 1;
+          std::vector<std::string>clipboard_buffer{};
+
+          for (int i=0; i < n; i++) {
+            clipboard_buffer.push_back(p->rows.at(fr+i)+'\n');
+          }
+
+          Editor::convert2base64(clipboard_buffer); 
+          }
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
+          p->editorSetMessage("");
+          return true;
+
         case '>':
           p->push_current(); //p->editorCreateSnapshot();
           p->repeat = p->highlight[1] - p->highlight[0] + 1;
@@ -6474,6 +6492,15 @@ bool editorProcessKeypress(void) {
           p->editorSetMessage("");
           return true;
     
+        case CTRL_KEY('c'):  
+          p->fc = p->highlight[0];
+          p->copyStringToClipboard();
+          p->command[0] = '\0';
+          p->repeat = 0;
+          p->mode = 0;
+          p->editorSetMessage("");
+          return true;
+
         case '\x1b':
           p->mode = NORMAL;
           p->command[0] = '\0';
