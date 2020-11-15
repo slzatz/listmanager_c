@@ -146,7 +146,8 @@ bool Editor::find_match_for_left_brace(char left_brace, bool back) {
     c++;
   }
   int y = editorGetScreenYFromRowColWW(r, c) - line_offset; 
-  if (y == screenlines) return false; 
+  //if (y == screenlines) return false;
+  if (y >= screenlines) return false;
 
   int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
   std::stringstream s;
@@ -938,6 +939,7 @@ void Editor::editorReadFileIntoNote(const std::string &filename) {
       line.replace(pos, 1, "  "); // number is number of chars to replace
       pos = line.find('\t');
     }
+    for (int i=0; i<line.size(); ++i) if (!isascii(line[i])) line[i] = '?';
     rows.push_back(line);
   }
   f.close();
@@ -3010,6 +3012,7 @@ std::string Editor::editorPasteFromClipboard(void) {
   }
   auto decoded = base64::decode(s1);
   std::string s2(std::begin(decoded), std::end(decoded));
+  for (int i=0; i<s2.size(); ++i) if (!isascii(s2[i])) s2[i] = '?';
   return s2;
 }
 
