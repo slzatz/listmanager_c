@@ -3047,8 +3047,8 @@ void Editor::copyStringToClipboard(void) {
   std::vector<unsigned char> data(std::begin(s), std::end(s));
   auto encoded = base64::encode(data);
   int fd = open("/dev/tty", O_RDWR);
-  write(fd, "\x1b]52;c;!\x07", 9); //clear buffer if it's concatenating
-  std::string s1 = fmt::format("\x1b]52;c;{}\x07", encoded);
+  write(fd, "\x1b]52;c;!\x07", 9); //clear buffer if it's concatenating; /n does not address vim problem
+  std::string s1 = fmt::format("\x1b]52;c;{}\x07", encoded); // /n doesn't address vim problem
   write(fd, s1.c_str(), s1.size());
   close(fd);
 }
