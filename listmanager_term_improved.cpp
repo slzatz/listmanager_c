@@ -4,6 +4,7 @@
 #include "Dbase.h"
 #include "pstream.h"
 #include <cstdarg> //va_start etc.
+#include <mkdio.h>
 #include <stop_token>
 #include <string_view>
 #include <zmq.hpp>
@@ -320,9 +321,10 @@ void update_html_file(std::string &&fn) {
   meta_.insert(p, title);
   //
   //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  //MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), MKD_FENCEDCODE);//11-16-2020
   mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, 0); //did something
+  mkd_compile(blob, MKD_FENCEDCODE); //did something
   mkd_document(blob, &doc);
   html << meta_ << doc << "</article></body><html>";
   
