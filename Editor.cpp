@@ -305,19 +305,19 @@ int Editor::get_num_rows(std::string & str) {
 // puts inserted text into a vector of rows using '\r' to determine lines
 // note doesn't word wrap which is fine since if internal string the '\r'
 // in right place but not necessarily true if externally generated string
-std::vector<std::string> Editor::str2vec(std::string & str) {
+std::vector<std::string> Editor::str2vec(std::string & str, const char ret) {
   std::vector<std::string> vec;
   int pos = 0;
   int prev_pos = 0;
   for(;;) {
-    pos = str.find('\r', prev_pos);  
+    pos = str.find(ret, prev_pos);  
 
     if (pos == std::string::npos) {
       vec.push_back(str.substr(prev_pos, str.size() - 1));
       break;    
     }
 
-    vec.push_back(str.substr(prev_pos, pos - 1));  
+    vec.push_back(str.substr(prev_pos, pos - prev_pos));  
 
     if (pos == str.size() - 1) {
       vec.push_back(std::string());
@@ -1569,6 +1569,7 @@ void Editor::paste_line(void){
     rows = line_buffer;
     fr = fc = 0;
   } else {
+    // what if fr is the last row - it's ok - can insert beyond last position
     rows.insert(rows.begin()+fr+1, line_buffer.begin(), line_buffer.end());
     fr++; //you just pasted rows so should be able to increment fr
     fc = 0;
@@ -2982,12 +2983,20 @@ void Editor::decorate_errors(json diagnostics) {
 }
 
 void Editor::E_CTRL_P(int) {
-  std::string s = editorPasteFromClipboard();
-  if (rows.empty() || s.empty()) return; //static
-  std::string& row = rows.at(fr);
 
-  row.insert(row.begin() + fc, s.begin(), s.end()); //static
-  fc += s.size(); //static
+  std::string s = editorPasteFromClipboard();
+  if (s.empty()) return; 
+  if (rows.empty()) editorInsertRow(0, std::string());
+
+  // text cut from vim ends in '\n'
+  std::vector<std::string> v = str2vec(s, '\n'); 
+
+  // strategy is to insert first pasted row at cursor and then
+  // create new rows for subsequent lines
+  std::string& row = rows.at(fr);
+  row.insert(row.begin() + fc, v.at(0).begin(), v.at(0).end()); 
+  // Note below it is OK to insert into a vector 1 beyond last position
+  if (v.size() > 1) rows.insert(rows.begin() + fr + 1, v.begin() + 1, v.end());
   dirty++;
 }
 
