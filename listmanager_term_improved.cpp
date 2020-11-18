@@ -69,7 +69,7 @@ void readsome(pstream &pp, int i) {
      s += std::string{buf, static_cast<size_t>(n)};
   }
  
-  logger->info("read clange message {}:\n{}\n{}\n", i, h, s);
+  logger->info("read clangd message {}:\n{}\n{}\n", i, h, s);
 
   json js = json::parse(s);
   if (js.contains("method")) {
@@ -898,38 +898,9 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
 
   if (task_keywords.empty()) return std::make_pair(std::string(), std::vector<std::string>());
 
-  std::string delim = "";
-  std::string s = "";
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
+  std::string s = fmt::format("{}", fmt::join(task_keywords, ","));
   return std::make_pair(s, task_keywords);
 }
-
-/*
-std::pair<std::string, std::vector<std::string>> get_task_keywords(void) {
-
-  Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
-              "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
-              O.rows.at(O.fr).id);
-
-  std::vector<std::string> task_keywords = {}; 
-  while (q.step() == SQLITE_ROW) {
-    task_keywords.push_back(q.column_text(0));
- }
-
-  if (task_keywords.empty()) return std::make_pair(std::string(), std::vector<std::string>());
-
-  std::string delim = "";
-  std::string s = "";
-  for (const auto &kw : task_keywords) {
-    s += delim += kw;
-    delim = ",";
-  }
-  return std::make_pair(s, task_keywords);
-}
-*/
 
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
@@ -2095,12 +2066,12 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   return 0;
 }
 
-void update_note(bool is_subnote) {
+void update_note(bool is_subnote, bool closing_editor) {
 
   std::string column = (is_subnote) ? "subnote" : "note";
   std::string text = p->editorRowsToString();
 
-  if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+  if (!is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
     p->code = text;
     code_changed = true;
     update_code_file();
@@ -6141,7 +6112,7 @@ bool editorProcessKeypress(void) {
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
           if (cmd == "x") {
-            update_note(p->is_subeditor); //should be p->E_write_C();
+            update_note(p->is_subeditor, true); //should be p->E_write_C(); closing_editor = true;
           } else if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
           } else if (p->dirty) {
@@ -6626,10 +6597,7 @@ void initOutline() {
 
 int main(int argc, char** argv) { 
 
-  //auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log");
-  //spdlog::cfg::load_env_levels();
-  // ./listmanager_cpp SPDLOG_LEVEL=info
-
+  spdlog::flush_every(std::chrono::seconds(5)); //////
   spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
   logger->info("********************** New Launch **************************");
 

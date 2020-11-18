@@ -11,7 +11,7 @@
 #include <map> //there is an inline map
 #include <nlohmann/json.hpp>
 #include <fmt/core.h>
-#include <fmt/format.h>
+#include <fmt/ranges.h>
 #include <fmt/chrono.h>
 
 #if __has_include (<nuspell/dictionary.hxx>)
@@ -95,7 +95,7 @@ inline std::map<int, std::string> html_files;
 inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
-void update_note(bool); //used by Editor class 
+void update_note(bool is_subeditor, bool closing_editor=false); //used by Editor class 
 void update_code_file(void);
 std::string get_title(int id);
 
