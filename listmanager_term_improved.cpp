@@ -5815,7 +5815,7 @@ bool editorProcessKeypress(void) {
            */
 
           //i,I,a,A - deals with repeat
-          if(cmd_map1.contains(p->last_command)) { //nuspell needed gcc+17 so no contains
+          if(cmd_map1.contains(p->last_command)) { 
             p->push_current(); //
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
@@ -5823,14 +5823,13 @@ bool editorProcessKeypress(void) {
           }
 
           //cmd_map2 -> E_o_escape and E_O_escape - here deals with deals with repeat > 1
-          if (cmd_map2.count(p->last_command)) {
+          if (cmd_map2.contains(p->last_command)) {
             (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
-            p->push_current(); //
+            p->push_current();
           }
 
-          if (cmd_map4.count(p->last_command)) { //cw, caw, s
-            //(p->*cmd_map4[p->last_command])(p->last_repeat - 1);
-            p->push_current(); //
+          if (cmd_map4.contains(p->last_command)) { //cw, caw, s
+            p->push_current();
           }
           //'I' in VISUAL BLOCK mode
           //if (p->last_command == -1) {
@@ -5853,7 +5852,6 @@ bool editorProcessKeypress(void) {
           }
 
           //'A' in VISUAL BLOCK mode
-          //if (p->last_command == -2) {
           if (p->last_command == "VBA") {
             //p->fc++;a doesn't go here
             for (int n=0; n<p->last_repeat-1; n++) {
@@ -6070,6 +6068,9 @@ bool editorProcessKeypress(void) {
             p->push_current();
             p->command[0] = '\0';
             p->repeat = 0;
+          } else {//if dot
+            //if dot then just repeast last command at new location
+            p->push_previous();
           }
         }    
       }

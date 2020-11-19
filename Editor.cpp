@@ -657,6 +657,7 @@ void Editor::editorDecorateWord(int c) {
   }
 }
 
+/*
 void Editor::push_base(void) {
   Diff d;
   d.fr = 0; // not sure this is right - might be just d.fr = fr
@@ -679,6 +680,7 @@ void Editor::push_base(void) {
   //d.changed_rows.push_back(std::make_pair(d.fr, rows.at(d.fr)));
   undo_deque.push_front(d);
 }
+*/
 
 void Editor::push_current(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
@@ -688,7 +690,7 @@ void Editor::push_current(void) {
   d.inserted_text = last_typed;
   d.num_rows = get_num_rows(last_typed);
 
-  if (line_commands.count(d.command)) {
+  if (line_commands.contains(d.command)) {
     if (d.num_rows == 1) d.undo_method = CHANGE_ROW;
     else d.undo_method = CHANGE_ROW_AND_DELETE_ROWS;
     d.rows.push_back(snapshot.at(d.fr));
@@ -696,9 +698,16 @@ void Editor::push_current(void) {
       d.undo_method = ADD_ROWS;
       d.rows.insert(d.rows.begin(), snapshot.begin()+d.fr, snapshot.begin()+d.fr+repeat);
   } else if (d.command == "p") {
-      d.undo_method = DELETE_ROWS;
-      d.rows = line_buffer; //this is to redo the paste
-      d.fr++;
+      if (!line_buffer.empty()) {
+        d.undo_method = DELETE_ROWS;
+        d.rows = line_buffer; //this is to redo the paste
+        d.num_rows = line_buffer.size();
+        //d.fr++;
+      } else {
+        d.undo_method = CHANGE_ROW;
+        d.num_rows = 1;
+        d.rows.push_back(snapshot.at(d.fr));
+      }
   } else if (d.command == "o" || d.command == "O") {
       d.undo_method = DELETE_ROWS;
       //d.rows = str2vec(d.inserted_text);
@@ -709,6 +718,54 @@ void Editor::push_current(void) {
   }
   if (d_index != 0) undo_deque.clear(); //if you haven't redone everything, undo/redo starts again
 
+  undo_deque.push_front(d);
+  d_index = 0;
+  //undo_mode = false;
+  //snapshot = rows; //this is the snapshot used to pick a row or the whole thing
+
+  std::string temp_str = d.inserted_text;
+
+  // \r is present and \n is not present
+  size_t pos = temp_str.find('\r');
+  while(pos != std::string::npos) {
+    temp_str.replace(pos, 1, "\\r");
+    pos = temp_str.find('\r', pos + 2);
+  }
+
+  editorSetMessage("index: %d; cmd: %s; repeat: %d; fr: %d; fc: %d rows.size %d undo method: %d; text: %s", 
+                      d_index,
+                      d.command.c_str(), 
+                      d.repeat, 
+                      d.fr,
+                      d.fc,
+                      d.rows.size(),
+                      d.undo_method,
+                      temp_str.c_str());
+}
+
+void Editor::push_previous(void) {
+  if (rows.empty()) return; //don't create snapshot if there is no text
+
+  //really need a copy constructor although maybe we have one
+  //Diff d = undo_deque.at(0)  
+  Diff &last_d = undo_deque.at(0);
+  Diff d = {prev_fr, prev_fc, last_d.repeat, last_d.command};
+  d.inserted_text = last_d.inserted_text;
+  d.num_rows = last_d.num_rows;
+  //d.rows = last_d.rows;
+  d.undo_method = last_d.undo_method;
+
+  if (line_commands.count(d.command)) {
+    d.rows.push_back(snapshot.at(d.fr));
+  } else if (d.command == "dd") {
+      d.rows.insert(d.rows.begin(), snapshot.begin()+d.fr, snapshot.begin()+d.fr+repeat);
+  } else if (d.command == "p") {
+      d.rows = line_buffer; //this is to redo the paste
+      d.fr++;
+  } else {
+      d.undo_method = REPLACE_NOTE;
+      d.rows = snapshot; //this is old snapshot
+  }
   undo_deque.push_front(d);
   d_index = 0;
   //undo_mode = false;
@@ -815,8 +872,11 @@ void Editor::redo(void) {
 
   } else if (last_command == "r") {
     E_replace(d.repeat);
-  }
 
+  } else if (last_command =="p") {
+    E_paste(d.repeat);
+    return;
+  }
   // they may have been changed by the actions above
   fr = d.fr;
   fc = d.fc;
@@ -1518,6 +1578,7 @@ void Editor::editorYankString(void) {
   // doesn't cross rows right now
   if (rows.empty()) return;
 
+  line_buffer.clear();
   std::string& row = rows.at(fr);
   string_buffer.clear(); //static
 
@@ -1824,7 +1885,8 @@ void Editor::editorDotRepeat(int repeat) {
   if (cmd_map4.count(last_command)) {
       (this->*cmd_map4[last_command])(last_repeat);
 
-    for (char const &c : last_typed) {
+    Diff &d = undo_deque.at(0);
+    for (char const &c : d.inserted_text) {
       if (c == '\r') editorInsertReturn();
       else editorInsertChar(c);
     }
@@ -1838,6 +1900,11 @@ void Editor::editorDotRepeat(int repeat) {
 
   if (last_command == "r") {
     E_replace(last_repeat);
+    return;
+  }
+
+  if (last_command =="p") {
+    E_paste(last_repeat);
     return;
   }
 }

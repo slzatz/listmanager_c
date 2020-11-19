@@ -122,7 +122,8 @@ class Editor {
 
 /* undo - redo */
     void push_current(void);
-    void push_base(void);
+    void push_previous(void);
+    //void push_base(void);
     void undo(void);
     void redo(void);
     std::vector<std::string> str2vec(std::string &, const char);
