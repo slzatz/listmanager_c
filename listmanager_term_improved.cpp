@@ -6114,13 +6114,11 @@ bool editorProcessKeypress(void) {
         std::string cmd = p->command_line.substr(0, pos);
         if (cmd == "readfile") {
           std::string s = p->command_line.substr(pos+1);
-          if (s == readfilename) { //cycle through tabs
-            p->command_line = ":readfile " + completions.at(completion_index++);
-            //p->editorSetMessage(":readfile %s", completions.at(completion_index++).c_str());
-            p->editorSetMessage(p->command_line.c_str());
+          //cycling through tabs because we didn't type anything new
+          if (s == readfilename) {
             if (completion_index == completions.size()) completion_index = 0;
-            p->command_line = ":readfile " + completions.at(completion_index++);
-        } else {
+          // finding new set of tab completions because user typed or deleted something  
+          } else {
             readfilename = s;
             completions.clear();
             completion_index = 0;
@@ -6131,19 +6129,15 @@ bool editorProcessKeypress(void) {
                 else completions.push_back(filenameStr);
               }
             }  
-            p->command_line = ":readfile " + completions.at(completion_index++);
-            p->editorSetMessage(p->command_line.c_str());
-            //p->editorSetMessage(":readfile %s", completions.at(completion_index++).c_str());
           }  
-          //readfilename = p->command_line.substr(pos+1);
-          //p->editorSetMessage("readfile %s tab", readfilename.c_str()); 
+          if (!completions.empty())  {
+            readfilename = completions.at(completion_index++);
+            p->command_line = "readfile " + readfilename;
+            p->editorSetMessage(":%s", p->command_line.c_str());
+          }
         } else {
         p->editorSetMessage("tab"); 
         }
-
-        //p->mode = NORMAL;
-        //p->command[0] = '\0';
-        //p->repeat = p->last_repeat = 0;
         return false;
       }
 
