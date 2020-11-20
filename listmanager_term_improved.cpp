@@ -20,6 +20,8 @@
 #include "outline_normal_functions.h"
 #include "editor_function_map.h"
 
+#include <filesystem>
+
 using namespace redi;
 using json = nlohmann::json;
 
@@ -52,6 +54,10 @@ std::unordered_set<int> navigation = {
          'k',
          'l'
 };
+std::string readfilename;
+std::vector<std::string> completions;
+int completion_index;
+std::filesystem::path pathToShow = std::filesystem::current_path();
 
 /****************************************************/
 void readsome(pstream &pp, int i) {
@@ -6040,7 +6046,7 @@ bool editorProcessKeypress(void) {
         return false;
       }
 
-      if (e_lookup.count(p->command)) {
+      if (e_lookup.contains(p->command)) {
 
         p->prev_fr = p->fr;
         p->prev_fc = p->fc;
@@ -6100,6 +6106,44 @@ bool editorProcessKeypress(void) {
         p->command[0] = '\0';
         p->repeat = p->last_repeat = 0;
         p->editorSetMessage(""); 
+        return false;
+      }
+
+      if (c == '\t') {
+        std::size_t pos = p->command_line.find(' ');
+        std::string cmd = p->command_line.substr(0, pos);
+        if (cmd == "readfile") {
+          std::string s = p->command_line.substr(pos+1);
+          if (s == readfilename) { //cycle through tabs
+            p->command_line = ":readfile " + completions.at(completion_index++);
+            //p->editorSetMessage(":readfile %s", completions.at(completion_index++).c_str());
+            p->editorSetMessage(p->command_line.c_str());
+            if (completion_index == completions.size()) completion_index = 0;
+            p->command_line = ":readfile " + completions.at(completion_index++);
+        } else {
+            readfilename = s;
+            completions.clear();
+            completion_index = 0;
+            for (const auto& entry : std::filesystem::directory_iterator(pathToShow)) {
+              const auto filenameStr = entry.path().filename().string();
+              if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
+                if (entry.is_directory()) completions.push_back(filenameStr+'/');
+                else completions.push_back(filenameStr);
+              }
+            }  
+            p->command_line = ":readfile " + completions.at(completion_index++);
+            p->editorSetMessage(p->command_line.c_str());
+            //p->editorSetMessage(":readfile %s", completions.at(completion_index++).c_str());
+          }  
+          //readfilename = p->command_line.substr(pos+1);
+          //p->editorSetMessage("readfile %s tab", readfilename.c_str()); 
+        } else {
+        p->editorSetMessage("tab"); 
+        }
+
+        //p->mode = NORMAL;
+        //p->command[0] = '\0';
+        //p->repeat = p->last_repeat = 0;
         return false;
       }
 

@@ -716,6 +716,7 @@ void Editor::push_current(void) {
       d.undo_method = REPLACE_NOTE;
       d.rows = snapshot;
   }
+
   if (d_index != 0) undo_deque.clear(); //if you haven't redone everything, undo/redo starts again
 
   undo_deque.push_front(d);
@@ -818,7 +819,7 @@ void Editor::undo(void) {
 
   fr = d.fr;
   fc = d.fc;
-  snapshot = rows; // this might be necessary in redo? //or apply the 'patches' to snaphot too???
+  //snapshot = rows; // this might be necessary in redo? //or apply the 'patches' to snaphot too??? removed 11-19-2020
 
   editorSetMessage("d_index: %d undo_deque.size(): %d; command: %s; undo method: %d", d_index, undo_deque.size(), d.command.c_str(), d.undo_method);
   d_index++;
