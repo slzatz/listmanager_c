@@ -6113,7 +6113,7 @@ bool editorProcessKeypress(void) {
       if (c == '\t') {
         std::size_t pos = p->command_line.find(' ');
         std::string cmd = p->command_line.substr(0, pos);
-        if (cmd == "readfile") {
+        if (cmd == "readfile" || cmd == "savefile") {  ///////////// 11-21-2020 
           std::string s = p->command_line.substr(pos+1);
           // should to deal with s being empty
           if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
@@ -6135,6 +6135,7 @@ bool editorProcessKeypress(void) {
             std::filesystem::path pathToShow(path);  
             for (const auto& entry : std::filesystem::directory_iterator(pathToShow)) {
               const auto filenameStr = entry.path().filename().string();
+              if ((cmd == "savefile") && !entry.is_directory()) continue; ///////////// 11-21-2020 
               //if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
               if (s == std::string_view(filenameStr.substr(0,s.size()))) {
                 if (entry.is_directory()) completions.push_back(filenameStr+'/');
@@ -6146,7 +6147,8 @@ bool editorProcessKeypress(void) {
           if (!completions.empty())  {
             if (completion_index == completions.size()) completion_index = 0;
             readfilename = prefix + completions.at(completion_index++);
-            p->command_line = "readfile " + readfilename;
+            //p->command_line = "readfile " + readfilename;
+            p->command_line = fmt::format("{} {}", cmd, readfilename);
             p->editorSetMessage(":%s", p->command_line.c_str());
           }
         } else {

@@ -54,9 +54,8 @@ std::unordered_map<std::string, eefunc> e_lookup {
   {{0x1A}, &Editor::E_toggle_smartindent},
   {{CTRL_KEY('p')}, &Editor::E_CTRL_P},
  // {{0x8}, &Editor::E_goto_outline},
-  {"%", &Editor::E_move_to_matching_brace},
-  {{0x13}, &Editor::E_save_note},
-  {"save", &Editor::E_save_note},
+  {"%", &Editor::E_move_to_matching_brace}
+  //{{0x13}, &Editor::E_save_note}
 };
 
 
@@ -84,5 +83,7 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"runl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"runlocal", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
-  {"run", &Editor::E_run_code_C} //compile and run on Compiler Explorer 
+  {"run", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
+  {"save", &Editor::E_save_note},
+  {"savefile", &Editor::E_save_note}
 };

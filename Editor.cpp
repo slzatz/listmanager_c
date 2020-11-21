@@ -2714,8 +2714,15 @@ void Editor::E_toggle_smartindent(int repeat) {
   editorSetMessage("smartindent = %d", smartindent);
 }
 
-void Editor::E_save_note(int repeat) {
-  editorSaveNoteToFile("lm_temp");
+void Editor::E_save_note(void) {
+  std::string filename;
+  if (mode == NORMAL) filename = "lm_saved_note.txt";
+  else {
+    std::size_t pos = command_line.find(' ');
+    if (pos) filename = command_line.substr(pos+1);
+    else filename = "lm_saved_note.txt";
+  }
+  editorSaveNoteToFile(filename);
 }
 
 void Editor::E_bold(int repeat) {

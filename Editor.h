@@ -144,6 +144,7 @@ class Editor {
     void E_runlocal_C(void);
     void E_compile_C(void);
     void decorate_errors(nlohmann::json);
+    void E_save_note(void);
 
     /* EDITOR mode NORMAL functions */
     void E_i(int);
@@ -178,7 +179,6 @@ class Editor {
     void E_gg(int);
     void E_G(int);
     void E_toggle_smartindent(int);
-    void E_save_note(int);
     void E_change_case(int);
     void E_goto_outline(int);
 
