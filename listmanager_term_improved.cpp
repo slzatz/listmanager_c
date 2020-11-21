@@ -6118,11 +6118,9 @@ bool editorProcessKeypress(void) {
           // should to deal with s being empty
           if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
 
-          //cycling through tabs because we didn't type anything new
-          if (s == readfilename) {
-            if (completion_index == completions.size()) completion_index = 0;
           // finding new set of tab completions because user typed or deleted something  
-          } else {
+          // which means we need a new set of completion possibilities
+          if (s != readfilename) {
             completions.clear();
             completion_index = 0;
             std::string path;
@@ -6144,7 +6142,9 @@ bool editorProcessKeypress(void) {
               }
             }  
           }  
+          // below is where we present/cycle through completions  
           if (!completions.empty())  {
+            if (completion_index == completions.size()) completion_index = 0;
             readfilename = prefix + completions.at(completion_index++);
             p->command_line = "readfile " + readfilename;
             p->editorSetMessage(":%s", p->command_line.c_str());
