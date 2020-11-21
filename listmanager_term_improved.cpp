@@ -56,8 +56,9 @@ std::unordered_set<int> navigation = {
 };
 std::string readfilename;
 std::vector<std::string> completions;
+std::string prefix;
 int completion_index;
-std::filesystem::path pathToShow = std::filesystem::current_path();
+//std::filesystem::path pathToShow = std::filesystem::current_path();
 
 /****************************************************/
 void readsome(pstream &pp, int i) {
@@ -6108,30 +6109,43 @@ bool editorProcessKeypress(void) {
         p->editorSetMessage(""); 
         return false;
       }
-
+      // readfilename is everything after :readfile 
       if (c == '\t') {
         std::size_t pos = p->command_line.find(' ');
         std::string cmd = p->command_line.substr(0, pos);
         if (cmd == "readfile") {
           std::string s = p->command_line.substr(pos+1);
+          // should to deal with s being empty
+          if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
+
           //cycling through tabs because we didn't type anything new
           if (s == readfilename) {
             if (completion_index == completions.size()) completion_index = 0;
           // finding new set of tab completions because user typed or deleted something  
           } else {
-            readfilename = s;
             completions.clear();
             completion_index = 0;
+            std::string path;
+            if (s.front() == '/') {
+              size_t pos = s.find_last_of('/');
+              prefix = s.substr(0, pos+1);
+              path = prefix;
+              s = s.substr(pos+1);
+              //assume below we want current_directory if what's typed isn't ~/.. or /..
+            } else path = std::filesystem::current_path().string(); 
+
+            std::filesystem::path pathToShow(path);  
             for (const auto& entry : std::filesystem::directory_iterator(pathToShow)) {
               const auto filenameStr = entry.path().filename().string();
-              if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
+              //if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
+              if (s == std::string_view(filenameStr.substr(0,s.size()))) {
                 if (entry.is_directory()) completions.push_back(filenameStr+'/');
                 else completions.push_back(filenameStr);
               }
             }  
           }  
           if (!completions.empty())  {
-            readfilename = completions.at(completion_index++);
+            readfilename = prefix + completions.at(completion_index++);
             p->command_line = "readfile " + readfilename;
             p->editorSetMessage(":%s", p->command_line.c_str());
           }
