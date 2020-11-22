@@ -6033,14 +6033,16 @@ bool editorProcessKeypress(void) {
        * them given CTRL('w') above
        */
 
-      if (std::string_view(p->command) == std::string({0x17,'='})) {
+      //if (std::string_view(p->command) == std::string({0x17,'='})) {
+      if (p->command == std::string({0x17,'='})) {
         p->E_resize(0);
         p->command[0] = '\0';
         p->repeat = 0;
         return false;
       }
 
-      if (std::string_view(p->command) == std::string({0x17,'_'})) {
+      //if (std::string_view(p->command) == std::string({0x17,'_'})) {
+      if (p->command == std::string({0x17,'_'})) {
         p->E_resize(0);
         p->command[0] = '\0';
         p->repeat = 0;
@@ -6113,7 +6115,8 @@ bool editorProcessKeypress(void) {
       if (c == '\t') {
         std::size_t pos = p->command_line.find(' ');
         std::string cmd = p->command_line.substr(0, pos);
-        if (cmd == "readfile" || cmd == "savefile") {  ///////////// 11-21-2020 
+        //if (cmd == "readfile" || cmd == "savefile") {  ///////////// 11-21-2020 
+        if (file_cmds.contains(cmd)) {  
           std::string s = p->command_line.substr(pos+1);
           // should to deal with s being empty
           if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
@@ -6135,9 +6138,10 @@ bool editorProcessKeypress(void) {
             std::filesystem::path pathToShow(path);  
             for (const auto& entry : std::filesystem::directory_iterator(pathToShow)) {
               const auto filenameStr = entry.path().filename().string();
-              if ((cmd == "savefile") && !entry.is_directory()) continue; ///////////// 11-21-2020 
+              //if ((cmd == "savefile" || cmd == "save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
+              if ((cmd.substr(0, 4) == "save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
               //if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
-              if (s == std::string_view(filenameStr.substr(0,s.size()))) {
+              if (s == filenameStr.substr(0, s.size())) {
                 if (entry.is_directory()) completions.push_back(filenameStr+'/');
                 else completions.push_back(filenameStr);
               }
@@ -6412,7 +6416,8 @@ bool editorProcessKeypress(void) {
           p->last_repeat = p->repeat;
           p->last_typed.clear();
           //p->last_command = command;
-          p->last_command = std::string_view("VBI");
+          //p->last_command = std::string_view("VBI");
+          p->last_command = "VBI";
           p->command[0] = '\0';
           p->repeat = 0;
           //editorSetMessage("command = %d", command);
@@ -6444,7 +6449,8 @@ bool editorProcessKeypress(void) {
           p->last_repeat = p->repeat;
           p->last_typed.clear();
           //p->last_command = command;
-          p->last_command = std::string_view("VBA");
+          //p->last_command = std::string_view("VBA");
+          p->last_command = "VBA";
           p->command[0] = '\0';
           p->repeat = 0;
           //editorSetMessage("command = %d", command);

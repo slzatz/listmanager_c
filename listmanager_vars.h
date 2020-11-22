@@ -82,8 +82,9 @@ struct sqlite_db {
 };
 struct sqlite_db S;
 
-std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
-std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
+const std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
+const std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
+const std::unordered_set<std::string> file_cmds = {"savefile", "save", "readfile", "read"};
 
 //these are not really move only but are commands that don't change text and shouldn't trigger a new push_current diff record
 //better name something like no_edit_cmds or non_edit_cmds
