@@ -54,7 +54,7 @@ std::unordered_set<int> navigation = {
          'k',
          'l'
 };
-std::string readfilename;
+std::string prevfilename;
 std::vector<std::string> completions;
 std::string prefix;
 int completion_index;
@@ -6034,7 +6034,8 @@ bool editorProcessKeypress(void) {
        */
 
       //if (std::string_view(p->command) == std::string({0x17,'='})) {
-      if (p->command == std::string({0x17,'='})) {
+      //if (p->command == std::string({0x17,'='})) {
+      if (p->command == std::string_view("\x17" "=")) {
         p->E_resize(0);
         p->command[0] = '\0';
         p->repeat = 0;
@@ -6042,7 +6043,8 @@ bool editorProcessKeypress(void) {
       }
 
       //if (std::string_view(p->command) == std::string({0x17,'_'})) {
-      if (p->command == std::string({0x17,'_'})) {
+      //if (p->command == std::string({0x17,'_'})) {
+      if (p->command == std::string_view("\x17" "_")) {
         p->E_resize(0);
         p->command[0] = '\0';
         p->repeat = 0;
@@ -6111,19 +6113,18 @@ bool editorProcessKeypress(void) {
         p->editorSetMessage(""); 
         return false;
       }
-      // readfilename is everything after :readfile 
+      // prevfilename is everything after :readfile 
       if (c == '\t') {
         std::size_t pos = p->command_line.find(' ');
         std::string cmd = p->command_line.substr(0, pos);
-        //if (cmd == "readfile" || cmd == "savefile") {  ///////////// 11-21-2020 
-        if (file_cmds.contains(cmd)) {  
+        if (file_cmds.contains(cmd)) { // can't use string_view here 
           std::string s = p->command_line.substr(pos+1);
           // should to deal with s being empty
           if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
 
           // finding new set of tab completions because user typed or deleted something  
           // which means we need a new set of completion possibilities
-          if (s != readfilename) {
+          if (s != prevfilename) {
             completions.clear();
             completion_index = 0;
             std::string path;
@@ -6137,22 +6138,20 @@ bool editorProcessKeypress(void) {
 
             std::filesystem::path pathToShow(path);  
             for (const auto& entry : std::filesystem::directory_iterator(pathToShow)) {
-              const auto filenameStr = entry.path().filename().string();
-              //if ((cmd == "savefile" || cmd == "save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
-              if ((cmd.substr(0, 4) == "save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
-              //if (readfilename == std::string_view(filenameStr.substr(0,readfilename.size()))) {
-              if (s == filenameStr.substr(0, s.size())) {
-                if (entry.is_directory()) completions.push_back(filenameStr+'/');
-                else completions.push_back(filenameStr);
+              const auto filename = entry.path().filename().string();
+              if (cmd.starts_with("save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
+              if (filename.starts_with(s)) {
+                if (entry.is_directory()) completions.push_back(filename+'/');
+                else completions.push_back(filename);
               }
             }  
           }  
           // below is where we present/cycle through completions  
           if (!completions.empty())  {
             if (completion_index == completions.size()) completion_index = 0;
-            readfilename = prefix + completions.at(completion_index++);
-            //p->command_line = "readfile " + readfilename;
-            p->command_line = fmt::format("{} {}", cmd, readfilename);
+            prevfilename = prefix + completions.at(completion_index++);
+            //p->command_line = "readfile " + prevfilename;
+            p->command_line = fmt::format("{} {}", cmd, prevfilename);
             p->editorSetMessage(":%s", p->command_line.c_str());
           }
         } else {
@@ -6416,7 +6415,6 @@ bool editorProcessKeypress(void) {
           p->last_repeat = p->repeat;
           p->last_typed.clear();
           //p->last_command = command;
-          //p->last_command = std::string_view("VBI");
           p->last_command = "VBI";
           p->command[0] = '\0';
           p->repeat = 0;
@@ -6449,7 +6447,6 @@ bool editorProcessKeypress(void) {
           p->last_repeat = p->repeat;
           p->last_typed.clear();
           //p->last_command = command;
-          //p->last_command = std::string_view("VBA");
           p->last_command = "VBA";
           p->command[0] = '\0';
           p->repeat = 0;
