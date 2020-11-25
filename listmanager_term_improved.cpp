@@ -92,7 +92,8 @@ void readsome(pstream &pp, int i) {
   if (js.contains("method")) {
     if (js["method"] == "textDocument/publishDiagnostics") {
       json diagnostics = js["params"]["diagnostics"];
-      if (p) p->decorate_errors(diagnostics);
+      // right now in outline mode when starting lsp
+      if (editor_mode && p) p->decorate_errors(diagnostics);
     }
   }
   //logger->info("end of read (decorate_errors called if method=publishDiagnostics)");
@@ -304,6 +305,18 @@ void restart_lsp(void) {
   }
   lsp_closed = false;
   lsp_thread_v.push_back(std::jthread(lsp_thread));
+}
+
+void shutdown_lsp(void) {
+  if (lsp_thread_v.empty()) return;
+  lsp_thread_v.back().request_stop(); // still need to write a shutdown lsp v. restart
+  time_t time0 = time(nullptr);
+  while (!lsp_closed) {
+    if (difftime(time(nullptr), time0) > 3.0) break;
+    continue;
+  }
+  lsp_thread_v.clear();
+  lsp_closed = true;
 }
 
 void do_exit(PGconn *conn) {
@@ -3674,6 +3687,12 @@ void F_restart_lsp(int) {
   outlineShowMessage("Will attempt to restart clangd");
 }
 
+void F_shutdown_lsp(int) {
+  shutdown_lsp();
+  O.mode = NORMAL;
+  outlineShowMessage("Will attempt to shutdown clangd");
+}
+
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
   if (editors.empty()) {
@@ -6801,7 +6820,7 @@ int main(int argc, char** argv) {
   */
 
   //lsp_closed = true; // this will be needed here if only start lsp manually
-  lsp_thread_v.push_back(std::jthread(lsp_thread));
+  //lsp_thread_v.push_back(std::jthread(lsp_thread));
 
   spdlog::flush_every(std::chrono::seconds(5)); //////
   spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
@@ -6886,7 +6905,9 @@ int main(int argc, char** argv) {
   lsp_worker_v.back().request_stop();
   */
   
-  if (!lsp_thread_v.empty() && !lsp_closed) lsp_thread_v.back().request_stop(); // still need to write a shutdown lsp v. restart
+  //if (!lsp_thread_v.empty() && !lsp_closed) lsp_thread_v.back().request_stop(); // still need to write a shutdown lsp v. restart
+  shutdown_lsp();
+
 
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
@@ -6894,12 +6915,12 @@ int main(int argc, char** argv) {
   sqlite3_close(S.db);
   PQfinish(conn);
 
-  //while (!lsp_closed) continue;
+  /*
   time_t time0 = time(nullptr);
   while (!lsp_closed) {
     if (difftime(time(nullptr), time0) > 3.0) break;
     continue;
   }
-
+ */
   return 0;
 }

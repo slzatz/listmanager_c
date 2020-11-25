@@ -187,6 +187,8 @@ void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineRefreshAllEditors(void);
 std::string outlinePreviewRowsToString(void);
+void restart_lsp(void);
+void shutdown_lsp(void);
 
 /* OUTLINE COMMAND_LINE functions */
 /* include outline_commandline_functions.h now include in listman...improved.cpp
@@ -395,7 +397,7 @@ void open_in_vim(void);
 //typedef void (*pfunc)(int);
 //typedef void (*zfunc)(void);
 
-/* OUTLINE COMMAND_LINE mode command lookup */
+/* OUTLINE COMMAND_LINE eode command lookup */
 /*
 std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open}, //open_O
