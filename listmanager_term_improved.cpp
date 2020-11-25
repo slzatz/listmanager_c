@@ -38,9 +38,15 @@ auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, fil
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 
+const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+//pstream clangd("clangd --log=error", mode); //verbose or error or info
+std::vector<pstream> clangd_v;
+
 bool run = true; //main while loop
 std::atomic<bool> run_thread = true;
 std::atomic<bool> code_changed = false;
+std::atomic<bool> lsp_init = false;
+std::atomic<bool> lsp_closed = false;
 void readsome(pstream &, int);
 char buf[1024]; //char buf[1024]{};
 
@@ -61,6 +67,9 @@ int completion_index;
 //std::filesystem::path pathToShow = std::filesystem::current_path();
 
 /****************************************************/
+std::jthread t0;
+std::jthread t1;
+
 void readsome(pstream &pp, int i) {
   std::streamsize n;
   //logger->info("begin read {}\n", i);
@@ -75,7 +84,7 @@ void readsome(pstream &pp, int i) {
     // n will always be zero eventually
      s += std::string{buf, static_cast<size_t>(n)};
   }
- 
+
   logger->info("read clangd message {}:\n{}\n{}\n", i, h, s);
 
   json js = json::parse(s);
@@ -85,12 +94,12 @@ void readsome(pstream &pp, int i) {
       if (p) p->decorate_errors(diagnostics);
     }
   }
-  //logger->info("end of read (decorate_errors called if method=publishDiagnostics)");  
+  //logger->info("end of read (decorate_errors called if method=publishDiagnostics)");
 }
 
 /****************************************************/
 void lsp_thread(std::stop_token st) {
-//void lsp_thread(void) {  
+//void lsp_thread(void) {
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
   pstream clangd("clangd --log=error", mode); //verbose or error or info
   std::string s;
@@ -171,6 +180,110 @@ void lsp_thread(std::stop_token st) {
   clangd.close();
 }
 
+void lsp_init_thread(void) {
+//void lsp_thread(void) {
+  //const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+  pstream c("clangd --log=error", mode); //verbose or error or info
+  clangd_v.push_back(std::move(c));
+  pstream & clangd = clangd_v.back();
+  std::string s;
+  json js;
+  std::string header;
+  int pid = ::getpid();
+
+  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///home/slzatz/pylspclient/", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "python-lsp", "uri": "file:///home/slzatz/pylspclient/"}]}})";
+
+  js = json::parse(s);
+  js["params"]["processId"] = pid + 1;
+  s = js.dump();
+
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent initialization message to clangd:\n{}\n", s);
+
+
+//initialization from client produces a capabilities response
+//from the server which is read below
+  readsome(clangd, 1); //this could block
+  
+  //Client sends initialized response
+  s = R"({"jsonrpc": "2.0", "method": "initialized", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent initialized message to clangd:\n{}\n", s);
+  
+  //client sends didOpen notification
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
+  js = json::parse(s);
+  js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
+  s = js.dump();
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent didOpen message to clangd:\n{}\n", s);
+  
+  readsome(clangd, 3); //reads initial diagnostics
+  lsp_init = true;
+}
+  
+void lsp_worker_thread(std::stop_token st) {
+  std::string s;
+  int j = 1;
+  json js;
+  std::string header;
+
+  pstream & clangd = clangd_v.back();
+  
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "version": 2}, "contentChanges": [{"text": ""}]}})";
+
+  js = json::parse(s);
+  
+  while (!st.stop_requested()) {
+  //while (run_thread) {
+    if (code_changed) {
+      js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
+      js["params"]["textDocument"]["version"] = ++j; //text ? if it escapes automatically
+      s = js.dump();
+      header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+      s = header + s;
+      clangd.write(s.c_str(), s.size()).flush();
+      logger->info("sent didChange message to clangd:\n{}\n", s);
+  
+      readsome(clangd, j);
+      code_changed = false;
+    }
+    std::this_thread::sleep_for((std::chrono::milliseconds(50)));
+  }
+  s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent shutdown:\n\n");
+  std::this_thread::sleep_for((std::chrono::seconds(1)));
+  s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
+  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
+  s = header + s;
+  clangd.write(s.c_str(), s.size()).flush();
+  logger->info("sent exit:\n\n");
+
+  //below doesn't seem to be necessary but doesn't appear to cause a problem
+  clangd.close();
+  lsp_closed = true;
+}
+
+std::vector<std::jthread> lsp_init_v;
+std::vector<std::jthread> lsp_worker_v;
+
+void restart_lsp(void) {
+  lsp_worker_v.back().request_stop();
+  std::this_thread::sleep_for((std::chrono::seconds(3)));
+  lsp_init = false;
+  lsp_init_v.push_back(std::jthread(lsp_init_thread));
+  while (!lsp_init) continue;
+  lsp_worker_v.push_back(std::jthread(lsp_worker_thread));
+}
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -3533,6 +3646,13 @@ void F_clear(int) {
   p->editorSetMessage("");
 }
 
+
+void F_restart_lsp(int) {
+  restart_lsp();
+  O.mode = NORMAL;
+  outlineShowMessage("Will attempt to restart clangd");
+}
+
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
   if (editors.empty()) {
@@ -6655,6 +6775,9 @@ void initOutline() {
 
 int main(int argc, char** argv) { 
 
+  //std::jthread t0(lsp_init_thread);
+  //t0 = std::jthread(lsp_init_thread);
+  lsp_init_v.push_back(std::jthread(lsp_init_thread));
   spdlog::flush_every(std::chrono::seconds(5)); //////
   spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
   logger->info("********************** New Launch **************************");
@@ -6699,8 +6822,9 @@ int main(int argc, char** argv) {
 
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
-  //std::thread t0(lsp_thread);
-  std::jthread t0(lsp_thread);
+  while (!lsp_init) continue;
+  //t1 = std::jthread(lsp_worker_thread);
+  lsp_worker_v.push_back(std::jthread(lsp_worker_thread));
 
   while (run) {
     // just refresh what has changed
@@ -6732,7 +6856,9 @@ int main(int argc, char** argv) {
     outlineDrawStatusBar();
     return_cursor();
   }
-  t0.request_stop(); /////
+  //t1.request_stop(); /////
+  lsp_worker_v.back().request_stop();
+  // my guess here is I need a while loop to check if really completed similar to t0
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
@@ -6740,5 +6866,6 @@ int main(int argc, char** argv) {
   PQfinish(conn);
   //t0.join();
   //t0.detach();
+  while (!lsp_closed) continue;
   return 0;
 }
