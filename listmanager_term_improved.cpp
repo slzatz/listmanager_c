@@ -21,6 +21,7 @@
 #include "editor_function_map.h"
 
 #include <filesystem>
+#include <time.h>
 
 using namespace redi;
 using json = nlohmann::json;
@@ -38,7 +39,7 @@ auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, fil
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 
-const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+//const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
 //pstream clangd("clangd --log=error", mode); //verbose or error or info
 std::vector<pstream> clangd_v;
 
@@ -46,7 +47,7 @@ bool run = true; //main while loop
 std::atomic<bool> run_thread = true;
 std::atomic<bool> code_changed = false;
 std::atomic<bool> lsp_init = false;
-std::atomic<bool> lsp_closed = false;
+std::atomic<bool> lsp_closed = true;
 void readsome(pstream &, int);
 char buf[1024]; //char buf[1024]{};
 
@@ -99,9 +100,11 @@ void readsome(pstream &pp, int i) {
 
 /****************************************************/
 void lsp_thread(std::stop_token st) {
-//void lsp_thread(void) {
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
-  pstream clangd("clangd --log=error", mode); //verbose or error or info
+  pstream c("clangd --log=error", mode); //verbose or error or info
+  clangd_v.push_back(std::move(c));
+  pstream & clangd = clangd_v.back();
+
   std::string s;
   json js;
   std::string header;
@@ -162,14 +165,14 @@ void lsp_thread(std::stop_token st) {
       readsome(clangd, j);
       code_changed = false;
     }
-    std::this_thread::sleep_for((std::chrono::milliseconds(50)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
   s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   clangd.write(s.c_str(), s.size()).flush();
   logger->info("sent shutdown:\n\n");
-  std::this_thread::sleep_for((std::chrono::seconds(1)));
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
@@ -178,11 +181,12 @@ void lsp_thread(std::stop_token st) {
 
   //below doesn't seem to be necessary but doesn't appear to cause a problem
   clangd.close();
+  lsp_closed = true;
 }
 
 void lsp_init_thread(void) {
 //void lsp_thread(void) {
-  //const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+  const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
   pstream c("clangd --log=error", mode); //verbose or error or info
   clangd_v.push_back(std::move(c));
   pstream & clangd = clangd_v.back();
@@ -254,14 +258,14 @@ void lsp_worker_thread(std::stop_token st) {
       readsome(clangd, j);
       code_changed = false;
     }
-    std::this_thread::sleep_for((std::chrono::milliseconds(50)));
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
   s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   clangd.write(s.c_str(), s.size()).flush();
   logger->info("sent shutdown:\n\n");
-  std::this_thread::sleep_for((std::chrono::seconds(1)));
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
@@ -275,14 +279,31 @@ void lsp_worker_thread(std::stop_token st) {
 
 std::vector<std::jthread> lsp_init_v;
 std::vector<std::jthread> lsp_worker_v;
+std::vector<std::jthread> lsp_thread_v;
 
-void restart_lsp(void) {
+/*void restart_lsp(void) {
   lsp_worker_v.back().request_stop();
   std::this_thread::sleep_for((std::chrono::seconds(3)));
   lsp_init = false;
   lsp_init_v.push_back(std::jthread(lsp_init_thread));
   while (!lsp_init) continue;
   lsp_worker_v.push_back(std::jthread(lsp_worker_thread));
+}
+*/
+
+void restart_lsp(void) {
+  if (!lsp_thread_v.empty()) {
+    lsp_thread_v.back().request_stop();
+    //if lsp_thread crashed then lsp_closed will never become true and
+    //that's why there is also a timer below
+    time_t time0 = time(nullptr);
+    while (!lsp_closed) {
+      if (difftime(time(nullptr), time0) > 3.0) break;
+      continue;
+    }
+  }
+  lsp_closed = false;
+  lsp_thread_v.push_back(std::jthread(lsp_thread));
 }
 
 void do_exit(PGconn *conn) {
@@ -6775,9 +6796,13 @@ void initOutline() {
 
 int main(int argc, char** argv) { 
 
-  //std::jthread t0(lsp_init_thread);
-  //t0 = std::jthread(lsp_init_thread);
+  /*
   lsp_init_v.push_back(std::jthread(lsp_init_thread));
+  */
+
+  //lsp_closed = true; // this will be needed here if only start lsp manually
+  lsp_thread_v.push_back(std::jthread(lsp_thread));
+
   spdlog::flush_every(std::chrono::seconds(5)); //////
   spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
   logger->info("********************** New Launch **************************");
@@ -6822,9 +6847,10 @@ int main(int argc, char** argv) {
 
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
+  /*
   while (!lsp_init) continue;
-  //t1 = std::jthread(lsp_worker_thread);
   lsp_worker_v.push_back(std::jthread(lsp_worker_thread));
+  */
 
   while (run) {
     // just refresh what has changed
@@ -6856,16 +6882,24 @@ int main(int argc, char** argv) {
     outlineDrawStatusBar();
     return_cursor();
   }
-  //t1.request_stop(); /////
+  /*
   lsp_worker_v.back().request_stop();
-  // my guess here is I need a while loop to check if really completed similar to t0
+  */
+  
+  if (!lsp_thread_v.empty() && !lsp_closed) lsp_thread_v.back().request_stop(); // still need to write a shutdown lsp v. restart
+
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
   sqlite3_close(S.db);
   PQfinish(conn);
-  //t0.join();
-  //t0.detach();
-  while (!lsp_closed) continue;
+
+  //while (!lsp_closed) continue;
+  time_t time0 = time(nullptr);
+  while (!lsp_closed) {
+    if (difftime(time(nullptr), time0) > 3.0) break;
+    continue;
+  }
+
   return 0;
 }
