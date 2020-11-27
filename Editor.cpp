@@ -2978,7 +2978,17 @@ void Editor::E_compile_C(void) {
   //procxx::process make("make", "-f /home/slzatz/pylspclient/Makefile");
   procxx::process make("make");
   make.exec();
-  while(getline(make.output(), line)) { text << line << '\n';}
+
+  int i = 0;
+  while(getline(make.output(), line)) {
+    text << line << '\n';
+    ++i;
+    if (i > 10){
+      text << "TRUNCATED at 10 lines";
+      break;
+    }
+  }
+
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();

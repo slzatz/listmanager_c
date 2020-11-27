@@ -43,7 +43,6 @@ bool run = true; //main while loop
 std::atomic<bool> code_changed = false;
 std::atomic<bool> lsp_closed = true;
 void readsome(pstream &, int);
-char buf[1024]; //char buf[1024]{};
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -63,6 +62,7 @@ int completion_index;
 /******************lsp**********************************/
 
 void readsome(pstream &pp, int i) {
+  char buf[4096]; //char buf[1024]{};
   std::streamsize n;
   std::string s{}; //used for body of server message
   std::string h{}; //used to log header of server message
@@ -78,12 +78,18 @@ void readsome(pstream &pp, int i) {
 
   logger->info("read clangd message {}:\n{}\n{}\n", i, h, s);
 
+  if (s.size() > 4000) {
+    logger->warn("Message clangd returned is greater than 4000 chars!");
+    return;
+  }
+
   json js = json::parse(s);
   if (js.contains("method")) {
     if (js["method"] == "textDocument/publishDiagnostics") {
       json diagnostics = js["params"]["diagnostics"];
       // right now in outline mode when starting lsp
-      if (editor_mode && p) p->decorate_errors(diagnostics);
+      //if (editor_mode && p) p->decorate_errors(diagnostics);
+      if (p) p->decorate_errors(diagnostics); //not sure need if (p)
     }
   }
 }
@@ -153,7 +159,7 @@ void lsp_thread(std::stop_token st) {
   while (!st.stop_requested()) {
     if (code_changed) {
       js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
-      js["params"]["textDocument"]["version"] = ++j; //text ? if it escapes automatically
+      js["params"]["textDocument"]["version"] = ++j; 
       s = js.dump();
       header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
       s = header + s;
@@ -2116,7 +2122,7 @@ void update_note(bool is_subnote, bool closing_editor) {
   std::string column = (is_subnote) ? "subnote" : "note";
   std::string text = p->editorRowsToString();
 
-  if (!is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
+  if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
     p->code = text;
     code_changed = true;
     update_code_file();
