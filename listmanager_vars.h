@@ -187,8 +187,8 @@ void outlineDrawStatusBar(void);
 void outlineDrawMessageBar(std::string&);
 void outlineRefreshAllEditors(void);
 std::string outlinePreviewRowsToString(void);
-void restart_lsp(void);
-void shutdown_lsp(void);
+void lsp_start(void);
+void lsp_shutdown(void);
 
 /* OUTLINE COMMAND_LINE functions */
 /* include outline_commandline_functions.h now include in listman...improved.cpp

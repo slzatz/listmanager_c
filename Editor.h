@@ -31,13 +31,13 @@ class Editor {
   public:
 
     Editor() {
-      cx = 0; //cursor x position
-      cy = 0; //cursor y position
-      fc = 0; //file x position
-      fr = 0; //file y position
+      cx = 0; //actual cursor x position (takes into account any scroll/offset)
+      cy = 0; //actual cursor y position ""
+      fc = 0; //'file' x position as defined by reading sqlite text into rows vector
+      fr = 0; //'file' y position ""
       line_offset = 0;  //the number of lines of text at the top scrolled off the screen
-      prev_line_offset = 0;  //the number of lines of text at the top scrolled off the screen
-      //E.coloff = 0;  //should always be zero because of line wrap
+      prev_line_offset = 0;  //the prev number of lines of text at the top scrolled off the screen
+      //E.coloff = 0;  //always zero because currently only word wrap supported
       dirty = 0; //has filed changed since last save
       message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
       highlight[0] = highlight[1] = -1;
@@ -143,7 +143,7 @@ class Editor {
     void E_run_code_C(void);
     void E_runlocal_C(void);
     void E_compile_C(void);
-    void decorate_errors(nlohmann::json);
+    void decorate_errors(const nlohmann::json &);
     void E_save_note(void);
 
     /* EDITOR mode NORMAL functions */

@@ -3017,7 +3017,7 @@ void Editor::E_runlocal_C(void) {
   linked_editor->dirty++;
 }
 
-void Editor::decorate_errors(json diagnostics) {
+void Editor::decorate_errors(const json& diagnostics) {
 
   std::string msg;
   if (!diagnostics.empty()) {
@@ -3039,11 +3039,22 @@ void Editor::decorate_errors(json diagnostics) {
     } else {
       fragment = row.substr(start_char, end_char - start_char);
     }
+    int y = editorGetScreenYFromRowColWW(start_line, start_char) - line_offset; // added line offset 12-25-2019
+    // probably should scroll and not return
+    // would look like fr = start_line;fc = start_char;editorRefreshScreen;decorate_errors
+    if ((y > screenlines-1) || y < 0) { //return;
+      fr = start_line;
+      fc = start_char;
+      editorScroll();
+      editorRefreshScreen(true);
+      decorate_errors(diagnostics);
+      return;
+  }
+
     int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1 + end_of_line;
-    int y = editorGetScreenYFromRowColWW(start_line, start_char) + top_margin - line_offset; // added line offset 12-25-2019
 
     std::stringstream ss;
-    ss << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";
+    ss << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";
     write(STDOUT_FILENO, ss.str().c_str(), ss.str().size());
   } else {
     msg = "There were no errors";
