@@ -683,6 +683,7 @@ void Editor::push_base(void) {
 */
 
 void Editor::push_current(void) {
+  // it might be better to create a single empty row in this circumstance
   if (rows.empty()) return; //don't create snapshot if there is no text
 
   // probably not reason to include last_typed as always "" at this point
@@ -1082,7 +1083,7 @@ void Editor::editorInsertChar(int chr) {
   // does not handle returns which must be intercepted before calling this function
   // necessary even with NO_ROWS because putting new entries into insert mode
   if (rows.empty()) { 
-    editorInsertRow(0, std::string());
+    editorInsertRow(0, std::string{});
   }
   std::string &row = rows.at(fr);
   row.insert(row.begin() + fc, chr); // works if row is empty
@@ -2120,7 +2121,7 @@ int Editor::editorGetLinesInRowWW(int r) {
   return lines;
 }
 
-/* this exists to create a text file that has the proper
+/* below exists to create a text file that has the proper
  * line breaks based on screen width for syntax highlighters
  * to operate on 
  * Produces a text string that starts at the first line of the
@@ -2128,6 +2129,56 @@ int Editor::editorGetLinesInRowWW(int r) {
  * Only used by editorDrawCodeRows
  */
 std::string Editor::editorGenerateWWString(void) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  int y = -line_offset;
+  int filerow = 0;
+
+  for (;;) {
+    if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+
+    char ret = '\n';
+    std::string_view row = rows.at(filerow);
+    // if you put a \n in the middle of a comment the wrapped portion won't be italic
+    if (row.find("//") != std::string::npos) ret = '\t';
+
+    if (row.empty()) {
+      if (y == screenlines - 1) return ab;
+      ab.append("\n");
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + screencols > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+        if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+        ab.append(1, '\n');
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + screencols - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + screencols - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+      ab.append(1, ret);
+      y++;
+      prev_pos = pos + 1;
+    }
+  }
+}
+
+/*
+std::string Editor::editorGenerateWWString_orig(void) {
   if (rows.empty()) return "";
 
   std::string ab = "";
@@ -2153,7 +2204,7 @@ std::string Editor::editorGenerateWWString(void) {
     int pos = -1;
     int prev_pos;
     for (;;) {
-      /* this is needed because it deals where the end of the line doesn't have a space*/
+      // this is needed because it deals where the end of the line doesn't have a space
       if (row.substr(pos+1).size() <= screencols) {
         ab.append(row, pos+1, screencols);
         if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
@@ -2182,6 +2233,7 @@ std::string Editor::editorGenerateWWString(void) {
     }
   }
 }
+*/
 
 //used in status bar because interesting but not essential
 int Editor::editorGetLineCharCountWW(int r, int line) {
