@@ -3148,7 +3148,14 @@ void F_edit(int) {
   eraseRightScreen(); //erases editor area + statusbar + msg
 
   if (p->rows.empty()) {
+    // note editorInsertChar inserts the row
     p->mode = INSERT;
+    // below all for undo
+    p->last_command = "i";
+    p->prev_fr = 0;
+    p->prev_fc = 0;
+    p->last_repeat = 1;
+    p->snapshot.push_back("");
     p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
   } else {
     p->mode = NORMAL;
@@ -4244,15 +4251,60 @@ void draw_preview(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-/* this exists to create a text file that has the proper
- * line breaks based on screen width for syntax highlighters
- * to operate on 
- * Produces a text string that starts at the first line of the
- * file and ends on the last visible line
- */
-// essentially the same as the word wrap portion of draw_preview and could be used by
-// draw_preview and draw_search_preview
+// there is a ? identical editorGenerateWWString
+// used by draw_preview and draw_search_preview (it is used by this)
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  //int y = -line_offset; **set to zero because always starting previews at line 0**
+  int y = 0;
+  int filerow = 0;
+
+  for (;;) {
+    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+    if (filerow == rows.size()) return ab;
+
+    std::string_view row = rows.at(filerow);
+    
+    if (row.empty()) {
+      if (y == length - 1) return ab;
+      ab.append(ret);
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + width > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+
+        if (y == length - 1) return ab;
+        ab.append(ret);
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + width - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + width - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
+      ab.append(ret);
+      y++;
+      prev_pos = pos + 1;
+    }
+  }
+}
+
+// there is a ? identical editorGenerateWWString
+// used by draw_preview and draw_search_preview (it is used by this)
+std::string generateWWString_orig(std::vector<std::string> &rows, int width, int length, std::string ret) {
   if (rows.empty()) return "";
 
   std::string ab = "";
@@ -4310,7 +4362,6 @@ std::string generateWWString(std::vector<std::string> &rows, int width, int leng
     }
   }
 }
-
 void draw_search_preview(void) {
   //need to bring back the note with some marker around the words that
   //we search and replace or retrieve the note with the actual
@@ -5731,11 +5782,17 @@ bool editorProcessKeypress(void) {
         case 's':
         case 'O':
         case 'o':
-          p->editorInsertRow(0, std::string());
+          //p->editorInsertRow(0, std::string());
           p->mode = INSERT;
-          p->command[0] = '\0';
-          p->repeat = 0;
+          p->last_command = "i"; //all the commands equiv to i
+          p->prev_fr = 0;
+          p->prev_fc = 0;
+          p->last_repeat = 1;
+          p->snapshot.clear();
+          p->snapshot.push_back("");
           p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          //p->command[0] = '\0';
+          //p->repeat = 0;
           // ? p->redraw = true;
           return true;
 
@@ -5805,7 +5862,6 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          //p->push_current();
           p->editorInsertReturn();
           p->last_typed += c;
           return true;
@@ -5825,7 +5881,6 @@ bool editorProcessKeypress(void) {
           return false;
 
         case BACKSPACE:
-          //p->push_current(); //p->editorCreateSnapshot();
           p->editorBackspace();
           //not handling backspace correctly in last_typed
           //when backspace beyond currently entered text
@@ -5833,7 +5888,6 @@ bool editorProcessKeypress(void) {
           return true;
     
         case DEL_KEY:
-          //p->push_current(); //p->editorCreateSnapshot();
           p->editorDelChar();
           return true;
     
