@@ -1194,7 +1194,8 @@ void Editor::editorRefreshScreen(bool draw) {
       ab.append(lf_ret);
     }
 
-    if (get_folder_tid(id) == 18 && !(is_subeditor)) editorDrawCodeRows(ab);
+    int tid = get_folder_tid(id);
+    if ((tid == 18 || tid == 14) && !(is_subeditor)) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
 
@@ -1415,6 +1416,12 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   if (get_folder_tid(id) == 18) {
     procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
                              "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  } else if (get_folder_tid(id) == 14) {
+    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=go");
    // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
     highlight.exec();
     while(getline(highlight.output(), line)) { display << line << '\n';}
@@ -3063,9 +3070,15 @@ void Editor::E_runlocal_C(void) {
   }
   std::stringstream text;
   std::string line;
-  procxx::process run("/home/slzatz/pylspclient/test_cpp");
-  run.exec();
-  while(getline(run.output(), line)) { text << line << '\n';}
+  if (get_folder_tid(id) == 18) {
+     procxx::process run("/home/slzatz/pylspclient/test_cpp");
+     run.exec();
+     while(getline(run.output(), line)) { text << line << '\n';}
+  } else {
+     procxx::process run("go", "run", "/home/slzatz/go/src/example/hello.go");
+     run.exec();
+     while(getline(run.output(), line)) { text << line << '\n';}
+  }
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();

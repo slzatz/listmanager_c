@@ -535,10 +535,14 @@ void update_html_code_file(std::string &&fn) {
 }
 
 // this is for local compilation and running
+/* PROBLEM: if no lsp activated should still be able to update code file for compilation */
 void update_code_file(void) {
   std::ofstream myfile;
-  //std::string s = lsp.client_uri.substr(7) + lsp.file_name;
-  myfile.open(lsp.client_uri.substr(7) + lsp.file_name); ///////////////////////////////////////////////////////
+  std::string file_path;
+  if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
+  else if (get_folder_tid(p->id) == 18) file_path  = "/home/slzatz/pylspclient/test.cpp";
+  else file_path = "/home/slzatz/go/src/example/hello.go";
+  myfile.open(file_path); ///////////////////////////////////////////////////////
   myfile << p->code;
   myfile.close();
 }
@@ -2379,7 +2383,8 @@ void update_title(void) {
 
   // moved here 10262020
   if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
     //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
   }   
 }
@@ -3164,7 +3169,8 @@ void F_edit(int) {
       p->top_margin = TOP_MARGIN + 1;
       p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
-      if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+      int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+      if (folder_tid == 18 || folder_tid == 14) {
         p->linked_editor = new Editor;
         editors.push_back(p->linked_editor);
         p->linked_editor->id = id;
@@ -3185,7 +3191,8 @@ void F_edit(int) {
     p->top_margin = TOP_MARGIN + 1;
     p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
-    if (get_folder_tid(O.rows.at(O.fr).id) == 18) {
+    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    if (folder_tid == 18 || folder_tid == 14) {
       p->linked_editor = new Editor;
       editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
@@ -4231,7 +4238,8 @@ void get_preview(int id) {
   //draw_preview();
 
   if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
 }
