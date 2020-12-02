@@ -89,7 +89,7 @@ void readsome(pstream &pp, int i) {
   h += header;
   */
 
-  logger->info("Just before actual read: {}", i);
+  //logger->info("Just before actual read: {}", i);
   while ((n = pp.out().readsome(buf, sizeof(buf))) > 0) {
     // n will always be zero eventually
      s += std::string{buf, static_cast<size_t>(n)};
@@ -101,6 +101,7 @@ void readsome(pstream &pp, int i) {
     return;
   }
 
+  logger->info("Entering readsome's for loop: {}", i);
   //There may be more than one message to read
   int nn = 0;
   logger->info("RECEIVED (RAW): {}", s);
@@ -536,8 +537,8 @@ void update_html_code_file(std::string &&fn) {
 // this is for local compilation and running
 void update_code_file(void) {
   std::ofstream myfile;
-  //myfile.open("/home/slzatz/pylspclient/test.cpp"); 
-  myfile.open(lsp.client_uri.substr(7) = lsp.file_name); ///////////////////////////////////////////////////////
+  //std::string s = lsp.client_uri.substr(7) + lsp.file_name;
+  myfile.open(lsp.client_uri.substr(7) + lsp.file_name); ///////////////////////////////////////////////////////
   myfile << p->code;
   myfile.close();
 }
