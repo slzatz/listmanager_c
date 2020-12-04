@@ -72,8 +72,9 @@ struct Lsp {
   //std::atomic<bool> code_changed = false;
   //std::atomic<bool> lsp_closed = true;
 };
+std::unordered_map<std::string, Lsp> lsp;
 
-Lsp lsp;
+//Lsp lsp;
 
 void readsome(pstream &pp, int i) {
   char buf[4096]={}; //char buf[1024]{};
@@ -2911,12 +2912,13 @@ int getWindowSize(int *rows, int *cols) {
 
 /**** Outline COMMAND mode functions ****/
 void F_open(int pos) { //C_open - by context
-  std::string new_context;
+  std::string_view cl = O.command_line;
   if (pos) {
     bool success = false;
     //structured bindings
     for (const auto & [k,v] : context_map) {
-      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+      if (k.rfind(cl.substr(pos + 1), 0) == 0) {
+      //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.context = k;
         success = true;
         break;
@@ -2925,7 +2927,8 @@ void F_open(int pos) { //C_open - by context
 
     if (!success) {
       //outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
-      outlineShowMessage2(fmt::format("{} is not a valid  context!", &O.command_line.c_str()[pos + 1]));
+      //outlineShowMessage2(fmt::format("{} is not a valid  context!", &O.command_line.c_str()[pos + 1]));
+      outlineShowMessage2(fmt::format("{} is not a valid  context!", cl.substr(pos + 1)));
       O.mode = NORMAL;
       return;
     }
@@ -2953,17 +2956,20 @@ void F_open(int pos) { //C_open - by context
 }
 
 void F_openfolder(int pos) {
+  std::string_view cl = O.command_line;
   if (pos) {
     bool success = false;
     for (const auto & [k,v] : folder_map) {
-      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+      if (k.rfind(cl.substr(pos + 1), 0) == 0) {
+      //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.folder = k;
         success = true;
         break;
       }
     }
     if (!success) {
-      outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
+      //outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
+      outlineShowMessage2(fmt::format("{} is not a valid  folder!", cl.substr(pos + 1)));
       O.mode = NORMAL;
       return;
     }
@@ -3662,14 +3668,20 @@ void F_lsp(int pos) {
     return;
   }
 
-  if (pos) lsp.name = O.command_line.substr(pos + 1);
-  else lsp.name = "clangd";
+  std::string name;
+  if (pos) name = O.command_line.substr(pos + 1);
+  else {
+    outlineShowMessage("Which lsp do you want?");
+    return;
+  }
 
-  if (lsp.name == "gopls") {
+  if (name.rfind("go", 0) == 0) {
+    lsp.name = "gopls";
     lsp.client_uri = R"(file:///home/slzatz/go/src/example/)";
     lsp.file_name = "hello.go";
     lsp.language = "go";
-  } else if (lsp.name == "clangd") {
+  } else if (name.rfind("cl",0) == 0) {
+    lsp.name = "clangd";
     lsp.client_uri = R"(file:///home/slzatz/pylspclient/)";
     lsp.file_name = "test.cpp";
     lsp.language = "cpp";
