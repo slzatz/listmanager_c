@@ -40,8 +40,6 @@ zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 
 bool run = true; //main while loop
-std::atomic<bool> code_changed = false;
-std::atomic<bool> lsp_closed = true;
 void readsome(pstream &, int);
 
 std::unordered_set<int> navigation = {
@@ -63,20 +61,19 @@ int completion_index;
 
 struct Lsp {
   std::jthread thred;
-  std::string name;
-  pstream lang_server;
-  bool empty = true;
-  std::string file_name;
-  std::string client_uri;
-  std::string language;
-  //std::atomic<bool> code_changed = false;
-  //std::atomic<bool> lsp_closed = true;
+  std::string name{};
+  std::string file_name{};
+  std::string client_uri{};
+  std::string language{};
+  std::atomic<bool> code_changed = false;
+  std::atomic<bool> closed = true;
 };
-std::unordered_map<std::string, Lsp> lsp;
+//std::unordered_map<std::string, Lsp> lsp_map;
+std::vector<Lsp *> lsp_v;
 
 //Lsp lsp;
 
-void readsome(pstream &pp, int i) {
+void readsome(pstream &ls, int i) {
   char buf[4096]={}; //char buf[1024]{};
   std::streamsize n;
   std::string s{}; //used for body of server message
@@ -91,7 +88,7 @@ void readsome(pstream &pp, int i) {
   */
 
   //logger->info("Just before actual read: {}", i);
-  while ((n = pp.out().readsome(buf, sizeof(buf))) > 0) {
+  while ((n = ls.out().readsome(buf, sizeof(buf))) > 0) {
     // n will always be zero eventually
      s += std::string{buf, static_cast<size_t>(n)};
   }
@@ -122,7 +119,7 @@ void readsome(pstream &pp, int i) {
     json js;
     try {
       js = json::parse(ss);
-    } catch(json::parse_error) {
+    } catch(const json::parse_error &) {
       logger->info("PARSE ERROR!");
     return;
     }
@@ -141,7 +138,7 @@ void readsome(pstream &pp, int i) {
         sss = R"({"jsonrpc": "2.0", "result": [], "id": 1})";
         hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
         sss = hhh + sss;
-        lsp.lang_server.write(sss.c_str(), sss.size()).flush();
+        ls.write(sss.c_str(), sss.size()).flush();
         logger->info("sent workspace/configuration message to lsp:\n{}\n", sss);
       } else if (js["method"] == "client/registerCapability") {
         int id = js["id"];
@@ -151,7 +148,7 @@ void readsome(pstream &pp, int i) {
         sss = js.dump();
         hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
         sss = hhh + sss;
-        lsp.lang_server.write(sss.c_str(), sss.size()).flush();
+        ls.write(sss.c_str(), sss.size()).flush();
         logger->info("sent client/registerCapability message to lsp:\n{}\n", sss);
       }
     }
@@ -161,10 +158,18 @@ void readsome(pstream &pp, int i) {
 
 /****************************************************/
 void lsp_thread(std::stop_token st) {
+  //Lsp & lsp = *lsp_v.back();
+  Lsp *lsp = lsp_v.back();
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
+  /*
   if (lsp.name == "clangd") lsp.lang_server = pstream("clangd --log=error", mode);
   else lsp.lang_server = pstream("gopls serve -rpc.trace -logfile /home/slzatz/gopls_log", mode);
   pstream & lang_server = lsp.lang_server;
+  */
+
+  pstream lang_server;
+  if (lsp->name == "clangd") lang_server = pstream("clangd --log=error", mode);
+  else lang_server = pstream("gopls serve -rpc.trace -logfile /home/slzatz/gopls_log", mode);
 
   std::string s;
   json js;
@@ -175,7 +180,7 @@ void lsp_thread(std::stop_token st) {
 
   js = json::parse(s);
   js["params"]["processId"] = pid + 1;
-  js["params"]["workspaceFolders"][0]["uri"] = lsp.client_uri;
+  js["params"]["workspaceFolders"][0]["uri"] = lsp->client_uri;
   s = js.dump();
 
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
@@ -199,8 +204,8 @@ void lsp_thread(std::stop_token st) {
   s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
   js = json::parse(s);
   js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
-  js["params"]["textDocument"]["uri"] = lsp.client_uri + lsp.file_name; //text ? if it escapes automatically
-  js["params"]["textDocument"]["languageId"] = lsp.language; //text ? if it escapes automatically
+  js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
+  js["params"]["textDocument"]["languageId"] = lsp->language; //text ? if it escapes automatically
   s = js.dump();
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
@@ -222,10 +227,10 @@ void lsp_thread(std::stop_token st) {
   js = json::parse(s);
   
   while (!st.stop_requested()) {
-    if (code_changed) {
+    if (lsp->code_changed) {
       js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
       js["params"]["textDocument"]["version"] = ++j; 
-      js["params"]["textDocument"]["uri"] = lsp.client_uri + lsp.file_name; //text ? if it escapes automatically
+      js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
       s = js.dump();
       header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
       s = header + s;
@@ -233,7 +238,7 @@ void lsp_thread(std::stop_token st) {
       logger->info("sent didChange message to lsp:\n{}\n", s);
   
       //readsome(lang_server, j);
-      code_changed = false;
+      lsp->code_changed = false;
     }
     readsome(lang_server, j);
     if (j%100 == 0) logger->info("In while loop{}\n", j);
@@ -252,10 +257,11 @@ void lsp_thread(std::stop_token st) {
   logger->info("sent exit:\n\n");
 
   lang_server.close();
-  lsp_closed = true;
+  lsp->closed = true;
 }
   
-void lsp_start(void) {
+void lsp_start(Lsp * lsp) {
+  /*
   if (!lsp.empty) {
     lsp.thred.request_stop();
     //if lsp_thread crashed then lsp_closed will never become true and
@@ -266,22 +272,31 @@ void lsp_start(void) {
       continue;
     }
   }
-  lsp_closed = false;
-  lsp.thred = std::jthread(lsp_thread);
-  lsp.empty = false;
+  */
+
+  lsp->closed = false;
+  lsp_v.push_back(lsp);
+  lsp->thred = std::jthread(lsp_thread);
 }
 
-void lsp_shutdown(void) {
-  if (lsp.empty) return;
-  lsp.thred.request_stop();
-  time_t time0 = time(nullptr);
-  while (!lsp_closed) {
-    if (difftime(time(nullptr), time0) > 3.0) break;
-    continue;
-  }
-  lsp.thred.join();
-  lsp.empty = true;
+void lsp_shutdown(const std::string s) {
+  //if (lsp_map.empty()) return;
+  if (lsp_v.empty()) return;
+
+  // assuming all for the moment
+  //for (auto & [k,lsp] : lsp_map) {
+  for (auto & lsp : lsp_v) {
+    lsp->thred.request_stop();
+    time_t time0 = time(nullptr);
+    while (!lsp->closed) {
+      if (difftime(time(nullptr), time0) > 3.0) break;
+      continue;
+    }
+  lsp->thred.join();
+  //lsp.empty = true;
+  //should delete lsp_map item
   //lsp_closed = true;//set to false when started
+  }
 }
 
 void do_exit(PGconn *conn) {
@@ -540,9 +555,22 @@ void update_html_code_file(std::string &&fn) {
 void update_code_file(void) {
   std::ofstream myfile;
   std::string file_path;
-  if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
-  else if (get_folder_tid(p->id) == 18) file_path  = "/home/slzatz/pylspclient/test.cpp";
-  else file_path = "/home/slzatz/go/src/example/hello.go";
+  std::string lsp_name;
+  int tid = get_folder_tid(p->id);
+
+  //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
+  if (tid == 18) {
+    file_path  = "/home/slzatz/pylspclient/test.cpp";
+    lsp_name = "clangd";
+  } else {
+    file_path = "/home/slzatz/go/src/example/hello.go";
+    lsp_name = "gopls";
+  }
+
+  if (!lsp_v.empty()) {
+    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+    if (it != lsp_v.end()) (*it)->code_changed = true;
+  }
   myfile.open(file_path); ///////////////////////////////////////////////////////
   myfile << p->code;
   myfile.close();
@@ -2199,7 +2227,7 @@ void update_note(bool is_subnote, bool closing_editor) {
   //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
   if (!is_subnote && !closing_editor && (folder_tid == 18 || folder_tid == 14)) {
     p->code = text;
-    code_changed = true;
+    //code_changed = true;
     update_code_file();
   }
 
@@ -3165,7 +3193,7 @@ void F_edit(int) {
 
   if (!editors.empty()){
     auto it = std::find_if(std::begin(editors), std::end(editors),
-                       [&id](auto& pp) { return pp->id == id; }); //auto&& also works
+                       [&id](auto& ls) { return ls->id == id; }); //auto&& also works
 
     if (it == editors.end()) {
       p = new Editor;
@@ -3660,40 +3688,45 @@ void F_clear(int) {
   p->editorSetMessage("");
 }
 
-void F_lsp(int pos) {
+void F_lsp_start(int pos) {
+  /*
   if (!lsp.empty) {
     lsp_shutdown();
     O.mode = NORMAL;
     outlineShowMessage3("Shutting down {}", lsp.name);
     return;
   }
+  */
 
-  std::string name;
-  if (pos) name = O.command_line.substr(pos + 1);
+  std::string_view name = O.command_line;
+  if (pos) name = name.substr(pos + 1);
   else {
     outlineShowMessage("Which lsp do you want?");
     return;
   }
 
+  Lsp *lsp = new Lsp;
   if (name.rfind("go", 0) == 0) {
-    lsp.name = "gopls";
-    lsp.client_uri = R"(file:///home/slzatz/go/src/example/)";
-    lsp.file_name = "hello.go";
-    lsp.language = "go";
-  } else if (name.rfind("cl",0) == 0) {
-    lsp.name = "clangd";
-    lsp.client_uri = R"(file:///home/slzatz/pylspclient/)";
-    lsp.file_name = "test.cpp";
-    lsp.language = "cpp";
+    lsp->name = "gopls";
+    lsp->client_uri = R"(file:///home/slzatz/go/src/example/)";
+    lsp->file_name = "hello.go";
+    lsp->language = "go";
+  } else if (name.rfind("cl", 0) == 0) {
+    lsp->name = "clangd";
+    lsp->client_uri = R"(file:///home/slzatz/pylspclient/)";
+    lsp->file_name = "test.cpp";
+    lsp->language = "cpp";
   } else {
-    outlineShowMessage3("There is no lsp named {}", lsp.name);
+    outlineShowMessage3("There is no lsp named {}", name);
     O.mode = NORMAL;
     return;
   }
+  //lsp_map[lsp.name] = std::move(lsp); //////////////////////////////
 
-  lsp_start();
+  outlineShowMessage3("Starting {}", lsp->name);
+  //note that lsp gets moved into lsp_v and can't be used after call below
+  lsp_start(lsp);
   O.mode = NORMAL;
-  outlineShowMessage3("Starting {}", lsp.name);
 }
 
 /* OUTLINE NORMAL mode functions */
@@ -6940,7 +6973,7 @@ int main(int argc, char** argv) {
     return_cursor();
   }
   
-  lsp_shutdown();
+  lsp_shutdown("all");
 
 
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen

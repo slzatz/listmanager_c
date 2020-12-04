@@ -44,7 +44,7 @@ void F_clear(int pos); // pos not used
 void F_copy_entry(int);
 //void F_restart_lsp(int);
 //void F_shutdown_lsp(int);
-void F_lsp(int);
+void F_lsp_start(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
@@ -118,6 +118,6 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"clear", F_clear},
   //{"restart_lsp", F_restart_lsp},
   //{"shutdown_lsp", F_shutdown_lsp},
-  {"lsp", F_lsp},
+  {"lsp", F_lsp_start},
 
 };
