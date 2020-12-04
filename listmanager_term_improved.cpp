@@ -68,26 +68,16 @@ struct Lsp {
   std::atomic<bool> code_changed = false;
   std::atomic<bool> closed = true;
 };
-//std::unordered_map<std::string, Lsp> lsp_map;
-std::vector<Lsp *> lsp_v;
 
-//Lsp lsp;
+// the vector that holds pointers to lsp structs
+std::vector<Lsp *> lsp_v;
 
 void readsome(pstream &ls, int i) {
   char buf[4096]={}; //char buf[1024]{};
   std::streamsize n;
   std::string s{}; //used for body of server message
   std::string h{}; //used to log header of server message
-  /*
-  std::string header{};
-  logger->info("Just before header read {}:\n{}\n{}\n", i, h, s);
-  std::getline(pp, header);
-  h = header;
-  std::getline(pp, header);
-  h += header;
-  */
 
-  //logger->info("Just before actual read: {}", i);
   while ((n = ls.out().readsome(buf, sizeof(buf))) > 0) {
     // n will always be zero eventually
      s += std::string{buf, static_cast<size_t>(n)};
@@ -115,7 +105,6 @@ void readsome(pstream &ls, int i) {
     std::string ss = s.substr(h.size(), stoi(length));
     logger->info("read lsp message {} nn {}:\n{}\n{}\n", i, nn, h, ss);
 
-
     json js;
     try {
       js = json::parse(ss);
@@ -129,8 +118,6 @@ void readsome(pstream &ls, int i) {
     if (js.contains("method")) {
       if (js["method"] == "textDocument/publishDiagnostics") {
         json diagnostics = js["params"]["diagnostics"];
-        // right now in outline mode when starting lsp
-        //if (editor_mode && p) p->decorate_errors(diagnostics);
         if (p) p->decorate_errors(diagnostics); //not sure need if (p)
       } else if (js["method"] == "workspace/configuration") {
         //s = R"({"jsonrpc": "2.0", "result": [{"caseSensitiveCompletion": true}, null], "id": 1})";
@@ -186,7 +173,7 @@ void lsp_thread(std::stop_token st) {
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent initialization message to lsp:\n{}\n", s);
+  logger->info("sent initialization message to {}:\n{}\n", lsp->name, s);
 
 
   //initialization from client produces a capabilities response
@@ -198,7 +185,7 @@ void lsp_thread(std::stop_token st) {
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent initialized message to lsp:\n{}\n", s);
+  logger->info("sent initialized message to {}:\n{}\n", lsp->name, s);
   
   //client sends didOpen notification
   s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
@@ -210,14 +197,14 @@ void lsp_thread(std::stop_token st) {
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent didOpen message to lsp:\n{}\n", s);
+  logger->info("sent didOpen message to {}:\n{}\n", lsp->name, s);
   
   readsome(lang_server, 2); //reads initial diagnostics
   
   //int j = 2;
 
   for (int i=3; i<6;i++) { 
-    logger->info("Just before readsome {}:\n", i);
+    logger->info("Reading response from {} - {}:\n", lsp->name, i);
     readsome(lang_server, i);
   }
   int j = 5;
@@ -235,7 +222,7 @@ void lsp_thread(std::stop_token st) {
       header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
       s = header + s;
       lang_server.write(s.c_str(), s.size()).flush();
-      logger->info("sent didChange message to lsp:\n{}\n", s);
+      logger->info("sent didChange message to {}:\n{}\n", lsp->name, s);
   
       //readsome(lang_server, j);
       lsp->code_changed = false;
@@ -248,13 +235,13 @@ void lsp_thread(std::stop_token st) {
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent shutdown:\n\n");
+  logger->info("sent shutdown to {}:\n\n", lsp->name);
   std::this_thread::sleep_for(std::chrono::seconds(1));
   s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
   header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
   s = header + s;
   lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent exit:\n\n");
+  logger->info("sent exit to {}:\n\n", lsp->name);
 
   lang_server.close();
   lsp->closed = true;
@@ -292,7 +279,8 @@ void lsp_shutdown(const std::string s) {
       if (difftime(time(nullptr), time0) > 3.0) break;
       continue;
     }
-  lsp->thred.join();
+    lsp->thred.join();
+    delete lsp;
   //lsp.empty = true;
   //should delete lsp_map item
   //lsp_closed = true;//set to false when started
@@ -3721,10 +3709,8 @@ void F_lsp_start(int pos) {
     O.mode = NORMAL;
     return;
   }
-  //lsp_map[lsp.name] = std::move(lsp); //////////////////////////////
 
   outlineShowMessage3("Starting {}", lsp->name);
-  //note that lsp gets moved into lsp_v and can't be used after call below
   lsp_start(lsp);
   O.mode = NORMAL;
 }
