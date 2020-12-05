@@ -73,6 +73,11 @@ struct Lsp {
 std::vector<Lsp *> lsp_v;
 
 void readsome(pstream &ls, int i) {
+
+  //for logging purposes
+  std::size_t pos = ls.command().find(' ');
+  std::string_view cmd = ls.command();
+  cmd = cmd.substr(0, pos);
   char buf[4096]={}; //char buf[1024]{};
   std::streamsize n;
   std::string s{}; //used for body of server message
@@ -85,14 +90,14 @@ void readsome(pstream &ls, int i) {
 
   if (s.empty()) return;
   if (s.size() > 4000) {
-    logger->warn("Message lsp returned is greater than 4000 chars!");
+    logger->warn("Message {} returned is greater than 4000 chars!", cmd);
     return;
   }
 
-  logger->info("Entering readsome's for loop: {}", i);
+  //logger->info("Entering readsome's for loop: {}", i);
   //There may be more than one message to read
   int nn = 0;
-  logger->info("RECEIVED (RAW): {}", s);
+  //logger->info("RECEIVED (RAW): {}", s);
   for (;;) {
     nn++;
     if (s.empty()) return;
@@ -103,7 +108,7 @@ void readsome(pstream &ls, int i) {
     std::string length = h.substr(pos + 2, h.size()-4 -2 - pos); //length 2 awat from colon
     logger->info("length: {}", stoi(length));
     std::string ss = s.substr(h.size(), stoi(length));
-    logger->info("read lsp message {} nn {}:\n{}\n{}\n", i, nn, h, ss);
+    logger->info("read {} message {} nn {}:\n{}\n{}\n", cmd, i, nn, h, ss);
 
     json js;
     try {
@@ -126,7 +131,7 @@ void readsome(pstream &ls, int i) {
         hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
         sss = hhh + sss;
         ls.write(sss.c_str(), sss.size()).flush();
-        logger->info("sent workspace/configuration message to lsp:\n{}\n", sss);
+        logger->info("sent workspace/configuration message to {}:\n{}\n", cmd, sss);
       } else if (js["method"] == "client/registerCapability") {
         int id = js["id"];
         sss = R"({"jsonrpc": "2.0", "result": {}, "id": 2})";
@@ -136,7 +141,7 @@ void readsome(pstream &ls, int i) {
         hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
         sss = hhh + sss;
         ls.write(sss.c_str(), sss.size()).flush();
-        logger->info("sent client/registerCapability message to lsp:\n{}\n", sss);
+        logger->info("sent client/registerCapability message to {}:\n{}\n", cmd, sss);
       }
     }
     s = s.substr(h.size() + stoi(length));
@@ -145,15 +150,8 @@ void readsome(pstream &ls, int i) {
 
 /****************************************************/
 void lsp_thread(std::stop_token st) {
-  //Lsp & lsp = *lsp_v.back();
   Lsp *lsp = lsp_v.back();
   const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
-  /*
-  if (lsp.name == "clangd") lsp.lang_server = pstream("clangd --log=error", mode);
-  else lsp.lang_server = pstream("gopls serve -rpc.trace -logfile /home/slzatz/gopls_log", mode);
-  pstream & lang_server = lsp.lang_server;
-  */
-
   pstream lang_server;
   if (lsp->name == "clangd") lang_server = pstream("clangd --log=error", mode);
   else lang_server = pstream("gopls serve -rpc.trace -logfile /home/slzatz/gopls_log", mode);
@@ -228,7 +226,6 @@ void lsp_thread(std::stop_token st) {
       lsp->code_changed = false;
     }
     readsome(lang_server, j);
-    if (j%100 == 0) logger->info("In while loop{}\n", j);
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
   s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
