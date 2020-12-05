@@ -3193,10 +3193,11 @@ void F_edit(int) {
         p->linked_editor = new Editor;
         editors.push_back(p->linked_editor);
         p->linked_editor->id = id;
-        p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-        p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+        //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+        //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
         p->linked_editor->is_subeditor = true;
         p->linked_editor->linked_editor = p;
+        p->left_margin_offset = 3;
       } 
       get_note(id); //if id == -1 does not try to retrieve note
       
@@ -3208,17 +3209,18 @@ void F_edit(int) {
     editors.push_back(p);
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
-    p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+    //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
     int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
     if (folder_tid == 18 || folder_tid == 14) {
       p->linked_editor = new Editor;
       editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
-      p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-      p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
       p->linked_editor->is_subeditor = true;
       p->linked_editor->linked_editor = p;
+      p->left_margin_offset = 3;
     }
     get_note(id); //if id == -1 does not try to retrieve note
  }
@@ -4982,7 +4984,7 @@ void return_cursor() {
   // the lines below position the cursor where it should go
     if (p->mode != COMMAND_LINE){
       //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + 1); //03022019
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + p->left_margin_offset + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
       snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", Editor::total_screenlines + TOP_MARGIN + 2, p->command_line.size() + O.divider + 2); 

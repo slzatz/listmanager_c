@@ -149,13 +149,13 @@ bool Editor::find_match_for_left_brace(char left_brace, bool back) {
   //if (y == screenlines) return false;
   if (y >= screenlines) return false;
 
-  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
+  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + left_margin_offset + 1;
   std::stringstream s;
   s << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m"
     << right_brace;
     //<< "\x1b[0m";
 
-  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
+  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + left_margin_offset + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m" //"\x1b[48;5;31m"
     << left_brace
@@ -200,13 +200,13 @@ bool Editor::find_match_for_right_brace(char right_brace, bool back) {
   int y = editorGetScreenYFromRowColWW(r, c) - line_offset; 
   if (y < 0) return false;
 
-  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
+  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + left_margin_offset + 1;
   std::stringstream s;
   s << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m"
     << left_brace;
     //<< "\x1b[0m";
 
-  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + 1;
+  x = editorGetScreenXFromRowColWW(fr, fc-back) + left_margin + left_margin_offset + 1;
   y = editorGetScreenYFromRowColWW(fr, fc-back) + top_margin - line_offset; // added line offset 12-25-2019
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;244m"
     << right_brace
@@ -339,12 +339,12 @@ std::vector<std::string> Editor::str2vecWW(std::string str) {
     if (pos == std::string::npos) {
       s = str.substr(prev_pos);
       for(;;) {
-        if (s.size() < screencols) {
+        if (s.size() < screencols - left_margin_offset) {
           vec.push_back(s);
           break;
         } else {
-          vec.push_back(s.substr(0, screencols - 1));
-          s = s.substr(screencols - 1); 
+          vec.push_back(s.substr(0, screencols - left_margin_offset - 1));
+          s = s.substr(screencols - left_margin_offset - 1); 
         }
       }  
       return vec;
@@ -352,12 +352,12 @@ std::vector<std::string> Editor::str2vecWW(std::string str) {
 
       s = str.substr(prev_pos, pos - prev_pos); //2nd parameter is length!
       for(;;) {
-        if (s.size() < screencols) {
+        if (s.size() < screencols - left_margin_offset) {
           vec.push_back(s);
           break;
         } else {
-          vec.push_back(s.substr(0, screencols - 1));
-          s = s.substr(screencols - 1); 
+          vec.push_back(s.substr(0, screencols - left_margin_offset - 1));
+          s = s.substr(screencols - left_margin_offset - 1); 
         }
       }  
 
@@ -969,14 +969,14 @@ void Editor::editorSpellCheck(void) {
 
   //reposition the cursor back to where it belongs
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + 1); //03022019
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + left_margin_offset + 1); //03022019
   write(STDOUT_FILENO, buf, strlen(buf));
 }
 
 // called by editorSpellCheck
 void Editor::editorHighlightWord(int r, int c, int len) {
   std::string &row = rows.at(r);
-  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + 1;
+  int x = editorGetScreenXFromRowColWW(r, c) + left_margin + left_margin_offset + 1;
   int y = editorGetScreenYFromRowColWW(r, c) + top_margin - line_offset; // added line offset 12-25-2019
   std::stringstream s;
   s << "\x1b[" << y << ";" << x << "H" << "\x1b[48;5;31m"
@@ -1204,7 +1204,7 @@ void Editor::editorRefreshScreen(bool draw) {
 
   // the lines below position the cursor where it should go
   if (mode != COMMAND_LINE){
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + 1); //03022019
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + top_margin, cx + left_margin + left_margin_offset + 1); //03022019
     ab.append(buf, strlen(buf));
   }
 
@@ -1367,9 +1367,9 @@ void Editor::editorDrawRows(std::string &ab) {
     int prev_pos;
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
-      if (row.substr(pos+1).size() <= screencols) {
-        ab.append(row, pos+1, screencols);
-        abs.append(row, pos+1, screencols);
+      if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
+        ab.append(row, pos+1, screencols - left_margin_offset);
+        abs.append(row, pos+1, screencols - left_margin_offset);
         if (y == screenlines - 1) {flag=true; break;}
         ab.append(lf_ret);
         y++;
@@ -1378,15 +1378,15 @@ void Editor::editorDrawRows(std::string &ab) {
       }
 
       prev_pos = pos;
-      pos = row.find_last_of(' ', pos+screencols);
+      pos = row.find_last_of(' ', pos+screencols - left_margin_offset);
 
       //note npos when signed = -1 and order of if/else may matter
       if (pos == std::string::npos) {
-        pos = prev_pos + screencols;
+        pos = prev_pos + screencols - left_margin_offset;
       } else if (pos == prev_pos) {
         row = row.substr(pos+1);
         prev_pos = -1;
-        pos = screencols - 1;
+        pos = screencols - left_margin_offset - 1;
       }
 
       ab.append(row, prev_pos+1, pos-prev_pos);
@@ -1403,6 +1403,72 @@ void Editor::editorDrawRows(std::string &ab) {
 }
 
 void Editor::editorDrawCodeRows(std::string &ab) {
+  //save the current file to code_file with correct extension
+  std::ofstream myfile;
+  myfile.open("code_file"); 
+  myfile << editorGenerateWWString();
+  myfile.close();
+
+  std::stringstream display;
+  std::string line;
+
+  // below is a quick hack folder tid = 18 -> code
+  if (get_folder_tid(id) == 18) {
+    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
+   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  } else if (get_folder_tid(id) == 14) {
+    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
+                             "--style=gruvbox-dark-hard-slz", "--syntax=go");
+   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  } else {
+    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
+                               "--color=always", "--language=md.hbs", "--italic-text=always",
+                               "--theme=gruvbox-markdown");
+    highlight.exec();
+    while(getline(highlight.output(), line)) { display << line << '\n';}
+  }
+
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
+  ab.append(buf.str());
+
+  /*
+  std::stringstream buf2;
+  buf2 << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
+  ab.append(buf2.str()); //reposition cursor
+  */
+
+  // this to deal with wrapped comments using // so whole comment is in italics
+  std::string s = display.str();
+  std::replace(s.begin(), s.end(), '\t', '\n');
+
+  //display.clear();
+  //display.seekg(0, std::ios::beg);
+  display.str(s);
+  int n = 0;
+  while(std::getline(display, line, '\n')) {
+    if (n >= line_offset) {
+      ab.append(fmt::format("{:>2} ", n));
+      ab.append(line);
+      ab.append(lf_ret);
+    }
+    n++;
+  }
+  draw_visual(ab);
+}
+
+void Editor::editorDrawCodeRows_orig(std::string &ab) {
   //save the current file to code_file with correct extension
   std::ofstream myfile;
   myfile.open("code_file"); 
@@ -1464,16 +1530,15 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   }
   draw_visual(ab);
 }
-
 void Editor::draw_visual(std::string &ab) {
 
   char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin + left_margin_offset);
 
   if (mode == VISUAL_LINE) {
 
     // \x1b[NC moves cursor forward by N columns
-    snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+    snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin + left_margin_offset);
 
     int h_light[2] = {0,0};
     if (highlight[1] < highlight[0]) { 
@@ -1484,7 +1549,7 @@ void Editor::draw_visual(std::string &ab) {
       h_light[1] = highlight[1];
     }
 
-    int x = left_margin + 1;
+    int x = left_margin + left_margin_offset + 1;
     //int y = editorGetScreenYFromRowColWW(h_light[0], 0) + top_margin - line_offset; 
     int y = editorGetScreenYFromRowColWW(h_light[0], 0) - line_offset;
     std::stringstream ss;
@@ -1525,7 +1590,7 @@ void Editor::draw_visual(std::string &ab) {
 
     // someday cleanup the multiple calls to editorGetLineInRow
     int pos = editorGetScreenXFromRowColWW(fr, h_light[0]);
-    int x = pos + left_margin + 1;
+    int x = pos + left_margin + left_margin_offset + 1;
     int y = editorGetScreenYFromRowColWW(fr, h_light[0]) + top_margin - line_offset; 
     std::string fragment = rows.at(fr).substr(h_light[0], h_light[1] - h_light[0] + 1);
     std::stringstream ss;
@@ -1561,7 +1626,7 @@ void Editor::draw_visual(std::string &ab) {
   }
 
   if (mode == VISUAL_BLOCK) {
-    int x = editorGetScreenXFromRowColWW(vb0[1], vb0[0]) + left_margin + 1;
+    int x = editorGetScreenXFromRowColWW(vb0[1], vb0[0]) + left_margin + left_margin_offset + 1;
     int y = editorGetScreenYFromRowColWW(vb0[1], vb0[0]) + top_margin - line_offset; 
     ab.append("\x1b[48;5;244m");
     for (int n=0; n < (fr-vb0[1] + 1);++n) {
@@ -2007,25 +2072,25 @@ int Editor::editorGetScreenXFromRowColWW(int r, int c) {
    * and pos+1 is the position of first character of the next row
    */
 
-  if (row.size() <= screencols ) return c; //seems obvious but not added until 03022019
+  if (row.size() <= screencols - left_margin_offset ) return c; //seems obvious but not added until 03022019
 
   int pos = -1;
   int prev_pos;
   for (;;) {
 
-  if (row.substr(pos+1).size() <= screencols) {
+  if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
     prev_pos = pos;
     break;
   }
 
   prev_pos = pos;
-  pos = row.find_last_of(' ', pos+screencols);
+  pos = row.find_last_of(' ', pos+screencols - left_margin_offset);
 
   if (pos == std::string::npos) {
-      pos = prev_pos + screencols;
+      pos = prev_pos + screencols - left_margin_offset;
   } else if (pos == prev_pos) {
       replace(row.begin(), row.begin()+pos+1, ' ', '+');
-      pos = prev_pos + screencols;
+      pos = prev_pos + screencols - left_margin_offset;
   }
     /*
     else
@@ -2055,7 +2120,7 @@ int Editor::editorGetLineInRowWW(int r, int c) {
   // can't use reference to row because replacing blanks to handle corner case
   std::string row = rows.at(r);
 
-  if (row.size() <= screencols ) return 1; //seems obvious but not added until 03022019
+  if (row.size() <= screencols - left_margin_offset ) return 1; //seems obvious but not added until 03022019
 
   /* pos is the position of the last char in the line
    * and pos+1 is the position of first character of the next row
@@ -2068,23 +2133,23 @@ int Editor::editorGetLineInRowWW(int r, int c) {
 
     // we know the first time around this can't be true
     // could add if (line > 1 && row.substr(pos+1).size() ...);
-    if (row.substr(pos+1).size() <= screencols) {
+    if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
       lines++;
       break;
     }
 
     prev_pos = pos;
-    pos = row.find_last_of(' ', pos+screencols);
+    pos = row.find_last_of(' ', pos+screencols - left_margin_offset);
 
     if (pos == std::string::npos) {
-        pos = prev_pos + screencols;
+        pos = prev_pos + screencols - left_margin_offset;
 
    // only replace if you have enough characters without a space to trigger this
    // need to start at the beginning each time you hit this
    // unless you want to save the position which doesn't seem worth it
     } else if (pos == prev_pos) {
       replace(row.begin(), row.begin()+pos+1, ' ', '+');
-      pos = prev_pos + screencols;
+      pos = prev_pos + screencols - left_margin_offset;
     }
 
     lines++;
@@ -2097,7 +2162,7 @@ int Editor::editorGetLineInRowWW(int r, int c) {
 int Editor::editorGetLinesInRowWW(int r) {
   std::string_view row(rows.at(r));
 
-  if (row.size() <= screencols) return 1; //seems obvious but not added until 03022019
+  if (row.size() <= screencols - left_margin_offset) return 1; //seems obvious but not added until 03022019
 
   int lines = 0;
   int pos = -1; //pos is the position of the last character in the line (zero-based)
@@ -2106,22 +2171,22 @@ int Editor::editorGetLinesInRowWW(int r) {
 
     // we know the first time around this can't be true
     // could add if (line > 1 && row.substr(pos+1).size() ...);
-    if (row.substr(pos+1).size() <= screencols) {
+    if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
       lines++;
       break;
     }
 
     prev_pos = pos;
-    pos = row.find_last_of(' ', pos+screencols);
+    pos = row.find_last_of(' ', pos+screencols - left_margin_offset);
 
     //note npos when signed = -1
     //order can be reversed of if, else if and can drop prev_pos != -1: see editorDrawRows
     if (pos == std::string::npos) {
-      pos = prev_pos + screencols;
+      pos = prev_pos + screencols - left_margin_offset;
     } else if (pos == prev_pos) {
       row = row.substr(pos+1);
       //prev_pos = -1; 12-27-2019
-      pos = screencols - 1;
+      pos = screencols - left_margin_offset - 1;
     }
     lines++;
   }
@@ -2162,7 +2227,7 @@ std::string Editor::editorGenerateWWString(void) {
     size_t prev_pos = 0; //this should really be called prev_pos_plus_one
     for (;;) {
       // if remainder of line is less than screen width
-      if (prev_pos + screencols > row.size() - 1) {
+      if (prev_pos + screencols - left_margin_offset > row.size() - 1) {
         ab.append(row.substr(prev_pos));
         if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
         ab.append(1, '\n');
@@ -2171,9 +2236,9 @@ std::string Editor::editorGenerateWWString(void) {
         break;
       }
 
-      pos = row.find_last_of(' ', prev_pos + screencols - 1);
+      pos = row.find_last_of(' ', prev_pos + screencols - left_margin_offset - 1);
       if (pos == std::string::npos || pos == prev_pos - 1) {
-        pos = prev_pos + screencols - 1;
+        pos = prev_pos + screencols - left_margin_offset - 1;
       }
       ab.append(row.substr(prev_pos, pos - prev_pos + 1));
       if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
@@ -2248,7 +2313,7 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
   std::string row = rows.at(r);
   if (row.empty()) return 0;
 
-  if (row.size() <= screencols) return row.size();
+  if (row.size() <= screencols - left_margin_offset) return row.size();
 
   int lines = 0; //1
   int pos = -1;
@@ -2257,22 +2322,22 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 
   // we know the first time around this can't be true
   // could add if (line > 1 && row.substr(pos+1).size() ...);
-  if (row.substr(pos+1).size() <= screencols) {
+  if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
     return row.substr(pos+1).size();
   }
 
   prev_pos = pos;
-  pos = row.find_last_of(' ', pos+screencols);
+  pos = row.find_last_of(' ', pos+screencols - left_margin_offset);
 
   if (pos == std::string::npos) {
-    pos = prev_pos + screencols;
+    pos = prev_pos + screencols - left_margin_offset;
 
   // only replace if you have enough characters without a space to trigger this
   // need to start at the beginning each time you hit this
   // unless you want to save the position which doesn't seem worth it
   } else if (pos == prev_pos) {
     replace(row.begin(), row.begin()+pos+1, ' ', '+');
-    pos = prev_pos + screencols;
+    pos = prev_pos + screencols - left_margin_offset;
   }
 
   lines++;
@@ -3126,7 +3191,7 @@ void Editor::decorate_errors(const json& diagnostics) {
       return;
   }
 
-    int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + 1 + end_of_line;
+    int x = editorGetScreenXFromRowColWW(start_line, start_char) + left_margin + left_margin_offset + 1 + end_of_line;
 
     std::stringstream ss;
     ss << "\x1b[" << y + top_margin << ";" << x << "H" << "\x1b[48;5;244m" << fragment << "\x1b[0m";

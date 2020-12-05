@@ -57,6 +57,7 @@ class Editor {
       //screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
       linked_editor = nullptr;
       is_subeditor = false;
+      left_margin_offset = 0; // 0 if no line numbers
 }
 
     int cx, cy; //cursor x and y position
@@ -67,6 +68,7 @@ class Editor {
     int screenlines; //number of lines for this Editor
     int screencols;  //number of columns for this Editor
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
+    int left_margin_offset; // 0 if no line numbers
     int top_margin;
     //int total_screenlines; //number of lines in display -> made this static
     std::vector<std::string> rows;
@@ -233,6 +235,7 @@ class Editor {
     void editorDrawStatusBar(std::string &);
     void editorDrawRows(std::string &);
     void editorDrawCodeRows(std::string &);
+    void editorDrawCodeRows_orig(std::string &);
     void draw_visual(std::string &);
     void editorHighlightWordsByPosition(void);
     void editorYankLine(int);
