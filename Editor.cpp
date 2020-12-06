@@ -1455,11 +1455,19 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   std::replace(s.begin(), s.end(), '\t', '\n');
   display.str(s);
   */
+  /*
+  char buf0[50];
+  snprintf(buf0, sizeof(buf0), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+              top_margin, left_margin, screenlines, 4);
+  ab.append(buf0);
+  */
 
+  ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
   int n = 0;
   while(std::getline(display, line, '\n')) {
     if (n >= line_offset) {
-      ab.append(fmt::format("{:>2} ", n));
+      //ab.append(fmt::format("{:>2} ", n));
+      ab.append(fmt::format("\x1b[48;5;235m\x1b[38;5;245m{:>2} \x1b[0m", n));
       if (line.find('\t') != std::string::npos) {
         for (;;) {
           size_t pos = line.find('\t');

@@ -4601,49 +4601,38 @@ void highlight_terms_string(std::string &text) {
 
 std::string draw_preview_box(int width, int length) {
   std::string ab;
-  //char move_cursor[20];
   fmt::memory_buffer move_cursor;
   fmt::format_to(move_cursor, "\x1b[{}C", width);
-  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[%dC", width);
   ab.append("\x1b(0"); // Enter line drawing mode
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6); 
   fmt::memory_buffer buf;
   fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6); 
   ab.append(buf.data(), buf.size());
   buf.clear();
   ab.append("\x1b[37;1ml"); //upper left corner
   for (int j=1; j<length; j++) { //+1
-   // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5 + j, O.divider + 6); 
     fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, O.divider + 6); 
     ab.append(buf.data(), buf.size());
     buf.clear();
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
+    // x=0x78 vertical line (q=0x71 is horizontal) 37=white; 1m=bold (only need 1 m)
     ab.append("\x1b[37;1mx");
     ab.append(move_cursor.data(), move_cursor.size());
     ab.append("\x1b[37;1mx");
   }
-  //ab.append(buf); //might be needed!!
   ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, O.divider + 6));
   ab.append("\x1b[1B");
   ab.append("\x1b[37;1mm"); //lower left corner
 
   move_cursor.clear();
-  //snprintf(move_cursor, sizeof(move_cursor), "\x1b[1D\x1b[%dB", length);
   fmt::format_to(move_cursor, "\x1b[1D\x1b[{}B", length);
   for (int j=1; j<width+1; j++) {
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 6 + j); 
     fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6 + j); 
     ab.append(buf.data(), buf.size());
     buf.clear();
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
     ab.append("\x1b[37;1mq");
     ab.append(move_cursor.data(), move_cursor.size());
     ab.append("\x1b[37;1mq");
   }
   ab.append("\x1b[37;1mj"); //lower right corner
-  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 5, O.divider + 7 + width); 
   fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 7 + width); 
   ab.append(buf.data(), buf.size());
   ab.append("\x1b[37;1mk"); //upper right corner
