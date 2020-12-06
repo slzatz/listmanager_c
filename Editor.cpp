@@ -1450,16 +1450,26 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   */
 
   // this to deal with wrapped comments using // so whole comment is in italics
+  /*
   std::string s = display.str();
   std::replace(s.begin(), s.end(), '\t', '\n');
-
-  //display.clear();
-  //display.seekg(0, std::ios::beg);
   display.str(s);
+  */
+
   int n = 0;
   while(std::getline(display, line, '\n')) {
     if (n >= line_offset) {
       ab.append(fmt::format("{:>2} ", n));
+      if (line.find('\t') != std::string::npos) {
+        for (;;) {
+          size_t pos = line.find('\t');
+          if (pos == std::string::npos) break; 
+          ab.append(line, 0, pos);
+          ab.append(lf_ret);
+          ab.append("   ");
+          line = line.substr(pos + 1);
+        }
+      }  
       ab.append(line);
       ab.append(lf_ret);
     }
@@ -1468,6 +1478,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   draw_visual(ab);
 }
 
+/*
 void Editor::editorDrawCodeRows_orig(std::string &ab) {
   //save the current file to code_file with correct extension
   std::ofstream myfile;
@@ -1530,6 +1541,8 @@ void Editor::editorDrawCodeRows_orig(std::string &ab) {
   }
   draw_visual(ab);
 }
+*/
+
 void Editor::draw_visual(std::string &ab) {
 
   char lf_ret[10];
@@ -2213,6 +2226,57 @@ std::string Editor::editorGenerateWWString(void) {
     char ret = '\n';
     std::string_view row = rows.at(filerow);
     // if you put a \n in the middle of a comment the wrapped portion won't be italic
+    //if (row.find("//") != std::string::npos) ret = '\t';
+    ret = '\t';
+
+    if (row.empty()) {
+      if (y == screenlines - 1) return ab;
+      ab.append("\n");
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + screencols - left_margin_offset > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+        if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+        ab.append(1, '\n');
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + screencols - left_margin_offset - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + screencols - left_margin_offset - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
+      ab.append(1, ret); //this appears to be the only placew intraline take place so make them all \t
+      y++;
+      prev_pos = pos + 1;
+    }
+  }
+}
+
+/*
+std::string Editor::editorGenerateWWString(void) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  int y = -line_offset;
+  int filerow = 0;
+
+  for (;;) {
+    if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+
+    char ret = '\n';
+    std::string_view row = rows.at(filerow);
+    // if you put a \n in the middle of a comment the wrapped portion won't be italic
     if (row.find("//") != std::string::npos) ret = '\t';
 
     if (row.empty()) {
@@ -2242,14 +2306,13 @@ std::string Editor::editorGenerateWWString(void) {
       }
       ab.append(row.substr(prev_pos, pos - prev_pos + 1));
       if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-      ab.append(1, ret);
+      ab.append(1, ret); //this appears to be the only placew intraline take place so make them all \t
       y++;
       prev_pos = pos + 1;
     }
   }
 }
 
-/*
 std::string Editor::editorGenerateWWString_orig(void) {
   if (rows.empty()) return "";
 
