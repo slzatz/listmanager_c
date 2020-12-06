@@ -516,13 +516,19 @@ void update_html_code_file(std::string &&fn) {
   myfile << note;
   myfile.close();
 
+  /*
   procxx::process highlight("highlight", "code_file", "--out-format=html", 
                              "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
   highlight.exec();
-
+  */
   std::stringstream html;
   std::string line;
-  while(getline(highlight.output(), line)) { html << line << '\n';}
+  int tid = get_folder_tid(O.rows.at(O.fr).id);
+  ipstream highlight(fmt::format("highlight code_file --out-format=html "
+                             "--style=gruvbox-dark-hard-slz --syntax={}",
+                             (tid == 18) ? "cpp" : "go"));
+
+  while(getline(highlight, line)) { html << line << '\n';}
  
   int fd;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {

@@ -27,6 +27,7 @@
 #include <chrono>
 #include <iomanip>  //provides get_time used in time_delta function
 #include <fmt/format.h>
+#include <fcntl.h> //file locking
 
 void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 
@@ -73,7 +74,7 @@ int link_id = 0;
 char link_text[20];
 int current_task_id;
 std::unordered_set<int> marked_entries;
-struct flock lock;
+struct flock lock; 
 std::vector<std::string> line_buffer = {}; //yanking lines
 
 struct sqlite_db {

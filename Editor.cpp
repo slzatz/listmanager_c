@@ -9,6 +9,9 @@
 #include <array>
 #include <unordered_map>
 #include "base64.hpp"
+#include "pstream.h"
+
+using namespace redi;
 
 // static members of Editor class
 std::vector<std::string> Editor::line_buffer = {}; 
@@ -1412,57 +1415,29 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   std::stringstream display;
   std::string line;
 
-  // below is a quick hack folder tid = 18 -> code
-  if (get_folder_tid(id) == 18) {
-    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  } else if (get_folder_tid(id) == 14) {
-    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=go");
-   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  } else {
-    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
+  int tid = get_folder_tid(id);
+  ipstream highlight(fmt::format("highlight code_file --out-format=xterm256 "
+                             "--style=gruvbox-dark-hard-slz --syntax={}",
+                             (tid == 18) ? "cpp" : "go"));
+  
+
+  while(getline(highlight, line)) {display << line << '\n';}
+
+  /* if we did markdown
+  highlight("bat", "code_file", "--style=plain", "--paging=never", 
                                "--color=always", "--language=md.hbs", "--italic-text=always",
                                "--theme=gruvbox-markdown");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  }
+  */
 
-  char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
+  std::string lf_ret = fmt::format("\r\n\x1b[{}C", left_margin);
   ab.append("\x1b[?25l"); //hides the cursor
+  ab.append(fmt::format("\x1b[{};{}H", top_margin, left_margin + 1));
 
-  std::stringstream buf;
-  // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
-  ab.append(buf.str());
-
-  /*
-  std::stringstream buf2;
-  buf2 << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
-  ab.append(buf2.str()); //reposition cursor
-  */
-
-  // this to deal with wrapped comments using // so whole comment is in italics
-  /*
-  std::string s = display.str();
-  std::replace(s.begin(), s.end(), '\t', '\n');
-  display.str(s);
-  */
-  /*
-  char buf0[50];
-  snprintf(buf0, sizeof(buf0), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
-              top_margin, left_margin, screenlines, 4);
-  ab.append(buf0);
-  */
-
-  ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+  // below draws the line number 'rectangle' only matters for the word-wrapped lines
+  ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
+               top_margin, left_margin, top_margin + screenlines, left_margin + 3));
+  // In the code below `\t' are the returns in lines that word wrap - last return is always '\n'
   int n = 0;
   while(std::getline(display, line, '\n')) {
     if (n >= line_offset) {
@@ -1474,7 +1449,8 @@ void Editor::editorDrawCodeRows(std::string &ab) {
           if (pos == std::string::npos) break; 
           ab.append(line, 0, pos);
           ab.append(lf_ret);
-          ab.append("   ");
+          //ab.append("   ");
+          ab.append("\x1b[3C");
           line = line.substr(pos + 1);
         }
       }  
@@ -1485,71 +1461,6 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   }
   draw_visual(ab);
 }
-
-/*
-void Editor::editorDrawCodeRows_orig(std::string &ab) {
-  //save the current file to code_file with correct extension
-  std::ofstream myfile;
-  myfile.open("code_file"); 
-  myfile << editorGenerateWWString();
-  myfile.close();
-
-  std::stringstream display;
-  std::string line;
-
-  // below is a quick hack folder tid = 18 -> code
-  if (get_folder_tid(id) == 18) {
-    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  } else if (get_folder_tid(id) == 14) {
-    procxx::process highlight("highlight", "code_file", "--out-format=xterm256", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=go");
-   // procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", "--color=always", "--language=cpp", "--theme=gruvbox");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  } else {
-    procxx::process highlight("bat", "code_file", "--style=plain", "--paging=never", 
-                               "--color=always", "--language=md.hbs", "--italic-text=always",
-                               "--theme=gruvbox-markdown");
-    highlight.exec();
-    while(getline(highlight.output(), line)) { display << line << '\n';}
-  }
-
-  char lf_ret[10];
-  // \x1b[NC moves cursor forward by N columns
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", left_margin);
-  ab.append("\x1b[?25l"); //hides the cursor
-
-  std::stringstream buf;
-  // format for positioning cursor is "\x1b[%d;%dH"
-  buf << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
-  ab.append(buf.str());
-
-  std::stringstream buf2;
-  buf2 << "\x1b[" << top_margin << ";" <<  left_margin + 1 << "H";
-  ab.append(buf2.str()); //reposition cursor
-
-  // this to deal with wrapped comments using // so whole comment is in italics
-  std::string s = display.str();
-  std::replace(s.begin(), s.end(), '\t', '\n');
-
-  //display.clear();
-  //display.seekg(0, std::ios::beg);
-  display.str(s);
-  int n = 0;
-  while(std::getline(display, line, '\n')) {
-    if (n >= line_offset) {
-      ab.append(line);
-      ab.append(lf_ret);
-    }
-    n++;
-  }
-  draw_visual(ab);
-}
-*/
 
 void Editor::draw_visual(std::string &ab) {
 
@@ -3044,6 +2955,7 @@ void ReplaceStringInPlace(std::string& subject, const std::string& search,
 
 using json = nlohmann::json;
 
+//for godbolt - worked - currently not in use
 void Editor::E_run_code_C(void) {
 
   if(is_subeditor) {
@@ -3135,9 +3047,10 @@ void Editor::E_run_code_C(void) {
     // escapes seem to be "exposed" somehow
     auto arr = js1["buildResult"]["stderr"];
 
-    for (const auto i : arr) {
-      std::string s = i["text"];
-      s_rows.push_back(s);
+    for (auto a : arr) {
+      //std::string s = i["text"];
+      //s_rows.push_back(s);
+      s_rows.push_back(a["text"]);
     }
   }
 
@@ -3169,13 +3082,17 @@ void Editor::E_compile_C(void) {
   }
   std::stringstream text;
   std::string line;
-  chdir("/home/slzatz/pylspclient/");
-  //procxx::process make("make", "-f /home/slzatz/pylspclient/Makefile");
+  chdir("/home/slzatz/clangd_examples/");
+  /*
   procxx::process make("make");
   make.exec();
+  */
+
+  ipstream make("make");
 
   int i = 0;
-  while(getline(make.output(), line)) {
+  //while(getline(make.output(), line)) {
+  while(getline(make, line)) {
     text << line << '\n';
     ++i;
     if (i > 10){
@@ -3207,13 +3124,19 @@ void Editor::E_runlocal_C(void) {
   std::stringstream text;
   std::string line;
   if (get_folder_tid(id) == 18) {
-     procxx::process run("/home/slzatz/pylspclient/test_cpp");
+    /*
+     procxx::process run("/home/slzatz/clangd_examples/test_cpp");
      run.exec();
-     while(getline(run.output(), line)) { text << line << '\n';}
+     */
+     ipstream run("/home/slzatz/clangd_examples/test_cpp");
+     while(getline(run, line)) { text << line << '\n';} //procxx run.output()
   } else {
+    /*
      procxx::process run("go", "run", "/home/slzatz/go/src/example/hello.go");
      run.exec();
-     while(getline(run.output(), line)) { text << line << '\n';}
+     */
+     ipstream run("go run /home/slzatz/go/src/example/hello.go");
+     while(getline(run, line)) { text << line << '\n';}
   }
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows

@@ -7,7 +7,7 @@
 #define SCROLL_UP 1 // in Editor.cpp  not in list...improved.cpp
 #define LINKED_NOTE_HEIGHT 10 //height of subnote
 
-#include "process.h" // https://github.com/skystrife/procxx used by Editor.cpp and list...improved.cpp
+//#include "process.h" // https://github.com/skystrife/procxx used by Editor.cpp and list...improved.cpp
 #include <map> //there is an inline map
 #include <nlohmann/json.hpp>
 #include <fmt/core.h>
