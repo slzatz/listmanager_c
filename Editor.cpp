@@ -3123,21 +3123,15 @@ void Editor::E_runlocal_C(void) {
   }
   std::stringstream text;
   std::string line;
+  ipstream run; //forward declaration?
   if (get_folder_tid(id) == 18) {
-    /*
-     procxx::process run("/home/slzatz/clangd_examples/test_cpp");
-     run.exec();
-     */
      ipstream run("/home/slzatz/clangd_examples/test_cpp");
-     while(getline(run, line)) { text << line << '\n';} //procxx run.output()
+     //while(getline(run, line)) { text << line << '\n';} //procxx run.output()
   } else {
-    /*
-     procxx::process run("go", "run", "/home/slzatz/go/src/example/hello.go");
-     run.exec();
-     */
-     ipstream run("go run /home/slzatz/go/src/example/hello.go");
-     while(getline(run, line)) { text << line << '\n';}
+     ipstream run("go run /home/slzatz/go/src/example/main.go");
+     //while(getline(run, line)) { text << line << '\n';}
   }
+  while(getline(run, line)) { text << line << '\n';}
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();

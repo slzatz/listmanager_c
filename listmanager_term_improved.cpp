@@ -78,7 +78,7 @@ void readsome(pstream &ls, int i) {
   std::size_t pos = ls.command().find(' ');
   std::string_view cmd = ls.command();
   cmd = cmd.substr(0, pos);
-  char buf[4096]={}; //char buf[1024]{};
+  char buf[8192]={}; //char buf[1024]{};
   std::streamsize n;
   std::string s{}; //used for body of server message
   std::string h{}; //used to log header of server message
@@ -89,8 +89,8 @@ void readsome(pstream &ls, int i) {
   }
 
   if (s.empty()) return;
-  if (s.size() > 4000) {
-    logger->warn("Message {} returned is greater than 4000 chars!", cmd);
+  if (s.size() > 8000) {
+    logger->warn("Message {} returned is greater than 8000 chars!", cmd);
     return;
   }
 
@@ -106,7 +106,7 @@ void readsome(pstream &ls, int i) {
     h = s.substr(0, pos + 4); //second param is length
     pos = h.find(":");
     std::string length = h.substr(pos + 2, h.size()-4 -2 - pos); //length 2 awat from colon
-    logger->info("length: {}", stoi(length));
+    logger->info("Incoming messages - total length: {}", stoi(length));
     std::string ss = s.substr(h.size(), stoi(length));
     logger->info("read {} message {} nn {}:\n{}\n{}\n", cmd, i, nn, h, ss);
 
@@ -161,10 +161,11 @@ void lsp_thread(std::stop_token st) {
   std::string header;
   int pid = ::getpid();
 
-  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///home/slzatz/pylspclient/", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "python-lsp", "uri": "file:///home/slzatz/pylspclient/"}]}})";
+  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "listmanager", "uri": "file:///"}]}})";
 
   js = json::parse(s);
   js["params"]["processId"] = pid + 1;
+  js["params"]["rootUri"] = lsp->client_uri;
   js["params"]["workspaceFolders"][0]["uri"] = lsp->client_uri;
   s = js.dump();
 
@@ -186,7 +187,7 @@ void lsp_thread(std::stop_token st) {
   logger->info("sent initialized message to {}:\n{}\n", lsp->name, s);
   
   //client sends didOpen notification
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/clangd_examples/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
   js = json::parse(s);
   js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
   js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
@@ -207,7 +208,7 @@ void lsp_thread(std::stop_token st) {
   }
   int j = 5;
   
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///home/slzatz/pylspclient/test.cpp", "version": 2}, "contentChanges": [{"text": ""}]}})";
+  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///", "version": 2}, "contentChanges": [{"text": ""}]}})";
 
   js = json::parse(s);
   
@@ -516,11 +517,6 @@ void update_html_code_file(std::string &&fn) {
   myfile << note;
   myfile.close();
 
-  /*
-  procxx::process highlight("highlight", "code_file", "--out-format=html", 
-                             "--style=gruvbox-dark-hard-slz", "--syntax=cpp");
-  highlight.exec();
-  */
   std::stringstream html;
   std::string line;
   int tid = get_folder_tid(O.rows.at(O.fr).id);
@@ -551,20 +547,27 @@ void update_code_file(void) {
 
   //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
   if (tid == 18) {
-    file_path  = "/home/slzatz/pylspclient/test.cpp";
+    file_path  = "/home/slzatz/clangd_examples/test.cpp";
     lsp_name = "clangd";
   } else {
-    file_path = "/home/slzatz/go/src/example/hello.go";
+    file_path = "/home/slzatz/go/src/example/main.go";
     lsp_name = "gopls";
   }
+
+  /*
+  if (!lsp_v.empty()) {
+    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+    if (it != lsp_v.end()) (*it)->code_changed = true;
+  }
+  */
+  myfile.open(file_path); ///////////////////////////////////////////////////////
+  myfile << p->code;
+  myfile.close();
 
   if (!lsp_v.empty()) {
     auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
     if (it != lsp_v.end()) (*it)->code_changed = true;
   }
-  myfile.open(file_path); ///////////////////////////////////////////////////////
-  myfile << p->code;
-  myfile.close();
 }
 
 void generate_persistent_html_file(int id) {
@@ -3702,11 +3705,11 @@ void F_lsp_start(int pos) {
   if (name.rfind("go", 0) == 0) {
     lsp->name = "gopls";
     lsp->client_uri = R"(file:///home/slzatz/go/src/example/)";
-    lsp->file_name = "hello.go";
+    lsp->file_name = "main.go";
     lsp->language = "go";
   } else if (name.rfind("cl", 0) == 0) {
     lsp->name = "clangd";
-    lsp->client_uri = R"(file:///home/slzatz/pylspclient/)";
+    lsp->client_uri = R"(file:///home/slzatz/clangd_examples/)";
     lsp->file_name = "test.cpp";
     lsp->language = "cpp";
   } else {
