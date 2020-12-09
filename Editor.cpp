@@ -3082,25 +3082,49 @@ void Editor::E_compile_C(void) {
   }
   std::stringstream text;
   std::string line;
-  chdir("/home/slzatz/clangd_examples/");
-  /*
-  procxx::process make("make");
-  make.exec();
-  */
+  if (get_folder_tid(id) == 18) {
+    chdir("/home/slzatz/clangd_examples/");
+    ipstream make("make");
 
-  ipstream make("make");
+    int i = 0;
+    while(getline(make, line)) {
+      text << line << '\n';
+      ++i;
+      if (i > 10){
+        text << "TRUNCATED at 10 lines";
+        break;
+      }
+    }
+  } else { 
+    chdir("/home/slzatz/go/src/example/");
+    const pstreams::pmode mode = pstreams::pstdout|pstreams::pstderr;
+    ipstream go("go build -v main.go", mode);
 
-  int i = 0;
-  //while(getline(make.output(), line)) {
-  while(getline(make, line)) {
-    text << line << '\n';
-    ++i;
-    if (i > 10){
-      text << "TRUNCATED at 10 lines";
-      break;
+    /*
+    char buf[1024];  
+    std::streamsize n;
+    std::string s{}; //used for body of server message
+    int i = 0;
+    while ((n = go.out().readsome(buf, sizeof(buf))) > 0) {
+    // n will always be zero eventually
+     //s += std::string{buf, static_cast<size_t>(n)};
+     text << std::string{buf, static_cast<size_t>(n)};
+     i++;
+  }
+   editorSetMessage("hello %d - %s", i, text.str().c_str()); 
+   //return;
+   */
+    int i = 0;
+    while(getline(go.err(), line)) {
+      text << line << '\n';
+      ++i;
+      if (i > 10){
+        text << "TRUNCATED at 10 lines";
+        break;
+      }
     }
   }
-
+  if (text.str().empty())   text << "Go build successful";//happens in go build if successful
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
@@ -3121,16 +3145,31 @@ void Editor::E_runlocal_C(void) {
     editorSetMessage("You're in the subeditor!");
     return;
   }
+  std::string args, cmd;
+  std::size_t pos = command_line.find(' ');
+  if (pos) args = command_line.substr(pos); //include the space
+  else args = "";
+
   std::stringstream text;
   std::string line;
-  ipstream run; //forward declaration?
   if (get_folder_tid(id) == 18) {
-     ipstream run("/home/slzatz/clangd_examples/test_cpp");
-     //while(getline(run, line)) { text << line << '\n';} //procxx run.output()
+      cmd = "/home/slzatz/clangd_examples/test_cpp";
   } else {
-     ipstream run("go run /home/slzatz/go/src/example/main.go");
+      cmd = "/home/slzatz/go/src/example/main";
      //while(getline(run, line)) { text << line << '\n';}
   }
+  /*
+  ipstream run; //forward declaration?
+  if (get_folder_tid(id) == 18) {
+     ipstream run("/home/slzatz/clangd_examples/test_cpp" + args);
+     //while(getline(run, line)) { text << line << '\n';} //procxx run.output()
+  } else {
+     //ipstream run("go run /home/slzatz/go/src/example/main.go");
+     ipstream run("/home/slzatz/go/src/example/main + args");
+     //while(getline(run, line)) { text << line << '\n';}
+  }
+  */
+  ipstream run(cmd + args);
   while(getline(run, line)) { text << line << '\n';}
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows

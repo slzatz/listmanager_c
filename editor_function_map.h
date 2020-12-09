@@ -79,11 +79,12 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"compile", &Editor::E_compile_C},
   {"c", &Editor::E_compile_C},
   {"make", &Editor::E_compile_C},
-  {"rl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
+  {"r", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"runl", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
   {"runlocal", &Editor::E_runlocal_C}, // this does change the text/usually COMMAND_LINE doesn't
-  {"r", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
-  {"run", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
+  {"run", &Editor::E_runlocal_C}, //compile and run on Compiler Explorer 
+  {"rr", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
+  {"runremote", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
   {"save", &Editor::E_save_note},
   {"savefile", &Editor::E_save_note}
 };
