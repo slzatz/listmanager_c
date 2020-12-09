@@ -42,7 +42,7 @@ const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
 
 //std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
-std::string system_call = "./lm_browser current.html";
+//std::string system_call = "./lm_browser current.html"; //only called by persistent html which I am probably deleting
 std::string meta;
 int which_db;
 struct termios orig_termios;
@@ -66,7 +66,6 @@ std::vector<std::string> command_history; // the history of commands to make it 
 std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
 size_t cmd_hx_idx = 0;
 size_t page_hx_idx = 0;
-//std::map<int, std::string> html_files;
 int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;

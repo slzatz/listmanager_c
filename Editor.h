@@ -140,7 +140,6 @@ class Editor {
     //void E_quit0_C(void);
     void E_open_in_vim_C(void);
     void E_spellcheck_C(void);
-    void E_persist_C(void);
     void E_readfile_C(void);
     void E_run_code_C(void);
     void E_runlocal_C(void);

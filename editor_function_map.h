@@ -72,7 +72,6 @@ std::unordered_map<std::string, efunc> E_lookup_C {
   {"vim", &Editor::E_open_in_vim_C},
   {"spell",&Editor:: E_spellcheck_C},
   {"spellcheck", &Editor::E_spellcheck_C},
-  {"persist", &Editor::E_persist_C},
   {"read", &Editor::E_readfile_C},
   {"readfile", &Editor::E_readfile_C},
 

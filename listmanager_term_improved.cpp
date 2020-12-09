@@ -570,22 +570,6 @@ void update_code_file(void) {
   }
 }
 
-void generate_persistent_html_file(int id) {
-  std::string  fn = O.rows.at(O.fr).title.substr(0, 20);
-    std::string illegal_chars = "\\/:?\"<>|\n ";
-    for (auto& c: fn){
-      if (illegal_chars.find(c) != std::string::npos) c = '_';
-    }
-  fn = fn + ".html";    
-  html_files.insert(std::pair<int, std::string>(id, fn)); //could do html_files[id] = fn;
-  update_html_file("assets/" + fn);
-
-  std::string call = "./lm_browser " + fn;
-  popen (call.c_str(), "r"); // returns FILE* id
-  outlineShowMessage("Created file: %s and displayed with ultralight", system_call.c_str());
-}
-
-// postgresql functions - they come before sqlite but could move them after
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
 
   std::stringstream query;
@@ -3509,7 +3493,6 @@ void  F_showall(int) {
   outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
 }
 
-
 // does not seem to work
 void F_syntax(int pos) {
   if (pos) {
@@ -3601,10 +3584,12 @@ void F_saveoutline(int pos) {
   }
 }
 
+/*
 void F_persist(int pos) {
   generate_persistent_html_file(O.rows.at(O.fr).id);
   O.mode = NORMAL;
 }
+*/
 
 void F_valgrind(int) {
   initial_file_row = 0; //for arrowing or displaying files
@@ -3675,15 +3660,6 @@ void F_quit_app_ex(int) {
   exit(0);
 }
 
-/* need to look at this */
-void F_clear(int) {
-  html_files.clear();
-  p->mode = NORMAL;
-  p->command[0] = '\0';
-  p->command_line.clear();
-  p->editorSetMessage("");
-}
-
 void F_lsp_start(int pos) {
   /*
   if (!lsp.empty) {
@@ -3722,6 +3698,25 @@ void F_lsp_start(int pos) {
   lsp_start(lsp);
   O.mode = NORMAL;
 }
+
+void F_launch_lm_browser(int) {
+  if (lm_browser) {
+    outlineShowMessage3("There is already an active browser");
+    return;
+  }
+  lm_browser = true; 
+  std::system("./lm_browser current.html &"); //&=> returns control
+  O.mode = NORMAL;
+}
+
+void F_quit_lm_browser(int) {
+  zmq::message_t message(20);
+  snprintf ((char *) message.data(), 20, "%s", "quit"); //25 - complete hack but works ok
+  publisher.send(message, zmq::send_flags::dontwait);
+  lm_browser = false;
+  O.mode = NORMAL;
+}
+/* END OUTLINE COMMAND mode functions */
 
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
@@ -4002,11 +3997,6 @@ void n_N(void) {
 //case 'u':
 void u_N(void) {
   //could be used to update solr - would use U
-}
-
-//case '^':
-void caret_N(void) {
-  generate_persistent_html_file(O.rows.at(O.fr).id);
 }
 
 //dd and 0x4 -> ctrl-d

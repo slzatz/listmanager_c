@@ -39,12 +39,13 @@ void F_valgrind(int pos); // pos not used
 void F_quit_app(int pos); // pos not used
 void F_quit_app_ex(int pos); // pos not used
 void F_help(int pos);
-void F_persist(int pos); // pos not used
-void F_clear(int pos); // pos not used
+//void F_persist(int pos); // pos not used
 void F_copy_entry(int);
 //void F_restart_lsp(int);
 //void F_shutdown_lsp(int);
 void F_lsp_start(int);
+void F_launch_lm_browser(int);
+void F_quit_lm_browser(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
@@ -113,11 +114,13 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   //{"merge", F_merge},
   {"help", F_help},
   {"h", F_help},
-  {"persist", F_persist},
   {"copy", F_copy_entry},
-  {"clear", F_clear},
   //{"restart_lsp", F_restart_lsp},
   //{"shutdown_lsp", F_shutdown_lsp},
   {"lsp", F_lsp_start},
+  {"browser", F_launch_lm_browser},
+  {"launch", F_launch_lm_browser},
+  {"quitb", F_quit_lm_browser},
+  {"quitbrowser", F_quit_lm_browser}
 
 };

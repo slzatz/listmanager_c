@@ -30,7 +30,7 @@ void asterisk_N(void);
 void m_N(void);
 void n_N(void);
 void u_N(void);
-void caret_N(void);
+//void caret_N(void);
 void dd_N(void);
 void star_N(void);
 void completed_N(void);
@@ -94,6 +94,6 @@ std::unordered_map<std::string, zfunc> n_lookup {
   {{0x4}, dd_N}, //ctrl-d
   {{0x2}, star_N}, //ctrl-b -probably want this go backwards (unimplemented) and use ctrl-e for this
   {{0x18}, completed_N}, //ctrl-x
-  {"^", caret_N},
+  //{"^", caret_N},
 
 };

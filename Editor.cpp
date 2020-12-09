@@ -2338,14 +2338,8 @@ void Editor::E_write_C(void) {
 
   if (is_subeditor) return;
 
-  //if (get_folder_tid(id) == 18) update_code_file(); //now happening in update_note
-  //else if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  if (lm_browser && get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-
-  //auto it = html_files.find(id); //O is global and so is html_files but not sure needed
-  //if (it != html_files.end()) update_html_file("assets/" + it->second);
-
-  //editorSetMessage("");//////////////////////////////////////////
+  int tid = get_folder_tid(id);
+  if (lm_browser && !(tid == 18 || tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
 }
 
 /* the following are not being called and were written for single editor
@@ -2360,8 +2354,6 @@ void Editor::E_write_close_C(void) {
     if (get_folder_tid(id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
-  auto it = html_files.find(id); //O is global and so is html_files but not sure needed
-  if (it != html_files.end()) update_html_file("assets/" + it->second);
   editorSetMessage("");
 }
 
@@ -2404,11 +2396,6 @@ void E_spellcheck_C(void) {
   editorSetMessage("Nuspell is not available in this build");
 }
 #endif
-
-void Editor::E_persist_C(void) {
-  generate_persistent_html_file(id); //global
-  mode = NORMAL;
-}
 
 void Editor::E_readfile_C(void) {
   std::string filename;
