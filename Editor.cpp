@@ -2,6 +2,7 @@
 #include "Editor.h"
 #include <fstream>
 #include <cstdarg> //va_start etc
+#include <nuspell/finder.hxx>
 #include <string_view>
 #include <unordered_set>
 //#include <nlohmann/json.hpp>
@@ -944,10 +945,19 @@ void Editor::editorSpellCheck(void) {
 
   pos_mispelled_words.clear();
 
+  /*
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
-  //auto sugs = std::vector<std::string>();
   auto dict = nuspell::Dictionary::load_from_path(path);
+ */
+
+  /*
+  auto dict_list = std::vector<std::pair<std::string, std::string>>{};
+  nuspell::search_default_dirs_for_dicts(dict_list);
+  auto dict_name_and_path = nuspell::find_dictionary(dict_list, "en_US");
+  auto & dict_path = dict_name_and_path->second;
+  auto dict = nuspell::Dictionary::load_from_path(dict_path);
+  */
 
   std::string delimiters = " -<>!$,.;?:()[]{}&#~^";
 
@@ -1644,11 +1654,14 @@ std::string Editor::editorGetWordUnderCursor(void) {
 }
 
 void Editor::editorSpellingSuggestions(void) {
+
+  /*
   auto dict_finder = nuspell::Finder::search_all_dirs_for_dicts();
   auto path = dict_finder.get_dictionary_path("en_US");
-  auto sugs = std::vector<std::string>();
   auto dict = nuspell::Dictionary::load_from_path(path);
+  */
 
+  auto sugs = std::vector<std::string>();
   std::string word;
   std::stringstream s;
   word = editorGetWordUnderCursor();

@@ -1,12 +1,14 @@
 #ifndef EDITOR_H
 #define EDITOR_H
 
+#include <nuspell/dictionary.hxx>
 #define LINKED_NOTE_HEIGHT 10 //height of subnote
 #include <vector>
 #include <string>
 #include <unordered_map>
 #include <deque>
 #include <nlohmann/json.hpp>
+#include <nuspell/finder.hxx>
 //#include "listmanager.h" //////
 
 
@@ -58,6 +60,12 @@ class Editor {
       linked_editor = nullptr;
       is_subeditor = false;
       left_margin_offset = 0; // 0 if no line numbers
+
+      auto dict_list = std::vector<std::pair<std::string, std::string>>{};
+      nuspell::search_default_dirs_for_dicts(dict_list);
+      auto dict_name_and_path = nuspell::find_dictionary(dict_list, "en_US");
+      auto & dict_path = dict_name_and_path->second;
+      dict = nuspell::Dictionary::load_from_path(dict_path);
 }
 
     int cx, cy; //cursor x and y position
@@ -113,6 +121,7 @@ class Editor {
     Editor *linked_editor;
     bool is_subeditor;
     //bool subnote_visible;
+    nuspell::Dictionary dict;
 
     void set_screenlines(void);
     bool find_match_for_left_brace(char, bool back=false);

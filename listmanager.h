@@ -91,7 +91,6 @@ const std::string mode_text[] = {
 /* as of C++17 you can do inline and variables will only be defined once */
 inline bool lm_browser = true; //soon eliminate ./m_nb and make default false
 inline bool editor_mode = false;
-inline std::map<int, std::string> html_files;
 inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
