@@ -120,10 +120,10 @@ bool Editor::find_match_for_left_brace(char left_brace, bool back) {
   int count = 1;
   int max = rows.size();
 
-  //char right_brace = (left_brace == '{') ? '}' : ')';
   const std::unordered_map<char,char> m{{'{','}'}, {'(',')'}};
   char right_brace = m.at(left_brace);
 
+  //editorSetMessage("left brace: {}", left_brace);
   for (;;) {
 
     std::string &row = rows.at(r);
@@ -1180,6 +1180,7 @@ void Editor::editorFindNextWord(void) {
 void Editor::editorRefreshScreen(bool draw) {
   char buf[32];
   std::string ab;
+  int tid{0};
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", top_margin, left_margin + 1); //03022019 added len
@@ -1197,7 +1198,7 @@ void Editor::editorRefreshScreen(bool draw) {
       ab.append(lf_ret);
     }
 
-    int tid = get_folder_tid(id);
+    tid = get_folder_tid(id);
     if ((tid == 18 || tid == 14) && !(is_subeditor)) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
@@ -1218,57 +1219,8 @@ void Editor::editorRefreshScreen(bool draw) {
 
   if (rows.empty() || rows.at(fr).empty()) return;
 
-  if (get_folder_tid(id) == 18) draw_highlighted_braces();
-
-  /*
-  // below is code to automatically find matching brace - should be in separate member function
-  std::string braces = "{}()";
-  char c;
-  bool back;
-  //if below handles case when in insert mode and brace is last char
-  //in a row and cursor is beyond that last char (which is a brace)
-  if (fc == rows.at(fr).size()) {
-    c = rows.at(fr).at(fc-1); 
-    back = true;
-  } else {
-    c = rows.at(fr).at(fc);
-    back = false;
-  }
-  size_t pos = braces.find(c);
-  if ((pos != std::string::npos)) {
-    switch(c) {
-      case '{':
-      case '(':  
-        redraw = find_match_for_left_brace(c, back);
-        return;
-      case '}':
-      case ')':
-        redraw = find_match_for_right_brace(c, back);
-        return;
-      //case '(':  
-      default://should not need this
-        return;
-    }
-  } else if (fc > 0 && mode == INSERT) {
-      char c = rows.at(fr).at(fc-1);
-      size_t pos = braces.find(c);
-      if ((pos != std::string::npos)) {
-        switch(rows.at(fr).at(fc-1)) {
-          case '{':
-          case '(':  
-            redraw = find_match_for_left_brace(c, true);
-            return;
-          case '}':
-          case ')':
-            redraw = find_match_for_right_brace(c, true);
-            return;
-          //case '(':  
-          default://should not need this
-            return;
-      }        
-    } else {redraw = false;}
-  } else {redraw = false;}
-  */
+  if (!tid) tid = get_folder_tid(id);
+  if ((tid == 18 || tid == 14) && !(is_subeditor)) draw_highlighted_braces();;
 }
 
 void Editor::editorDrawMessageBar(std::string& ab) {
@@ -3085,22 +3037,8 @@ void Editor::E_compile_C(void) {
   } else { 
     chdir("/home/slzatz/go/src/example/");
     const pstreams::pmode mode = pstreams::pstdout|pstreams::pstderr;
-    ipstream go("go build -v main.go", mode);
-
-    /*
-    char buf[1024];  
-    std::streamsize n;
-    std::string s{}; //used for body of server message
-    int i = 0;
-    while ((n = go.out().readsome(buf, sizeof(buf))) > 0) {
-    // n will always be zero eventually
-     //s += std::string{buf, static_cast<size_t>(n)};
-     text << std::string{buf, static_cast<size_t>(n)};
-     i++;
-  }
-   editorSetMessage("hello %d - %s", i, text.str().c_str()); 
-   //return;
-   */
+    //ipstream go("go build -v main.go", mode);
+    ipstream go("go build main.go", mode);
     int i = 0;
     while(getline(go.err(), line)) {
       text << line << '\n';
@@ -3134,7 +3072,7 @@ void Editor::E_runlocal_C(void) {
   }
   std::string args, cmd;
   std::size_t pos = command_line.find(' ');
-  if (pos) args = command_line.substr(pos); //include the space
+  if (pos != std::string::npos) args = command_line.substr(pos); //include the space
   else args = "";
 
   std::stringstream text;
@@ -3143,27 +3081,15 @@ void Editor::E_runlocal_C(void) {
       cmd = "/home/slzatz/clangd_examples/test_cpp";
   } else {
       cmd = "/home/slzatz/go/src/example/main";
-     //while(getline(run, line)) { text << line << '\n';}
   }
-  /*
-  ipstream run; //forward declaration?
-  if (get_folder_tid(id) == 18) {
-     ipstream run("/home/slzatz/clangd_examples/test_cpp" + args);
-     //while(getline(run, line)) { text << line << '\n';} //procxx run.output()
-  } else {
-     //ipstream run("go run /home/slzatz/go/src/example/main.go");
-     ipstream run("/home/slzatz/go/src/example/main + args");
-     //while(getline(run, line)) { text << line << '\n';}
-  }
-  */
   ipstream run(cmd + args);
-  while(getline(run, line)) { text << line << '\n';}
+  while(getline(run, line)) {text << line << '\n';}
   std::vector<std::string> zz = str2vecWW(text.str());
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
-  s_rows.push_back("----------------");;
+  s_rows.push_back("----------------");
   s_rows.insert(s_rows.end(), zz.begin(), zz.end());
-  s_rows.push_back("----------------");;
+  s_rows.push_back("----------------");
 
   linked_editor->fr = 0;
   linked_editor->fc = 0;
