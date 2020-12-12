@@ -1398,13 +1398,13 @@ void Editor::editorDrawCodeRows(std::string &ab) {
 
   // below draws the line number 'rectangle' only matters for the word-wrapped lines
   ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
-               top_margin, left_margin, top_margin + screenlines, left_margin + 3));
+               top_margin, left_margin, top_margin + screenlines, left_margin + left_margin_offset));
   // In the code below `\t' are the returns in lines that word wrap - last return is always '\n'
   int n = 0;
   while(std::getline(display, line, '\n')) {
     if (n >= line_offset) {
       //ab.append(fmt::format("{:>2} ", n));
-      ab.append(fmt::format("\x1b[48;5;235m\x1b[38;5;245m{:>2} \x1b[0m", n));
+      ab.append(fmt::format("\x1b[48;5;235m\x1b[38;5;245m{:>3} \x1b[0m", n));
       if (line.find('\t') != std::string::npos) {
         for (;;) {
           size_t pos = line.find('\t');
@@ -2146,113 +2146,6 @@ std::string Editor::editorGenerateWWString(void) {
     }
   }
 }
-
-/*
-std::string Editor::editorGenerateWWString(void) {
-  if (rows.empty()) return "";
-
-  std::string ab = "";
-  int y = -line_offset;
-  int filerow = 0;
-
-  for (;;) {
-    if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
-
-    char ret = '\n';
-    std::string_view row = rows.at(filerow);
-    // if you put a \n in the middle of a comment the wrapped portion won't be italic
-    if (row.find("//") != std::string::npos) ret = '\t';
-
-    if (row.empty()) {
-      if (y == screenlines - 1) return ab;
-      ab.append("\n");
-      filerow++;
-      y++;
-      continue;
-    }
-
-    size_t pos;
-    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
-    for (;;) {
-      // if remainder of line is less than screen width
-      if (prev_pos + screencols - left_margin_offset > row.size() - 1) {
-        ab.append(row.substr(prev_pos));
-        if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-        ab.append(1, '\n');
-        y++;
-        filerow++;
-        break;
-      }
-
-      pos = row.find_last_of(' ', prev_pos + screencols - left_margin_offset - 1);
-      if (pos == std::string::npos || pos == prev_pos - 1) {
-        pos = prev_pos + screencols - left_margin_offset - 1;
-      }
-      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
-      if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-      ab.append(1, ret); //this appears to be the only placew intraline take place so make them all \t
-      y++;
-      prev_pos = pos + 1;
-    }
-  }
-}
-
-std::string Editor::editorGenerateWWString_orig(void) {
-  if (rows.empty()) return "";
-
-  std::string ab = "";
-  int y = -line_offset;
-  int filerow = 0;
-
-  for (;;) {
-    if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
-
-    char ret = '\n';
-    std::string row = rows.at(filerow);
-    // if you put a \n in the middle of a comment the wrapped portion won't be italic
-    if (row.find("//") != std::string::npos) ret = '\t';
-
-    if (row.empty()) {
-      if (y == screenlines - 1) return ab;
-      ab.append("\n");
-      filerow++;
-      y++;
-      continue;
-    }
-
-    int pos = -1;
-    int prev_pos;
-    for (;;) {
-      // this is needed because it deals where the end of the line doesn't have a space
-      if (row.substr(pos+1).size() <= screencols) {
-        ab.append(row, pos+1, screencols);
-        if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-        ab.append("\n");
-        y++;
-        filerow++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+screencols);
-
-      //note npos when signed = -1 and order of if/else may matter
-      if (pos == std::string::npos) {
-        pos = prev_pos + screencols;
-      } else if (pos == prev_pos) {
-        row = row.substr(pos+1);
-        prev_pos = -1;
-        pos = screencols - 1;
-      }
-
-      ab.append(row, prev_pos+1, pos-prev_pos);
-      if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-      ab.append(1, ret); // ret that could be in middle of comment
-      y++;
-    }
-  }
-}
-*/
 
 //used in status bar because interesting but not essential
 int Editor::editorGetLineCharCountWW(int r, int line) {

@@ -3190,7 +3190,7 @@ void F_edit(int) {
         //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
         p->linked_editor->is_subeditor = true;
         p->linked_editor->linked_editor = p;
-        p->left_margin_offset = 3;
+        p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
       get_note(id); //if id == -1 does not try to retrieve note
       
@@ -3213,7 +3213,7 @@ void F_edit(int) {
       //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
       p->linked_editor->is_subeditor = true;
       p->linked_editor->linked_editor = p;
-      p->left_margin_offset = 3;
+      p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
     get_note(id); //if id == -1 does not try to retrieve note
  }
