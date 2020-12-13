@@ -146,7 +146,7 @@ struct outlineConfig {
   bool show_deleted;
   bool show_completed;
   int view; // enum TASK, CONTEXT, FOLDER, SEARCH
-  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_SEARCH
+  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_FIND
 };
 struct outlineConfig O;
 
@@ -168,7 +168,7 @@ enum TaskView {
   BY_KEYWORD,
   BY_JOIN,
   BY_RECENT,
-  BY_SEARCH
+  BY_FIND
 };
 
 int getWindowSize(int *, int *);

@@ -68,7 +68,8 @@ enum Mode {
   FILE_DISPLAY,// = 7, // only outline mode
   NO_ROWS,// = 8
   VISUAL_BLOCK, //only editor mode
-  SEARCH, // only outline mode
+  SEARCH, // only editor mode
+  FIND, // only outline mode
   ADD_CHANGE_FILTER //only outline mode 
 };
 
@@ -84,6 +85,7 @@ const std::string mode_text[] = {
                         "NO ROWS",
                         "VISUAL BLOCK",
                         "SEARCH",
+                        "FIND",
                         "ADD/CHANGE FILTER"  
                        }; 
 

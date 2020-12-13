@@ -1383,7 +1383,7 @@ void get_items_by_id(std::string query) {
     O.mode = NO_ROWS;
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = SEARCH;
+    O.mode = FIND;
     get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
@@ -3114,7 +3114,7 @@ void F_x(int) {
 void F_refresh(int) {
   if (O.view == TASK) {
     outlineShowMessage("Entries will be refreshed");
-    if (O.taskview == BY_SEARCH)
+    if (O.taskview == BY_FIND)
       search_db(search_terms);
     else
       get_items(MAX);
@@ -3400,8 +3400,8 @@ void F_find(int pos) {
   }  
   O.context = "";
   O.folder = "";
-  O.taskview = BY_SEARCH;
-  //O.mode = SEARCH; ////// it's in get_items_by_id
+  O.taskview = BY_FIND;
+  //O.mode = FIND; ////// it's in get_items_by_id
   search_terms = O.command_line.substr(pos+1);
   std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
   command_history.push_back(O.command_line); 
@@ -3472,7 +3472,7 @@ void F_savefile(int pos) {
 
 //this really needs work - needs to be picked like keywords, folders etc.
 void F_sort(int pos) { 
-  if (pos && O.view == TASK && O.taskview != BY_SEARCH) {
+  if (pos && O.view == TASK && O.taskview != BY_FIND) {
     O.sort = O.command_line.substr(pos + 1);
     get_items(MAX);
     outlineShowMessage("sorted by \'%s\'", O.sort.c_str());
@@ -3485,7 +3485,7 @@ void  F_showall(int) {
   if (O.view == TASK) {
     O.show_deleted = !O.show_deleted;
     O.show_completed = !O.show_completed;
-    if (O.taskview == BY_SEARCH)
+    if (O.taskview == BY_FIND)
       ; //search_db();
     else
       get_items(MAX);
@@ -3612,8 +3612,8 @@ void F_help(int pos) {
     search_terms = O.command_line.substr(pos+1);
     O.context = "";
     O.folder = "";
-    O.taskview = BY_SEARCH;
-    //O.mode = SEARCH; ////// it's in get_items_by_id
+    O.taskview = BY_FIND;
+    //O.mode = FIND; ////// it's in get_items_by_id
     std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
     command_history.push_back(O.command_line); 
     search_db2(search_terms);
@@ -4284,7 +4284,7 @@ void get_preview(int id) {
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
 
-  if (O.taskview != BY_SEARCH) draw_preview();
+  if (O.taskview != BY_FIND) draw_preview();
   else {
     word_positions.clear(); 
     get_search_positions(id);
@@ -4899,7 +4899,7 @@ void outlineDrawStatusBar(void) {
   switch (O.view) {
     case TASK:
       switch (O.taskview) {
-        case BY_SEARCH:
+        case BY_FIND:
           s =  "search"; 
           break;
         case BY_FOLDER:
@@ -4946,30 +4946,30 @@ void outlineDrawStatusBar(void) {
     // I think the [0;7m is revert to normal and reverse video
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %s  %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   } else {
 
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
     
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_SEARCH)  ? " - " : "",
-                              (O.taskview == BY_SEARCH) ? search_terms.c_str() : "\0",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   }
 
@@ -5009,7 +5009,7 @@ void return_cursor() {
     if (O.mode == ADD_CHANGE_FILTER){
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.divider + 1); 
       ab.append(buf, strlen(buf));
-    } else if (O.mode == SEARCH) {
+    } else if (O.mode == FIND) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
       ab.append(buf, strlen(buf));
     } else if (O.mode != COMMAND_LINE) {
@@ -5070,7 +5070,7 @@ void outlineRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-  if (O.mode == SEARCH) outlineDrawSearchRows(ab);
+  if (O.mode == FIND) outlineDrawSearchRows(ab);
   else if (O.mode == ADD_CHANGE_FILTER) outlineDrawFilters(ab);
   else  outlineDrawRows(ab);
 
@@ -5396,7 +5396,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       outlineShowMessage(":%s", O.command_line.c_str());
       return; //end of case COMMAND_LINE
 
-    case SEARCH:  
+    case FIND:  
       switch (c) {
 
         case PAGE_UP:
@@ -5418,7 +5418,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           outlineMoveCursor(c);
           return;
 
-        //TAB and SHIFT_TAB moves from SEARCH to OUTLINE NORMAL mode but SHIFT_TAB gets back
+        //TAB and SHIFT_TAB moves from FIND to OUTLINE NORMAL mode but SHIFT_TAB gets back
         case '\t':  
         case SHIFT_TAB:  
           O.fc = 0; 
@@ -5431,10 +5431,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           O.mode = NORMAL;
           O.command[0] = '\0'; 
           outlineProcessKeypress(c); 
-          //if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in SEARCH mode", c);
-          //else outlineShowMessage("<%c> doesn't do anything in SEARCH mode", c);
+          //if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in FIND mode", c);
+          //else outlineShowMessage("<%c> doesn't do anything in FIND mode", c);
           return;
-      } // end of switch(c) in case SEARCH
+      } // end of switch(c) in case FIND
 
     case VISUAL:
   
@@ -6174,6 +6174,13 @@ bool editorProcessKeypress(void) {
           p->editorSetMessage(":");
           return false;
 
+        case '/':
+          p->mode = SEARCH;
+          p->command_line.clear();
+          p->command[0] = '\0';
+          p->editorSetMessage("/");
+          return false;
+
         case 'u':
           p->command[0] = '\0';
           p->undo();
@@ -6489,6 +6496,34 @@ bool editorProcessKeypress(void) {
       }
 
       p->editorSetMessage(":%s", p->command_line.c_str());
+      return false; //end of case COMMAND_LINE
+
+    case SEARCH:
+
+      if (c == '\x1b') {
+        p->mode = NORMAL;
+        p->command[0] = '\0';
+        p->repeat = p->last_repeat = 0;
+        p->editorSetMessage(""); 
+        return false;
+      }
+
+      if (c == '\r') {
+        p->mode = NORMAL;
+        p->command[0] = '\0';
+        p->search_string = p->command_line;
+        p->command_line.clear();
+        p->editorFindNextWord();
+        return false;
+      }
+
+      if (c == DEL_KEY || c == BACKSPACE) {
+        if (!p->command_line.empty()) p->command_line.pop_back();
+      } else if (c != '\t') { //ignore tabs
+        p->command_line.push_back(c);
+      }
+
+      Editor::editorSetMessage("/%s", p->command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:

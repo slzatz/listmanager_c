@@ -1146,25 +1146,26 @@ void Editor::editorDelWord(void) {
   editorSetMessage("beg = %d, end = %d", beg, end);
 }
 
-// does not work
 void Editor::editorFindNextWord(void) {
   if (rows.empty()) return;
-  std::string& row = rows.at(fr);
 
-  int y = fr;
+  std::string& row = rows.at(fr);
   int x = fc;
+  int y = fr;
   size_t found;
 
-  // make sure you're not sitting on search word to start
-  auto beg = row.find_last_of(' ', fc);
-  if (beg == std::string::npos ) beg = 0;
-  else beg++;
+  // are we currently sitting on a match?
+  // if so we need to move one char forward
+  // need to check if at end of line and end of lines ...
+  if (search_string == row.substr(x, search_string.size())) { 
+    if (row.size() - 1 != x) x++;
+    else {
+      x = 0;
+      if (rows.size() - 1 != y) y++;
+      else y = 0;
+    }
+  }
 
-  // find end of word
-  auto end = row.find_first_of(' ', beg);
-  if (end == std::string::npos) {end = row.size();}
-
-  if (search_string == row.substr(beg, end-beg+1)) x++;
   int passes = 0;
   for(;;) {
     std::string& row = rows.at(y);
@@ -2603,6 +2604,17 @@ void Editor::E_paste(int repeat) {
 //case '*':  
 void Editor::E_find(int repeat) {
   // does not clear dot
+  std::string& row = rows.at(fr);
+  size_t pos;
+  //vim finds the nearest word if sitting on a space or other non-alphanumeric chars 
+  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  if (delimiters.find(row.at(fc)) != std::string::npos) {
+  //if (row.at(fc) == ' ') {
+    //pos = row.find_first_not_of(' ', fc);
+    pos = row.find_first_not_of(delimiters, fc);
+    if (pos != std::string::npos) fc = pos;
+  }
+   
   search_string = editorGetWordUnderCursor();
   editorFindNextWord();
   editorSetMessage("\x1b[1m-- FINDING ... --\x1b[0m");
