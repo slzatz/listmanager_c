@@ -46,6 +46,7 @@ void F_copy_entry(int);
 void F_lsp_start(int);
 void F_launch_lm_browser(int);
 void F_quit_lm_browser(int);
+void F_resize(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
@@ -121,6 +122,7 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"browser", F_launch_lm_browser},
   {"launch", F_launch_lm_browser},
   {"quitb", F_quit_lm_browser},
-  {"quitbrowser", F_quit_lm_browser}
+  {"quitbrowser", F_quit_lm_browser},
+  {"resize", F_resize}
 
 };

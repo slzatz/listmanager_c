@@ -3731,6 +3731,32 @@ void goto_editor_N(void) {
   editor_mode = true;
 }
 
+void F_resize(int pos) {
+  std::string s = O.command_line;
+  if (pos) {
+    //s = O.command_line.substr(pos + 1);
+    size_t p = s.find_first_of("0123456789");
+    if (p != pos + 1) {
+      outlineShowMessage("You need to provide a number between 10 and 90");
+      O.mode = NORMAL;
+      return;
+    }
+    int pct = stoi(s.substr(p));
+    if (pct > 90 || pct < 10) { 
+      outlineShowMessage("You need to provide a number between 10 and 90");
+      O.mode = NORMAL;
+      return;
+    }
+    c.ed_pct = pct;
+  } else {
+      outlineShowMessage("You need to provide a number between 10 and 90");
+      O.mode = NORMAL;
+      return;
+  }
+  O.mode = NORMAL;
+  signalHandler(0);
+}
+
 void return_N(void) {
   orow& row = O.rows.at(O.fr);
 
