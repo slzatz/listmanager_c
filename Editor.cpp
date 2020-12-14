@@ -1413,8 +1413,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
           if (pos == std::string::npos) break; 
           ab.append(line, 0, pos);
           ab.append(lf_ret);
-          //ab.append("   ");
-          ab.append("\x1b[3C");
+          ab.append(fmt::format("\x1b[{}C", left_margin_offset));
           line = line.substr(pos + 1);
         }
       }  
