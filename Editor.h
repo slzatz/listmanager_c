@@ -88,14 +88,14 @@ class Editor {
     int vb0[3];
     int mode;
     // probably OK that command is a char[] and not a std::string
-    char command[10]; // right now includes normal mode commands and command line commands
     std::string command_line; //for commands on the command line; string doesn't include ':'
-    //int last_command; //will use the number equivalent of the command
+    char command[10]; // right now includes normal mode commands and command line commands
     std::string last_command; 
+    int repeat;
     int last_repeat;
     int prev_fr, prev_fc;
-    std::string last_typed; //what's typed between going into INSERT mode and leaving INSERT mode
-    int repeat;
+    //what's typed between going into INSERT mode and leaving INSERT mode
+    std::string last_typed; 
     int indent;
     int smartindent;
     int first_visible_row;

@@ -6027,8 +6027,12 @@ bool editorProcessKeypress(void) {
 
         case BACKSPACE:
           p->editorBackspace();
-          //not handling backspace correctly in last_typed
-          //when backspace beyond currently entered text
+
+          //not handling backspace correctly
+          //when backspacing deletes more than currently entered text
+          //A common case would be to enter insert mode  and then just start backspacing
+          //because then dotting would actually delete characters
+          //I could record a \b and then handle similar to handling \r
           if (!p->last_typed.empty()) p->last_typed.pop_back();
           return true;
     
@@ -6125,7 +6129,10 @@ bool editorProcessKeypress(void) {
           /*Escape whatever else happens falls through to here*/
           p->mode = NORMAL;
           p->repeat = 0;
-          p->last_typed = std::string(); //probably messes up dot but dot could use last cmd from diff
+
+          //? redundant - see 10 lines below
+          p->last_typed = std::string(); 
+
           if (p->fc > 0) p->fc--;
 
           // below - if the indent amount == size of line then it's all blanks

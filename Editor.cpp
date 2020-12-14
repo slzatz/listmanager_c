@@ -456,15 +456,15 @@ void Editor::editorMoveEndWord(void) {
 if (rows.empty()) return;
 
 if (rows.at(fr).empty() || fc == rows.at(fr).size() - 1) {
-  if (fr+1 > rows.size() -1) {return;}
+  if (fr + 1 > rows.size() - 1) {return;}
   else {fr++; fc = 0;}
 } else fc++;
 
   int r = fr;
   int c = fc;
   int pos;
-  std::string delimiters = " <>,.;?:()[]{}&#~'";
-  std::string delimiters_without_space = "<>,.;?:()[]{}&#~'";
+  std::string delimiters = " *%!^<>,.;?:()[]{}&#~'\"";
+  std::string delimiters_without_space = "*%!^<>,.;?:()[]{}&#~'\"";
 
   for(;;) {
 
@@ -475,7 +475,7 @@ if (rows.at(fr).empty() || fc == rows.at(fr).size() - 1) {
     if (row.empty()) {r++; c = 0; continue;}
 
     if (isalnum(row.at(c))) { //we are on an alphanumeric
-      if (c == row.size()-1 || ispunct(row.at(c+1))) {fc = c; fr = r; return;}
+      if (c == row.size() - 1 || ispunct(row.at(c + 1))) {fc = c; fr = r; return;}
 
       pos = row.find_first_of(delimiters, c);
       if (pos == std::string::npos) {fc = row.size() - 1; return;}
@@ -749,6 +749,7 @@ void Editor::push_current(void) {
                       temp_str.c_str());
 }
 
+// right now only used if dot command issued in editor NORMAL mode
 void Editor::push_previous(void) {
   if (rows.empty()) return; //don't create snapshot if there is no text
 
@@ -842,7 +843,7 @@ void Editor::redo(void) {
   Diff &d = undo_deque.at(d_index);
   fr = d.fr;
   fc = d.fc;
-  last_typed = d.inserted_text;
+  last_typed = d.inserted_text; //? needed if you dot the redo - can you do that
   //rows = d.rows;
 
   // i I a A 
@@ -1829,11 +1830,12 @@ void Editor::editorDotRepeat(int repeat) {
   //repeat not implemented
 
   //case 'i': case 'I': case 'a': case 'A': 
+  Diff &d = undo_deque.at(0);
   if (cmd_map1.count(last_command)) {
     (this->*cmd_map1[last_command])(last_repeat);
 
     for (int n=0; n<last_repeat; n++) {
-      for (char const &c : last_typed) {
+      for (char const &c : d.inserted_text) {
         if (c == '\r') editorInsertReturn();
         else editorInsertChar(c);
       }
@@ -2607,7 +2609,7 @@ void Editor::E_find(int repeat) {
   std::string& row = rows.at(fr);
   size_t pos;
   //vim finds the nearest word if sitting on a space or other non-alphanumeric chars 
-  std::string delimiters = " <>,.;?:()[]{}&#~'";
+  std::string delimiters = " *%!^<>,.;?:()[]{}&#~'\"";
   if (delimiters.find(row.at(fc)) != std::string::npos) {
   //if (row.at(fc) == ' ') {
     //pos = row.find_first_not_of(' ', fc);
