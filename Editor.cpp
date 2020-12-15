@@ -1084,7 +1084,7 @@ void Editor::editorBackspace(void) {
 std::string Editor::editorRowsToString(void) {
 
   std::string z = "";
-  for (auto i: rows) {
+  for (auto i : rows) {
       //if (!i.empty()) z += i; //10-21-2020
       z += i;
       z += '\n';
@@ -2994,16 +2994,43 @@ void Editor::E_runlocal_C(void) {
   if (pos != std::string::npos) args = command_line.substr(pos); //include the space
   else args = "";
 
-  std::stringstream text;
-  std::string line;
   if (get_folder_tid(id) == 18) {
       cmd = "/home/slzatz/clangd_examples/test_cpp";
   } else {
       cmd = "/home/slzatz/go/src/example/main";
   }
-  ipstream run(cmd + args);
-  while(getline(run, line)) {text << line << '\n';}
-  std::vector<std::string> zz = str2vecWW(text.str());
+
+  const pstreams::pmode mode = pstreams::pstdout|pstreams::pstderr; /////
+  ipstream run(cmd + args, mode);
+  char buf[8192];
+  std::streamsize n;
+  bool finished[2] = {false, false};
+  std::string s{}; //for stderr
+  std::string t{}; //for stdout
+  while (!finished[0] || !finished[1]) {
+    if (!finished[0]) {
+      while ((n = run.err().readsome(buf, sizeof(buf))) > 0) {
+        s += std::string{buf, static_cast<size_t>(n)};
+      }
+      if (run.eof()) {
+        finished[0] = true;
+        if (!finished[1]) run.clear();
+      }
+    }
+
+    if (!finished[1]) {
+      while ((n = run.out().readsome(buf, sizeof(buf))) > 0) {
+          t += std::string{buf, static_cast<size_t>(n)};
+      }
+      if (run.eof()) {
+        finished[1] = true;
+        if (!finished[0]) run.clear();
+      }
+    }
+  }
+
+  if (!s.empty()) s = "Error: " + s;
+  std::vector<std::string> zz = str2vecWW(s+t);
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
   s_rows.push_back("----------------");
