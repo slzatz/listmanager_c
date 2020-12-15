@@ -305,6 +305,7 @@ void signalHandler(int signum) {
   Editor::origin = O.divider + 1; //only used in Editor.cpp
 
   eraseScreenRedrawLines();
+  eraseRightScreen();
 
   if (!editors.empty()) {
 
@@ -334,7 +335,7 @@ void signalHandler(int signum) {
   if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
     get_preview(O.rows.at(O.fr).id);
 
-  for (auto e : editors) e->editorRefreshScreen(true);
+  //for (auto e : editors) e->editorRefreshScreen(true);
 
   return_cursor();
 }
@@ -2201,7 +2202,8 @@ void update_note(bool is_subnote, bool closing_editor) {
   std::string column = (is_subnote) ? "subnote" : "note";
   std::string text = p->editorRowsToString();
 
-  int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+  //int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+  int folder_tid = get_folder_tid(p->id);
   //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
   if (!is_subnote && !closing_editor && (folder_tid == 18 || folder_tid == 14)) {
     p->code = text;
