@@ -2970,12 +2970,37 @@ void Editor::E_compile_C(void) {
   }
   if (text.str().empty())   text << "Go build successful";//happens in go build if successful
   std::vector<std::string> zz = str2vecWW(text.str());
+  auto temp = linked_editor->rows; //s_rows -> subnote_rows
+  /*
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
   s_rows.push_back("----------------");;
   s_rows.insert(s_rows.end(), zz.begin(), zz.end());
   s_rows.push_back("----------------");;
+  */
 
+  /* replaces s_rows.clear()*/
+  if (!temp.empty()) {
+    if (temp.at(0).rfind("--------", 0) == 0) {
+      temp.erase(temp.begin());
+      for (;;) {
+        if (temp.empty()) break;
+        if (temp.at(0).rfind("--------", 0) == 0) {
+          temp.erase(temp.begin());
+          break;
+        }
+        temp.erase(temp.begin());
+      }
+    }
+  }
+
+  auto & rows_ = linked_editor->rows; //s_rows -> subnote_rows
+  rows_.clear();
+  rows_.push_back("----------------");
+  rows_.insert(rows_.end(), zz.begin(), zz.end());
+  rows_.push_back("----------------");
+
+  rows_.insert(rows_.end(), temp.begin(), temp.end());
   linked_editor->fr = 0;
   linked_editor->fc = 0;
   linked_editor->editorRefreshScreen(true);
@@ -3031,11 +3056,36 @@ void Editor::E_runlocal_C(void) {
 
   if (!s.empty()) s = "Error: " + s;
   std::vector<std::string> zz = str2vecWW(s+t);
-  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  auto temp = linked_editor->rows; //s_rows -> subnote_rows
+  /*
   s_rows.clear();
   s_rows.push_back("----------------");
   s_rows.insert(s_rows.end(), zz.begin(), zz.end());
   s_rows.push_back("----------------");
+ */
+  
+  /* replaces s_rows.clear()*/
+  if (!temp.empty()) {
+    if (temp.at(0).rfind("--------", 0) == 0) {
+      temp.erase(temp.begin());
+      for (;;) {
+        if (temp.empty()) break;
+        if (temp.at(0).rfind("--------", 0) == 0) {
+          temp.erase(temp.begin());
+          break;
+        }
+        temp.erase(temp.begin());
+      }
+    }
+  }
+
+  auto & rows_ = linked_editor->rows; //s_rows -> subnote_rows
+  rows_.clear();
+  rows_.push_back("----------------");
+  rows_.insert(rows_.end(), zz.begin(), zz.end());
+  rows_.push_back("----------------");
+
+  rows_.insert(rows_.end(), temp.begin(), temp.end());
 
   linked_editor->fr = 0;
   linked_editor->fc = 0;
