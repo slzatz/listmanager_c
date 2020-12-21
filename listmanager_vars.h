@@ -382,9 +382,8 @@ void readFile(const std::string &);
 void displayFile(void);
 void eraseRightScreen(void); //erases the note section; redundant if just did an eraseScreenRedrawLines
 
-std::string generate_html(void);
-std::string generate_html2(void);
-void generate_persistent_html_file(int);
+//std::string generate_html(void);
+//std::string generate_html2(void);
 void load_meta(void);
 void update_html_file(std::string &&);
 void update_html_code_file(std::string &&);

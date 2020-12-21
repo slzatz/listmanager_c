@@ -3183,7 +3183,13 @@ std::string Editor::editorPasteFromClipboard(void) {
   }
   auto decoded = base64::decode(s1);
   std::string s2(std::begin(decoded), std::end(decoded));
+  pos = s2.find('\t');
+  while(pos != std::string::npos) {
+      s2.replace(pos, 1, "  "); // number is number of chars to replace
+      pos = s2.find('\t');
+  }
   for (int i=0; i<s2.size(); ++i) if (!isascii(s2[i])) s2[i] = '?';
+
   return s2;
 }
 

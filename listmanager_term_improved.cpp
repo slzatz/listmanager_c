@@ -3586,13 +3586,6 @@ void F_saveoutline(int pos) {
   }
 }
 
-/*
-void F_persist(int pos) {
-  generate_persistent_html_file(O.rows.at(O.fr).id);
-  O.mode = NORMAL;
-}
-*/
-
 void F_valgrind(int) {
   initial_file_row = 0; //for arrowing or displaying files
   readFile("valgrind_log_file");
@@ -4460,66 +4453,6 @@ std::string generateWWString(std::vector<std::string> &rows, int width, int leng
   }
 }
 
-// there is a ? identical editorGenerateWWString
-// used by draw_preview and draw_search_preview (it is used by this)
-std::string generateWWString_orig(std::vector<std::string> &rows, int width, int length, std::string ret) {
-  if (rows.empty()) return "";
-
-  std::string ab = "";
-  //int y = -line_offset;
-  int y = 0;
-  int filerow = 0;
-
-  for (;;) {
-    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
-    if (filerow == rows.size()) return ab;
-
-    std::string row = rows.at(filerow);
-    
-    if (row.empty()) {
-      if (y == length - 1) return ab;
-      //ab.append("\n");
-      ab.append(ret);
-      filerow++;
-      y++;
-      continue;
-    }
-
-    int pos = -1;
-    int prev_pos;
-    for (;;) {
-      // this is needed because it deals where the end of the line doesn't have a space
-      if (row.substr(pos+1).size() <= width) {
-        ab.append(row, pos+1, width);
-        //if (y == length - 1) {last_visible_row = filerow - 1; return ab;}
-        if (y == length - 1) return ab;
-       // ab.append("\n");
-        ab.append(ret);
-        y++;
-        filerow++;
-        break;
-      }
-
-      prev_pos = pos;
-      pos = row.find_last_of(' ', pos+width);
-
-      //note npos when signed = -1 and order of if/else may matter
-      if (pos == std::string::npos) {
-        pos = prev_pos + width;
-      } else if (pos == prev_pos) {
-        row = row.substr(pos+1);
-        prev_pos = -1;
-        pos = width - 1;
-      }
-
-      ab.append(row, prev_pos+1, pos-prev_pos);
-      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
-      //ab.append("\n");
-      ab.append(ret);
-      y++;
-    }
-  }
-}
 void draw_search_preview(void) {
   //need to bring back the note with some marker around the words that
   //we search and replace or retrieve the note with the actual
@@ -6148,7 +6081,7 @@ bool editorProcessKeypress(void) {
               }
             }
           }
-          //p->editorSetMessage(""); // commented out to debug push_current
+          p->editorSetMessage(""); // commented out to debug push_current
           //editorSetMessage(p->last_typed.c_str());
           p->last_typed.clear();//////////// 09182020
           return true; //end case x1b:
