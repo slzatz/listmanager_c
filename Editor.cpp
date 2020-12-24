@@ -317,11 +317,12 @@ std::vector<std::string> Editor::str2vec(std::string & str, const char ret) {
     pos = str.find(ret, prev_pos);  
 
     if (pos == std::string::npos) {
-      vec.push_back(str.substr(prev_pos, str.size() - 1));
+      //vec.push_back(str.substr(prev_pos, str.size() - 1));
+      vec.push_back(str.substr(prev_pos, str.size())); //12242020
       break;    
     }
 
-    vec.push_back(str.substr(prev_pos, pos - prev_pos));  
+    vec.push_back(str.substr(prev_pos, pos - prev_pos + 1)); //12242020 + 1
 
     if (pos == str.size() - 1) {
       vec.push_back(std::string());
@@ -738,6 +739,7 @@ void Editor::push_current(void) {
     pos = temp_str.find('\r', pos + 2);
   }
 
+  /*Useful for debugging
   editorSetMessage("index: %d; cmd: %s; repeat: %d; fr: %d; fc: %d rows.size %d undo method: %d; text: %s", 
                       d_index,
                       d.command.c_str(), 
@@ -747,6 +749,7 @@ void Editor::push_current(void) {
                       d.rows.size(),
                       d.undo_method,
                       temp_str.c_str());
+  */
 }
 
 // right now only used if dot command issued in editor NORMAL mode
