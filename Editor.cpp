@@ -717,8 +717,6 @@ void Editor::push_current(void) {
       }
   } else if (d.command == "o" || d.command == "O") {
       d.undo_method = DELETE_ROWS;
-      //d.rows = str2vec(d.inserted_text);
-      //d.num_rows = get_num_rows(d.inserted_text);
   } else {
       d.undo_method = REPLACE_NOTE;
       d.rows = snapshot;
@@ -2880,19 +2878,11 @@ void Editor::E_run_code_C(void) {
   editorSetMessage("status code: %d", r.status_code);
 
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
-  // lets clear the current rows although might revisit this
   s_rows.clear();
   s_rows.push_back("");
   s_rows.push_back("----------------");;
   s_rows.push_back(r.url); //s
   s_rows.push_back("----------------");;
-
-  /*
-  // raw returned json for testing 
-  std::vector<std::string> zz = str2vecWW(r.text);
-  s_rows.insert(s_rows.end(), zz.begin(), zz.end());
-  s_rows.push_back("----------------");;
-  */
 
   std::string str = r.text;
   //ReplaceStringInPlace(str, "\\u001b", "\x1b");
@@ -2908,32 +2898,16 @@ void Editor::E_run_code_C(void) {
     // something happens when you extract text as below and the
     // escapes seem to be "exposed" somehow
     auto arr = js1["buildResult"]["stderr"];
-
     for (auto a : arr) {
-      //std::string s = i["text"];
-      //s_rows.push_back(s);
       s_rows.push_back(a["text"]);
     }
   }
 
   s_rows.push_back("----------------");;
-
-  /*
-  // for testing
-  // pretty printing full json that is returned
-  // note this process does not seem to change the sequences //u001b 
-  s_rows.push_back("");
-  std::string s = js1.dump(2); //2 is for pretty printing indent
-  std::vector<std::string> z = str2vecWW(s);
-  s_rows.insert(s_rows.end(), z.begin(), z.end());
-  s_rows.push_back("----------------");;
-  */
-
   linked_editor->fr = 0;
   linked_editor->fc = 0;
   linked_editor->editorRefreshScreen(true);
   linked_editor->dirty++;
-
 }
 
 void Editor::E_compile_C(void) {
@@ -3061,38 +3035,11 @@ void Editor::E_runlocal_C(void) {
   if (!s.empty()) s = "Error: " + s;
   std::vector<std::string> zz = str2vecWW(s+t);
 
-  //auto temp = linked_editor->rows; //s_rows -> subnote_rows
-
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
   s_rows.push_back("----------------");
   s_rows.insert(s_rows.end(), zz.begin(), zz.end());
   s_rows.push_back("----------------");
-  
-  /* replaces s_rows.clear()
-  if (!temp.empty()) {
-    if (temp.at(0).rfind("--------", 0) == 0) {
-      temp.erase(temp.begin());
-      for (;;) {
-        if (temp.empty()) break;
-        if (temp.at(0).rfind("--------", 0) == 0) {
-          temp.erase(temp.begin());
-          break;
-        }
-        temp.erase(temp.begin());
-      }
-    }
-  }
-
-  auto & rows_ = linked_editor->rows; //s_rows -> subnote_rows
-  rows_.clear();
-  rows_.push_back("----------------");
-  rows_.insert(rows_.end(), zz.begin(), zz.end());
-  rows_.push_back("----------------");
-
-  rows_.insert(rows_.end(), temp.begin(), temp.end());
-  */
-
   linked_editor->fr = 0;
   linked_editor->fc = 0;
   linked_editor->editorRefreshScreen(true);
@@ -3154,17 +3101,23 @@ void Editor::E_CTRL_P(int) {
 
   std::string s = editorPasteFromClipboard();
   if (s.empty()) return; 
+  std::erase(s, '\r'); //c++20
+
   if (rows.empty()) editorInsertRow(0, std::string());
 
   // text cut from vim ends in '\n'
-  std::vector<std::string> v = str2vec(s, '\n'); 
+  //std::vector<std::string> v = str2vec(s, '\n'); //12292020
+  std::vector<std::string> v = str2vecWW(s); 
 
+  /* Decided to start on new line and not continue current line
   // strategy is to insert first pasted row at cursor and then
   // create new rows for subsequent lines
   std::string& row = rows.at(fr);
   row.insert(row.begin() + fc, v.at(0).begin(), v.at(0).end()); 
   // Note below it is OK to insert into a vector 1 beyond last position
   if (v.size() > 1) rows.insert(rows.begin() + fr + 1, v.begin() + 1, v.end());
+  */
+  rows.insert(rows.begin()+fr, v.begin(), v.end());
   dirty++;
 }
 
