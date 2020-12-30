@@ -6016,16 +6016,15 @@ bool editorProcessKeypress(void) {
             p->push_current();
           }
 
-          if (cmd_map4.contains(p->last_command)) { //cw, caw, s
+          //cw, caw, s
+          if (cmd_map4.contains(p->last_command)) {
             p->push_current();
           }
           //'I' in VISUAL BLOCK mode
-          //if (p->last_command == -1) {
           if (p->last_command == "VBI") {
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
-            //{
             int temp = p->fr;
 
             for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
@@ -6036,16 +6035,14 @@ bool editorProcessKeypress(void) {
             }
             p->fr = temp;
             p->fc = p->vb0[0];
-          //}
           }
 
           //'A' in VISUAL BLOCK mode
           if (p->last_command == "VBA") {
-            //p->fc++;a doesn't go here
             for (int n=0; n<p->last_repeat-1; n++) {
               for (char const &c : p->last_typed) {p->editorInsertChar(c);}
             }
-            {
+            //{ 12302020
             int temp = p->fr;
 
             for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
@@ -6058,7 +6055,7 @@ bool editorProcessKeypress(void) {
             }
             p->fr = temp;
             p->fc = p->vb0[0];
-          }
+          //} 12302020
           }
 
           /*Escape whatever else happens falls through to here*/
@@ -6144,6 +6141,7 @@ bool editorProcessKeypress(void) {
           if (editors.size() == 1) {
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
+            return_cursor(); //12302020
             return false;
           }
           {

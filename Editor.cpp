@@ -338,6 +338,59 @@ std::vector<std::string> Editor::str2vecWW(std::string str) {
   int pos = 0;
   int prev_pos = 0;
   std::string s;
+
+  pos = str.find('\t');
+  while(pos != std::string::npos) {
+    str.replace(pos, 1, "  "); // number is number of chars to replace
+    pos = str.find('\t');
+  }
+
+  for(;;) {
+    pos = str.find('\n', prev_pos);  
+
+    if (pos == std::string::npos) {
+      s = str.substr(prev_pos);
+      for(;;) {
+        if (s.size() < screencols - left_margin_offset) {
+          vec.push_back(s);
+          break;
+        } else {
+          vec.push_back(s.substr(0, screencols - left_margin_offset - 1));
+          s = s.substr(screencols - left_margin_offset - 1); 
+        }
+      }  
+      break;
+    }
+
+      s = str.substr(prev_pos, pos - prev_pos); //2nd parameter is length!
+      for(;;) {
+        if (s.size() < screencols - left_margin_offset) {
+          vec.push_back(s);
+          break;
+        } else {
+          vec.push_back(s.substr(0, screencols - left_margin_offset - 1));
+          s = s.substr(screencols - left_margin_offset - 1); 
+        }
+      }  
+
+    if (pos == str.size() - 1) {
+      vec.push_back(std::string());
+      break;
+    }
+    prev_pos = pos + 1;
+  }
+  for (auto &s :  vec) {
+    for (int i=0; i< s.size(); ++i) {if (!isprint(s[i])) s[i] = '?';}
+  }
+  return vec;
+}
+
+/*
+std::vector<std::string> Editor::str2vecWW(std::string str) {
+  std::vector<std::string> vec;
+  int pos = 0;
+  int prev_pos = 0;
+  std::string s;
   for(;;) {
     pos = str.find('\n', prev_pos);  
 
@@ -374,6 +427,7 @@ std::vector<std::string> Editor::str2vecWW(std::string str) {
   }
   return vec;
 }
+*/
 
 /* Basic Editor actions */
 void Editor::editorInsertReturn(void) { // right now only used for editor->INSERT mode->'\r'
@@ -3101,7 +3155,7 @@ void Editor::E_CTRL_P(int) {
 
   std::string s = editorPasteFromClipboard();
   if (s.empty()) return; 
-  std::erase(s, '\r'); //c++20
+  //std::erase(s, '\r'); //c++20
 
   if (rows.empty()) editorInsertRow(0, std::string());
 
@@ -3142,12 +3196,16 @@ std::string Editor::editorPasteFromClipboard(void) {
   }
   auto decoded = base64::decode(s1);
   std::string s2(std::begin(decoded), std::end(decoded));
+
+  /*
   pos = s2.find('\t');
   while(pos != std::string::npos) {
-      s2.replace(pos, 1, "  "); // number is number of chars to replace
-      pos = s2.find('\t');
+    s2.replace(pos, 1, "  "); // number is number of chars to replace
+    pos = s2.find('\t');
   }
+
   for (int i=0; i<s2.size(); ++i) if (!isascii(s2[i])) s2[i] = '?';
+  */
 
   return s2;
 }
