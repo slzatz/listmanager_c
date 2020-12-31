@@ -1460,7 +1460,8 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   // In the code below `\t' are the returns in lines that word wrap - last return is always '\n'
   int n = 0;
   while(std::getline(display, line, '\n')) {
-    if (n >= line_offset) {
+    //if (n >= line_offset) {
+    if (n >= first_visible_row) { //substituted for above on 12312020
       //ab.append(fmt::format("{:>2} ", n));
       ab.append(fmt::format("\x1b[48;5;235m\x1b[38;5;245m{:>3} \x1b[0m", n));
       if (line.find('\t') != std::string::npos) {
@@ -2165,11 +2166,12 @@ std::string Editor::editorGenerateWWString(void) {
   for (;;) {
     if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
 
-    char ret = '\n';
+    //char ret = '\n';
+    char ret = '\t';
     std::string_view row = rows.at(filerow);
     // if you put a \n in the middle of a comment the wrapped portion won't be italic
     //if (row.find("//") != std::string::npos) ret = '\t';
-    ret = '\t';
+    //ret = '\t';
 
     if (row.empty()) {
       if (y == screenlines - 1) return ab;
@@ -2198,7 +2200,7 @@ std::string Editor::editorGenerateWWString(void) {
       }
       ab.append(row.substr(prev_pos, pos - prev_pos + 1));
       if (y == screenlines - 1) {last_visible_row = filerow - 1; return ab;}
-      ab.append(1, ret); //this appears to be the only placew intraline take place so make them all \t
+      ab.append(1, ret); //this appears to be the only place intraline take place so make them all \t
       y++;
       prev_pos = pos + 1;
     }
