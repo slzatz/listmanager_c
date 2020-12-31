@@ -6141,8 +6141,8 @@ bool editorProcessKeypress(void) {
           if (editors.size() == 1) {
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
-            outlineRefreshScreen(); //12302020 needed
-            return_cursor(); //12302020 needed
+            O.mode = NORMAL;
+            return_cursor(); 
             return false;
           }
           {
@@ -6158,7 +6158,9 @@ bool editorProcessKeypress(void) {
               else p->mode = NORMAL;
               return false;
             } else {editor_mode = false;
-              get_preview(O.rows.at(O.fr).id); // with change in while loop should not get overwritten
+              get_preview(O.rows.at(O.fr).id);
+              O.mode = NORMAL;
+              return_cursor(); 
               return false;
             }
           }
