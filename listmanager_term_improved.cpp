@@ -6141,7 +6141,8 @@ bool editorProcessKeypress(void) {
           if (editors.size() == 1) {
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
-            return_cursor(); //12302020
+            outlineRefreshScreen(); //12302020 needed
+            return_cursor(); //12302020 needed
             return false;
           }
           {
