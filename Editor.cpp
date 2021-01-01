@@ -306,34 +306,7 @@ int Editor::get_num_rows(std::string & str) {
   return n;
 }
 
-// puts inserted text into a vector of rows using '\r' to determine lines
-// note doesn't word wrap which is fine since if internal string the '\r'
-// in right place but not necessarily true if externally generated string
-std::vector<std::string> Editor::str2vec(std::string & str, const char ret) {
-  std::vector<std::string> vec;
-  int pos = 0;
-  int prev_pos = 0;
-  for(;;) {
-    pos = str.find(ret, prev_pos);  
-
-    if (pos == std::string::npos) {
-      //vec.push_back(str.substr(prev_pos, str.size() - 1));
-      vec.push_back(str.substr(prev_pos, str.size())); //12242020
-      break;    
-    }
-
-    vec.push_back(str.substr(prev_pos, pos - prev_pos + 1)); //12242020 + 1
-
-    if (pos == str.size() - 1) {
-      vec.push_back(std::string());
-      break;
-    }
-    prev_pos = pos + 1;
-  }
-  return vec;
-}
-
-std::vector<std::string> Editor::str2vecWW(std::string str) {
+std::vector<std::string> Editor::str2vecWW(std::string str, bool ascii_only) {
   std::vector<std::string> vec;
   int pos = 0;
   int prev_pos = 0;
@@ -379,6 +352,9 @@ std::vector<std::string> Editor::str2vecWW(std::string str) {
     }
     prev_pos = pos + 1;
   }
+
+  if (!ascii_only) return vec;
+
   for (auto &s :  vec) {
     for (int i=0; i< s.size(); ++i) {if (!isprint(s[i])) s[i] = '?';}
   }
@@ -2249,7 +2225,13 @@ int Editor::editorGetLineCharCountWW(int r, int line) {
 /************************************* end of WW ************************************************/
 /* EDITOR COMMAND_LINE mode functions */
 void Editor::E_write_C(void) {
-  update_note(is_subeditor);
+  if (is_subeditor) {
+      editorSetMessage("You can't save the contents of the Output Window");
+      return;
+  }
+
+  //update_note(is_subeditor);
+  update_note(false);
   //problem - can't have dirty apply to both note and subnote
   dirty = 0; //is in update_note but dirty = 0 is probably better here.
   editorSetMessage("");
@@ -2969,7 +2951,7 @@ void Editor::E_run_code_C(void) {
 void Editor::E_compile_C(void) {
 
   if(is_subeditor) {
-    editorSetMessage("You're in the subeditor!");
+    editorSetMessage("You're in the Output Window!");
     return;
   }
   std::stringstream text;
@@ -3002,39 +2984,14 @@ void Editor::E_compile_C(void) {
     }
   }
   if (text.str().empty())   text << "Go build successful";
-  std::vector<std::string> zz = str2vecWW(text.str());
+  std::vector<std::string> zz = str2vecWW(text.str(), false); //ascii_only = false
 
-  //auto temp = linked_editor->rows; //s_rows -> subnote_rows
-
-  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
+  auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows output_window
   s_rows.clear();
   s_rows.push_back("----------------");;
   s_rows.insert(s_rows.end(), zz.begin(), zz.end());
   s_rows.push_back("----------------");;
 
-  /* replaces s_rows.clear()
-  if (!temp.empty()) {
-    if (temp.at(0).rfind("--------", 0) == 0) {
-      temp.erase(temp.begin());
-      for (;;) {
-        if (temp.empty()) break;
-        if (temp.at(0).rfind("--------", 0) == 0) {
-          temp.erase(temp.begin());
-          break;
-        }
-        temp.erase(temp.begin());
-      }
-    }
-  }
-
-  auto & rows_ = linked_editor->rows; //s_rows -> subnote_rows
-  rows_.clear();
-  rows_.push_back("----------------");
-  rows_.insert(rows_.end(), zz.begin(), zz.end());
-  rows_.push_back("----------------");
-
-  rows_.insert(rows_.end(), temp.begin(), temp.end());
-  */
   linked_editor->fr = 0;
   linked_editor->fc = 0;
   linked_editor->editorRefreshScreen(true);
@@ -3089,7 +3046,8 @@ void Editor::E_runlocal_C(void) {
   }
 
   if (!s.empty()) s = "Error: " + s;
-  std::vector<std::string> zz = str2vecWW(s+t);
+  //std::vector<std::string> zz = str2vecWW(s+t);
+  std::vector<std::string> zz = str2vecWW(s+t, false); //ascii_only = false
 
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows
   s_rows.clear();
@@ -3162,7 +3120,6 @@ void Editor::E_CTRL_P(int) {
   if (rows.empty()) editorInsertRow(0, std::string());
 
   // text cut from vim ends in '\n'
-  //std::vector<std::string> v = str2vec(s, '\n'); //12292020
   std::vector<std::string> v = str2vecWW(s); 
 
   /* Decided to start on new line and not continue current line

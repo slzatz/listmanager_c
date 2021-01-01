@@ -137,8 +137,7 @@ class Editor {
     //void push_base(void);
     void undo(void);
     void redo(void);
-    std::vector<std::string> str2vec(std::string &, const char);
-    std::vector<std::string> str2vecWW(std::string);
+    std::vector<std::string> str2vecWW(std::string, bool ascii_only=true);
     int get_num_rows(std::string &);
 
 /* EDITOR COMMAND_LINE mode functions */

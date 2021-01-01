@@ -1475,25 +1475,15 @@ void get_note(int id) {
 
   if (!p->linked_editor) return;
 
+  p->linked_editor->rows = std::vector<std::string>{};
+  /* below works but don't think we want to store output_window
   db.query("SELECT subnote FROM task WHERE id = {}", id);
   db.callback = note_callback;
   db.pArg = p->linked_editor;
   run_sql();
+  */
 }
 
-void get_note_(int id) {
-  if (id ==-1) return; // id given to new and unsaved entries
-
-  std::stringstream query;
-  query << "SELECT note FROM task WHERE id = " << id;
-  if (!db_query(S.db, query.str().c_str(), note_callback, p, &S.err_msg, __func__)) return;
-
-  if (!p->linked_editor) return;
-
-  std::stringstream query2;
-  query2 << "SELECT subnote FROM task WHERE id = " << id;
-  if (!db_query(S.db, query2.str().c_str(), note_callback, p->linked_editor, &S.err_msg, __func__)) return;
-}
 // doesn't appear to be called if row is NULL
 int note_callback (void *e, int argc, char **argv, char **azColName) {
 
@@ -6362,7 +6352,15 @@ bool editorProcessKeypress(void) {
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
           if (cmd == "x") {
-            update_note(p->is_subeditor, true); //should be p->E_write_C(); closing_editor = true;
+            if (p->is_subeditor) {
+              p->mode = NORMAL;
+              p->command[0] = '\0';
+              p->command_line.clear();
+              p->editorSetMessage("You can't save the contents of the Output Window");
+              return false;
+            }
+            //update_note(p->is_subeditor, true); //should be p->E_write_C(); closing_editor = true;
+            update_note(false, true); //should be p->E_write_C(); closing_editor = true;
           } else if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
           } else if (p->dirty) {
