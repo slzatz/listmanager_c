@@ -2,6 +2,7 @@
 #include "listmanager_vars.h"
 #include "Editor.h"
 #include "Dbase.h"
+#include "session.h"
 #include "pstream.h"
 #include <cstdarg> //va_start etc.
 #include <mkdio.h>
@@ -26,13 +27,15 @@
 using namespace redi;
 using json = nlohmann::json;
 
-//Editor E; //this instantiates it - with () it looks like a function definition with type Editor
+// Below this instantiates it - with () it looks like a function definition with type Editor
+//Session sess; //contains std::vector<Editor*> editors *inlined in listmanager.h*
 Editor *p;
+//Session sess = {};
 //std::shared_ptr<Editor> p(nullptr);
 
 //typedef void (Editor::*efunc)(void);
 //typedef void (Editor::*eefunc)(int);
-std::vector<Editor *> editors;
+//std::vector<Editor *> editors;
 
 auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
 
@@ -291,36 +294,40 @@ void do_exit(PGconn *conn) {
 }
 
 void signalHandler(int signum) {
+  /*
   getWindowSize(&new_screenlines, &new_screencols);
   screenlines = new_screenlines;
   screencols = new_screencols;
-  O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  O.divider = screencols - c.ed_pct * screencols/100;
-  O.titlecols =  O.divider - TIME_COL_WIDTH - LEFT_MARGIN;
-  O.totaleditorcols = screencols - O.divider - 2; //? OUTLINE MARGINS?
-  O.left_screencols = O.divider - 2; //OUTLINE_MARGINS
+  */
 
-  Editor::total_screenlines = screenlines - 2 - TOP_MARGIN;
+  getWindowSize(&sess.screenlines, &sess.screencols);
+  O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
+  O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+  sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
+  O.left_screencols = sess.divider - 2; //OUTLINE_MARGINS
+
+  Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
   //EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
-  Editor::origin = O.divider + 1; //only used in Editor.cpp
+  Editor::origin = sess.divider + 1; //only used in Editor.cpp
 
   eraseScreenRedrawLines();
   eraseRightScreen();
 
-  if (!editors.empty()) {
+  if (!sess.editors.empty()) {
 
     std::unordered_set<int> temp;
-    for (auto z : editors) {
+    for (auto z : sess.editors) {
       temp.insert(z->id);
     }
 
-    int s_cols = -1 + (screencols - O.divider)/temp.size();
+    int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
     temp.clear();
     int i = -1;
-    for (auto z : editors) {
+    for (auto z : sess.editors) {
       auto ret = temp.insert(z->id);
       if (ret.second == true) i++;
-      z->left_margin = O.divider + i*s_cols + i;
+      z->left_margin = sess.divider + i*s_cols + i;
       z->screencols = s_cols;
       z->set_screenlines(); //also sets top margin
     }
@@ -328,7 +335,7 @@ void signalHandler(int signum) {
 
   outlineRefreshScreen();
   outlineDrawStatusBar();
-  outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
+  outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
 
   draw_editors();
 
@@ -342,7 +349,7 @@ void signalHandler(int signum) {
 
 void draw_editors(void) {
   std::string ab;
-  for (auto &e : editors) {
+  for (auto &e : sess.editors) {
   //for (size_t i=0, max=editors.size(); i!=max; ++i) {
     //Editor *&e = editors.at(i);
     e->editorRefreshScreen(true);
@@ -359,7 +366,7 @@ void draw_editors(void) {
       //'T' corner = w or right top corner = k
       buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
       ab.append(buf);
-      if (e->left_margin + e->screencols > screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
+      if (e->left_margin + e->screencols > sess.screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
       else ab.append("\x1b[37;1mw");
     }
     //exit line drawing mode
@@ -618,7 +625,7 @@ void display_item_info_pg(int id) {
   }    
 
   char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
 
   std::string s;
 
@@ -1475,7 +1482,7 @@ void get_note(int id) {
 
   if (!p->linked_editor) return;
 
-  p->linked_editor->rows = std::vector<std::string>{};
+  p->linked_editor->rows = std::vector<std::string>{" "};
   /* below works but don't think we want to store output_window
   db.query("SELECT subnote FROM task WHERE id = {}", id);
   db.callback = note_callback;
@@ -1687,13 +1694,13 @@ void display_item_info(int id) {
 void display_item_info(void) {
   int id = O.rows.at(O.fr).id;
   std::string s{};
-  int width = O.totaleditorcols - 10;
+  int width = sess.totaleditorcols - 10;
   int length = O.screenlines - 10;
   Query q(db, "SELECT * FROM task WHERE id={};", id);
   q.step();
 
   // \x1b[NC moves cursor forward by N columns
-  std::string lf_ret = fmt::format("\r\n\x1b[{}C", O.divider + 6);
+  std::string lf_ret = fmt::format("\r\n\x1b[{}C", sess.divider + 6);
   s.append(fmt::format("id: {}{}", q.column_int(0), lf_ret));
 
   int tid = q.column_int(1);
@@ -1731,19 +1738,19 @@ void display_item_info(void) {
   ab.append("\x1b[?25l");
   //ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 6));
  
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 7));
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
 
   //erase set number of chars on each line
-  std::string erase_chars = fmt::format("\x1b[{}X", O.totaleditorcols - 10);
+  std::string erase_chars = fmt::format("\x1b[{}X", sess.totaleditorcols - 10);
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
   }
 
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 7));
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
 
   ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width));
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
   ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
   ab.append(s);
   ab.append(draw_preview_box(width, length));
@@ -1957,13 +1964,13 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   9: modified
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
@@ -1972,7 +1979,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -2046,13 +2053,13 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   11: modified
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
@@ -2061,7 +2068,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -2131,13 +2138,13 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   5: deleted
   */
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l"); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf);
 
   //need to erase the screen
@@ -2146,7 +2153,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -3161,26 +3168,27 @@ void F_edit(int) {
   outlineRefreshScreen();
   editor_mode = true;
 
-  if (!editors.empty()){
-    auto it = std::find_if(std::begin(editors), std::end(editors),
+  if (!sess.editors.empty()){
+    auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
                        [&id](auto& ls) { return ls->id == id; }); //auto&& also works
 
-    if (it == editors.end()) {
+    if (it == sess.editors.end()) {
       p = new Editor;
-      editors.push_back(p);
+      sess.editors.push_back(p);
       //editors.push_back(std::make_shared<Editor>(E));
       p->id = id;
       p->top_margin = TOP_MARGIN + 1;
-      p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+      //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
       int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
       if (folder_tid == 18 || folder_tid == 14) {
         p->linked_editor = new Editor;
-        editors.push_back(p->linked_editor);
+        sess.editors.push_back(p->linked_editor);
         p->linked_editor->id = id;
         //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
         //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
         p->linked_editor->is_subeditor = true;
+        p->linked_editor->is_below = true;
         p->linked_editor->linked_editor = p;
         p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
@@ -3191,7 +3199,7 @@ void F_edit(int) {
     }    
   } else {
     p = new Editor;
-    editors.push_back(p);
+    sess.editors.push_back(p);
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
     //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
@@ -3199,30 +3207,34 @@ void F_edit(int) {
     int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
     if (folder_tid == 18 || folder_tid == 14) {
       p->linked_editor = new Editor;
-      editors.push_back(p->linked_editor);
+      sess.editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
       //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
       //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
       p->linked_editor->is_subeditor = true;
+      p->linked_editor->is_below = true;
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
     get_note(id); //if id == -1 does not try to retrieve note
  }
-
-  std::unordered_set<int> temp;
-  for (auto z : editors) {
-    temp.insert(z->id);
+  int editor_slots = 0;
+  //std::unordered_set<int> temp;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+    //temp.insert(z->id);
   }
 
   // this could be improved - lose at least one column for each additional editor
-  int s_cols = -1 + (screencols - O.divider)/temp.size();
-  temp.clear();
+  //int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  //temp.clear();
   int i = -1; //i = number of columns of editors -1
-  for (auto z : editors) {
-    auto ret = temp.insert(z->id);
-    if (ret.second == true) i++;
-    z->left_margin = O.divider + i*s_cols + i;
+  for (auto z : sess.editors) {
+    //auto ret = temp.insert(z->id);
+    if (!z->is_below) i++;
+    //if (ret.second == true) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
     z->screencols = s_cols;
     z->set_screenlines();
   }
@@ -3705,7 +3717,7 @@ void F_quit_lm_browser(int) {
 
 /* OUTLINE NORMAL mode functions */
 void goto_editor_N(void) {
-  if (editors.empty()) {
+  if (sess.editors.empty()) {
     outlineShowMessage("There are no active editors");
     return;
   }
@@ -4154,14 +4166,14 @@ void eraseRightScreen(void) {
   //for loop although ? could really start on second line since need to redraw
   //horizontal line anyway
   fmt::memory_buffer buf;
-  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + 1); //need +1 or erase top T
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, sess.divider + 1); //need +1 or erase top T
   ab.append(buf.data(), buf.size());
 
   //erase the screen
   fmt::memory_buffer lf_ret;
   //note O.divider -1 would take out center divider line and don't want to do that
-  fmt::format_to(lf_ret, "\r\n\x1b[{}C", O.divider);
-  for (int i=0; i < screenlines - TOP_MARGIN; i++) { 
+  fmt::format_to(lf_ret, "\r\n\x1b[{}C", sess.divider);
+  for (int i=0; i < sess.screenlines - TOP_MARGIN; i++) { 
     ab.append("\x1b[K");
     ab.append(lf_ret.data(), lf_ret.size());
   }
@@ -4173,9 +4185,9 @@ void eraseRightScreen(void) {
   ab.append("\x1b(0"); // Enter line drawing mode
   //for (int j=1; j<screencols/2; j++) {
   //for (int j=1; j<O.divider; j++) {
-  for (int j=1; j<O.totaleditorcols+1; j++) { //added +1 0906/2020
+  for (int j=1; j<sess.totaleditorcols+1; j++) { //added +1 0906/2020
     //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + j);
-    std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, O.divider + j);
+    std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, sess.divider + j);
     ab.append(buf2);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
@@ -4184,7 +4196,7 @@ void eraseRightScreen(void) {
   //exit line drawing mode
   ab.append("\x1b(B");
 
-  std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, O.divider + 2);
+  std::string buf3 = fmt::format("\x1b[{};{}H", TOP_MARGIN + 1, sess.divider + 2);
   ab.append(buf3);
   ab.append("\x1b[0m"); // needed or else in bold mode from line drawing above
 
@@ -4213,11 +4225,11 @@ void displayFile(void) {
   ab.append("\x1b[?25l", 6); //hides the cursor
 
   char lf_ret[20];
-  int lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider); //note no + 1
+  int lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider); //note no + 1
 
   char buf[20];
   //position cursor prior to erase
-  int bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 1);
+  int bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 1);
   ab.append(buf, bufchars); //don't need to give length but will if change to memory_buffer
 
   //erase the right half of the screen
@@ -4226,7 +4238,7 @@ void displayFile(void) {
     ab.append(lf_ret, lf_chars);
   }
 
-  bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, O.divider + 2);
+  bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2);
   ab.append(buf, bufchars);
 
   ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
@@ -4241,20 +4253,20 @@ void displayFile(void) {
     if (line_num > O.screenlines - 2) break;
     row_num++;
     if (row_num < initial_file_row) continue;
-    if (static_cast<int>(row.size()) < O.totaleditorcols) {
+    if (static_cast<int>(row.size()) < sess.totaleditorcols) {
       ab.append(row);
       ab.append(lf_ret);
       line_num++;
       continue;
     }
     //int n = 0;
-    lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 2); //indent text extra space
-    int n = row.size()/(O.totaleditorcols - 1) + ((row.size()%(O.totaleditorcols - 1)) ? 1 : 0);
+    lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 2); //indent text extra space
+    int n = row.size()/(sess.totaleditorcols - 1) + ((row.size()%(sess.totaleditorcols - 1)) ? 1 : 0);
     for(int i=0; i<n; i++) {
       line_num++;
       if (line_num > O.screenlines - 2) break;
-      line = row.substr(0, O.totaleditorcols - 1);
-      row.erase(0, O.totaleditorcols - 1);
+      line = row.substr(0, sess.totaleditorcols - 1);
+      row.erase(0, sess.totaleditorcols - 1);
       ab.append(line);
       ab.append(lf_ret, lf_chars);
     }
@@ -4344,39 +4356,39 @@ void draw_preview(void) {
 
   char buf[50];
   std::string ab;
-  int width = O.totaleditorcols - 10;
+  int width = sess.totaleditorcols - 10;
   int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, O.divider + 6);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
   ab.append(buf, strlen(buf));
   //std::string abs = "";
  
   char lf_ret[10];
   // \x1b[NC moves cursor forward by N columns
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 6);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 6);
   //ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
-  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
   ab.append(buf0.str());
 
   //erase set number of chars on each line
   char erase_chars[10];
-  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.totaleditorcols - 10);
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", sess.totaleditorcols - 10);
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
   }
 
   std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width);
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
   if (O.preview_rows.empty()) {
     ab.append(buf);
     ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
@@ -4454,40 +4466,40 @@ void draw_search_preview(void) {
 
   char buf[50];
   std::string ab;
-  int width = O.totaleditorcols - 10;
+  int width = sess.totaleditorcols - 10;
   int length = O.screenlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, O.divider + 6);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
   ab.append(buf, strlen(buf));
   //std::string abs = "";
  
   // \x1b[NC moves cursor forward by N columns
   char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 6);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 6);
 
   ab.append("\x1b[?25l"); //hides the cursor
 
   std::stringstream buf0;
   // format for positioning cursor is "\x1b[%d;%dH"
-  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
   ab.append(buf0.str());
 
   //erase set number of chars on each line
   char erase_chars[10];
-  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", O.totaleditorcols - 10);
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", sess.totaleditorcols - 10);
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
   }
 
   std::stringstream buf2;
-  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  O.divider + 7 << "H";
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
   ab.append(buf2.str()); //reposition cursor
 
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, O.divider+7, TOP_MARGIN+4+length, O.divider+7+width);
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
   if (O.preview_rows.empty()) {
     ab.append(buf);
     ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
@@ -4555,12 +4567,12 @@ std::string draw_preview_box(int width, int length) {
   fmt::format_to(move_cursor, "\x1b[{}C", width);
   ab.append("\x1b(0"); // Enter line drawing mode
   fmt::memory_buffer buf;
-  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6); 
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 6); 
   ab.append(buf.data(), buf.size());
   buf.clear();
   ab.append("\x1b[37;1ml"); //upper left corner
   for (int j=1; j<length; j++) { //+1
-    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, O.divider + 6); 
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, sess.divider + 6); 
     ab.append(buf.data(), buf.size());
     buf.clear();
     // x=0x78 vertical line (q=0x71 is horizontal) 37=white; 1m=bold (only need 1 m)
@@ -4568,14 +4580,14 @@ std::string draw_preview_box(int width, int length) {
     ab.append(move_cursor.data(), move_cursor.size());
     ab.append("\x1b[37;1mx");
   }
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, O.divider + 6));
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, sess.divider + 6));
   ab.append("\x1b[1B");
   ab.append("\x1b[37;1mm"); //lower left corner
 
   move_cursor.clear();
   fmt::format_to(move_cursor, "\x1b[1D\x1b[{}B", length);
   for (int j=1; j<width+1; j++) {
-    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 6 + j); 
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 6 + j); 
     ab.append(buf.data(), buf.size());
     buf.clear();
     ab.append("\x1b[37;1mq");
@@ -4583,7 +4595,7 @@ std::string draw_preview_box(int width, int length) {
     ab.append("\x1b[37;1mq");
   }
   ab.append("\x1b[37;1mj"); //lower right corner
-  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, O.divider + 7 + width); 
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 7 + width); 
   ab.append(buf.data(), buf.size());
   ab.append("\x1b[37;1mk"); //upper right corner
 
@@ -4693,7 +4705,7 @@ void outlineDrawRows(std::string& ab) {
 
     //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); // + offset
     // believe the +2 is just to give some space from the end of long titles
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, O.divider - TIME_COL_WIDTH + 2); // + offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, sess.divider - TIME_COL_WIDTH + 2); // + offset
     ab.append(buf, strlen(buf));
     ab.append(row.modified);
     ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
@@ -4706,10 +4718,10 @@ void outlineDrawFilters(std::string& ab) {
   if (O.rows.empty()) return;
 
   char lf_ret[16];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", O.divider + 1);
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
 
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%dG", O.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%dG", sess.divider + 2); 
   ab.append(buf); 
 
   for (int y = 0; y < O.screenlines; y++) {
@@ -4782,7 +4794,7 @@ void outlineDrawSearchRows(std::string& ab) {
     spaces = O.titlecols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - TIME_COL_WIDTH + 2); //wouldn't need offset
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); //wouldn't need offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, sess.divider - TIME_COL_WIDTH + 2); //wouldn't need offset
     ab.append("\x1b[0m", 4); // return background to normal
     ab.append(buf, strlen(buf));
     ab.append(row.modified);
@@ -4793,7 +4805,7 @@ void outlineDrawSearchRows(std::string& ab) {
 
 void outlineRefreshAllEditors(void) {
   //may be a redundant partial erase in each editorRefreshScreen
-  for (auto e : editors) e->editorRefreshScreen(true);
+  for (auto e : sess.editors) e->editorRefreshScreen(true);
     
 }
 
@@ -4811,7 +4823,7 @@ void outlineDrawStatusBar(void) {
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
                              O.screenlines + TOP_MARGIN + 1,
-                             O.divider,
+                             sess.divider,
                              O.screenlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
@@ -4926,13 +4938,13 @@ void return_cursor() {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + p->left_margin_offset + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", Editor::total_screenlines + TOP_MARGIN + 2, p->command_line.size() + O.divider + 2); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", Editor::total_screenlines + TOP_MARGIN + 2, p->command_line.size() + sess.divider + 2); 
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h"); // show cursor
     }
   } else {
     if (O.mode == ADD_CHANGE_FILTER){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.divider + 1); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, sess.divider + 1); 
       ab.append(buf, strlen(buf));
     } else if (O.mode == FIND) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
@@ -4962,14 +4974,14 @@ void outlineDrawMessageBar(std::string& ab) {
   // Erase from mid-screen to the left and then place cursor all the way left
   buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
       //<< screencols/2 << "H" << "\x1b[1K\x1b["
-      << O.divider << "H" << "\x1b[1K\x1b["
+      << sess.divider << "H" << "\x1b[1K\x1b["
       << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab += buf.str();
 
   int msglen = strlen(O.message);
   //if (msglen > screencols/2) msglen = screencols/2;
-  if (msglen > O.divider) msglen = O.divider;
+  if (msglen > sess.divider) msglen = sess.divider;
   ab.append(O.message, msglen);
 }
 
@@ -5024,7 +5036,7 @@ void outlineShowMessage(const char *fmt, ...) {
   // Erase from mid-screen to the left and then place cursor all the way left
   buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
       //<< screencols/2 << "H" << "\x1b[1K\x1b["
-      << O.divider << "H" << "\x1b[1K\x1b["
+      << sess.divider << "H" << "\x1b[1K\x1b["
       << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab = buf.str();
@@ -5032,7 +5044,7 @@ void outlineShowMessage(const char *fmt, ...) {
 
   int msglen = strlen(message);
   //if (msglen > screencols/2) msglen = screencols/2;
-  if (msglen > O.divider) msglen = O.divider;
+  if (msglen > sess.divider) msglen = sess.divider;
   ab.append(message, msglen);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -5040,10 +5052,10 @@ void outlineShowMessage(const char *fmt, ...) {
 void outlineShowMessage2(const std::string &s) {
   std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
                                  O.screenlines + 2 + TOP_MARGIN,
-                                 O.divider,
+                                 sess.divider,
                                  O.screenlines + 2 + TOP_MARGIN);
 
-  if (s.length() > O.divider) buf.append(s, O.divider) ;
+  if (s.length() > sess.divider) buf.append(s, sess.divider) ;
   else buf.append(s);
 
   write(STDOUT_FILENO, buf.c_str(), buf.size());
@@ -5866,22 +5878,24 @@ bool editorProcessKeypress(void) {
           // ? p->redraw = true;
           return true;
 
+          /*
         case CTRL_KEY('w'):  
           p->E_resize(1);
           p->command[0] = '\0';
           p->repeat = 0;
           return false;
+         */
 
         case CTRL_KEY('h'):
           p->command[0] = '\0';
-          if (editors.size() == 1) {
+          if (sess.editors.size() == 1) {
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
             return false;
           }
           {
             if (p->is_subeditor) p = p->linked_editor;
-            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
             auto it = std::find(temp.begin(), temp.end(), p);
             int index = std::distance(temp.begin(), it);
@@ -5901,7 +5915,7 @@ bool editorProcessKeypress(void) {
           p->command[0] = '\0';
           {
             if (p->is_subeditor) p = p->linked_editor;
-            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
             auto it = std::find(temp.begin(), temp.end(), p);
             int index = std::distance(temp.begin(), it);
@@ -6120,15 +6134,17 @@ bool editorProcessKeypress(void) {
           p->redo();
           return true;
 
+          /*
         case CTRL_KEY('w'):
           p->E_resize(1);
           p->command[0] = '\0';
           p->repeat = 0;
           return true;
+         */
 
         case CTRL_KEY('h'):
           p->command[0] = '\0';
-          if (editors.size() == 1) {
+          if (sess.editors.size() == 1) {
             editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
             O.mode = NORMAL;
@@ -6137,7 +6153,7 @@ bool editorProcessKeypress(void) {
           }
           {
             if (p->is_subeditor) p = p->linked_editor;
-            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
             auto it = std::find(temp.begin(), temp.end(), p);
             int index = std::distance(temp.begin(), it);
@@ -6159,7 +6175,7 @@ bool editorProcessKeypress(void) {
           p->command[0] = '\0';
           {
             if (p->is_subeditor) p = p->linked_editor;
-            auto v = editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
+            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
             auto it = std::find(temp.begin(), temp.end(), p);
             int index = std::distance(temp.begin(), it);
@@ -6373,30 +6389,30 @@ bool editorProcessKeypress(void) {
 
           //eraseRightScreen(); //moved below on 10-24-2020
 
-          std::erase(editors, p); //c++20
+          std::erase(sess.editors, p); //c++20
           if (p->linked_editor) {
-             std::erase(editors, p->linked_editor); //c++20
+             std::erase(sess.editors, p->linked_editor); //c++20
              delete p->linked_editor;
           }
 
           delete p; //p given new value below
 
-          if (!editors.empty()) {
+          if (!sess.editors.empty()) {
 
-            p = editors[0]; //kluge should move in some logical fashion
+            p = sess.editors[0]; //kluge should move in some logical fashion
 
             std::unordered_set<int> temp;
-            for (auto z : editors) {
+            for (auto z : sess.editors) {
               temp.insert(z->id);
             }
 
-            int s_cols = -1 + (screencols - O.divider)/temp.size();
+            int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
             temp.clear();
             int i = -1;
-            for (auto z : editors) {
+            for (auto z : sess.editors) {
               auto ret = temp.insert(z->id);
               if (ret.second == true) i++;
-              z->left_margin = O.divider + i*s_cols + i;
+              z->left_margin = sess.divider + i*s_cols + i;
               z->screencols = s_cols;
               z->set_screenlines(); //also sets top margin
             }
@@ -6797,10 +6813,10 @@ bool editorProcessKeypress(void) {
 void eraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
   //int pos = screencols/2;
-  int pos = O.divider;
+  int pos = sess.divider;
   char buf[32];
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-  for (int j = 1; j < screenlines + 1; j++) {
+  for (int j = 1; j < sess.screenlines + 1; j++) {
 
     // First vertical line
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - TIME_COL_WIDTH + 1); //don't think need offset
@@ -6816,7 +6832,7 @@ void eraseScreenRedrawLines(void) {
 }
 
   write(STDOUT_FILENO, "\x1b[1;1H", 6);
-  for (int k=1; k < screencols ;k++) {
+  for (int k=1; k < sess.screencols ;k++) {
     // note: cursor advances automatically so don't need to 
     // do that explicitly
     write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
@@ -6863,12 +6879,12 @@ void initOutline() {
   O.keyword = "";
 
   // ? where this should be.  Also in signal.
-  O.screenlines = screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  Editor::total_screenlines = screenlines - 2 - TOP_MARGIN;
-  O.divider = screencols - c.ed_pct * screencols/100;
-  O.titlecols =  O.divider - TIME_COL_WIDTH - LEFT_MARGIN; 
-  O.totaleditorcols = screencols - O.divider - 1; // was 2 
-  O.left_screencols = O.divider - 1; //was 2
+  O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
+  sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
+  O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN; 
+  sess.totaleditorcols = sess.screencols - sess.divider - 1; // was 2 
+  O.left_screencols = sess.divider - 1; //was 2
 }
 
 int main(int argc, char** argv) { 
@@ -6896,11 +6912,11 @@ int main(int argc, char** argv) {
   map_context_titles();
   map_folder_titles();
 
-  getWindowSize(&screenlines, &screencols);
+  getWindowSize(&sess.screenlines, &sess.screencols);
   enableRawMode();
   initOutline();
   eraseScreenRedrawLines();
-  Editor::origin = O.divider + 1; //only used in Editor.cpp
+  Editor::origin = sess.divider + 1; //only used in Editor.cpp
   get_items(MAX);
   command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   page_history.push_back("of todo"); //klugy - this could be read from config and generalized
@@ -6912,7 +6928,7 @@ int main(int argc, char** argv) {
 
   outlineRefreshScreen(); 
   outlineDrawStatusBar();
-  outlineShowMessage3("rows: {}  columns: {}", screenlines, screencols);
+  outlineShowMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
   return_cursor();
 
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control

@@ -13,6 +13,7 @@
 #include <fmt/core.h>
 #include <fmt/ranges.h>
 #include <fmt/chrono.h>
+#include "Editor.h"
 
 #if __has_include (<nuspell/dictionary.hxx>)
   #include <nuspell/dictionary.hxx>
@@ -30,6 +31,7 @@
 extern "C" {
 #include <mkdio.h>
 }
+
 
 // used by list..improved.cpp and Editor.cpp
 const std::string CURRENT_NOTE_FILE = "current.html";
@@ -89,12 +91,20 @@ const std::string mode_text[] = {
                         "ADD/CHANGE FILTER"  
                        }; 
 
-
+/*
+struct Session {
+  int screencols;
+  int screenlines;
+  int divider;
+  std::vector<Editor*> editors;
+};
+*/
 /* as of C++17 you can do inline and variables will only be defined once */
 inline bool lm_browser = true; //soon eliminate ./m_nb and make default false
 inline bool editor_mode = false;
 inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
 inline std::vector<std::vector<int>> word_positions = {};
+//inline Session sess;
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
 void update_note(bool is_subeditor, bool closing_editor=false); //used by Editor class 
 void update_code_file(void);

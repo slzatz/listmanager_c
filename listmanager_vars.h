@@ -47,7 +47,7 @@ const std::string DB_INI = "db.ini";
 std::string meta;
 int which_db;
 struct termios orig_termios;
-int screenlines, screencols, new_screenlines, new_screencols;
+//int screenlines, screencols, new_screenlines, new_screencols;
 std::stringstream display_text;
 int initial_file_row = 0; //for arrowing or displaying files
 std::string search_terms;
@@ -128,7 +128,7 @@ struct outlineConfig {
   int titlecols;  //number of columns in the display available to text
   int totaleditorcols; //Number of columns on right-hand side of screen
   int left_screencols; //Number of columns on left-hand side of screen
-  int divider; //where the dividing line is between note list and editor (takes margins into account)
+  //int divider; //where the dividing line is between note list and editor (takes margins into account)
   std::vector<orow> rows;
   std::vector<std::string> preview_rows;
   std::string context;

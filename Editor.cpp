@@ -1,5 +1,6 @@
 #include "listmanager.h"
 #include "Editor.h"
+#include "session.h"
 #include <fstream>
 #include <cstdarg> //va_start etc
 #include <nuspell/finder.hxx>
@@ -276,11 +277,21 @@ void Editor::set_screenlines(void) { //also sets top margin
 
   if(linked_editor) {
     if (is_subeditor) {
-      screenlines = LINKED_NOTE_HEIGHT;
-      top_margin = total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      if (is_below) {
+        screenlines = LINKED_NOTE_HEIGHT;
+        top_margin = total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      } else {
+        screenlines = total_screenlines;
+        top_margin =  TOP_MARGIN + 1;
+      }
     } else {
-      screenlines = total_screenlines - LINKED_NOTE_HEIGHT - 1;
-      top_margin =  TOP_MARGIN + 1;
+      if (linked_editor->is_below) {
+        screenlines = total_screenlines - LINKED_NOTE_HEIGHT - 1;
+        top_margin =  TOP_MARGIN + 1;
+      } else {
+        screenlines = total_screenlines;
+        top_margin =  TOP_MARGIN + 1;
+      }
     }
   } else {
     screenlines = total_screenlines;
@@ -3204,4 +3215,62 @@ void Editor::copyStringToClipboard(void) {
   std::string s1 = fmt::format("\x1b]52;c;{}\x07", encoded); // /n doesn't address vim problem
   write(fd, s1.c_str(), s1.size());
   close(fd);
+}
+
+void Editor::E_move_output_window_right(int) {
+  if (!linked_editor) return;
+  if (!is_subeditor) return;
+  if (!is_below) return;
+
+  //top_margin = TOP_MARGIN + 1;
+  //screenlines = total_screenlines - 1;
+  is_below = false;
+
+  int editor_slots = 0;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+  }
+
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    if (!z->is_below) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->set_screenlines();
+  }
+
+  sess.eraseRightScreen(); //moved down here on 10-24-2020
+  sess.draw_editors();
+  editorSetMessage("top_margin = %d", top_margin);
+
+}
+
+void Editor::E_move_output_window_below(int) {
+  if (!linked_editor) return;
+  if (!is_subeditor) return;
+  if (is_below) return;
+
+  //top_margin = TOP_MARGIN + 1;
+  //screenlines = total_screenlines - 1;
+  is_below = true;
+
+  int editor_slots = 0;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+  }
+
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    if (!z->is_below) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->set_screenlines();
+  }
+
+  sess.eraseRightScreen(); //moved down here on 10-24-2020
+  sess.draw_editors();
+  editorSetMessage("top_margin = %d", top_margin);
+
 }

@@ -59,6 +59,7 @@ class Editor {
       //screenlines = (subnote_visible) ? total_screenlines - LINKED_NOTE_HEIGHT : total_screenlines;
       linked_editor = nullptr;
       is_subeditor = false;
+      is_below = false;
       left_margin_offset = 0; // 0 if no line numbers
 
       auto dict_list = std::vector<std::pair<std::string, std::string>>{};
@@ -119,7 +120,7 @@ class Editor {
     bool undo_mode;
     std::vector<std::string> snapshot;
     Editor *linked_editor;
-    bool is_subeditor;
+    bool is_subeditor, is_below;
     //bool subnote_visible;
     nuspell::Dictionary dict;
 
@@ -209,6 +210,8 @@ class Editor {
     void E_move_to_matching_brace(int);
     void E_resize(int);
     void E_CTRL_P(int);
+    void E_move_output_window_right(int);
+    void E_move_output_window_below(int);
 
     void editorInsertNewline(int);
     void editorDelChar(void);
