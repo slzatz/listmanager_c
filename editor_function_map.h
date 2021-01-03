@@ -5,7 +5,7 @@ using eefunc = void (Editor::*)(int);
 using efunc = void (Editor::*)(void);
 
 /* EDITOR NORMAL mode command lookup */
-std::unordered_map<std::string, eefunc> e_lookup {
+const std::unordered_map<std::string, eefunc> e_lookup {
   {"i", &Editor::E_i}, 
   {"I", &Editor::E_I},
   {"a", &Editor::E_a},
@@ -62,7 +62,7 @@ std::unordered_map<std::string, eefunc> e_lookup {
 
 
 /* EDITOR COMMAND_LINE mode lookup */
-std::unordered_map<std::string, efunc> E_lookup_C {
+const std::unordered_map<std::string, efunc> E_lookup_C {
   {"write", &Editor::E_write_C},
   {"w", &Editor::E_write_C},
  /* all below handled (right now) in editor command line switch statement*/
