@@ -891,7 +891,7 @@ void Editor::redo(void) {
 
   // i I a A 
   if (cmd_map1.count(d.command)) {
-    (this->*cmd_map1[d.command])(d.repeat);
+    (this->*cmd_map1.at(d.command))(d.repeat);
 
     for (int n=0; n<d.repeat; n++) {
       for (char const &c : d.inserted_text) {
@@ -902,15 +902,15 @@ void Editor::redo(void) {
 
   // o O cmd_map2 -> E_o_escape E_O_escape
   } else if (cmd_map2.count(d.command)) {
-    (this->*cmd_map2[d.command])(d.repeat);
+    (this->*cmd_map2.at(d.command))(d.repeat);
 
   // x dw daw dd de dG d$
   } else if (cmd_map3.count(d.command)) {
-    (this->*cmd_map3[d.command])(d.repeat);
+    (this->*cmd_map3.at(d.command))(d.repeat);
 
   // cw caw s
   } else if (cmd_map4.count(d.command)) {
-      (this->*cmd_map4[d.command])(d.repeat);
+      (this->*cmd_map4.at(d.command))(d.repeat);
 
     for (char const &c : d.inserted_text) {
       if (c == '\r') editorInsertReturn();
@@ -1875,7 +1875,7 @@ void Editor::editorDotRepeat(int repeat) {
   //case 'i': case 'I': case 'a': case 'A': 
   Diff &d = undo_deque.at(0);
   if (cmd_map1.count(last_command)) {
-    (this->*cmd_map1[last_command])(last_repeat);
+    (this->*cmd_map1.at(last_command))(last_repeat);
 
     for (int n=0; n<last_repeat; n++) {
       for (char const &c : d.inserted_text) {
@@ -1888,19 +1888,19 @@ void Editor::editorDotRepeat(int repeat) {
 
   //'o' 'O':
   if (cmd_map2.count(last_command)) {
-    (this->*cmd_map2[last_command])(last_repeat);
+    (this->*cmd_map2.at(last_command))(last_repeat);
     return;
   }
 
   //'x' 'dw': case C_daw: case C_dd: case C_de: case C_dG: case C_d$:
   if (cmd_map3.count(last_command)) {
-    (this->*cmd_map3[last_command])(last_repeat);
+    (this->*cmd_map3.at(last_command))(last_repeat);
     return;
   }
 
   //case C_cw: case C_caw: case 's':
   if (cmd_map4.count(last_command)) {
-      (this->*cmd_map4[last_command])(last_repeat);
+      (this->*cmd_map4.at(last_command))(last_repeat);
 
     Diff &d = undo_deque.at(0);
     for (char const &c : d.inserted_text) {
