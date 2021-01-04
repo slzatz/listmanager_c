@@ -79,12 +79,9 @@ class Editor {
     int left_margin; //can vary (so could TOP_MARGIN - will do that later
     int left_margin_offset; // 0 if no line numbers
     int top_margin;
-    //int total_screenlines; //number of lines in display -> made this static
     std::vector<std::string> rows;
     std::string code; //used by lsp thread and intended to avoid unnecessary calls to editorRowsToString
-    //std::vector<std::string> prev_rows;
     int dirty; //file changes since last save
-    //char message[120]; //status msg is a character array max 80 char
     int highlight[2];
     int vb0[3];
     int mode;
@@ -113,15 +110,12 @@ class Editor {
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config
     int id; //listmanager db id of the row
-    //std::deque<std::pair<int,std::string>> undo_deque; //if neg it was a delete
     std::deque<Diff> undo_deque; //if neg it was a delete
-    //std::deque<std::pair<int,std::vector<std::string>>> delete_deque; //if neg it was a delete
     int d_index; //undo_deque index
     bool undo_mode;
     std::vector<std::string> snapshot;
     Editor *linked_editor;
     bool is_subeditor, is_below;
-    //bool subnote_visible;
     nuspell::Dictionary dict;
 
     void set_screenlines(void);
@@ -155,6 +149,8 @@ class Editor {
     void E_compile_C(void);
     void decorate_errors(const nlohmann::json &);
     void E_save_note(void);
+    void createLink(void);
+    void getLinked(void);
 
     /* EDITOR mode NORMAL functions */
     void E_i(int);
@@ -286,7 +282,7 @@ class Editor {
 typedef void (Editor::*eefunc)(int);
  // if make the maps const (which would also make them static) would need to change access to cmd_map1.at(d.command)
 inline const std::unordered_map<std::string, eefunc> cmd_map1 = {{"i", &Editor::E_i}, {"I", &Editor::E_I}, {"a", &Editor::E_a}, {"A", &Editor::E_A}};
- inline const std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
+inline const std::unordered_map<std::string, eefunc> cmd_map2 = {{"o", &Editor::E_o_escape}, {"O", &Editor::E_O_escape}};
 inline const std::unordered_map<std::string, eefunc> cmd_map3 = {{"x", &Editor::E_x}, {"dw", &Editor::E_dw}, {"daw", &Editor::E_daw}, {"dd", &Editor::E_dd}, {"d$", &Editor::E_d$}, {"de", &Editor::E_de}, {"dG", &Editor::E_dG}};
 inline const std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
 #endif

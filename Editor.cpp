@@ -3272,5 +3272,4 @@ void Editor::E_move_output_window_below(int) {
   sess.eraseRightScreen(); //moved down here on 10-24-2020
   sess.draw_editors();
   editorSetMessage("top_margin = %d", top_margin);
-
 }
