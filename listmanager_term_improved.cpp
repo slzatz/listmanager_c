@@ -2947,9 +2947,9 @@ void F_open(int pos) { //C_open - by context
   //outlineShowMessage("\'%s\' will be opened", O.context.c_str());
   //outlineShowMessage2(fmt::format("'{}' will be opened", O.context.c_str()));
   outlineShowMessage3("'{}' will be opened, Steve", O.context.c_str());
-  command_history.push_back(O.command_line);
-  page_hx_idx++;
-  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  sess.command_history.push_back(O.command_line);
+  sess.page_hx_idx++;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
 
   marked_entries.clear();
   O.folder = "";
@@ -2985,9 +2985,9 @@ void F_openfolder(int pos) {
     return;
   }
   outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-  command_history.push_back(O.command_line);
-  page_hx_idx++;
-  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  sess.command_history.push_back(O.command_line);
+  sess.page_hx_idx++;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
   marked_entries.clear();
   O.context = "";
   O.taskview = BY_FOLDER;
@@ -3013,9 +3013,9 @@ void F_openkeyword(int pos) {
 
   O.keyword = keyword;  
   outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-  command_history.push_back(O.command_line);
-  page_hx_idx++;
-  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  sess.command_history.push_back(O.command_line);
+  sess.page_hx_idx++;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
   marked_entries.clear();
   O.context = "";
   O.folder = "";
@@ -3027,10 +3027,10 @@ void F_openkeyword(int pos) {
 
 void F_addkeyword(int pos) {
   if (!pos) {
-    current_task_id = O.rows.at(O.fr).id;
+    O.current_task_id = O.rows.at(O.fr).id;
     eraseRightScreen();
     O.view = KEYWORD;
-    command_history.push_back(O.command_line);
+    sess.command_history.push_back(O.command_line);
     get_containers(); //O.mode = NORMAL is in get_containers
     O.mode = ADD_CHANGE_FILTER;
     outlineShowMessage("Select keyword to add to marked or current entry");
@@ -3066,7 +3066,7 @@ void F_keywords(int pos) {
   if (!pos) {
     eraseRightScreen();
     O.view = KEYWORD;
-    command_history.push_back(O.command_line); 
+    sess.command_history.push_back(O.command_line); 
     get_containers(); //O.mode = NORMAL is in get_containers
     outlineShowMessage("Retrieved keywords");
     return;
@@ -3266,7 +3266,7 @@ void F_contexts(int pos) {
   if (!pos) {
     eraseRightScreen();
     O.view = CONTEXT;
-    command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+    sess.command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
     get_containers();
     O.mode = NORMAL;
     outlineShowMessage("Retrieved contexts");
@@ -3320,7 +3320,7 @@ void F_folders(int pos) {
   if (!pos) {
     eraseRightScreen();
     O.view = FOLDER;
-    command_history.push_back(O.command_line); 
+    sess.command_history.push_back(O.command_line); 
     get_containers();
     O.mode = NORMAL;
     outlineShowMessage("Retrieved folders");
@@ -3372,9 +3372,9 @@ void F_folders(int pos) {
 
 void F_recent(int) {
   outlineShowMessage("Will retrieve recent items");
-  command_history.push_back(O.command_line);
-  page_history.push_back(O.command_line);
-  page_hx_idx = page_history.size() - 1;
+  sess.command_history.push_back(O.command_line);
+  sess.page_history.push_back(O.command_line);
+  sess.page_hx_idx = sess.page_history.size() - 1;
   marked_entries.clear();
   O.context = "No Context";
   O.taskview = BY_RECENT;
@@ -3393,7 +3393,7 @@ void F_linked(int) {
     O.folder = "No Folder";
     O.taskview = BY_KEYWORD;
     get_linked_items(MAX);
-    command_history.push_back("ok " + keywords); 
+    sess.command_history.push_back("ok " + keywords); 
   }
 }
 
@@ -3408,9 +3408,9 @@ void F_find(int pos) {
   //O.mode = FIND; ////// it's in get_items_by_id
   search_terms = O.command_line.substr(pos+1);
   std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-  command_history.push_back(O.command_line); 
-  page_hx_idx++;
-  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  sess.command_history.push_back(O.command_line); 
+  sess.page_hx_idx++;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
   outlineShowMessage("Searching for %s", search_terms.c_str());
   search_db(search_terms);
 }
@@ -3436,20 +3436,20 @@ void F_sync_test(int) {
 }
 
 void F_updatecontext(int) {
-  current_task_id = O.rows.at(O.fr).id;
+  O.current_task_id = O.rows.at(O.fr).id;
   eraseRightScreen();
   O.view = CONTEXT;
-  command_history.push_back(O.command_line); 
+  sess.command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
   O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
 void F_updatefolder(int) {
-  current_task_id = O.rows.at(O.fr).id;
+  O.current_task_id = O.rows.at(O.fr).id;
   eraseRightScreen();
   O.view = FOLDER;
-  command_history.push_back(O.command_line); 
+  sess.command_history.push_back(O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
   O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select folder to add to marked or current entry");
@@ -3465,7 +3465,7 @@ void F_delmarks(int) {
 
 // to avoid confusion should only be an editor command line function
 void F_savefile(int pos) {
-  command_history.push_back(O.command_line);
+  sess.command_history.push_back(O.command_line);
   std::string filename;
   if (pos) filename = O.command_line.substr(pos+1);
   else filename = "example.cpp";
@@ -3612,7 +3612,7 @@ void F_help(int pos) {
     O.taskview = BY_FIND;
     //O.mode = FIND; ////// it's in get_items_by_id
     std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
-    command_history.push_back(O.command_line); 
+    sess.command_history.push_back(O.command_line); 
     search_db2(search_terms);
     outlineShowMessage("Will look for help on %s", search_terms.c_str());
     //O.mode = NORMAL;
@@ -3791,9 +3791,9 @@ void return_N(void) {
     O.command_line = "ok " + O.keyword;
   }
 
-  command_history.push_back(O.command_line);
-  page_hx_idx++;
-  page_history.insert(page_history.begin() + page_hx_idx, O.command_line);
+  sess.command_history.push_back(O.command_line);
+  sess.page_hx_idx++;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
   marked_entries.clear();
 
   get_items(MAX);
@@ -4038,47 +4038,47 @@ void completed_N(void) {
 }
 
 void navigate_page_hx(int direction) {
-  if (page_history.size() == 1 && O.view == TASK) return;
+  if (sess.page_history.size() == 1 && O.view == TASK) return;
 
   if (direction == PAGE_UP) {
 
     // if O.view!=TASK and PAGE_UP - moves back to last page
     if (O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
 
-      if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
-      else page_hx_idx--;
+      if (sess.page_hx_idx == 0) sess.page_hx_idx = sess.page_history.size() - 1;
+      else sess.page_hx_idx--;
     }
 
   } else {
-    if (page_hx_idx == (page_history.size() - 1)) page_hx_idx = 0;
-    else page_hx_idx++;
+    if (sess.page_hx_idx == (sess.page_history.size() - 1)) sess.page_hx_idx = 0;
+    else sess.page_hx_idx++;
   }
 
   /* go into COMMAND_LINE mode */
   O.mode = COMMAND_LINE;
-  O.command_line = page_history.at(page_hx_idx);
+  O.command_line = sess.page_history.at(sess.page_hx_idx);
   outlineProcessKeypress('\r');
   O.command_line.clear();
 
   /* return to NORMAL mode */
   O.mode = NORMAL;
-  page_history.erase(page_history.begin() + page_hx_idx);
-  page_hx_idx--;
-  outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
+  sess.page_history.erase(sess.page_history.begin() + sess.page_hx_idx);
+  sess.page_hx_idx--;
+  outlineShowMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
 }
 
 void navigate_cmd_hx(int direction) {
-  if (command_history.empty()) return;
+  if (sess.command_history.empty()) return;
 
   if (direction == ARROW_UP) {
-    if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() - 1;
-    else cmd_hx_idx--;
+    if (sess.cmd_hx_idx == 0) sess.cmd_hx_idx = sess.command_history.size() - 1;
+    else sess.cmd_hx_idx--;
   } else {
-    if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
-    else cmd_hx_idx++;
+    if (sess.cmd_hx_idx == (sess.command_history.size() - 1)) sess.cmd_hx_idx = 0;
+    else sess.cmd_hx_idx++;
   }
-  outlineShowMessage(":%s", command_history.at(cmd_hx_idx).c_str());
-  O.command_line = command_history.at(cmd_hx_idx);
+  outlineShowMessage(":%s", sess.command_history.at(sess.cmd_hx_idx).c_str());
+  O.command_line = sess.command_history.at(sess.cmd_hx_idx);
 }
 
 /*** outline operations ***/
@@ -5458,17 +5458,17 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\x1b':
           {
           O.mode = COMMAND_LINE;
-          size_t temp = page_hx_idx;  
-          outlineShowMessage(":%s", page_history.at(page_hx_idx).c_str());
-          O.command_line = page_history.at(page_hx_idx);
+          size_t temp = sess.page_hx_idx;  
+          outlineShowMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
+          O.command_line = sess.page_history.at(sess.page_hx_idx);
           outlineProcessKeypress('\r');
           O.mode = NORMAL;
           O.command[0] = '\0';
           O.command_line.clear();
-          page_history.pop_back();
-          page_hx_idx = temp;
+          sess.page_history.pop_back();
+          sess.page_hx_idx = temp;
           O.repeat = 0;
-          current_task_id = -1; //not sure this is right
+          O.current_task_id = -1; //not sure this is right
           }
           return;
 
@@ -5482,17 +5482,17 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           if (marked_entries.empty()) {
             switch (O.view) {
               case KEYWORD:
-                add_task_keyword(row.id, current_task_id);
+                add_task_keyword(row.id, O.current_task_id);
                 outlineShowMessage("No tasks were marked so added keyword %s to current task",
                                    row.title.c_str());
                 break;
               case FOLDER:
-                update_task_folder(row.title, current_task_id);
+                update_task_folder(row.title, O.current_task_id);
                 outlineShowMessage("No tasks were marked so current task had folder changed to %s",
                                    row.title.c_str());
                 break;
               case CONTEXT:
-                update_task_context(row.title, current_task_id);
+                update_task_context(row.title, O.current_task_id);
                 outlineShowMessage("No tasks were marked so current task had context changed to %s",
                                    row.title.c_str());
                 break;
@@ -6016,7 +6016,7 @@ bool editorProcessKeypress(void) {
 
           //cmd_map2 -> E_o_escape and E_O_escape - here deals with deals with repeat > 1
           if (cmd_map2.contains(p->last_command)) {
-            (p->*cmd_map2[p->last_command])(p->last_repeat - 1);
+            (p->*cmd_map2.at(p->last_command))(p->last_repeat - 1);
             p->push_current();
           }
 
@@ -6918,8 +6918,8 @@ int main(int argc, char** argv) {
   eraseScreenRedrawLines();
   Editor::origin = sess.divider + 1; //only used in Editor.cpp
   get_items(MAX);
-  command_history.push_back("of todo"); //klugy - this could be read from config and generalized
-  page_history.push_back("of todo"); //klugy - this could be read from config and generalized
+  sess.command_history.push_back("of todo"); //klugy - this could be read from config and generalized
+  sess.page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
   signal(SIGWINCH, signalHandler);
   bool text_change;

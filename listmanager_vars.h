@@ -60,19 +60,19 @@ std::map<int, std::string> fts_titles;
 std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
 std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
 std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
-std::vector<std::string> task_keywords;
+//std::vector<std::string> task_keywords;
 std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 std::set<int> unique_ids; //used in unique_data_callback
-std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
-std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
-size_t cmd_hx_idx = 0;
-size_t page_hx_idx = 0;
+//std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
+//std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
+//size_t cmd_hx_idx = 0;
+//size_t page_hx_idx = 0;
 int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;
 int link_id = 0;
 char link_text[20];
-int current_task_id;
+//int current_task_id;
 std::unordered_set<int> marked_entries;
 struct flock lock; 
 std::vector<std::string> line_buffer = {}; //yanking lines
@@ -147,6 +147,7 @@ struct outlineConfig {
   bool show_completed;
   int view; // enum TASK, CONTEXT, FOLDER, SEARCH
   int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_FIND
+  int current_task_id;
 };
 struct outlineConfig O;
 
