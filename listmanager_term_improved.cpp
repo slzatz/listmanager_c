@@ -3262,6 +3262,105 @@ void F_edit(int) {
   O.mode = NORMAL;
 }
 
+void F_edit2(int id) {
+  outlineShowMessage("Edit note %d", id);
+  outlineRefreshScreen();
+  editor_mode = true;
+
+  if (!sess.editors.empty()){
+    auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
+                       [&id](auto& ls) { return ls->id == id; }); //auto&& also works
+
+    if (it == sess.editors.end()) {
+      p = new Editor;
+      sess.editors.push_back(p);
+      //editors.push_back(std::make_shared<Editor>(E));
+      p->id = id;
+      p->top_margin = TOP_MARGIN + 1;
+      //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+
+      int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+      if (folder_tid == 18 || folder_tid == 14) {
+        p->linked_editor = new Editor;
+        sess.editors.push_back(p->linked_editor);
+        p->linked_editor->id = id;
+        //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+        //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+        p->linked_editor->is_subeditor = true;
+        p->linked_editor->is_below = true;
+        p->linked_editor->linked_editor = p;
+        p->left_margin_offset = LEFT_MARGIN_OFFSET;
+      } 
+      get_note(id); //if id == -1 does not try to retrieve note
+      
+    } else {
+      p = *it;
+    }    
+  } else {
+    p = new Editor;
+    sess.editors.push_back(p);
+    p->id = id;
+    p->top_margin = TOP_MARGIN + 1;
+    //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+
+    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    if (folder_tid == 18 || folder_tid == 14) {
+      p->linked_editor = new Editor;
+      sess.editors.push_back(p->linked_editor);
+      p->linked_editor->id = id;
+      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+      p->linked_editor->is_subeditor = true;
+      p->linked_editor->is_below = true;
+      p->linked_editor->linked_editor = p;
+      p->left_margin_offset = LEFT_MARGIN_OFFSET;
+    }
+    get_note(id); //if id == -1 does not try to retrieve note
+ }
+  int editor_slots = 0;
+  //std::unordered_set<int> temp;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+    //temp.insert(z->id);
+  }
+
+  // this could be improved - lose at least one column for each additional editor
+  //int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  //temp.clear();
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    //auto ret = temp.insert(z->id);
+    if (!z->is_below) i++;
+    //if (ret.second == true) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->set_screenlines();
+  }
+
+  //rightmostr_left_margin = O.divider + i*s_cols + i
+  eraseRightScreen(); //erases editor area + statusbar + msg
+
+  if (p->rows.empty()) {
+    // note editorInsertChar inserts the row
+    p->mode = INSERT;
+    // below all for undo
+    p->last_command = "i";
+    p->prev_fr = 0;
+    p->prev_fc = 0;
+    p->last_repeat = 1;
+    p->snapshot.push_back("");
+    p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+  } else {
+    p->mode = NORMAL;
+  }
+
+  draw_editors();
+
+  O.command[0] = '\0';
+  O.mode = NORMAL;
+}
+
 void F_contexts(int pos) {
   if (!pos) {
     eraseRightScreen();
@@ -3380,6 +3479,69 @@ void F_recent(int) {
   O.taskview = BY_RECENT;
   O.folder = "No Folder";
   get_items(MAX);
+}
+
+
+void F_createLink(int) {
+  if (sess.editors.empty()) {
+    outlineShowMessage("There are no entries being edited");
+    O.mode = NORMAL;
+    return;
+  }
+  std::unordered_set<int> temp;
+  for (const auto z : sess.editors) {
+    temp.insert(z->id);
+  }
+
+  if (temp.size() != 2) {
+    outlineShowMessage("At the moment you can only link two entries at a time");
+    O.mode = NORMAL;
+    return;
+  }
+  std::array<int, 2> task_ids{};
+  int i = 0;
+  for (const auto z : temp) {
+    task_ids[i] = z;
+    i++;
+  }
+
+  if (task_ids[0] > task_ids[1]) {
+    int t = task_ids[0];
+    task_ids[0] = task_ids[1];
+    task_ids[1] = t;
+  }
+
+  Query q(db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+              task_ids[0], task_ids[1]);
+
+  if (int res = q.step(); res != SQLITE_DONE) {
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    outlineShowMessage3("Problem in 'add_task_keyword': {}", error);
+    O.mode = NORMAL;
+    return;
+  }
+
+   Query q1(db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
+   q1.step();
+
+   O.mode = NORMAL;
+}
+
+void F_getLinked(int) {
+  if (!p) return;
+
+  int id = p->id;
+
+  Query q(db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    outlineShowMessage3("Problem retrieving linked item: {}", res);
+    return;
+  }
+  int task_id0 = q.column_int(0);
+  int task_id1 = q.column_int(1);
+
+  id = (task_id0 == id) ? task_id1 : task_id0;
+  F_edit2(id);
 }
 
 void F_linked(int) {

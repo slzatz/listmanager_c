@@ -16,6 +16,7 @@ void F_x(int); // pos not used
 void F_refresh(int); // pos not used
 void F_new(int); // pos not used
 void F_edit(int); // pos not used
+void F_edit2(int); // pos not used
 void F_folders(int); 
 void F_contexts(int); 
 void F_recent(int); // pos not used
@@ -47,6 +48,8 @@ void F_lsp_start(int);
 void F_launch_lm_browser(int);
 void F_quit_lm_browser(int);
 void F_resize(int);
+void F_createLink(int);
+void F_getLinked(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
@@ -123,6 +126,8 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"launch", F_launch_lm_browser},
   {"quitb", F_quit_lm_browser},
   {"quitbrowser", F_quit_lm_browser},
+  {"createlink", F_createLink},
+  {"getlinked", F_getLinked},
   {"resize", F_resize}
 
 };
