@@ -1,3 +1,6 @@
+#ifndef DBASE_H
+#define DBASE_H
+
 #include <sqlite3.h>
 #include <string>
 #include <fmt/core.h>
@@ -51,3 +54,4 @@ class Query {
     int result;
     sqlite3_stmt *res;
 };
+#endif

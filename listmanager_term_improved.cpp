@@ -729,12 +729,12 @@ std::string time_delta(std::string t) {
 
 /********************Beginning sqlite************************************/
 
-Sqlite db(SQLITE_DB);
-Sqlite fts(FTS_DB);
+//Sqlite db(SQLITE_DB);
+//Sqlite fts(FTS_DB);
 
 void run_sql(void) {
-  if (!db.run()) {
-    outlineShowMessage("SQL error: %s", db.errmsg);
+  if (!sess.db.run()) {
+    outlineShowMessage("SQL error: %s", sess.db.errmsg);
     return;
   }  
 }
@@ -776,7 +776,7 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
 void F_copy_entry(int) {
 
   int id = O.rows.at(O.fr).id;
-  Query q(db, "SELECT * FROM task WHERE id={}", id);
+  Query q(sess.db, "SELECT * FROM task WHERE id={}", id);
   if (int res = q.step(); res != SQLITE_ROW) {
     outlineShowMessage3("Problem retrieving entry info in copy_entry: {}", res);
     return;
@@ -802,7 +802,7 @@ void F_copy_entry(int) {
     pos = note.find("'", pos + 2);
   }
 
-  Query q1(db, "INSERT INTO task (priority, title, folder_tid, context_tid, "
+  Query q1(sess.db, "INSERT INTO task (priority, title, folder_tid, context_tid, "
                                    "star, added, note, deleted, created, modified) "
                                    "VALUES ({0}, '{1}', {2}, {3}, {4}, date(), '{5}', False, "
                                    "datetime('now', '-{6} hours'), "
@@ -822,9 +822,9 @@ void F_copy_entry(int) {
     return;
   }
 
-  int new_id =  sqlite3_last_insert_rowid(db.db);
+  int new_id =  sqlite3_last_insert_rowid(sess.db.db);
 
-  Query q2(db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
+  Query q2(sess.db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
               id);
 
   std::vector<int> task_keyword_ids = {}; 
@@ -838,7 +838,7 @@ void F_copy_entry(int) {
 
   /***************fts virtual table update*********************/
   std::string tag = get_task_keywords(new_id).first;
-  Query q3(fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
+  Query q3(sess.fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
                title, note, tag, new_id); 
 
   if (int res = q3.step(); res != SQLITE_DONE) {
@@ -851,7 +851,7 @@ void F_copy_entry(int) {
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
-  Query q(db, "SELECT tid, title FROM context;"); 
+  Query q(sess.db, "SELECT tid, title FROM context;"); 
   /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
@@ -867,7 +867,7 @@ void map_context_titles(void) {
 void map_folder_titles(void) {
 
   // note it's tid because it's sqlite
-  Query q(db, "SELECT tid,title FROM folder;"); 
+  Query q(sess.db, "SELECT tid,title FROM folder;"); 
   /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
@@ -907,9 +907,9 @@ void get_containers(void) {
       return;
   }
   
-  db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
+  sess.db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
   bool no_rows = true;
-  db.params(callback, &no_rows);
+  sess.db.params(callback, &no_rows);
   run_sql();
 
   if (no_rows) {
@@ -1025,7 +1025,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
 
-  Query q(db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
+  Query q(sess.db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
               "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
               id);
 
@@ -1043,7 +1043,7 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
 
-  Query q(db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) VALUES ({}, {});",
+  Query q(sess.db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) VALUES ({}, {});",
               //"SELECT {0}, keyword.id FROM keyword WHERE keyword.id={1};",
               task_id, keyword_id);
 
@@ -1053,12 +1053,12 @@ void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
     return;
   }
 
-   Query q1(db,"UPDATE task SET modified = datetime('now') WHERE id={};", task_id);
+   Query q1(sess.db,"UPDATE task SET modified = datetime('now') WHERE id={};", task_id);
    q1.step();
   // *************fts virtual table update**********************
   if (!update_fts) return;
   std::string s = get_task_keywords(task_id).first;
-  Query q2(fts, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
+  Query q2(sess.fts, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
 
   if (int res = q2.step(); res != SQLITE_DONE)
         outlineShowMessage3("Problem inserting in fts; result code: {}", res);
@@ -1117,7 +1117,7 @@ void add_task_keyword(std::string &kws, int id) {
 
 //returns keyword id
 int keyword_exists(const std::string &name) {
-  Query q(db, "SELECT keyword.id FROM keyword WHERE keyword.name='{}';", name); 
+  Query q(sess.db, "SELECT keyword.id FROM keyword WHERE keyword.name='{}';", name); 
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'keyword_exists'; result code: {}", q.result);
     return -1;
@@ -1475,9 +1475,9 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
 void get_note(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
-  db.query("SELECT note FROM task WHERE id = {}", id);
-  db.callback = note_callback;
-  db.pArg = p;
+  sess.db.query("SELECT note FROM task WHERE id = {}", id);
+  sess.db.callback = note_callback;
+  sess.db.pArg = p;
   run_sql();
 
   if (!p->linked_editor) return;
@@ -1696,7 +1696,7 @@ void display_item_info(void) {
   std::string s{};
   int width = sess.totaleditorcols - 10;
   int length = O.screenlines - 10;
-  Query q(db, "SELECT * FROM task WHERE id={};", id);
+  Query q(sess.db, "SELECT * FROM task WHERE id={};", id);
   q.step();
 
   // \x1b[NC moves cursor forward by N columns
@@ -3511,7 +3511,7 @@ void F_createLink(int) {
     task_ids[1] = t;
   }
 
-  Query q(db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+  Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
               task_ids[0], task_ids[1]);
 
   if (int res = q.step(); res != SQLITE_DONE) {
@@ -3521,7 +3521,7 @@ void F_createLink(int) {
     return;
   }
 
-   Query q1(db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
+   Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
    q1.step();
 
    O.mode = NORMAL;
@@ -3532,7 +3532,7 @@ void F_getLinked(int) {
 
   int id = p->id;
 
-  Query q(db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
   if (int res = q.step(); res != SQLITE_ROW) {
     outlineShowMessage3("Problem retrieving linked item: {}", res);
     return;

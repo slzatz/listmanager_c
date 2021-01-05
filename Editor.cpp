@@ -1,6 +1,7 @@
 #include "listmanager.h"
 #include "Editor.h"
 #include "session.h"
+#include "Dbase.h"
 #include <fstream>
 #include <cstdarg> //va_start etc
 #include <nuspell/finder.hxx>

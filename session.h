@@ -1,8 +1,12 @@
 #ifndef SESSION_H
 #define SESSION_H
 #include "Editor.h"
+#include "Dbase.h"
 #include <vector>
 #include <string>
+
+const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
 
 struct Session {
   int screencols;
@@ -23,6 +27,11 @@ struct Session {
   // Not sure it is very helpful and I don't use it at all
   std::vector<std::string> command_history; 
   int cmd_hx_idx = 0;
+
+  Sqlite db;
+  Sqlite fts;
+
+  Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };
 
 //inline Session sess;
