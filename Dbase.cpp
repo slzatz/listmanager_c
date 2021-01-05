@@ -44,3 +44,18 @@ bool Query::column_bool(int col) {
   return (sqlite3_column_int(res, col) == 1) ? true : false;
 }
 
+// Not currently in use
+int Query2::step(void) {
+  return sqlite3_step(res);
+ }
+std::string Query2::column_text(int col) {
+  return std::string(reinterpret_cast<const char *>(sqlite3_column_text(res, col)));
+}
+
+int Query2::column_int(int col) {
+  return sqlite3_column_int(res, col);
+}
+
+bool Query2::column_bool(int col) {
+  return (sqlite3_column_int(res, col) == 1) ? true : false;
+}

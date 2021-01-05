@@ -14,6 +14,9 @@
 #include "base64.hpp"
 #include "pstream.h"
 
+#define UNUSED(x) (void)(x)
+#define LEFT_MARGIN_OFFSET 4
+
 using namespace redi;
 
 // static members of Editor class
@@ -3273,4 +3276,144 @@ void Editor::E_move_output_window_below(int) {
   sess.eraseRightScreen(); //moved down here on 10-24-2020
   sess.draw_editors();
   editorSetMessage("top_margin = %d", top_margin);
+}
+
+void Editor::createLink(void) {
+
+  std::unordered_set<int> temp;
+  for (const auto z : sess.editors) {
+    temp.insert(z->id);
+  }
+  if (!temp.contains(id)) {
+    editorSetMessage("Error: current note's entry should be in the set!");
+    mode = NORMAL;
+    return;
+    }
+
+  if (temp.size() != 2) {
+    editorSetMessage("At the moment you can only link two entries at a time");
+    mode = NORMAL;
+    return;
+  }
+  std::array<int, 2> task_ids{};
+  int i = 0;
+  for (const auto z : temp) {
+    task_ids[i] = z;
+    i++;
+  }
+
+  if (task_ids[0] > task_ids[1]) {
+    int t = task_ids[0];
+    task_ids[0] = task_ids[1];
+    task_ids[1] = t;
+  }
+
+  Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+              task_ids[0], task_ids[1]);
+
+  if (int res = q.step(); res != SQLITE_DONE) {
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    editorSetMessage("Problem in 'Editor::createLink': %s", error.c_str());
+    mode = NORMAL;
+    return;
+  }
+
+   Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
+   q1.step();
+
+   mode = NORMAL;
+}
+
+void Editor::getLinked(void) {
+
+  Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    editorSetMessage("Problem retrieving linked item: %d", res);
+    return;
+  }
+  int task_id0 = q.column_int(0);
+  int task_id1 = q.column_int(1);
+
+  int linked_id = (task_id0 == id) ? task_id1 : task_id0;
+
+  auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
+                       [&linked_id](auto& ls) { return ls->id == linked_id; }); //auto&& also works
+
+  if (it != sess.editors.end()) {
+    editorSetMessage("Linked note (%d) is already open", linked_id);
+    mode = NORMAL;
+    return;
+  }
+
+    Editor *p = new Editor;
+    sess.editors.push_back(p);
+    p->id = linked_id;
+    p->top_margin = TOP_MARGIN + 1;
+    //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
+
+    int folder_tid = get_folder_tid(linked_id);
+    if (folder_tid == 18 || folder_tid == 14) {
+      p->linked_editor = new Editor;
+      sess.editors.push_back(p->linked_editor);
+      p->linked_editor->id = linked_id;
+      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
+      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
+      p->linked_editor->is_subeditor = true;
+      p->linked_editor->is_below = true;
+      p->linked_editor->linked_editor = p;
+      p->left_margin_offset = LEFT_MARGIN_OFFSET;
+    }
+
+    sess.db.query("SELECT note FROM task WHERE id = {}", id);
+    sess.db.callback = editor_note_callback;
+    sess.db.pArg = p;
+    if (!sess.db.run()) {
+    editorSetMessage("SQL error: %s", sess.db.errmsg);
+    return;
+  }  
+
+  if (!p->linked_editor) return;
+
+  p->linked_editor->rows = std::vector<std::string>{" "};
+
+  int editor_slots = 0;
+  //std::unordered_set<int> temp;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+  }
+
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    if (!z->is_below) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->set_screenlines();
+  }
+
+  sess.eraseRightScreen(); //erases editor area + statusbar + msg
+  sess.draw_editors();
+  mode = NORMAL;
+}
+
+int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
+
+  //UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  Editor *editor = static_cast<Editor *>(e);
+
+  if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
+  std::string note(argv[0]);
+  //note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::erase(note, '\r'); //c++20
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  while (getline(snote, s, '\n')) {
+    editor->editorInsertRow(editor->rows.size(), s);
+  }
+
+  editor->dirty = 0; //assume editorInsertRow increments dirty so this needed
+  return 0;
 }

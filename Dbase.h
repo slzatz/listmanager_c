@@ -5,6 +5,9 @@
 #include <string>
 #include <fmt/core.h>
 
+const std::string SQLITE_DB__ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+const std::string FTS_DB__ = "/home/slzatz/listmanager_cpp/fts5.db";
+
 //typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 using sq_callback = int (*)(void *, int, char **, char **);
 
@@ -53,5 +56,38 @@ class Query {
     std::string sql;
     int result;
     sqlite3_stmt *res;
+};
+
+// don't think it makes sense to open and close the database for each
+// use of Query but this would do that with the advantage that
+// a Query would just be Query2("SELECT * FROM task WHERE id={};")
+// Another disadvantage would be you would need a Query_fts(
+// So not currently in use
+class Query2 {
+  public:
+    //note the constructor must take a reference to db
+    //if not you construct a copy
+    template<typename... Args>
+    Query2(fmt::string_view format_str, const Args & ... args) : db(SQLITE_DB__) {
+      fmt::format_args argspack = fmt::make_format_args(args...);
+      sql = fmt::vformat(format_str, argspack);
+      result = sqlite3_prepare_v2(db.db, sql.c_str(), -1, &res, 0);
+    }
+
+    ~Query2() {
+     //std::cout << "About to finalize" << std::endl; 
+     sqlite3_finalize(res);
+     //std::cout << "Finalized" << std::endl; 
+    }
+
+    int step(void);
+    std::string column_text(int);
+    int column_int(int);
+    bool column_bool(int);
+
+    std::string sql;
+    int result;
+    sqlite3_stmt *res;
+    Sqlite db;
 };
 #endif

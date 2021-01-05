@@ -87,5 +87,9 @@ const std::unordered_map<std::string, efunc> E_lookup_C {
   {"rr", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
   {"runremote", &Editor::E_run_code_C}, //compile and run on Compiler Explorer 
   {"save", &Editor::E_save_note},
-  {"savefile", &Editor::E_save_note}
+  {"savefile", &Editor::E_save_note},
+  {"createlink", &Editor::createLink},
+  //{"cl", &Editor::createLink},
+  {"getLinked", &Editor::getLinked},
+  {"gl", &Editor::getLinked},
 };

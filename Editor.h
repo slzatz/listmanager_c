@@ -278,6 +278,7 @@ class Editor {
     std::unordered_map<std::string, eefunc> cmd_map4 = {{"cw", &Editor::E_cw}, {"caw", &Editor::E_caw}, {"s", &Editor::E_s}};
     */
 };
+int editor_note_callback (void *, int, char **, char **);
 
 typedef void (Editor::*eefunc)(int);
  // if make the maps const (which would also make them static) would need to change access to cmd_map1.at(d.command)
