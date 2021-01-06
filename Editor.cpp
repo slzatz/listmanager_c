@@ -3364,7 +3364,7 @@ void Editor::getLinked(void) {
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
 
-    sess.db.query("SELECT note FROM task WHERE id = {}", id);
+    sess.db.query("SELECT note FROM task WHERE id = {}", linked_id);
     sess.db.callback = editor_note_callback;
     sess.db.pArg = p;
     if (!sess.db.run()) {
@@ -3372,9 +3372,9 @@ void Editor::getLinked(void) {
     return;
   }  
 
-  if (!p->linked_editor) return;
-
-  p->linked_editor->rows = std::vector<std::string>{" "};
+  if (p->linked_editor) { 
+    p->linked_editor->rows = std::vector<std::string>{" "};
+  }
 
   int editor_slots = 0;
   //std::unordered_set<int> temp;
