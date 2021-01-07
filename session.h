@@ -4,6 +4,7 @@
 #include "Dbase.h"
 #include <vector>
 #include <string>
+#include <termios.h>
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -28,9 +29,13 @@ struct Session {
   std::vector<std::string> command_history; 
   int cmd_hx_idx = 0;
   bool editor_mode = false;
+  std::string fts_search_terms;
 
   Sqlite db;
   Sqlite fts;
+
+  struct termios orig_termios;
+  std::string meta; // meta content for html for ultralight browser
 
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };

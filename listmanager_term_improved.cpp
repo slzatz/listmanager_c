@@ -44,6 +44,7 @@ zmq::socket_t publisher(context, ZMQ_PUB);
 
 bool run = true; //main while loop
 void readsome(pstream &, int);
+std::string title_search_string; //word under cursor works with *, n, N etc.
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -417,7 +418,7 @@ void load_meta(void) {
   while (getline(f, line)) {
     text << line << '\n';
   }
-  meta = text.str();
+  sess.meta = text.str();
   f.close();
 }
 
@@ -444,7 +445,7 @@ void update_html_file(std::string &&fn) {
 
   // inserting title to tell if note displayed by ultralight 
   // has changed to know whether to preserve scroll
-  std::string meta_(meta);
+  std::string meta_(sess.meta);
   std::size_t p = meta_.find("</title>");
   meta_.insert(p, title);
   //
@@ -489,7 +490,7 @@ void update_html_zmq(std::string &&fn) {
 
   // inserting title to tell if note displayed by ultralight 
   // has changed to know whether to preserve scroll
-  std::string meta_(meta);
+  std::string meta_(sess.meta);
   std::size_t p = meta_.find("</title>");
   meta_.insert(p, title);
   //
@@ -642,7 +643,7 @@ void display_item_info_pg(int id) {
   s.append(lf_ret);
 
   int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(context_map), std::end(context_map),
+  auto it = std::find_if(std::begin(O.context_map), std::end(O.context_map),
                          [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
 
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
@@ -650,7 +651,7 @@ void display_item_info_pg(int id) {
   s.append(lf_ret);
 
   int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(folder_map), std::end(folder_map),
+  auto it2 = std::find_if(std::begin(O.folder_map), std::end(O.folder_map),
                          [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
   sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
   s.append(str);
@@ -860,7 +861,7 @@ void map_context_titles(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    context_map[q.column_text(1)] = q.column_int(0);
+    O.context_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
@@ -876,7 +877,7 @@ void map_folder_titles(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    folder_map[q.column_text(1)] = q.column_int(0);
+    O.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
@@ -1264,7 +1265,7 @@ void get_items(int max) {
     query << "keyword.name = '" << keyword_vec.back() << "')";
 
     callback = unique_data_callback;
-    unique_ids.clear();
+    //unique_ids.clear();//01072020
 
   } else {
     outlineShowMessage("You asked for an unsupported db query");
@@ -1278,7 +1279,7 @@ void get_items(int max) {
         << O.sort
         << " DESC LIMIT " << max;
 
-  int sortcolnum = sort_map[O.sort];
+  int sortcolnum = O.sort_map.at(O.sort);
   if (!db_query(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg, __func__)) return;
 
   O.view = TASK;
@@ -1352,12 +1353,15 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   UNUSED(argc); //number of columns in the result
   UNUSED(azColName);
 
+  /* 01072020
   int id = atoi(argv[0]);
   auto [it, success] = unique_ids.insert(id);
   if (!success) return 0;
+  */
 
   orow row;
-  row.id = id;
+  //row.id = id; //01072020
+  row.id = atoi(argv[0]);
   row.title = std::string(argv[3]);
   row.id = atoi(argv[0]);
   row.star = (atoi(argv[8]) == 1) ? true: false;
@@ -1438,7 +1442,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
 
   row.title = std::string(argv[3]);
   row.id = atoi(argv[0]);
-  row.fts_title = fts_titles.at(row.id);
+  row.fts_title = O.fts_titles.at(row.id);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
@@ -1539,7 +1543,7 @@ int offset_callback (void *n, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-void search_db(std::string search_terms) {
+void search_db(const std::string & st ) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -1556,11 +1560,11 @@ void search_db(std::string search_terms) {
   */
   std::string fts_query = fmt::format("SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') "
                                       "FROM fts WHERE fts MATCH '{}' ORDER BY bm25(fts, 2.0, 1.0, 5.0);",
-                                      search_terms);
+                                      st);
 
-  fts_ids.clear();
-  fts_titles.clear();
-  fts_counter = 0;
+  O.fts_ids.clear();
+  O.fts_titles.clear();
+  //fts_counter = 0;
 
   bool no_rows = true;
   if (!db_query(S.fts_db, fts_query, fts5_callback, &no_rows, &S.err_msg, __func__)) return;
@@ -1576,27 +1580,29 @@ void search_db(std::string search_terms) {
   // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
   query << "SELECT * FROM task WHERE task.id IN (";
 
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << fts_ids[i] << ", ";
+  //for (int i = 0; i < fts_counter-1; i++) {
+  int max = O.fts_ids.size() - 1;
+  for (int i=0; i < max; i++) {
+    query << O.fts_ids[i] << ", ";
   }
-  query << fts_ids[fts_counter-1]
+  //query << fts_ids[fts_counter-1]
+  query << O.fts_ids[max]
         << ")"
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY ";
 
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << "task.id = " << fts_ids[i] << " DESC, ";
+  //for (int i = 0; i < fts_counter-1; i++) {
+  for (int i=0; i < max; i++) {
+    query << "task.id = " << O.fts_ids[i] << " DESC, ";
   }
-  query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+  //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+  query << "task.id = " << O.fts_ids[max] << " DESC";
 
   get_items_by_id(query.str());
-
-  //outlineShowMessage(query.str().c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
-  //outlineShowMessage(search_terms.c_str()); /////////////DEBUGGING///////////////////////////////////////////////////////////////////
 }
 
 //total kluge but just brings back context_tid = 16
-void search_db2(std::string search_terms) {
+void search_db2(const std::string & st) {
 
   O.rows.clear();
   O.fc = O.fr = O.rowoff = 0;
@@ -1607,11 +1613,11 @@ void search_db2(std::string search_terms) {
    * may be retrieved from the fts db but they will not match when we look for them in the regular db
   */
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
+            << st << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
 
-  fts_ids.clear();
-  fts_titles.clear();
-  fts_counter = 0;
+  O.fts_ids.clear();
+  O.fts_titles.clear();
+  //fts_counter = 0;
 
   bool no_rows = true;
   if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
@@ -1627,18 +1633,23 @@ void search_db2(std::string search_terms) {
   // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
   query << "SELECT * FROM task WHERE task.context_tid = 16 and task.id IN (";
 
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << fts_ids[i] << ", ";
+  //for (int i = 0; i < fts_counter-1; i++) {
+  int max = O.fts_ids.size() - 1;
+  for (int i=0; i < max; i++) {
+    query << O.fts_ids[i] << ", ";
   }
-  query << fts_ids[fts_counter-1]
+  //query << fts_ids[fts_counter-1]
+  query << O.fts_ids[max]
         << ")"
         << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY ";
 
-  for (int i = 0; i < fts_counter-1; i++) {
-    query << "task.id = " << fts_ids[i] << " DESC, ";
+  //for (int i = 0; i < fts_counter-1; i++) {
+  for (int i=0; i < max; i++) {
+    query << "task.id = " << O.fts_ids[i] << " DESC, ";
   }
-  query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+  //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
+  query << "task.id = " << O.fts_ids[max] << " DESC";
 
   get_items_by_id(query.str());
 }
@@ -1651,9 +1662,9 @@ int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
   bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
-  fts_ids.push_back(atoi(argv[0]));
-  fts_titles[atoi(argv[0])] = std::string(argv[1]);
-  fts_counter++;
+  O.fts_ids.push_back(atoi(argv[0]));
+  O.fts_titles[atoi(argv[0])] = std::string(argv[1]);
+  //fts_counter++;
 
   return 0;
 }
@@ -1719,11 +1730,11 @@ void display_item_info(void) {
 
 
   int context_tid = q.column_int(6);
-  auto it = std::ranges::find_if(context_map, [&context_tid](auto& z) {return z.second == context_tid;});
+  auto it = std::ranges::find_if(O.context_map, [&context_tid](auto& z) {return z.second == context_tid;});
   s.append(fmt::format("context: {}{}", it->first, lf_ret));
 
   int folder_tid = q.column_int(5);
-  auto it2 = std::ranges::find_if(folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
+  auto it2 = std::ranges::find_if(O.folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
   s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
 
   s.append(fmt::format("star: {}{}", q.column_bool(8), lf_ret));
@@ -2001,7 +2012,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   //auto it = std::find_if(std::begin(context_map), std::end(context_map),
   //                       [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(context_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(O.context_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -2091,7 +2102,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   //auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
   //                        [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(folder_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(O.folder_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"folder: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -2238,7 +2249,7 @@ void update_note(bool is_subnote, bool closing_editor) {
 
 void update_task_context(std::string &new_context, int id) {
 
-  int context_tid = context_map.at(new_context);
+  int context_tid = O.context_map.at(new_context);
 
   std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now') WHERE id={}",
                                     context_tid, id);
@@ -2248,7 +2259,7 @@ void update_task_context(std::string &new_context, int id) {
 
 void update_task_folder(std::string& new_folder, int id) {
 
-  int folder_tid = folder_map.at(new_folder);
+  int folder_tid = O.folder_map.at(new_folder);
   std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now') WHERE id={}",
                                     folder_tid, id);
 
@@ -2503,8 +2514,8 @@ int insert_row(orow& row) {
                                    "datetime('now', '-{3} hours'), " \
                                    "datetime('now'));", 
                                    title,
-                                   (O.folder == "") ? 1 : folder_map.at(O.folder),
-                                   (O.context == "") ? 1 : context_map.at(O.context),
+                                   (O.folder == "") ? 1 : O.folder_map.at(O.folder),
+                                   (O.context == "") ? 1 : O.context_map.at(O.context),
                                    TZ_OFFSET);
 
   std::stringstream query;
@@ -2524,10 +2535,10 @@ int insert_row(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         //<< " 1," //folder_tid
-        << ((O.folder == "") ? 1 : folder_map.at(O.folder)) << ", "
+        << ((O.folder == "") ? 1 : O.folder_map.at(O.folder)) << ", "
         //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((O.context == "") ? 1 : O.context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         //<< "'<This is a new note from sqlite>'," //note
@@ -2819,15 +2830,15 @@ void update_solr(void) {
 }
 
 void disableRawMode() {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &sess.orig_termios) == -1)
     die("tcsetattr");
 }
 
 void enableRawMode() {
-  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");
+  if (tcgetattr(STDIN_FILENO, &sess.orig_termios) == -1) die("tcgetattr");
   atexit(disableRawMode);
 
-  struct termios raw = orig_termios;
+  struct termios raw = sess.orig_termios;
   raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
   raw.c_oflag &= ~(OPOST);
   raw.c_cflag |= (CS8);
@@ -2923,7 +2934,7 @@ void F_open(int pos) { //C_open - by context
   if (pos) {
     bool success = false;
     //structured bindings
-    for (const auto & [k,v] : context_map) {
+    for (const auto & [k,v] : O.context_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
       //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.context = k;
@@ -2966,7 +2977,7 @@ void F_openfolder(int pos) {
   std::string_view cl = O.command_line;
   if (pos) {
     bool success = false;
-    for (const auto & [k,v] : folder_map) {
+    for (const auto & [k,v] : O.folder_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
       //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.folder = k;
@@ -3116,7 +3127,7 @@ void F_refresh(int) {
   if (O.view == TASK) {
     outlineShowMessage("Entries will be refreshed");
     if (O.taskview == BY_FIND)
-      search_db(search_terms);
+      search_db(sess.fts_search_terms);
     else
       get_items(MAX);
   } else {
@@ -3378,7 +3389,7 @@ void F_contexts(int pos) {
     bool success = false;
     if (O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
-      for (const auto & [k,v] : context_map) {
+      for (const auto & [k,v] : O.context_map) {
         if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
           new_context = k;
           success = true;
@@ -3432,7 +3443,7 @@ void F_folders(int pos) {
     bool success = false;
     if (O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
-      for (const auto & [k,v] : folder_map) {
+      for (const auto & [k,v] : O.folder_map) {
         if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
           new_folder = k;
           success = true;
@@ -3572,13 +3583,14 @@ void F_find(int pos) {
   O.folder = "";
   O.taskview = BY_FIND;
   //O.mode = FIND; ////// it's in get_items_by_id
-  search_terms = O.command_line.substr(pos+1);
-  std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
+  std::string st = O.command_line.substr(pos+1);
+  std::transform(st.begin(), st.end(), st.begin(), ::tolower);
   sess.command_history.push_back(O.command_line); 
   sess.page_hx_idx++;
   sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
-  outlineShowMessage("Searching for %s", search_terms.c_str());
-  search_db(search_terms);
+  outlineShowMessage("Searching for %s", st.c_str());
+  sess.fts_search_terms = st;
+  search_db(st);
 }
 
 void F_sync(int) {
@@ -3715,7 +3727,7 @@ void F_join(int pos) {
   bool success = false;
 
   if (O.taskview == BY_CONTEXT) {
-    for (const auto & [k,v] : folder_map) {
+    for (const auto & [k,v] : O.folder_map) {
       if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.folder = k;
         success = true;
@@ -3723,7 +3735,7 @@ void F_join(int pos) {
       }
     }
   } else if (O.taskview == BY_FOLDER) {
-    for (const auto & [k,v] : context_map) {
+    for (const auto & [k,v] : O.context_map) {
       if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         O.context = k;
         success = true;
@@ -3772,15 +3784,16 @@ void F_help(int pos) {
     readFile("listmanager_commands");
     displayFile();
   } else {
-    search_terms = O.command_line.substr(pos+1);
+    std::string st = O.command_line.substr(pos+1);
     O.context = "";
     O.folder = "";
     O.taskview = BY_FIND;
     //O.mode = FIND; ////// it's in get_items_by_id
-    std::transform(search_terms.begin(), search_terms.end(), search_terms.begin(), ::tolower);
+    std::transform(st.begin(), st.end(), st.begin(), ::tolower);
     sess.command_history.push_back(O.command_line); 
-    search_db2(search_terms);
-    outlineShowMessage("Will look for help on %s", search_terms.c_str());
+    sess.fts_search_terms = st;
+    search_db2(st);
+    outlineShowMessage("Will look for help on %s", st.c_str());
     //O.mode = NORMAL;
   }  
 }
@@ -4107,21 +4120,21 @@ void gt_N(void) {
 
   if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
     if (!O.folder.empty()) {
-      it = folder_map.find(O.folder);
+      it = O.folder_map.find(O.folder);
       it++;
-      if (it == folder_map.end()) it = folder_map.begin();
+      if (it == O.folder_map.end()) it = O.folder_map.begin();
     } else {
-      it = folder_map.begin();
+      it = O.folder_map.begin();
     }
     O.folder = it->first;
     outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
   } else {
     if (O.context.empty() || O.context == "search") {
-      it = context_map.begin();
+      it = O.context_map.begin();
     } else {
-      it = context_map.find(O.context);
+      it = O.context_map.find(O.context);
       it++;
-      if (it == context_map.end()) it = context_map.begin();
+      if (it == O.context_map.end()) it = O.context_map.begin();
     }
     O.context = it->first;
     outlineShowMessage("\'%s\' will be opened", O.context.c_str());
@@ -4158,7 +4171,7 @@ void v_N(void) {
 
 //case 'p':  
 void p_N(void) {
-  if (!string_buffer.empty()) outlinePasteString();
+  if (!O.string_buffer.empty()) outlinePasteString();
 }
 
 //case '*':  
@@ -4472,7 +4485,7 @@ void get_search_positions(int id) {
 
   // split string into a vector of words
   std::vector<std::string> vec;
-  std::istringstream iss(search_terms);
+  std::istringstream iss(sess.fts_search_terms);
   for(std::string ss; iss >> ss; ) vec.push_back(ss);
   std::stringstream query3;
   int n = 0;
@@ -5050,14 +5063,14 @@ void outlineDrawStatusBar(void) {
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
+                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %s  %d %d/%zu %s",
                               s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
+                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
                               truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
 
   } else {
@@ -5065,18 +5078,18 @@ void outlineDrawStatusBar(void) {
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
                               s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
+                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
     
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %d %d/%zu %s",
                               s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? search_terms.c_str() : "\0",
+                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
                               "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
   }
 
-  int rlen = snprintf(rstatus, sizeof(rstatus), " %s %s ", ((which_db == SQLITE) ? "sqlite:" : "postgres:"), TOSTRING(GIT_BRANCH));
+  int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
 
   if (len > O.left_screencols + 1) {
     ab.append(status0, O.left_screencols + 1);
@@ -5833,6 +5846,7 @@ void outlineChangeCase() {
   outlineInsertChar(d);
 }
 
+/*
 void outlineYankLine(int n){
 
   line_buffer.clear();
@@ -5841,25 +5855,26 @@ void outlineYankLine(int n){
     line_buffer.push_back(O.rows.at(O.fr+i).title);
   }
   // set string_buffer to "" to signal should paste line and not chars
-  string_buffer.clear();
+  O.string_buffer.clear();
 }
+*/
 
 void outlineYankString() {
   orow& row = O.rows.at(O.fr);
-  string_buffer.clear();
+  O.string_buffer.clear();
 
   std::string::const_iterator first = row.title.begin() + O.highlight[0];
   std::string::const_iterator last = row.title.begin() + O.highlight[1];
-  string_buffer = std::string(first, last);
+  O.string_buffer = std::string(first, last);
 }
 
 void outlinePasteString(void) {
   orow& row = O.rows.at(O.fr);
 
-  if (O.rows.empty() || string_buffer.empty()) return;
+  if (O.rows.empty() || O.string_buffer.empty()) return;
 
-  row.title.insert(row.title.begin() + O.fc, string_buffer.begin(), string_buffer.end());
-  O.fc += string_buffer.size();
+  row.title.insert(row.title.begin() + O.fc, O.string_buffer.begin(), O.string_buffer.end());
+  O.fc += O.string_buffer.size();
   row.dirty = true;
 }
 
@@ -5960,6 +5975,7 @@ void outlineGetWordUnderCursor(){
   std::string& title = O.rows.at(O.fr).title;
   if (title[O.fc] < 48) return;
 
+  title_search_string.clear();
   int i,j,x;
 
   for (i = O.fc - 1; i > -1; i--){
@@ -5971,19 +5987,21 @@ void outlineGetWordUnderCursor(){
   }
 
   for (x=i+1; x<j; x++) {
-      search_string.push_back(title.at(x));
+      title_search_string.push_back(title.at(x));
   }
-  outlineShowMessage("word under cursor: <%s>", search_string.c_str());
+  outlineShowMessage("word under cursor: <%s>", title_search_string.c_str());
 }
 
 void outlineFindNextWord() {
 
   int y, x;
-  y = O.fr;
-  x = O.fc + 1; //in case sitting on beginning of the word
+  //y = O.fr;
+  y = (O.fr < O.rows.size() -1) ? O.fr + 1 : 0;
+  //x = O.fc + 1; //in case sitting on beginning of the word
+  x = 0; //you've advanced y since not worried about multiple same words in one title
    for (unsigned int n=0; n < O.rows.size(); n++) {
      std::string& title = O.rows.at(y).title;
-     auto res = std::search(std::begin(title) + x, std::end(title), std::begin(search_string), std::end(search_string));
+     auto res = std::search(std::begin(title) + x, std::end(title), std::begin(title_search_string), std::end(title_search_string));
      if (res != std::end(title)) {
          O.fr = y;
          O.fc = res - title.begin();
@@ -7073,7 +7091,7 @@ int main(int argc, char** argv) {
   get_conn(); //for pg
   load_meta(); //meta html for lm_browser 
 
-  which_db = SQLITE; //this can go since not using postgres on client
+  //which_db = SQLITE; //this can go since not using postgres on client
 
   map_context_titles();
   map_folder_titles();

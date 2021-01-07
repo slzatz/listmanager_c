@@ -13,7 +13,7 @@
 #include <Python.h>
 #include <sys/ioctl.h>
 #include <csignal>
-#include <termios.h>
+//#include <termios.h>
 #include <libpq-fe.h>
 #include <sqlite3.h>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
@@ -42,40 +42,19 @@ const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
 
-//std::string system_call = "./lm_browser " + CURRENT_NOTE_FILE;
-//std::string system_call = "./lm_browser current.html"; //only called by persistent html which I am probably deleting
-std::string meta;
-int which_db;
-struct termios orig_termios;
-//int screenlines, screencols, new_screenlines, new_screencols;
+//std::string meta;
 std::stringstream display_text;
 int initial_file_row = 0; //for arrowing or displaying files
-std::string search_terms;
-std::vector<int> fts_ids;
-int fts_counter;
-std::string search_string; //word under cursor works with *, n, N etc.
-//std::vector<std::string> line_buffer; //yanking lines //inline
-std::string string_buffer; //yanking chars
-std::map<int, std::string> fts_titles;
-std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
-std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
-std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
-//std::vector<std::string> task_keywords;
+
 std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
-std::set<int> unique_ids; //used in unique_data_callback
-//std::vector<std::string> command_history; // the history of commands to make it easier to go back to earlier views
-//std::vector<std::string> page_history; // the history of commands to make it easier to go back to earlier views
-//size_t cmd_hx_idx = 0;
-//size_t page_hx_idx = 0;
-int SMARTINDENT = 4; //should be in config
+const int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;
 int link_id = 0;
 char link_text[20];
-//int current_task_id;
 std::unordered_set<int> marked_entries;
 struct flock lock; 
-std::vector<std::string> line_buffer = {}; //yanking lines
+//std::vector<std::string> line_buffer = {}; //yanking lines
 
 struct sqlite_db {
   sqlite3 *db;
@@ -90,7 +69,7 @@ const std::unordered_set<std::string> file_cmds = {"savefile", "save", "readfile
 
 //these are not really move only but are commands that don't change text and shouldn't trigger a new push_current diff record
 //better name something like no_edit_cmds or non_edit_cmds
-std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"}; //could put 'u' ctrl-r here
+const std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"}; //could put 'u' ctrl-r here
 
 struct config {
   std::string user;
@@ -148,6 +127,14 @@ struct outlineConfig {
   int view; // enum TASK, CONTEXT, FOLDER, SEARCH
   int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_FIND
   int current_task_id;
+  std::string string_buffer; //yanking chars
+  std::map<int, std::string> fts_titles;
+
+  std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
+  std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
+  const std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
+
+  std::vector<int> fts_ids;
 };
 struct outlineConfig O;
 
@@ -330,8 +317,8 @@ std::pair<std::string, std::vector<std::string>> get_task_keywords(int); // used
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 void update_note(bool); //used by Editor class 
 //void solr_find(void);
-void search_db(std::string); //void fts5_sqlite(std::string);
-void search_db2(std::string); //just searches documentation - should be combined with above
+void search_db(const std::string &); //void fts5_sqlite(std::string);
+void search_db2(const std::string &); //just searches documentation - should be combined with above
 void get_items_by_id(std::stringstream &);
 int get_folder_tid(int); 
 void map_context_titles(void);
