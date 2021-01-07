@@ -90,6 +90,6 @@ const std::unordered_map<std::string, efunc> E_lookup_C {
   {"savefile", &Editor::E_save_note},
   {"createlink", &Editor::createLink},
   //{"cl", &Editor::createLink},
-  {"getLinked", &Editor::getLinked},
+  {"getlinked", &Editor::getLinked},
   {"gl", &Editor::getLinked},
 };
