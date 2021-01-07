@@ -27,6 +27,7 @@ struct Session {
   // Not sure it is very helpful and I don't use it at all
   std::vector<std::string> command_history; 
   int cmd_hx_idx = 0;
+  bool editor_mode = false;
 
   Sqlite db;
   Sqlite fts;

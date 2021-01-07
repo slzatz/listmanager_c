@@ -339,7 +339,7 @@ void signalHandler(int signum) {
 
   draw_editors();
 
-  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
+  if (O.view == TASK && O.mode != NO_ROWS && !sess.editor_mode)
     get_preview(O.rows.at(O.fr).id);
 
   //for (auto e : editors) e->editorRefreshScreen(true);
@@ -434,7 +434,7 @@ char * (url_callback)(const char *x, const int y, void *z) {
  */
 void update_html_file(std::string &&fn) {
   std::string note;
-  if (editor_mode) note = p->editorRowsToString();
+  if (sess.editor_mode) note = p->editorRowsToString();
   else note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
@@ -1180,6 +1180,7 @@ void F_deletekeywords(int) {
   O.mode = O.last_mode;
 }
 
+/*
 void get_linked_items(int max) {
   int id = O.rows.at(O.fr).id;
   std::vector<std::string> task_keywords = get_task_keywords(id).second;
@@ -1220,6 +1221,7 @@ void get_linked_items(int max) {
     get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
+*/
 
 void get_items(int max) {
   std::stringstream query;
@@ -3166,7 +3168,7 @@ void F_edit(int) {
 
   outlineShowMessage("Edit note %d", id);
   outlineRefreshScreen();
-  editor_mode = true;
+  sess.editor_mode = true;
 
   if (!sess.editors.empty()){
     auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
@@ -3265,7 +3267,7 @@ void F_edit(int) {
 void F_edit2(int id) {
   outlineShowMessage("Edit note %d", id);
   outlineRefreshScreen();
-  editor_mode = true;
+  sess.editor_mode = true;
 
   if (!sess.editors.empty()){
     auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
@@ -3544,6 +3546,7 @@ void F_getLinked(int) {
   F_edit2(id);
 }
 
+/*
 void F_linked(int) {
   int id = O.rows.at(O.fr).id;
   std::string keywords = get_task_keywords(id).first;
@@ -3558,6 +3561,7 @@ void F_linked(int) {
     sess.command_history.push_back("ok " + keywords); 
   }
 }
+*/
 
 void F_find(int pos) {
   if (O.command_line.size() < 6) {
@@ -3887,7 +3891,7 @@ void goto_editor_N(void) {
   eraseRightScreen();
   draw_editors();
 
-  editor_mode = true;
+  sess.editor_mode = true;
 }
 
 void F_resize(int pos) {
@@ -5093,7 +5097,7 @@ void return_cursor() {
   std::string ab;
   char buf[32];
 
-  if (editor_mode) {
+  if (sess.editor_mode) {
   // the lines below position the cursor where it should go
     if (p->mode != COMMAND_LINE){
       //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
@@ -6051,7 +6055,7 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('h'):
           p->command[0] = '\0';
           if (sess.editors.size() == 1) {
-            editor_mode = false;
+            sess.editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
             return false;
           }
@@ -6067,7 +6071,7 @@ bool editorProcessKeypress(void) {
               if (p->rows.empty()) p->mode = NO_ROWS;
               else p->mode = NORMAL;
               return false;
-            } else {editor_mode = false;
+            } else {sess.editor_mode = false;
               get_preview(O.rows.at(O.fr).id); // with change in while loop should not get overwritten
               return false;
             }
@@ -6307,7 +6311,7 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('h'):
           p->command[0] = '\0';
           if (sess.editors.size() == 1) {
-            editor_mode = false;
+            sess.editor_mode = false;
             get_preview(O.rows.at(O.fr).id); 
             O.mode = NORMAL;
             return_cursor(); 
@@ -6325,7 +6329,7 @@ bool editorProcessKeypress(void) {
               if (p->rows.empty()) p->mode = NO_ROWS;
               else p->mode = NORMAL;
               return false;
-            } else {editor_mode = false;
+            } else {sess.editor_mode = false;
               get_preview(O.rows.at(O.fr).id);
               O.mode = NORMAL;
               return_cursor(); 
@@ -6584,7 +6588,7 @@ bool editorProcessKeypress(void) {
 
           } else { // we've quit the last remaining editor(s)
             p = nullptr;
-            editor_mode = false;
+            sess.editor_mode = false;
             eraseRightScreen();
             get_preview(O.rows.at(O.fr).id);
             return_cursor(); //because main while loop if started in editor_mode -- need this 09302020
@@ -7097,11 +7101,11 @@ int main(int argc, char** argv) {
 
   while (run) {
     // just refresh what has changed
-    if (editor_mode) {
+    if (sess.editor_mode) {
       text_change = editorProcessKeypress(); 
       //
       // editorProcessKeypress can take you out of editor mode (either ctrl-H or closing last editor
-      if (!editor_mode) continue;
+      if (!sess.editor_mode) continue;
       //if (!p) continue; // commented out in favor of the above on 10-24-2020
       //
       scroll = p->editorScroll();

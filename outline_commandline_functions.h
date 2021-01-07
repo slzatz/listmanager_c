@@ -20,7 +20,7 @@ void F_edit2(int); // pos not used
 void F_folders(int); 
 void F_contexts(int); 
 void F_recent(int); // pos not used
-void F_linked(int); // pos not used
+//void F_linked(int); // pos not used
 void F_find(int); 
 void F_sync(int); // pos not used
 void F_sync_test(int); // pos not used
@@ -53,7 +53,7 @@ void F_getLinked(int);
 
 
 /* OUTLINE COMMAND_LINE mode command lookup */
-std::unordered_map<std::string, pfunc> cmd_lookup {
+const std::unordered_map<std::string, pfunc> cmd_lookup {
   {"open", F_open}, //open_O
   {"o", F_open},
   {"openfolder", F_openfolder},
@@ -85,9 +85,9 @@ std::unordered_map<std::string, pfunc> cmd_lookup {
   {"folder", F_folders},
   {"f", F_folders},
   {"recent", F_recent},
-  {"linked", F_linked},
-  {"l", F_linked},
-  {"related", F_linked},
+ // {"linked", F_linked},
+ // {"l", F_linked},
+ // {"related", F_linked},
   {"find", F_find},
   {"fin", F_find},
   {"search", F_find},

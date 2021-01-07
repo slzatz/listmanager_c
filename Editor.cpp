@@ -1068,7 +1068,7 @@ void Editor::editorReadFileIntoNote(const std::string &filename) {
   f.close();
 
   dirty = true;
-  editor_mode = true;
+  sess.editor_mode = true;
   editorRefreshScreen(true);
   return;
 }
@@ -2444,7 +2444,7 @@ void Editor::E_change_case(int repeat) {
 }
 
 void Editor::E_goto_outline(int repeat) {
-  editor_mode = false;
+  sess.editor_mode = false;
 }
 
 void Editor::E_replace(int repeat) {
