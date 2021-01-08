@@ -432,6 +432,8 @@ void Editor::editorInsertReturn(void) { // right now only used for editor->INSER
   current_row = new_row1;
   rows.insert(rows.begin() + fr, new_row2);
 
+  if (fc==0) return; //01082020
+
   fc = 0;
   for (int j=0; j < indent; j++) editorInsertChar(' ');
 }

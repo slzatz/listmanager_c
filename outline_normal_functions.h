@@ -21,7 +21,7 @@ void zero_N(void);
 void dollar_N(void);
 void I_N(void);
 void G_N(void);
-void O_N(void);
+//void O_N(void); probably better just to use :n
 void colon_N(void);
 void v_N(void);
 void p_N(void);
@@ -75,7 +75,7 @@ const std::unordered_map<std::string, zfunc> n_lookup {
   {"$", dollar_N},
   {"I", I_N},
   {"G", G_N},
-  {"O", O_N},
+  {"O", O_N}, //probably better just to use :n
   {":", colon_N},
   {"v", v_N},
   {"p", p_N},
