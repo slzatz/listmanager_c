@@ -22,6 +22,8 @@ struct Session {
 
   void eraseRightScreen(void);
   void draw_editors(void);
+  void position_editors(void);
+  int getWindowSize(void);
 
   // the history of commands to make it easier to go back to earlier views
   // Not sure it is very helpful and I don't use it at all

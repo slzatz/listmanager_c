@@ -295,55 +295,26 @@ void do_exit(PGconn *conn) {
 }
 
 void signalHandler(int signum) {
-  /*
-  getWindowSize(&new_screenlines, &new_screencols);
-  screenlines = new_screenlines;
-  screencols = new_screencols;
-  */
+  sess.getWindowSize();
 
-  getWindowSize(&sess.screenlines, &sess.screencols);
-  sess.textlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  // -2 for status bar and message bar
+  sess.textlines = sess.screenlines - 2 - TOP_MARGIN;
+
   sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
-  O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
   sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
-  O.left_screencols = sess.divider - 2; //OUTLINE_MARGINS
-
-  //Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
-  //EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
-  //Editor::origin = sess.divider + 1; //only used in Editor.cpp
 
   eraseScreenRedrawLines();
-  eraseRightScreen();
 
-  if (!sess.editors.empty()) {
-
-    std::unordered_set<int> temp;
-    for (auto z : sess.editors) {
-      temp.insert(z->id);
-    }
-
-    int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
-    temp.clear();
-    int i = -1;
-    for (auto z : sess.editors) {
-      auto ret = temp.insert(z->id);
-      if (ret.second == true) i++;
-      z->left_margin = sess.divider + i*s_cols + i;
-      z->screencols = s_cols;
-      z->set_screenlines(); //also sets top margin
-    }
-  }
+  sess.position_editors();
+  sess.eraseRightScreen(); //erases editor area + statusbar + msg
+  sess.draw_editors();
 
   outlineRefreshScreen();
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
 
-  draw_editors();
-
   if (O.view == TASK && O.mode != NO_ROWS && !sess.editor_mode)
     get_preview(O.rows.at(O.fr).id);
-
-  //for (auto e : editors) e->editorRefreshScreen(true);
 
   return_cursor();
 }
@@ -3160,7 +3131,7 @@ void F_new(int) {
 }
 
 //this is the main event - right now only way to initiate editing an entry
-void F_edit(int) {
+void F_edit(int id) {
   
   if (!(O.view == TASK)) {
     O.command[0] = '\0';
@@ -3169,7 +3140,9 @@ void F_edit(int) {
     return;
   }
 
-  int id = get_id();
+  //pos is zero if no space and command modifier
+  if (id == 0) id = get_id();
+  //int id = get_id();
   if (id == -1) {
     outlineShowMessage("You need to save item before you can create a note");
     O.command[0] = '\0';
@@ -3188,18 +3161,14 @@ void F_edit(int) {
     if (it == sess.editors.end()) {
       p = new Editor;
       sess.editors.push_back(p);
-      //editors.push_back(std::make_shared<Editor>(E));
       p->id = id;
       p->top_margin = TOP_MARGIN + 1;
-      //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
       int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
       if (folder_tid == 18 || folder_tid == 14) {
         p->linked_editor = new Editor;
         sess.editors.push_back(p->linked_editor);
         p->linked_editor->id = id;
-        //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-        //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
         p->linked_editor->is_subeditor = true;
         p->linked_editor->is_below = true;
         p->linked_editor->linked_editor = p;
@@ -3222,8 +3191,6 @@ void F_edit(int) {
       p->linked_editor = new Editor;
       sess.editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
-      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
       p->linked_editor->is_subeditor = true;
       p->linked_editor->is_below = true;
       p->linked_editor->linked_editor = p;
@@ -3231,28 +3198,22 @@ void F_edit(int) {
     }
     get_note(id); //if id == -1 does not try to retrieve note
  }
+  /*
   int editor_slots = 0;
-  //std::unordered_set<int> temp;
   for (auto z : sess.editors) {
     if (!z->is_below) editor_slots++;
-    //temp.insert(z->id);
   }
 
-  // this could be improved - lose at least one column for each additional editor
-  //int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
   int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
-  //temp.clear();
   int i = -1; //i = number of columns of editors -1
   for (auto z : sess.editors) {
-    //auto ret = temp.insert(z->id);
     if (!z->is_below) i++;
-    //if (ret.second == true) i++;
     z->left_margin = sess.divider + i*s_cols + i;
     z->screencols = s_cols;
-    z->set_screenlines();
+    z->setLinesMargins();
   }
-
-  //rightmostr_left_margin = O.divider + i*s_cols + i
+*/
+  sess.position_editors();
   eraseRightScreen(); //erases editor area + statusbar + msg
 
   if (p->rows.empty()) {
@@ -3275,6 +3236,7 @@ void F_edit(int) {
   O.mode = NORMAL;
 }
 
+/*
 void F_edit2(int id) {
   outlineShowMessage("Edit note %d", id);
   outlineRefreshScreen();
@@ -3348,7 +3310,7 @@ void F_edit2(int id) {
     //if (ret.second == true) i++;
     z->left_margin = sess.divider + i*s_cols + i;
     z->screencols = s_cols;
-    z->set_screenlines();
+    z->setLinesMargins();
   }
 
   //rightmostr_left_margin = O.divider + i*s_cols + i
@@ -3373,6 +3335,7 @@ void F_edit2(int id) {
   O.command[0] = '\0';
   O.mode = NORMAL;
 }
+*/
 
 void F_contexts(int pos) {
   if (!pos) {
@@ -3554,7 +3517,7 @@ void F_getLinked(int) {
   int task_id1 = q.column_int(1);
 
   id = (task_id0 == id) ? task_id1 : task_id0;
-  F_edit2(id);
+  F_edit(id);
 }
 
 /*
@@ -4800,6 +4763,8 @@ void open_in_vim(void){
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+
   if(O.rows.empty()) {
       O.fr = O.fc = O.coloff = O.cx = O.cy = 0;
       return;
@@ -4813,8 +4778,8 @@ void outlineScroll(void) {
     O.rowoff =  O.fr;
   }
 
-  if (O.fc > O.titlecols + O.coloff - 1) {
-    O.coloff =  O.fc - O.titlecols + 1;
+  if (O.fc > titlecols + O.coloff - 1) {
+    O.coloff =  O.fc - titlecols + 1;
   }
 
   if (O.fc < O.coloff) {
@@ -4829,6 +4794,7 @@ void outlineScroll(void) {
 void outlineDrawRows(std::string& ab) {
   int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
   char buf[32];
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
   if (O.rows.empty()) return;
 
@@ -4844,7 +4810,7 @@ void outlineDrawRows(std::string& ab) {
     // if a line is long you only draw what fits on the screen
     //below solves problem when deleting chars from a scrolled long line
     unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
-    if (len > O.titlecols) len = O.titlecols;
+    if (len > titlecols) len = titlecols;
 
     if (row.star) {
       ab.append("\x1b[1m"); //bold
@@ -4880,7 +4846,7 @@ void outlineDrawRows(std::string& ab) {
 
     // the spaces make it look like the whole row is highlighted
     //note len can't be greater than titlecols so always positive
-    ab.append(O.titlecols - len + 1, ' ');
+    ab.append(titlecols - len + 1, ' ');
 
     //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); // + offset
     // believe the +2 is just to give some space from the end of long titles
@@ -4898,6 +4864,7 @@ void outlineDrawFilters(std::string& ab) {
 
   char lf_ret[16];
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%dG", sess.divider + 2); 
@@ -4909,7 +4876,7 @@ void outlineDrawFilters(std::string& ab) {
 
     orow& row = O.rows[fr];
 
-    size_t len = (row.title.size() > O.titlecols) ? O.titlecols : row.title.size();
+    size_t len = (row.title.size() > titlecols) ? titlecols : row.title.size();
 
     if (row.star) {
       ab.append("\x1b[1m"); //bold
@@ -4919,7 +4886,7 @@ void outlineDrawFilters(std::string& ab) {
     if (fr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
 
     ab.append(&row.title[0], len);
-    int spaces = O.titlecols - len; //needs to change but reveals stuff being written
+    int spaces = titlecols - len; //needs to change but reveals stuff being written
     std::string s(spaces, ' '); 
     ab.append(s);
     ab.append("\x1b[0m"); // return background to normal /////
@@ -4928,13 +4895,14 @@ void outlineDrawFilters(std::string& ab) {
 }
 
 void outlineDrawSearchRows(std::string& ab) {
-  char buf[32];
 
   if (O.rows.empty()) return;
 
+  char buf[32];
   unsigned int y;
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
   int spaces;
 
@@ -4960,17 +4928,17 @@ void outlineDrawSearchRows(std::string& ab) {
 
     // I think the following blows up if there are multiple search terms hits in a line longer than O.titlecols
 
-    if (row.title.size() <= O.titlecols) // we know it fits
+    if (row.title.size() <= titlecols) // we know it fits
       ab.append(row.fts_title.c_str(), row.fts_title.size());
     else {
       size_t pos = row.fts_title.find("\x1b[49m");
-      if (pos < O.titlecols + 10) //length of highlight escape
-        ab.append(row.fts_title.c_str(), O.titlecols + 15); // length of highlight escape + remove formatting escape
+      if (pos < titlecols + 10) //length of highlight escape
+        ab.append(row.fts_title.c_str(), titlecols + 15); // length of highlight escape + remove formatting escape
       else
-        ab.append(row.title.c_str(), O.titlecols);
+        ab.append(row.title.c_str(), titlecols);
 }
-    len = (row.title.size() <= O.titlecols) ? row.title.size() : O.titlecols;
-    spaces = O.titlecols - len;
+    len = (row.title.size() <= titlecols) ? row.title.size() : titlecols;
+    spaces = titlecols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
     //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - TIME_COL_WIDTH + 2); //wouldn't need offset
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, sess.divider - TIME_COL_WIDTH + 2); //wouldn't need offset
@@ -5091,14 +5059,14 @@ void outlineDrawStatusBar(void) {
 
   int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
 
-  if (len > O.left_screencols + 1) {
-    ab.append(status0, O.left_screencols + 1);
-  } else if (len + rlen > O.left_screencols + 1) {
+  if (len > sess.divider) {
+    ab.append(status0, sess.divider);
+  } else if (len + rlen > sess.divider) {
     ab.append(status);
-    ab.append(rstatus, O.left_screencols + 1 - len);
+    ab.append(rstatus, sess.divider - len);
   } else {
     ab.append(status);
-    ab.append(O.left_screencols + 1 - len - rlen, ' ');
+    ab.append(sess.divider - len - rlen, ' ');
     ab.append(rstatus);
   }
 
@@ -5167,6 +5135,7 @@ void outlineDrawMessageBar(std::string& ab) {
 void outlineRefreshScreen(void) {
 
   std::string ab;
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
 
@@ -5178,7 +5147,7 @@ void outlineRefreshScreen(void) {
   if (O.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-      O.titlecols + LEFT_MARGIN + 17); 
+      titlecols + LEFT_MARGIN + 17); 
       ab.append(buf, strlen(buf));
     }
   }
@@ -6585,6 +6554,7 @@ bool editorProcessKeypress(void) {
 
             p = sess.editors[0]; //kluge should move in some logical fashion
 
+            /*
             std::unordered_set<int> temp;
             for (auto z : sess.editors) {
               temp.insert(z->id);
@@ -6598,11 +6568,12 @@ bool editorProcessKeypress(void) {
               if (ret.second == true) i++;
               z->left_margin = sess.divider + i*s_cols + i;
               z->screencols = s_cols;
-              z->set_screenlines(); //also sets top margin
+              z->setLinesMargins(); //also sets top margin
             }
-
-            eraseRightScreen(); //moved down here on 10-24-2020
-            draw_editors();
+            */
+            sess.position_editors();
+            sess.eraseRightScreen(); //moved down here on 10-24-2020
+            sess.draw_editors();
 
           } else { // we've quit the last remaining editor(s)
             p = nullptr;
@@ -7066,9 +7037,9 @@ void initOutline() {
   sess.textlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   //Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
   sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
-  O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN; 
+  //O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN; 
   sess.totaleditorcols = sess.screencols - sess.divider - 1; // was 2 
-  O.left_screencols = sess.divider - 1; //was 2
+  //O.left_screencols = sess.divider - 1; //was 2
 }
 
 int main(int argc, char** argv) { 
@@ -7096,7 +7067,8 @@ int main(int argc, char** argv) {
   map_context_titles();
   map_folder_titles();
 
-  getWindowSize(&sess.screenlines, &sess.screencols);
+  //getWindowSize(&sess.screenlines, &sess.screencols);
+  sess.getWindowSize();
   enableRawMode();
   initOutline();
   eraseScreenRedrawLines();

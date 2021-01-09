@@ -3,6 +3,7 @@
 #include <fmt/core.h>
 #include <fmt/format.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 
 #define TOP_MARGIN 1
 
@@ -55,6 +56,22 @@ void Session::eraseRightScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+void Session::position_editors(void) {
+  int editor_slots = 0;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+  }
+
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    if (!z->is_below) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->setLinesMargins();
+  }
+}
+
 void Session::draw_editors(void) {
   std::string ab;
   for (auto &e : editors) {
@@ -84,4 +101,19 @@ void Session::draw_editors(void) {
   ab.append("\x1b[?25h", 6); //shows the cursor
   ab.append("\x1b[0m"); //or else subsequent editors are bold
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+int Session::getWindowSize(void) {
+
+  // ioctl(), TIOCGWINXZ and struct windsize come from <sys/ioctl.h>
+  struct winsize ws;
+
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    return -1;
+  } else {
+    screencols = ws.ws_col;
+    screenlines = ws.ws_row;
+
+    return 0;
+  }
 }

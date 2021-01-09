@@ -277,7 +277,7 @@ void Editor::draw_highlighted_braces(void) {
 
 }
 
-void Editor::set_screenlines(void) { //also sets top margin
+void Editor::setLinesMargins(void) { //also sets top margin
 
   if(linked_editor) {
     if (is_subeditor) {
@@ -3243,7 +3243,7 @@ void Editor::E_move_output_window_right(int) {
     if (!z->is_below) i++;
     z->left_margin = sess.divider + i*s_cols + i;
     z->screencols = s_cols;
-    z->set_screenlines();
+    z->setLinesMargins();
   }
 
   sess.eraseRightScreen(); //moved down here on 10-24-2020
@@ -3272,7 +3272,7 @@ void Editor::E_move_output_window_below(int) {
     if (!z->is_below) i++;
     z->left_margin = sess.divider + i*s_cols + i;
     z->screencols = s_cols;
-    z->set_screenlines();
+    z->setLinesMargins();
   }
 
   sess.eraseRightScreen(); //moved down here on 10-24-2020
@@ -3378,6 +3378,7 @@ void Editor::getLinked(void) {
     p->linked_editor->rows = std::vector<std::string>{" "};
   }
 
+  /* see Editor::position_editors
   int editor_slots = 0;
   //std::unordered_set<int> temp;
   for (auto z : sess.editors) {
@@ -3393,6 +3394,9 @@ void Editor::getLinked(void) {
     z->set_screenlines();
   }
 
+  */
+
+  sess.position_editors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
   sess.draw_editors();
   mode = NORMAL;
@@ -3418,4 +3422,21 @@ int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
 
   editor->dirty = 0; //assume editorInsertRow increments dirty so this needed
   return 0;
+}
+
+void Editor::position_editors(void) {
+  int editor_slots = 0;
+  //std::unordered_set<int> temp;
+  for (auto z : sess.editors) {
+    if (!z->is_below) editor_slots++;
+  }
+
+  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int i = -1; //i = number of columns of editors -1
+  for (auto z : sess.editors) {
+    if (!z->is_below) i++;
+    z->left_margin = sess.divider + i*s_cols + i;
+    z->screencols = s_cols;
+    z->setLinesMargins();
+  }
 }

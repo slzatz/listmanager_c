@@ -15,8 +15,8 @@ void F_write(int); // pos not used
 void F_x(int); // pos not used
 void F_refresh(int); // pos not used
 void F_new(int); // pos not used
-void F_edit(int); // pos not used
-void F_edit2(int); // pos not used
+void F_edit(int id=-1); // can be called with an id
+//void F_edit2(int); // pos not used
 void F_folders(int); 
 void F_contexts(int); 
 void F_recent(int); // pos not used
