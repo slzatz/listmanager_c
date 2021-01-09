@@ -310,7 +310,7 @@ void signalHandler(int signum) {
 
   //Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
   //EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
-  Editor::origin = sess.divider + 1; //only used in Editor.cpp
+  //Editor::origin = sess.divider + 1; //only used in Editor.cpp
 
   eraseScreenRedrawLines();
   eraseRightScreen();
@@ -7100,7 +7100,7 @@ int main(int argc, char** argv) {
   enableRawMode();
   initOutline();
   eraseScreenRedrawLines();
-  Editor::origin = sess.divider + 1; //only used in Editor.cpp
+  //Editor::origin = sess.divider + 1; //only used in Editor.cpp
   get_items(MAX);
   sess.command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   sess.page_history.push_back("of todo"); //klugy - this could be read from config and generalized

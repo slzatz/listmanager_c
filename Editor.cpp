@@ -23,7 +23,7 @@ using namespace redi;
 std::vector<std::string> Editor::line_buffer = {}; 
 std::string Editor::string_buffer = {}; 
 //int Editor::total_screenlines = 0; 
-int Editor::origin = 0;
+//int Editor::origin = 0;
 char Editor::message[120]{};
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
@@ -1289,7 +1289,7 @@ void Editor::editorDrawMessageBar(std::string& ab) {
 
   // only use of EDITOR_LEFT_MARGIN in Editor.cpp
   //buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
-  buf  << "\x1b[" << sess.textlines + top_margin + 1 << ";" << origin << "H";
+  buf  << "\x1b[" << sess.textlines + top_margin + 1 << ";" << sess.divider + 1 << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(message);
