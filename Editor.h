@@ -105,7 +105,7 @@ class Editor {
     static char message[120]; //status msg is a character array max 80 char
     static std::string string_buffer; //yanking chars
     static std::vector<std::string> line_buffer; //yanking lines
-    static int total_screenlines; //total screenlines available to Editors vertically
+    //static int total_screenlines; //total screenlines available to Editors vertically
     static int origin; //x column of Editor section
     std::string search_string; //word under cursor works with *, n, N etc.
     int SMARTINDENT = 4; //should be in config

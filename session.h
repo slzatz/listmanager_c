@@ -12,6 +12,10 @@ const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
 struct Session {
   int screencols;
   int screenlines;
+
+  //O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  int textlines; //total lines available in editor and organizer
+
   int divider;
   int totaleditorcols;
   std::vector<Editor*> editors;

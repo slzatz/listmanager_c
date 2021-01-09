@@ -302,13 +302,13 @@ void signalHandler(int signum) {
   */
 
   getWindowSize(&sess.screenlines, &sess.screencols);
-  O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  sess.textlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
   O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
   sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
   O.left_screencols = sess.divider - 2; //OUTLINE_MARGINS
 
-  Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
+  //Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
   //EDITOR_LEFT_MARGIN = O.divider + 1; //only used in Editor.cpp
   Editor::origin = sess.divider + 1; //only used in Editor.cpp
 
@@ -1708,7 +1708,7 @@ void display_item_info(void) {
   int id = O.rows.at(O.fr).id;
   std::string s{};
   int width = sess.totaleditorcols - 10;
-  int length = O.screenlines - 10;
+  int length = sess.textlines - 10;
   Query q(sess.db, "SELECT * FROM task WHERE id={};", id);
   q.step();
 
@@ -1987,7 +1987,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < O.screenlines; i++) {
+  for (int i=0; i < sess.textlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -2076,7 +2076,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < O.screenlines; i++) {
+  for (int i=0; i < sess.textlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -2161,7 +2161,7 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
   ab.append(buf);
 
   //need to erase the screen
-  for (int i=0; i < O.screenlines; i++) {
+  for (int i=0; i < sess.textlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
@@ -4412,7 +4412,7 @@ void displayFile(void) {
   ab.append(buf, bufchars); //don't need to give length but will if change to memory_buffer
 
   //erase the right half of the screen
-  for (int i=0; i < O.screenlines; i++) {
+  for (int i=0; i < sess.textlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, lf_chars);
   }
@@ -4429,7 +4429,7 @@ void displayFile(void) {
   display_text.clear();
   display_text.seekg(0, std::ios::beg);
   while(std::getline(display_text, row, '\n')) {
-    if (line_num > O.screenlines - 2) break;
+    if (line_num > sess.textlines - 2) break;
     row_num++;
     if (row_num < initial_file_row) continue;
     if (static_cast<int>(row.size()) < sess.totaleditorcols) {
@@ -4443,7 +4443,7 @@ void displayFile(void) {
     int n = row.size()/(sess.totaleditorcols - 1) + ((row.size()%(sess.totaleditorcols - 1)) ? 1 : 0);
     for(int i=0; i<n; i++) {
       line_num++;
-      if (line_num > O.screenlines - 2) break;
+      if (line_num > sess.textlines - 2) break;
       line = row.substr(0, sess.totaleditorcols - 1);
       row.erase(0, sess.totaleditorcols - 1);
       ab.append(line);
@@ -4536,7 +4536,7 @@ void draw_preview(void) {
   char buf[50];
   std::string ab;
   int width = sess.totaleditorcols - 10;
-  int length = O.screenlines - 10;
+  int length = sess.textlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
@@ -4646,7 +4646,7 @@ void draw_search_preview(void) {
   char buf[50];
   std::string ab;
   int width = sess.totaleditorcols - 10;
-  int length = O.screenlines - 10;
+  int length = sess.textlines - 10;
   //hide the cursor
   ab.append("\x1b[?25l");
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
@@ -4805,8 +4805,8 @@ void outlineScroll(void) {
       return;
   }
 
-  if (O.fr > O.screenlines + O.rowoff - 1) {
-    O.rowoff =  O.fr - O.screenlines + 1;
+  if (O.fr > sess.textlines + O.rowoff - 1) {
+    O.rowoff =  O.fr - sess.textlines + 1;
   }
 
   if (O.fr < O.rowoff) {
@@ -4836,7 +4836,7 @@ void outlineDrawRows(std::string& ab) {
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
 
-  for (y = 0; y < O.screenlines; y++) {
+  for (y = 0; y < sess.textlines; y++) {
     unsigned int fr = y + O.rowoff;
     if (fr > O.rows.size() - 1) return;
     orow& row = O.rows[fr];
@@ -4903,7 +4903,7 @@ void outlineDrawFilters(std::string& ab) {
   snprintf(buf, sizeof(buf), "\x1b[%dG", sess.divider + 2); 
   ab.append(buf); 
 
-  for (int y = 0; y < O.screenlines; y++) {
+  for (int y = 0; y < sess.textlines; y++) {
     unsigned int fr = y + O.rowoff;
     if (fr > O.rows.size() - 1) return;
 
@@ -4938,7 +4938,7 @@ void outlineDrawSearchRows(std::string& ab) {
 
   int spaces;
 
-  for (y = 0; y < O.screenlines; y++) {
+  for (y = 0; y < sess.textlines; y++) {
     int fr = y + O.rowoff;
     if (fr > static_cast<int>(O.rows.size()) - 1) return;
     orow& row = O.rows[fr];
@@ -5001,9 +5001,9 @@ void outlineDrawStatusBar(void) {
 
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
-                             O.screenlines + TOP_MARGIN + 1,
+                             sess.textlines + TOP_MARGIN + 1,
                              sess.divider,
-                             O.screenlines + TOP_MARGIN + 1,
+                             sess.textlines + TOP_MARGIN + 1,
                              1); //status bar comes right out to left margin
 
   ab.append(buf, strlen(buf));
@@ -5117,7 +5117,7 @@ void return_cursor() {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + p->left_margin_offset + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", Editor::total_screenlines + TOP_MARGIN + 2, p->command_line.size() + sess.divider + 2); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + TOP_MARGIN + 2, p->command_line.size() + sess.divider + 2); 
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h"); // show cursor
     }
@@ -5137,7 +5137,7 @@ void return_cursor() {
       //ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
     } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", O.screenlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
     }
@@ -5151,10 +5151,10 @@ void outlineDrawMessageBar(std::string& ab) {
   std::stringstream buf;
 
   // Erase from mid-screen to the left and then place cursor all the way left
-  buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
+  buf << "\x1b[" << sess.textlines + 2 + TOP_MARGIN << ";"
       //<< screencols/2 << "H" << "\x1b[1K\x1b["
       << sess.divider << "H" << "\x1b[1K\x1b["
-      << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+      << sess.textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab += buf.str();
 
@@ -5176,7 +5176,7 @@ void outlineRefreshScreen(void) {
   //Now erases time/sort column (+ 17 in line below)
   //if (O.view != KEYWORD) {
   if (O.mode != ADD_CHANGE_FILTER) {
-    for (unsigned int j=TOP_MARGIN; j < O.screenlines + 1; j++) {
+    for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
       O.titlecols + LEFT_MARGIN + 17); 
       ab.append(buf, strlen(buf));
@@ -5213,10 +5213,10 @@ void outlineShowMessage(const char *fmt, ...) {
   std::stringstream buf;
 
   // Erase from mid-screen to the left and then place cursor all the way left
-  buf << "\x1b[" << O.screenlines + 2 + TOP_MARGIN << ";"
+  buf << "\x1b[" << sess.textlines + 2 + TOP_MARGIN << ";"
       //<< screencols/2 << "H" << "\x1b[1K\x1b["
       << sess.divider << "H" << "\x1b[1K\x1b["
-      << O.screenlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+      << sess.textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab = buf.str();
   //ab.append("\x1b[0m"); //checking if necessary
@@ -5230,9 +5230,9 @@ void outlineShowMessage(const char *fmt, ...) {
 
 void outlineShowMessage2(const std::string &s) {
   std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
-                                 O.screenlines + 2 + TOP_MARGIN,
+                                 sess.textlines + 2 + TOP_MARGIN,
                                  sess.divider,
-                                 O.screenlines + 2 + TOP_MARGIN);
+                                 sess.textlines + 2 + TOP_MARGIN);
 
   if (s.length() > sess.divider) buf.append(s, sess.divider) ;
   else buf.append(s);
@@ -5518,9 +5518,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
-            O.fr = (O.screenlines > O.fr) ? 0 : O.fr - O.screenlines; //O.fr and O.screenlines are unsigned ints
+            O.fr = (sess.textlines > O.fr) ? 0 : O.fr - sess.textlines; //O.fr and sess.textlines are unsigned ints
           } else if (c == PAGE_DOWN) {
-             O.fr += O.screenlines;
+             O.fr += sess.textlines;
              if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
           }
           return;
@@ -5737,12 +5737,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           break;
 
         case PAGE_UP:
-          initial_file_row = initial_file_row - O.screenlines;
+          initial_file_row = initial_file_row - sess.textlines;
           initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
           break;
 
         case PAGE_DOWN:
-          initial_file_row = initial_file_row + O.screenlines;
+          initial_file_row = initial_file_row + sess.textlines;
           break;
 
         case ':':
@@ -7063,8 +7063,8 @@ void initOutline() {
   O.keyword = "";
 
   // ? where this should be.  Also in signal.
-  O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
-  Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
+  sess.textlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
+  //Editor::total_screenlines = sess.screenlines - 2 - TOP_MARGIN;
   sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
   O.titlecols =  sess.divider - TIME_COL_WIDTH - LEFT_MARGIN; 
   sess.totaleditorcols = sess.screencols - sess.divider - 1; // was 2 

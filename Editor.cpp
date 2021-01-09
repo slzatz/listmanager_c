@@ -22,7 +22,7 @@ using namespace redi;
 // static members of Editor class
 std::vector<std::string> Editor::line_buffer = {}; 
 std::string Editor::string_buffer = {}; 
-int Editor::total_screenlines = 0; 
+//int Editor::total_screenlines = 0; 
 int Editor::origin = 0;
 char Editor::message[120]{};
 
@@ -283,22 +283,22 @@ void Editor::set_screenlines(void) { //also sets top margin
     if (is_subeditor) {
       if (is_below) {
         screenlines = LINKED_NOTE_HEIGHT;
-        top_margin = total_screenlines - LINKED_NOTE_HEIGHT + 2;
+        top_margin = sess.textlines - LINKED_NOTE_HEIGHT + 2;
       } else {
-        screenlines = total_screenlines;
+        screenlines = sess.textlines;
         top_margin =  TOP_MARGIN + 1;
       }
     } else {
       if (linked_editor->is_below) {
-        screenlines = total_screenlines - LINKED_NOTE_HEIGHT - 1;
+        screenlines = sess.textlines - LINKED_NOTE_HEIGHT - 1;
         top_margin =  TOP_MARGIN + 1;
       } else {
-        screenlines = total_screenlines;
+        screenlines = sess.textlines;
         top_margin =  TOP_MARGIN + 1;
       }
     }
   } else {
-    screenlines = total_screenlines;
+    screenlines = sess.textlines;
     top_margin =  TOP_MARGIN + 1;
   }
 }
@@ -1289,7 +1289,7 @@ void Editor::editorDrawMessageBar(std::string& ab) {
 
   // only use of EDITOR_LEFT_MARGIN in Editor.cpp
   //buf  << "\x1b[" << total_screenlines + TOP_MARGIN + 2 << ";" << EDITOR_LEFT_MARGIN << "H";
-  buf  << "\x1b[" << total_screenlines + top_margin + 1 << ";" << origin << "H";
+  buf  << "\x1b[" << sess.textlines + top_margin + 1 << ";" << origin << "H";
   ab += buf.str();
   ab += "\x1b[K"; // will erase midscreen -> R; cursor doesn't move after erase
   int msglen = strlen(message);
@@ -2555,19 +2555,19 @@ void Editor::E_resize(int flag) {
   if (flag) {
     subnote_height = (abs(screenlines - z->screenlines) < 5) 
       ? LINKED_NOTE_HEIGHT
-      : total_screenlines/2;
+      : sess.textlines/2;
   } else {
     char c = command[1];
-    subnote_height = (c == '=') ? total_screenlines/2 : LINKED_NOTE_HEIGHT;
+    subnote_height = (c == '=') ? sess.textlines/2 : LINKED_NOTE_HEIGHT;
   }
   if (!is_subeditor) {
-    screenlines = total_screenlines - subnote_height - 1;
+    screenlines = sess.textlines - subnote_height - 1;
     z->screenlines = subnote_height;
-    z->top_margin = total_screenlines - subnote_height + 2;
+    z->top_margin = sess.textlines - subnote_height + 2;
   } else {
-    z->screenlines = total_screenlines - subnote_height - 1;
+    z->screenlines = sess.textlines - subnote_height - 1;
     screenlines = subnote_height;
-    top_margin = total_screenlines - subnote_height + 2;
+    top_margin = sess.textlines - subnote_height + 2;
   }
   z->editorRefreshScreen(true);
   editorRefreshScreen(true);
