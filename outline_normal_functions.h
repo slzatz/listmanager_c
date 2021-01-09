@@ -75,7 +75,7 @@ const std::unordered_map<std::string, zfunc> n_lookup {
   {"$", dollar_N},
   {"I", I_N},
   {"G", G_N},
-  {"O", O_N}, //probably better just to use :n
+  //{"O", O_N}, //probably better just to use :n
   {":", colon_N},
   {"v", v_N},
   {"p", p_N},
