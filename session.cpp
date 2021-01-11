@@ -161,6 +161,30 @@ int Session::getWindowSize(void) {
     return 0;
   }
 }
+
+// right now doesn't include get_preview
+void Session::moveDivider(int pct) {
+  divider = sess.screencols - pct * sess.screencols/100;
+  totaleditorcols = screencols - divider - 2; //? OUTLINE MARGINS?
+
+  eraseScreenRedrawLines();
+
+  position_editors();
+  eraseRightScreen(); //erases editor area + statusbar + msg
+  draw_editors();
+
+  O.outlineRefreshScreen();
+  O.outlineDrawStatusBar();
+  O.outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
+
+  /* need to think about this
+  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
+    get_preview(O.rows.at(O.fr).id);
+  */
+
+  return_cursor();
+}
+
 void Session::return_cursor() {
   std::string ab;
   char buf[32];

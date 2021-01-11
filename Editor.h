@@ -152,6 +152,7 @@ class Editor {
     void E_save_note(void);
     void createLink(void);
     void getLinked(void);
+    void moveDivider(void);
 
     /* EDITOR mode NORMAL functions */
     void E_i(int);

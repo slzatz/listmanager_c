@@ -307,51 +307,21 @@ void signalHandler(int signum) {
 
   sess.eraseScreenRedrawLines();
 
-  sess.position_editors();
-  sess.eraseRightScreen(); //erases editor area + statusbar + msg
-  sess.draw_editors();
+  if (!sess.editors.empty()) {
+    sess.position_editors();
+    sess.eraseRightScreen(); //erases editor area + statusbar + msg
+    sess.draw_editors();
+  }
 
-  outlineRefreshScreen();
-  outlineDrawStatusBar();
-  outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
+  sess.O.outlineRefreshScreen();
+  sess.O.outlineDrawStatusBar();
+  sess.O.outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
 
   if (sess.O.view == TASK && sess.O.mode != NO_ROWS && !sess.editor_mode)
     get_preview(sess.O.rows.at(sess.O.fr).id);
 
-  return_cursor();
+  sess.return_cursor();
 }
-
-/*
-void draw_editors(void) {
-  std::string ab;
-  for (auto &e : sess.editors) {
-  //for (size_t i=0, max=editors.size(); i!=max; ++i) {
-    //Editor *&e = editors.at(i);
-    e->editorRefreshScreen(true);
-    std::string buf;
-    ab.append("\x1b(0"); // Enter line drawing mode
-    for (int j=1; j<e->screenlines+1; j++) {
-      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1 + j, e->left_margin + e->screencols+1);
-      ab.append(buf);
-      // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-      // only need one 'm'
-      ab.append("\x1b[37;1mx");
-    }
-    if (!e->is_subeditor) {
-      //'T' corner = w or right top corner = k
-      buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
-      ab.append(buf);
-      if (e->left_margin + e->screencols > sess.screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
-      else ab.append("\x1b[37;1mw");
-    }
-    //exit line drawing mode
-    ab.append("\x1b(B");
-  }
-  ab.append("\x1b[?25h", 6); //shows the cursor
-  ab.append("\x1b[0m"); //or else subsequent editors are bold
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-}
-*/
 
 void parse_ini_file(std::string ini_name)
 {

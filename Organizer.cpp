@@ -288,6 +288,7 @@ void Organizer::outlineDrawStatusBar(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+/* moved to session
 void Organizer::return_cursor() {
   std::string ab;
   char buf[32];
@@ -328,6 +329,7 @@ void Organizer::return_cursor() {
   ab.append("\x1b[?25h"); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+*/
 
 void Organizer::outlineRefreshScreen(void) {
 

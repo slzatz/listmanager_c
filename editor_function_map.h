@@ -92,4 +92,5 @@ const std::unordered_map<std::string, efunc> E_lookup_C {
   //{"cl", &Editor::createLink},
   {"getlinked", &Editor::getLinked},
   {"gl", &Editor::getLinked},
+  {"resize", &Editor::moveDivider},
 };

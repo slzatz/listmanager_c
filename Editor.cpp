@@ -3406,21 +3406,43 @@ int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
   return 0;
 }
 
-/* in session struct/class
-void Editor::position_editors(void) {
-  int editor_slots = 0;
-  //std::unordered_set<int> temp;
-  for (auto z : sess.editors) {
-    if (!z->is_below) editor_slots++;
+void Editor::moveDivider(void) {
+  int pos = command_line.find(' ');
+  if (pos == std::string::npos) {
+      editorSetMessage("You need to provide a number between 10 and 90");
+      mode = NORMAL;
+      return;
   }
+  int p = command_line.find_first_of("0123456789");
+  if (p != pos + 1) {
+    editorSetMessage("You need to provide a number between 10 and 90");
+    mode = NORMAL;
+    return;
+  }
+  int pct = stoi(command_line.substr(p));
+  if (pct > 90 || pct < 10) { 
+    editorSetMessage("You need to provide a number between 10 and 90");
+    mode = NORMAL;
+    return;
+  }
+  sess.divider = sess.screencols - pct * sess.screencols/100;
+  sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
 
-  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
-  int i = -1; //i = number of columns of editors -1
-  for (auto z : sess.editors) {
-    if (!z->is_below) i++;
-    z->left_margin = sess.divider + i*s_cols + i;
-    z->screencols = s_cols;
-    z->setLinesMargins();
-  }
+  sess.eraseScreenRedrawLines();
+
+  sess.position_editors();
+  sess.eraseRightScreen(); //erases editor area + statusbar + msg
+  sess.draw_editors();
+
+  sess.O.outlineRefreshScreen();
+  sess.O.outlineDrawStatusBar();
+  sess.O.outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
+
+  /* get preview not available yet but isn't needed in editor_mode anyway
+  if (sess.O.view == TASK && sess.O.mode != NO_ROWS && !sess.editor_mode)
+    get_preview(sess.O.rows.at(sess.O.fr).id);
+    */
+
+  sess.return_cursor();
+  mode = NORMAL;
 }
-*/
