@@ -53,7 +53,7 @@ set (source_dir "${PROJECT_SOURCE_DIR}/")
 # the below obviously shouldn't be a GLOB since only one source file
 #file (GLOB source_files "${source_dir}/listmanager_term_improved.*")
 
-add_executable(${PROJECT_NAME} listmanager_term_improved.cpp Editor.cpp Dbase.cpp session.cpp)
+add_executable(${PROJECT_NAME} listmanager_term_improved.cpp Editor.cpp Dbase.cpp session.cpp Organizer.cpp)
 # add_executable has to come before target_link_libraries and target_include_directories
 
 # note that for what we're doing doesn't matter whether PUBLIC or PRIVATE (see CMAKE docs)

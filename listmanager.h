@@ -14,6 +14,7 @@
 #include <fmt/ranges.h>
 #include <fmt/chrono.h>
 #include "Editor.h"
+#include "Common.h"
 
 #if __has_include (<nuspell/dictionary.hxx>)
   #include <nuspell/dictionary.hxx>
@@ -36,6 +37,7 @@ extern "C" {
 const std::string CURRENT_NOTE_FILE = "current.html";
 const std::string META_FILE = "assets/meta.html";
 
+/* Common.h
 const std::string COLOR_1 = "\x1b[0;31m"; //red
 const std::string COLOR_2 = "\x1b[0;32m"; //green
 const std::string COLOR_3 = "\x1b[0;33m"; //yellow
@@ -88,6 +90,7 @@ const std::string mode_text[] = {
                         "FIND",
                         "ADD/CHANGE FILTER"  
                        }; 
+*/
 
 /* as of C++17 you can do inline and variables will only be defined once */
 inline bool lm_browser = true; //soon eliminate ./m_nb and make default false

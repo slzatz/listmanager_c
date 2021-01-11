@@ -29,6 +29,8 @@
 #include <iomanip>  //provides get_time used in time_delta function
 #include <fmt/format.h>
 #include <fcntl.h> //file locking
+#include "Common.h"
+#include "Organizer.h"
 
 void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 
@@ -52,7 +54,7 @@ constexpr char BASE_DATE[] = "1970-01-01 00:00";
 int temporary_tid = 99999;
 int link_id = 0;
 char link_text[20];
-std::unordered_set<int> marked_entries;
+//std::unordered_set<int> marked_entries;
 struct flock lock; 
 //std::vector<std::string> line_buffer = {}; //yanking lines
 
@@ -83,85 +85,6 @@ struct config c;
 
 PGconn *conn = nullptr;
 
-typedef struct orow {
-  std::string title;
-  std::string fts_title;
-  int id; //listmanager db id of the row
-  bool star;
-  bool deleted;
-  bool completed;
-  std::string modified;
-
-  // note the members below are temporary editing flags
-  // and don't need to be reflected in database
-  bool dirty;
-  bool mark;
-} orow;
-
-struct outlineConfig {
-  int cx, cy; //cursor x and y position
-  int fc, fr; // file x and y position
-  int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
-  int coloff; //the number of columns scrolled (aka number of left rows now off-screen
-  int screenlines; //number of lines in the display available to text
-  int titlecols;  //number of columns in the display available to text
-  int totaleditorcols; //Number of columns on right-hand side of screen
-  int left_screencols; //Number of columns on left-hand side of screen
-  //int divider; //where the dividing line is between note list and editor (takes margins into account)
-  std::vector<orow> rows;
-  std::vector<std::string> preview_rows;
-  std::string context;
-  std::string folder;
-  std::string keyword;
-  std::string sort;
-  char message[100]; //status msg is a character array - enlarging to 200 did not solve problems with seg faulting
-  int highlight[2];
-  int mode;
-  int last_mode;
-  // probably ok that command isn't a std::string although it could be
-  char command[10]; // doesn't include command_line commands
-  std::string command_line; //for commands on the command line; string doesn't include ':'
-  int repeat;
-  bool show_deleted;
-  bool show_completed;
-  int view; // enum TASK, CONTEXT, FOLDER, SEARCH
-  int taskview; // enum BY_CONTEXT, BY_FOLDER, BY_RECENT, BY_FIND
-  int current_task_id;
-  std::string string_buffer; //yanking chars
-  std::map<int, std::string> fts_titles;
-
-  std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
-  std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
-  const std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
-
-  std::vector<int> fts_ids;
-};
-struct outlineConfig O;
-
-enum DB {
-  SQLITE,
-  POSTGRES
-};
-
-enum View {
-  TASK,
-  CONTEXT,
-  FOLDER,
-  KEYWORD
-};
-
-enum TaskView {
-  BY_CONTEXT,
-  BY_FOLDER,
-  BY_KEYWORD,
-  BY_JOIN,
-  BY_RECENT,
-  BY_FIND
-};
-
-int getWindowSize(int *, int *);
-void draw_editors(void);
-
 void eraseScreenRedrawLines(void);
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
@@ -178,88 +101,6 @@ void outlineRefreshAllEditors(void);
 std::string outlinePreviewRowsToString(void);
 void lsp_start(void);
 void lsp_shutdown(void);
-
-/* OUTLINE COMMAND_LINE functions */
-/* include outline_commandline_functions.h now include in listman...improved.cpp
- 
-void F_open(int);
-void F_openfolder(int);
-void F_openkeyword(int);
-void F_deletekeywords(int); // pos not used
-void F_addkeyword(int); 
-void F_keywords(int); 
-void F_write(int); // pos not used
-void F_x(int); // pos not used
-void F_refresh(int); // pos not used
-void F_new(int); // pos not used
-void F_edit(int); // pos not used
-void F_folders(int); 
-void F_contexts(int); 
-void F_recent(int); // pos not used
-void F_linked(int); // pos not used
-void F_find(int); 
-void F_sync(int); // pos not used
-void F_sync_test(int); // pos not used
-void F_updatefolder(int); // pos not used
-void F_updatecontext(int); // pos not used
-void F_delmarks(int); // pos not used
-void F_savefile(int);
-void F_sort(int);
-void F_showall(int); // pos not used
-void F_syntax(int);
-void F_set(int);
-void F_open_in_vim(int); // pos not used
-void F_join(int);
-void F_saveoutline(int);
-void F_readfile(int pos);
-void F_valgrind(int pos); // pos not used
-void F_quit_app(int pos); // pos not used
-void F_quit_app_ex(int pos); // pos not used
-void F_help(int pos);
-void F_persist(int pos); // pos not used
-void F_clear(int pos); // pos not used
-*/
-
-/* OUTLINE mode NORMAL functions */
-/* include outline_normal_functions.h now include in listman...improved.cpp
-void goto_editor_N(void); //should this be in case NORMAL as ctrl_key('l')?
-void return_N(void);
-void w_N(void);
-void insert_N(void);
-void s_N(void);
-void x_N(void);
-void r_N(void);
-void tilde_N(void);
-void a_N(void);
-void A_N(void);
-void b_N(void);
-void e_N(void);
-void zero_N(void);
-void dollar_N(void);
-void I_N(void);
-void G_N(void);
-void O_N(void);
-void colon_N(void);
-void v_N(void);
-void p_N(void);
-void asterisk_N(void);
-void m_N(void);
-void n_N(void);
-void u_N(void);
-void caret_N(void);
-void dd_N(void);
-void star_N(void);
-void completed_N(void);
-void daw_N(void);
-void caw_N(void);
-void dw_N(void);
-void cw_N(void);
-void de_N(void);
-void d$_N(void);
-void gg_N(void);
-void gt_N(void);
-//void edit_N(void);
-*/
 
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);

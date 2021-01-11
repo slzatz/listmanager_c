@@ -5,6 +5,7 @@
 #include <vector>
 #include <string>
 #include <termios.h>
+#include "Organizer.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -19,10 +20,14 @@ struct Session {
   int divider;
   int totaleditorcols;
   std::vector<Editor*> editors;
+  Editor *p;
+  Organizer O;
 
+  void eraseScreenRedrawLines(void);
   void eraseRightScreen(void);
   void draw_editors(void);
   void position_editors(void);
+  void return_cursor(void);
   int getWindowSize(void);
 
   // the history of commands to make it easier to go back to earlier views

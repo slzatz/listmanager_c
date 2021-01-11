@@ -1,4 +1,7 @@
+#define TIME_COL_WIDTH 18 // need this if going to have modified col
+
 #include "session.h"
+#include "Common.h"
 #include <string>
 #include <fmt/core.h>
 #include <fmt/format.h>
@@ -6,8 +9,49 @@
 #include <sys/ioctl.h>
 
 #define TOP_MARGIN 1
+#define LEFT_MARGIN 2
 
 Session sess = Session(); //global; extern Session sess in session.h
+
+void Session::eraseScreenRedrawLines(void) {
+  write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
+  char buf[32];
+  write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
+  for (int j = 1; j < screenlines + 1; j++) {
+
+    // First vertical line
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, divider - TIME_COL_WIDTH + 1); //don't think need offset
+    write(STDOUT_FILENO, buf, strlen(buf));
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
+    // only need one 'm'
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8);
+
+    // Second vertical line
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, divider);
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mx", 8); 
+  }
+
+  write(STDOUT_FILENO, "\x1b[1;1H", 6);
+  for (int k=1; k < screencols ;k++) {
+    // note: cursor advances automatically so don't need to 
+    // do that explicitly
+    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
+  }
+
+  // draw first column's 'T' corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, divider - TIME_COL_WIDTH + 1); //may not need offset
+  write(STDOUT_FILENO, buf, strlen(buf));
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
+  // draw next column's 'T' corner
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, divider);
+  write(STDOUT_FILENO, buf, strlen(buf));
+  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+
+  write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
+  write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
+}
 
 void Session::eraseRightScreen(void) {
 
@@ -58,15 +102,15 @@ void Session::eraseRightScreen(void) {
 
 void Session::position_editors(void) {
   int editor_slots = 0;
-  for (auto z : sess.editors) {
+  for (auto z : editors) {
     if (!z->is_below) editor_slots++;
   }
 
-  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
+  int s_cols = -1 + (screencols - divider)/editor_slots;
   int i = -1; //i = number of columns of editors -1
-  for (auto z : sess.editors) {
+  for (auto z : editors) {
     if (!z->is_below) i++;
-    z->left_margin = sess.divider + i*s_cols + i;
+    z->left_margin = divider + i*s_cols + i;
     z->screencols = s_cols;
     z->setLinesMargins();
   }
@@ -92,7 +136,7 @@ void Session::draw_editors(void) {
       //'T' corner = w or right top corner = k
       buf = fmt::format("\x1b[{};{}H", e->top_margin - 1, e->left_margin + e->screencols+1); 
       ab.append(buf);
-      if (e->left_margin + e->screencols > sess.screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
+      if (e->left_margin + e->screencols > screencols - 4) ab.append("\x1b[37;1mk"); //draw corner
       else ab.append("\x1b[37;1mw");
     }
     //exit line drawing mode
@@ -116,4 +160,44 @@ int Session::getWindowSize(void) {
 
     return 0;
   }
+}
+void Session::return_cursor() {
+  std::string ab;
+  char buf[32];
+
+  if (editor_mode) {
+  // the lines below position the cursor where it should go
+    if (p->mode != COMMAND_LINE){
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + p->left_margin_offset + 1); //03022019
+      ab.append(buf, strlen(buf));
+    } else { //E.mode == COMMAND_LINE
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + TOP_MARGIN + 2, p->command_line.size() + divider + 2); 
+      ab.append(buf, strlen(buf));
+      ab.append("\x1b[?25h"); // show cursor
+    }
+  } else {
+    if (O.mode == ADD_CHANGE_FILTER){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, divider + 1); 
+      ab.append(buf, strlen(buf));
+    } else if (O.mode == FIND) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
+      ab.append(buf, strlen(buf));
+    } else if (O.mode != COMMAND_LINE) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN);
+      ab.append(buf, strlen(buf));
+      // below restores the cursor position based on O.cx and O.cy + margin
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + LEFT_MARGIN + 1); /// ****
+      ab.append(buf, strlen(buf));
+      //ab.append("\x1b[?25h", 6); // show cursor 
+  // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
+    } else { //O.mode == COMMAND_LINE
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
+      ab.append(buf, strlen(buf));
+      //ab.append("\x1b[?25h", 6); // show cursor 
+    }
+  }
+  ab.append("\x1b[0m"); //return background to normal
+  ab.append("\x1b[?25h"); //shows the cursor
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }

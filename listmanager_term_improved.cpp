@@ -1,5 +1,6 @@
 #include "listmanager.h"
 #include "listmanager_vars.h"
+#include "Organizer.h"
 #include "Editor.h"
 #include "Dbase.h"
 #include "session.h"
@@ -29,13 +30,14 @@ using json = nlohmann::json;
 
 // Below this instantiates it - with () it looks like a function definition with type Editor
 //Session sess; //contains std::vector<Editor*> editors *inlined in listmanager.h*
-Editor *p;
+//Editor *p;
 //Session sess = {};
 //std::shared_ptr<Editor> p(nullptr);
 
 //typedef void (Editor::*efunc)(void);
 //typedef void (Editor::*eefunc)(int);
 //std::vector<Editor *> editors;
+//Organizer O;
 
 auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
 
@@ -127,7 +129,7 @@ void readsome(pstream &ls, int i) {
     if (js.contains("method")) {
       if (js["method"] == "textDocument/publishDiagnostics") {
         json diagnostics = js["params"]["diagnostics"];
-        if (p) p->decorate_errors(diagnostics); //not sure need if (p)
+        if (sess.p) sess.p->decorate_errors(diagnostics); //not sure need if (p)
       } else if (js["method"] == "workspace/configuration") {
         //s = R"({"jsonrpc": "2.0", "result": [{"caseSensitiveCompletion": true}, null], "id": 1})";
         //caseSensitiveCompletion is deprecated, use \"matcher\" instead
@@ -218,7 +220,7 @@ void lsp_thread(std::stop_token st) {
   
   while (!st.stop_requested()) {
     if (lsp->code_changed) {
-      js["params"]["contentChanges"][0]["text"] = p->code; //text ? if it escapes automatically
+      js["params"]["contentChanges"][0]["text"] = sess.p->code; //text ? if it escapes automatically
       js["params"]["textDocument"]["version"] = ++j; 
       js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
       s = js.dump();
@@ -303,7 +305,7 @@ void signalHandler(int signum) {
   sess.divider = sess.screencols - c.ed_pct * sess.screencols/100;
   sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
 
-  eraseScreenRedrawLines();
+  sess.eraseScreenRedrawLines();
 
   sess.position_editors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
@@ -313,12 +315,13 @@ void signalHandler(int signum) {
   outlineDrawStatusBar();
   outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
 
-  if (O.view == TASK && O.mode != NO_ROWS && !sess.editor_mode)
-    get_preview(O.rows.at(O.fr).id);
+  if (sess.O.view == TASK && sess.O.mode != NO_ROWS && !sess.editor_mode)
+    get_preview(sess.O.rows.at(sess.O.fr).id);
 
   return_cursor();
 }
 
+/*
 void draw_editors(void) {
   std::string ab;
   for (auto &e : sess.editors) {
@@ -348,6 +351,7 @@ void draw_editors(void) {
   ab.append("\x1b[0m"); //or else subsequent editors are bold
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+*/
 
 void parse_ini_file(std::string ini_name)
 {
@@ -406,12 +410,12 @@ char * (url_callback)(const char *x, const int y, void *z) {
  */
 void update_html_file(std::string &&fn) {
   std::string note;
-  if (sess.editor_mode) note = p->editorRowsToString();
+  if (sess.editor_mode) note = sess.p->editorRowsToString();
   else note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
-  std::string title = O.rows.at(O.fr).title;
+  std::string title = sess.O.rows.at(sess.O.fr).title;
   text << "# " << title << "\n\n" << note;
 
   // inserting title to tell if note displayed by ultralight 
@@ -455,7 +459,7 @@ void update_html_zmq(std::string &&fn) {
   std::string note = outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
-  std::string title = O.rows.at(O.fr).title;
+  std::string title = sess.O.rows.at(sess.O.fr).title;
   char *doc = nullptr;
   text << "# " << title << "\n\n" << note;
 
@@ -499,7 +503,7 @@ void update_html_code_file(std::string &&fn) {
 
   std::stringstream html;
   std::string line;
-  int tid = get_folder_tid(O.rows.at(O.fr).id);
+  int tid = get_folder_tid(sess.O.rows.at(sess.O.fr).id);
   ipstream highlight(fmt::format("highlight code_file --out-format=html "
                              "--style=gruvbox-dark-hard-slz --syntax={}",
                              (tid == 18) ? "cpp" : "go"));
@@ -523,7 +527,7 @@ void update_code_file(void) {
   std::ofstream myfile;
   std::string file_path;
   std::string lsp_name;
-  int tid = get_folder_tid(p->id);
+  int tid = get_folder_tid(sess.p->id);
 
   //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
   if (tid == 18) {
@@ -541,7 +545,7 @@ void update_code_file(void) {
   }
   */
   myfile.open(file_path); ///////////////////////////////////////////////////////
-  myfile << p->code;
+  myfile << sess.p->code;
   myfile.close();
 
   if (!lsp_v.empty()) {
@@ -614,7 +618,7 @@ void display_item_info_pg(int id) {
   s.append(lf_ret);
 
   int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(O.context_map), std::end(O.context_map),
+  auto it = std::find_if(std::begin(sess.O.context_map), std::end(sess.O.context_map),
                          [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
 
   sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
@@ -622,7 +626,7 @@ void display_item_info_pg(int id) {
   s.append(lf_ret);
 
   int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(O.folder_map), std::end(O.folder_map),
+  auto it2 = std::find_if(std::begin(sess.O.folder_map), std::end(sess.O.folder_map),
                          [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
   sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
   s.append(str);
@@ -747,7 +751,7 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
 
 void F_copy_entry(int) {
 
-  int id = O.rows.at(O.fr).id;
+  int id = sess.O.rows.at(sess.O.fr).id;
   Query q(sess.db, "SELECT * FROM task WHERE id={}", id);
   if (int res = q.step(); res != SQLITE_ROW) {
     outlineShowMessage3("Problem retrieving entry info in copy_entry: {}", res);
@@ -832,7 +836,7 @@ void map_context_titles(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    O.context_map[q.column_text(1)] = q.column_int(0);
+    sess.O.context_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
@@ -848,19 +852,19 @@ void map_folder_titles(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    O.folder_map[q.column_text(1)] = q.column_int(0);
+    sess.O.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
 void get_containers(void) {
 
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
+  sess.O.rows.clear();
+  sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
 
   std::string table;
   std::string column = "title"; //only needs to be change for keyword
   int (*callback)(void *, int, char **, char **);
-  switch (O.view) {
+  switch (sess.O.view) {
     case CONTEXT:
       table = "context";
       callback = context_callback;
@@ -886,14 +890,14 @@ void get_containers(void) {
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
+    sess.O.mode = NO_ROWS;
   } else {
     //O.mode = NORMAL;
-    O.mode = O.last_mode;
-    display_container_info(O.rows.at(O.fr).id);
+    sess.O.mode = sess.O.last_mode;
+    display_container_info(sess.O.rows.at(sess.O.fr).id);
   }
 
-  O.context = O.folder = O.keyword = ""; // this makes sense if you are not in an O.view == TASK
+  sess.O.context = sess.O.folder = sess.O.keyword = ""; // this makes sense if you are not in an O.view == TASK
 }
 
 int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
@@ -926,7 +930,7 @@ int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.dirty = false;
   row.mark = false;
 
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -961,7 +965,7 @@ int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.dirty = false;
   row.mark = false;
   row.modified = time_delta(std::string(argv[11], 16));
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -990,7 +994,7 @@ int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
   row.dirty = false;
   row.mark = false;
   row.modified = time_delta(std::string(argv[4], 16));
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -1135,21 +1139,21 @@ int container_id_callback(void *container_id, int argc, char **argv, char **azCo
 void F_deletekeywords(int) {
 
   std::stringstream query;
-  query << "DELETE FROM task_keyword WHERE task_id = " << O.rows.at(O.fr).id << ";";
+  query << "DELETE FROM task_keyword WHERE task_id = " << sess.O.rows.at(sess.O.fr).id << ";";
   if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   std::stringstream query2;
   // updates task modified column so know that something changed with the task
-  query2 << "UPDATE task SET modified = datetime('now') WHERE id =" << O.rows.at(O.fr).id << ";";
+  query2 << "UPDATE task SET modified = datetime('now') WHERE id =" << sess.O.rows.at(sess.O.fr).id << ";";
   if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   /**************fts virtual table update**********************/
   std::stringstream query3;
-  query3 << "UPDATE fts SET tag='' WHERE lm_id=" << O.rows.at(O.fr).id << ";";
+  query3 << "UPDATE fts SET tag='' WHERE lm_id=" << sess.O.rows.at(sess.O.fr).id << ";";
   if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  outlineShowMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", O.rows.at(O.fr).id);
-  O.mode = O.last_mode;
+  outlineShowMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", sess.O.rows.at(sess.O.fr).id);
+  sess.O.mode = sess.O.last_mode;
 }
 
 /*
@@ -1201,28 +1205,28 @@ void get_items(int max) {
   int (*callback)(void *, int, char **, char **);
   callback = data_callback;
 
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
+  sess.O.rows.clear();
+  sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
 
-  if (O.taskview == BY_CONTEXT) {
+  if (sess.O.taskview == BY_CONTEXT) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-          << " WHERE context.title = '" << O.context << "' ";
-  } else if (O.taskview == BY_FOLDER) {
+          << " WHERE context.title = '" << sess.O.context << "' ";
+  } else if (sess.O.taskview == BY_FOLDER) {
     query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE folder.title = '" << O.folder << "' ";
-  } else if (O.taskview == BY_RECENT) {
+          << " WHERE folder.title = '" << sess.O.folder << "' ";
+  } else if (sess.O.taskview == BY_RECENT) {
     query << "SELECT * FROM task WHERE 1=1";
-  } else if (O.taskview == BY_JOIN) {
+  } else if (sess.O.taskview == BY_JOIN) {
     query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
           << " JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE context.title = '" << O.context << "'"
-          << " AND folder.title = '" << O.folder << "'";
-  } else if (O.taskview == BY_KEYWORD) {
+          << " WHERE context.title = '" << sess.O.context << "'"
+          << " AND folder.title = '" << sess.O.folder << "'";
+  } else if (sess.O.taskview == BY_KEYWORD) {
 
  // if O.keyword has more than one keyword
     std::string k;
     std::stringstream skeywords;
-    skeywords << O.keyword;
+    skeywords << sess.O.keyword;
     while (getline(skeywords, k, ',')) {
       keyword_vec.push_back(k);
     }
@@ -1243,25 +1247,25 @@ void get_items(int max) {
     return;
   }
 
-  query << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+  query << ((!sess.O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         //<< " ORDER BY task."
         << " ORDER BY task.star DESC,"
         << " task."
-        << O.sort
+        << sess.O.sort
         << " DESC LIMIT " << max;
 
-  int sortcolnum = O.sort_map.at(O.sort);
+  int sortcolnum = sess.O.sort_map.at(sess.O.sort);
   if (!db_query(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg, __func__)) return;
 
-  O.view = TASK;
+  sess.O.view = TASK;
 
-  if (O.rows.empty()) {
+  if (sess.O.rows.empty()) {
     outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
+    sess.O.mode = NO_ROWS;
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = O.last_mode;
-    get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    sess.O.mode = sess.O.last_mode;
+    get_preview(sess.O.rows.at(sess.O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1314,7 +1318,7 @@ int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
   row.dirty = false;
   row.mark = false;
 
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -1346,7 +1350,7 @@ int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColNa
   row.dirty = false;
   row.mark = false;
 
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -1361,15 +1365,15 @@ void get_items_by_id(std::string query) {
   bool no_rows = true;
   if (!db_query(S.db, query, by_id_data_callback, &no_rows, &S.err_msg, __func__)) return;
 
-  O.view = TASK;
+  sess.O.view = TASK;
 
   if (no_rows) {
     outlineShowMessage("No results were returned");
-    O.mode = NO_ROWS;
+    sess.O.mode = NO_ROWS;
     eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
-    O.mode = FIND;
-    get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+    sess.O.mode = FIND;
+    get_preview(sess.O.rows.at(sess.O.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 
@@ -1413,7 +1417,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
 
   row.title = std::string(argv[3]);
   row.id = atoi(argv[0]);
-  row.fts_title = O.fts_titles.at(row.id);
+  row.fts_title = sess.O.fts_titles.at(row.id);
   row.star = (atoi(argv[8]) == 1) ? true: false;
   row.deleted = (atoi(argv[14]) == 1) ? true: false;
   row.completed = (argv[10]) ? true: false;
@@ -1425,7 +1429,7 @@ int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) 
   row.dirty = false;
   row.mark = false;
 
-  O.rows.push_back(row);
+  sess.O.rows.push_back(row);
 
   return 0;
 }
@@ -1454,12 +1458,12 @@ void get_note(int id) {
 
   sess.db.query("SELECT note FROM task WHERE id = {}", id);
   sess.db.callback = note_callback;
-  sess.db.pArg = p;
+  sess.db.pArg = sess.p;
   run_sql();
 
-  if (!p->linked_editor) return;
+  if (!sess.p->linked_editor) return;
 
-  p->linked_editor->rows = std::vector<std::string>{" "};
+  sess.p->linked_editor->rows = std::vector<std::string>{" "};
   /* below works but don't think we want to store output_window
   db.query("SELECT subnote FROM task WHERE id = {}", id);
   db.callback = note_callback;
@@ -1516,8 +1520,8 @@ int offset_callback (void *n, int argc, char **argv, char **azColName) {
 
 void search_db(const std::string & st ) {
 
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
+  sess.O.rows.clear();
+  sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
 
   /*
   std::stringstream fts_query;
@@ -1533,8 +1537,8 @@ void search_db(const std::string & st ) {
                                       "FROM fts WHERE fts MATCH '{}' ORDER BY bm25(fts, 2.0, 1.0, 5.0);",
                                       st);
 
-  O.fts_ids.clear();
-  O.fts_titles.clear();
+  sess.O.fts_ids.clear();
+  sess.O.fts_titles.clear();
   //fts_counter = 0;
 
   bool no_rows = true;
@@ -1543,7 +1547,7 @@ void search_db(const std::string & st ) {
   if (no_rows) {
     outlineShowMessage("No results were returned");
     eraseRightScreen(); //note can still return no rows from get_items_by_id if we found rows above that were deleted
-    O.mode = NO_ROWS;
+    sess.O.mode = NO_ROWS;
     return;
   }
   std::stringstream query;
@@ -1552,22 +1556,22 @@ void search_db(const std::string & st ) {
   query << "SELECT * FROM task WHERE task.id IN (";
 
   //for (int i = 0; i < fts_counter-1; i++) {
-  int max = O.fts_ids.size() - 1;
+  int max = sess.O.fts_ids.size() - 1;
   for (int i=0; i < max; i++) {
-    query << O.fts_ids[i] << ", ";
+    query << sess.O.fts_ids[i] << ", ";
   }
   //query << fts_ids[fts_counter-1]
-  query << O.fts_ids[max]
+  query << sess.O.fts_ids[max]
         << ")"
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << ((!sess.O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY ";
 
   //for (int i = 0; i < fts_counter-1; i++) {
   for (int i=0; i < max; i++) {
-    query << "task.id = " << O.fts_ids[i] << " DESC, ";
+    query << "task.id = " << sess.O.fts_ids[i] << " DESC, ";
   }
   //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
-  query << "task.id = " << O.fts_ids[max] << " DESC";
+  query << "task.id = " << sess.O.fts_ids[max] << " DESC";
 
   get_items_by_id(query.str());
 }
@@ -1575,8 +1579,8 @@ void search_db(const std::string & st ) {
 //total kluge but just brings back context_tid = 16
 void search_db2(const std::string & st) {
 
-  O.rows.clear();
-  O.fc = O.fr = O.rowoff = 0;
+  sess.O.rows.clear();
+  sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
 
   std::stringstream fts_query;
   /*
@@ -1586,8 +1590,8 @@ void search_db2(const std::string & st) {
   fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
             << st << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
 
-  O.fts_ids.clear();
-  O.fts_titles.clear();
+  sess.O.fts_ids.clear();
+  sess.O.fts_titles.clear();
   //fts_counter = 0;
 
   bool no_rows = true;
@@ -1596,7 +1600,7 @@ void search_db2(const std::string & st) {
   if (no_rows) {
     outlineShowMessage("No results were returned");
     eraseRightScreen();
-    O.mode = NO_ROWS;
+    sess.O.mode = NO_ROWS;
     return;
   }
   std::stringstream query;
@@ -1605,22 +1609,22 @@ void search_db2(const std::string & st) {
   query << "SELECT * FROM task WHERE task.context_tid = 16 and task.id IN (";
 
   //for (int i = 0; i < fts_counter-1; i++) {
-  int max = O.fts_ids.size() - 1;
+  int max = sess.O.fts_ids.size() - 1;
   for (int i=0; i < max; i++) {
-    query << O.fts_ids[i] << ", ";
+    query << sess.O.fts_ids[i] << ", ";
   }
   //query << fts_ids[fts_counter-1]
-  query << O.fts_ids[max]
+  query << sess.O.fts_ids[max]
         << ")"
-        << ((!O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
+        << ((!sess.O.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
         << " ORDER BY ";
 
   //for (int i = 0; i < fts_counter-1; i++) {
   for (int i=0; i < max; i++) {
-    query << "task.id = " << O.fts_ids[i] << " DESC, ";
+    query << "task.id = " << sess.O.fts_ids[i] << " DESC, ";
   }
   //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
-  query << "task.id = " << O.fts_ids[max] << " DESC";
+  query << "task.id = " << sess.O.fts_ids[max] << " DESC";
 
   get_items_by_id(query.str());
 }
@@ -1633,8 +1637,8 @@ int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
   bool *flag = static_cast<bool*>(no_rows);
   *flag = false;
 
-  O.fts_ids.push_back(atoi(argv[0]));
-  O.fts_titles[atoi(argv[0])] = std::string(argv[1]);
+  sess.O.fts_ids.push_back(atoi(argv[0]));
+  sess.O.fts_titles[atoi(argv[0])] = std::string(argv[1]);
   //fts_counter++;
 
   return 0;
@@ -1676,7 +1680,7 @@ void display_item_info(int id) {
 */
 
 void display_item_info(void) {
-  int id = O.rows.at(O.fr).id;
+  int id = sess.O.rows.at(sess.O.fr).id;
   std::string s{};
   int width = sess.totaleditorcols - 10;
   int length = sess.textlines - 10;
@@ -1701,11 +1705,11 @@ void display_item_info(void) {
 
 
   int context_tid = q.column_int(6);
-  auto it = std::ranges::find_if(O.context_map, [&context_tid](auto& z) {return z.second == context_tid;});
+  auto it = std::ranges::find_if(sess.O.context_map, [&context_tid](auto& z) {return z.second == context_tid;});
   s.append(fmt::format("context: {}{}", it->first, lf_ret));
 
   int folder_tid = q.column_int(5);
-  auto it2 = std::ranges::find_if(O.folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
+  auto it2 = std::ranges::find_if(sess.O.folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
   s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
 
   s.append(fmt::format("star: {}{}", q.column_bool(8), lf_ret));
@@ -1884,7 +1888,7 @@ void display_container_info(int id) {
   std::string count_query;
   int (*callback)(void *, int, char **, char **);
 
-  switch(O.view) {
+  switch(sess.O.view) {
     case CONTEXT:
       table = "context";
       callback = context_info_callback;
@@ -1983,7 +1987,7 @@ int context_info_callback(void *count, int argc, char **argv, char **azColName) 
   //auto it = std::find_if(std::begin(context_map), std::end(context_map),
   //                       [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(O.context_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(sess.O.context_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -2073,7 +2077,7 @@ int folder_info_callback(void *count, int argc, char **argv, char **azColName) {
   //auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
   //                        [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(O.folder_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(sess.O.folder_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"folder: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -2181,13 +2185,13 @@ int keyword_info_callback(void *count, int argc, char **argv, char **azColName) 
 void update_note(bool is_subnote, bool closing_editor) {
 
   std::string column = (is_subnote) ? "subnote" : "note";
-  std::string text = p->editorRowsToString();
+  std::string text = sess.p->editorRowsToString();
 
   //int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
-  int folder_tid = get_folder_tid(p->id);
+  int folder_tid = get_folder_tid(sess.p->id);
   //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
   if (!is_subnote && !closing_editor && (folder_tid == 18 || folder_tid == 14)) {
-    p->code = text;
+    sess.p->code = text;
     //code_changed = true;
     update_code_file();
   }
@@ -2201,26 +2205,26 @@ void update_note(bool is_subnote, bool closing_editor) {
 
   std::string query = fmt::format("UPDATE task SET {}='{}', modified=datetime('now'), "
                                   "startdate=datetime('now', '-{} hours') where id={}",
-                                   column, text, TZ_OFFSET, p->id);
+                                   column, text, TZ_OFFSET, sess.p->id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg)) return;
 
   if (is_subnote) {
-    outlineShowMessage("Updated *sub*note for item %d", p->id);
+    outlineShowMessage("Updated *sub*note for item %d", sess.p->id);
     outlineRefreshScreen();
     return;
   }
   /***************fts virtual table update*********************/
-  query = fmt::format("UPDATE fts SET note='{}' WHERE lm_id={}", text, p->id);
+  query = fmt::format("UPDATE fts SET note='{}' WHERE lm_id={}", text, sess.p->id);
   if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  outlineShowMessage("Updated note and fts entry for item %d", p->id);
+  outlineShowMessage("Updated note and fts entry for item %d", sess.p->id);
   outlineRefreshScreen();
 }
 
 void update_task_context(std::string &new_context, int id) {
 
-  int context_tid = O.context_map.at(new_context);
+  int context_tid = sess.O.context_map.at(new_context);
 
   std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now') WHERE id={}",
                                     context_tid, id);
@@ -2230,7 +2234,7 @@ void update_task_context(std::string &new_context, int id) {
 
 void update_task_folder(std::string& new_folder, int id) {
 
-  int folder_tid = O.folder_map.at(new_folder);
+  int folder_tid = sess.O.folder_map.at(new_folder);
   std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now') WHERE id={}",
                                     folder_tid, id);
 
@@ -2239,7 +2243,7 @@ void update_task_folder(std::string& new_folder, int id) {
 
 void toggle_completed(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
   int id = get_id();
 
   std::string query = fmt::format("UPDATE task SET completed={}, modified=datetime('now') WHERE id={}", 
@@ -2263,11 +2267,11 @@ void touch(void) {
 
 void toggle_deleted(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
   int id = get_id();
   std::string table;
 
-  switch(O.view) {
+  switch(sess.O.view) {
     case TASK:
       table = "task";
       break;
@@ -2296,12 +2300,12 @@ void toggle_deleted(void) {
 
 void toggle_star(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
   int id = get_id();
   std::string table;
   std::string column;
 
-  switch(O.view) {
+  switch(sess.O.view) {
 
     case TASK:
       table = "task";
@@ -2339,7 +2343,7 @@ void toggle_star(void) {
 
 void update_title(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
   if (!row.dirty) {
     outlineShowMessage("Row has not been changed");
@@ -2373,7 +2377,7 @@ void update_title(void) {
 
   // moved here 10262020
   if (lm_browser) {
-    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    int folder_tid = get_folder_tid(sess.O.rows.at(sess.O.fr).id);
     if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
     //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
   }   
@@ -2381,7 +2385,7 @@ void update_title(void) {
 
 void update_container(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
   if (!row.dirty) {
     outlineShowMessage("Row has not been changed");
@@ -2401,7 +2405,7 @@ void update_container(void) {
   }
 
   std::string query = fmt::format("UPDATE {} SET title='{}', modified=datetime('now') WHERE id={}",
-                                   (O.view == CONTEXT) ? "context" : "folder",
+                                   (sess.O.view == CONTEXT) ? "context" : "folder",
                                     title, row.id);
 
   if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
@@ -2415,7 +2419,7 @@ void update_container(void) {
  */
 void update_keyword(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
   if (!row.dirty) {
     outlineShowMessage("Row has not been changed");
@@ -2485,8 +2489,8 @@ int insert_row(orow& row) {
                                    "datetime('now', '-{3} hours'), " \
                                    "datetime('now'));", 
                                    title,
-                                   (O.folder == "") ? 1 : O.folder_map.at(O.folder),
-                                   (O.context == "") ? 1 : O.context_map.at(O.context),
+                                   (sess.O.folder == "") ? 1 : sess.O.folder_map.at(sess.O.folder),
+                                   (sess.O.context == "") ? 1 : sess.O.context_map.at(sess.O.context),
                                    TZ_OFFSET);
 
   std::stringstream query;
@@ -2506,10 +2510,10 @@ int insert_row(orow& row) {
         << " 3," //priority
         << "'" << title << "'," //title
         //<< " 1," //folder_tid
-        << ((O.folder == "") ? 1 : O.folder_map.at(O.folder)) << ", "
+        << ((sess.O.folder == "") ? 1 : sess.O.folder_map.at(sess.O.folder)) << ", "
         //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((O.context == "") ? 1 : O.context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
+        << ((sess.O.context == "") ? 1 : sess.O.context_map.at(sess.O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
         << " True," //star
         << "date()," //added
         //<< "'<This is a new note from sqlite>'," //note
@@ -2599,14 +2603,14 @@ int insert_container(orow& row) {
   std::stringstream query;
   query << "INSERT INTO "
         //<< context
-        << ((O.view == CONTEXT) ? "context" : "folder")
+        << ((sess.O.view == CONTEXT) ? "context" : "folder")
         << " ("
         << "title, "
         << "deleted, "
         << "created, "
         << "modified, "
         << "tid, "
-        << ((O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
+        << ((sess.O.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
       //  << "\"default\", " //folder does not have default
         << "textcolor "
         << ") VALUES ("
@@ -2662,7 +2666,7 @@ void update_rows(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
 
-  for (auto row: O.rows) {
+  for (auto row: sess.O.rows) {
     if (!(row.dirty)) continue;
     if (row.id != -1) {
       std::string title = row.title;
@@ -2720,7 +2724,7 @@ void update_rows(void) {
   put = &msg[strlen(msg)];
 
   for (int j=0; j < n;j++) {
-    O.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
+    sess.O.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
     put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
   }
 
@@ -2884,6 +2888,7 @@ int readKey() {
   }
 }
 
+/*
 int getWindowSize(int *rows, int *cols) {
 
   // ioctl(), TIOCGWINXZ and struct windsize come from <sys/ioctl.h>
@@ -2898,17 +2903,18 @@ int getWindowSize(int *rows, int *cols) {
     return 0;
   }
 }
+*/
 
 /**** Outline COMMAND mode functions ****/
 void F_open(int pos) { //C_open - by context
-  std::string_view cl = O.command_line;
+  std::string_view cl = sess.O.command_line;
   if (pos) {
     bool success = false;
     //structured bindings
-    for (const auto & [k,v] : O.context_map) {
+    for (const auto & [k,v] : sess.O.context_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
       //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-        O.context = k;
+        sess.O.context = k;
         success = true;
         break;
       }
@@ -2918,40 +2924,40 @@ void F_open(int pos) { //C_open - by context
       //outlineShowMessage("%s is not a valid  context!", &O.command_line.c_str()[pos + 1]);
       //outlineShowMessage2(fmt::format("{} is not a valid  context!", &O.command_line.c_str()[pos + 1]));
       outlineShowMessage2(fmt::format("{} is not a valid  context!", cl.substr(pos + 1)));
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
 
   } else {
     //outlineShowMessage("You did not provide a context!");
     outlineShowMessage2("You did not provide a context!");
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
   //outlineShowMessage("\'%s\' will be opened", O.context.c_str());
   //outlineShowMessage2(fmt::format("'{}' will be opened", O.context.c_str()));
-  outlineShowMessage3("'{}' will be opened, Steve", O.context.c_str());
-  sess.command_history.push_back(O.command_line);
+  outlineShowMessage3("'{}' will be opened, Steve", sess.O.context.c_str());
+  sess.command_history.push_back(sess.O.command_line);
   sess.page_hx_idx++;
-  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, sess.O.command_line);
 
-  marked_entries.clear();
-  O.folder = "";
-  O.taskview = BY_CONTEXT;
+  sess.O.marked_entries.clear();
+  sess.O.folder = "";
+  sess.O.taskview = BY_CONTEXT;
   get_items(MAX);
   //O.mode = O.last_mode;
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
   return;
 }
 
 void F_openfolder(int pos) {
-  std::string_view cl = O.command_line;
+  std::string_view cl = sess.O.command_line;
   if (pos) {
     bool success = false;
-    for (const auto & [k,v] : O.folder_map) {
+    for (const auto & [k,v] : sess.O.folder_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
       //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-        O.folder = k;
+        sess.O.folder = k;
         success = true;
         break;
       }
@@ -2959,145 +2965,145 @@ void F_openfolder(int pos) {
     if (!success) {
       //outlineShowMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
       outlineShowMessage2(fmt::format("{} is not a valid  folder!", cl.substr(pos + 1)));
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
 
   } else {
     outlineShowMessage("You did not provide a folder!");
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
-  outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-  sess.command_history.push_back(O.command_line);
+  outlineShowMessage("\'%s\' will be opened", sess.O.folder.c_str());
+  sess.command_history.push_back(sess.O.command_line);
   sess.page_hx_idx++;
-  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
-  marked_entries.clear();
-  O.context = "";
-  O.taskview = BY_FOLDER;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, sess.O.command_line);
+  sess.O.marked_entries.clear();
+  sess.O.context = "";
+  sess.O.taskview = BY_FOLDER;
   get_items(MAX);
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
   return;
 }
 
 void F_openkeyword(int pos) {
   if (!pos) {
     outlineShowMessage("You need to provide a keyword");
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
  
   //O.keyword = O.command_line.substr(pos+1);
-  std::string keyword = O.command_line.substr(pos+1);
+  std::string keyword = sess.O.command_line.substr(pos+1);
   if (!keyword_exists(keyword)) {
-    O.mode = O.last_mode;
+    sess.O.mode = sess.O.last_mode;
     outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
     return;
   }
 
-  O.keyword = keyword;  
-  outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-  sess.command_history.push_back(O.command_line);
+  sess.O.keyword = keyword;  
+  outlineShowMessage("\'%s\' will be opened", sess.O.keyword.c_str());
+  sess.command_history.push_back(sess.O.command_line);
   sess.page_hx_idx++;
-  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
-  marked_entries.clear();
-  O.context = "";
-  O.folder = "";
-  O.taskview = BY_KEYWORD;
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, sess.O.command_line);
+  sess.O.marked_entries.clear();
+  sess.O.context = "";
+  sess.O.folder = "";
+  sess.O.taskview = BY_KEYWORD;
   get_items(MAX);
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
   return;
 }
 
 void F_addkeyword(int pos) {
   if (!pos) {
-    O.current_task_id = O.rows.at(O.fr).id;
+    sess.O.current_task_id = sess.O.rows.at(sess.O.fr).id;
     eraseRightScreen();
-    O.view = KEYWORD;
-    sess.command_history.push_back(O.command_line);
+    sess.O.view = KEYWORD;
+    sess.command_history.push_back(sess.O.command_line);
     get_containers(); //O.mode = NORMAL is in get_containers
-    O.mode = ADD_CHANGE_FILTER;
+    sess.O.mode = ADD_CHANGE_FILTER;
     outlineShowMessage("Select keyword to add to marked or current entry");
     return;
   }
 
   // only do this if there was text after C_addkeyword
-  if (O.last_mode == NO_ROWS) return;
+  if (sess.O.last_mode == NO_ROWS) return;
 
   {
-  std::string keyword = O.command_line.substr(pos+1);
+  std::string keyword = sess.O.command_line.substr(pos+1);
   if (!keyword_exists(keyword)) {
-      O.mode = O.last_mode;
+      sess.O.mode = sess.O.last_mode;
       outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
       return;
   }
 
-  if (marked_entries.empty()) {
-    add_task_keyword(keyword, O.rows.at(O.fr).id);
+  if (sess.O.marked_entries.empty()) {
+    add_task_keyword(keyword, sess.O.rows.at(sess.O.fr).id);
     outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
   } else {
-    for (const auto& id : marked_entries) {
+    for (const auto& id : sess.O.marked_entries) {
       add_task_keyword(keyword, id);
     }
     outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
   }
   }
-  O.mode = O.last_mode;
+  sess.O.mode = sess.O.last_mode;
   return;
 }
 
 void F_keywords(int pos) {
   if (!pos) {
     eraseRightScreen();
-    O.view = KEYWORD;
-    sess.command_history.push_back(O.command_line); 
+    sess.O.view = KEYWORD;
+    sess.command_history.push_back(sess.O.command_line); 
     get_containers(); //O.mode = NORMAL is in get_containers
     outlineShowMessage("Retrieved keywords");
     return;
   }  
 
   // only do this if there was text after C_keywords
-  if (O.last_mode == NO_ROWS) return;
+  if (sess.O.last_mode == NO_ROWS) return;
 
   {
-  std::string keyword = O.command_line.substr(pos+1);
+  std::string keyword = sess.O.command_line.substr(pos+1);
   if (!keyword_exists(keyword)) {
-      O.mode = O.last_mode;
+      sess.O.mode = sess.O.last_mode;
       outlineShowMessage("keyword '%s' does not exist!", keyword.c_str());
       return;
   }
 
-  if (marked_entries.empty()) {
-    add_task_keyword(keyword, O.rows.at(O.fr).id);
+  if (sess.O.marked_entries.empty()) {
+    add_task_keyword(keyword, sess.O.rows.at(sess.O.fr).id);
     outlineShowMessage("No tasks were marked so added %s to current task", keyword.c_str());
   } else {
-    for (const auto& id : marked_entries) {
+    for (const auto& id : sess.O.marked_entries) {
       add_task_keyword(keyword, id);
     }
     outlineShowMessage("Marked tasks had keyword %s added", keyword.c_str());
   }
   }
-  O.mode = O.last_mode;
+  sess.O.mode = sess.O.last_mode;
   return;
 }
 
 void F_write(int) {
-  if (O.view == TASK) update_rows();
-  O.mode = O.last_mode;
-  O.command_line.clear();
+  if (sess.O.view == TASK) update_rows();
+  sess.O.mode = sess.O.last_mode;
+  sess.O.command_line.clear();
 }
 
 void F_x(int) {
-  if (O.view == TASK) update_rows();
+  if (sess.O.view == TASK) update_rows();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
   exit(0);
 }
 
 void F_refresh(int) {
-  if (O.view == TASK) {
+  if (sess.O.view == TASK) {
     outlineShowMessage("Entries will be refreshed");
-    if (O.taskview == BY_FIND)
+    if (sess.O.taskview == BY_FIND)
       search_db(sess.fts_search_terms);
     else
       get_items(MAX);
@@ -3105,19 +3111,19 @@ void F_refresh(int) {
     outlineShowMessage("contexts/folders will be refreshed");
     get_containers();
   }
-  O.mode = O.last_mode;
+  sess.O.mode = sess.O.last_mode;
 }
 
 void F_new(int) {
   outlineInsertRow(0, "", true, false, false, now());
-  O.fc = O.fr = O.rowoff = 0;
-  O.command[0] = '\0';
-  O.repeat = 0;
+  sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
+  sess.O.command[0] = '\0';
+  sess.O.repeat = 0;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   eraseRightScreen(); //erases the note area
-  O.mode = INSERT;
+  sess.O.mode = INSERT;
 
-  O.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
+  sess.O.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
   int fd;
   std::string fn = "assets/" + CURRENT_NOTE_FILE;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
@@ -3133,20 +3139,19 @@ void F_new(int) {
 //this is the main event - right now only way to initiate editing an entry
 void F_edit(int id) {
   
-  if (!(O.view == TASK)) {
-    O.command[0] = '\0';
-    O.mode = NORMAL;
+  if (!(sess.O.view == TASK)) {
+    sess.O.command[0] = '\0';
+    sess.O.mode = NORMAL;
     outlineShowMessage("Only tasks have notes to edit!");
     return;
   }
 
   //pos is zero if no space and command modifier
   if (id == 0) id = get_id();
-  //int id = get_id();
   if (id == -1) {
     outlineShowMessage("You need to save item before you can create a note");
-    O.command[0] = '\0';
-    O.mode = NORMAL;
+    sess.O.command[0] = '\0';
+    sess.O.mode = NORMAL;
     return;
   }
 
@@ -3159,14 +3164,16 @@ void F_edit(int id) {
                        [&id](auto& ls) { return ls->id == id; }); //auto&& also works
 
     if (it == sess.editors.end()) {
-      p = new Editor;
+      sess.p = new Editor;
+      Editor* & p = sess.p;
       sess.editors.push_back(p);
-      p->id = id;
-      p->top_margin = TOP_MARGIN + 1;
+      sess.p->id = id;
+      sess.p->top_margin = TOP_MARGIN + 1;
 
-      int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+      int folder_tid = get_folder_tid(sess.O.rows.at(sess.O.fr).id);
       if (folder_tid == 18 || folder_tid == 14) {
-        p->linked_editor = new Editor;
+        sess.p->linked_editor = new Editor;
+        Editor * & p = sess.p;
         sess.editors.push_back(p->linked_editor);
         p->linked_editor->id = id;
         p->linked_editor->is_subeditor = true;
@@ -3177,18 +3184,19 @@ void F_edit(int id) {
       get_note(id); //if id == -1 does not try to retrieve note
       
     } else {
-      p = *it;
+      sess.p = *it;
     }    
   } else {
-    p = new Editor;
+    sess.p = new Editor;
+    Editor* & p = sess.p;
     sess.editors.push_back(p);
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
-    //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
-    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    int folder_tid = get_folder_tid(sess.O.rows.at(sess.O.fr).id);
     if (folder_tid == 18 || folder_tid == 14) {
-      p->linked_editor = new Editor;
+      sess.p->linked_editor = new Editor;
+      Editor * & p = sess.p;
       sess.editors.push_back(p->linked_editor);
       p->linked_editor->id = id;
       p->linked_editor->is_subeditor = true;
@@ -3198,25 +3206,12 @@ void F_edit(int id) {
     }
     get_note(id); //if id == -1 does not try to retrieve note
  }
-  /*
-  int editor_slots = 0;
-  for (auto z : sess.editors) {
-    if (!z->is_below) editor_slots++;
-  }
-
-  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
-  int i = -1; //i = number of columns of editors -1
-  for (auto z : sess.editors) {
-    if (!z->is_below) i++;
-    z->left_margin = sess.divider + i*s_cols + i;
-    z->screencols = s_cols;
-    z->setLinesMargins();
-  }
-*/
   sess.position_editors();
-  eraseRightScreen(); //erases editor area + statusbar + msg
+  sess.eraseRightScreen(); //erases editor area + statusbar + msg
+  sess.draw_editors();
 
-  if (p->rows.empty()) {
+  if (sess.p->rows.empty()) {
+    Editor* & p = sess.p;
     // note editorInsertChar inserts the row
     p->mode = INSERT;
     // below all for undo
@@ -3227,133 +3222,32 @@ void F_edit(int id) {
     p->snapshot.push_back("");
     p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
   } else {
-    p->mode = NORMAL;
+    sess.p->mode = NORMAL;
   }
 
-  draw_editors();
+  //draw_editors();
 
-  O.command[0] = '\0';
-  O.mode = NORMAL;
+  sess.O.command[0] = '\0';
+  sess.O.mode = NORMAL;
 }
-
-/*
-void F_edit2(int id) {
-  outlineShowMessage("Edit note %d", id);
-  outlineRefreshScreen();
-  sess.editor_mode = true;
-
-  if (!sess.editors.empty()){
-    auto it = std::find_if(std::begin(sess.editors), std::end(sess.editors),
-                       [&id](auto& ls) { return ls->id == id; }); //auto&& also works
-
-    if (it == sess.editors.end()) {
-      p = new Editor;
-      sess.editors.push_back(p);
-      //editors.push_back(std::make_shared<Editor>(E));
-      p->id = id;
-      p->top_margin = TOP_MARGIN + 1;
-      //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
-
-      int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
-      if (folder_tid == 18 || folder_tid == 14) {
-        p->linked_editor = new Editor;
-        sess.editors.push_back(p->linked_editor);
-        p->linked_editor->id = id;
-        //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-        //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-        p->linked_editor->is_subeditor = true;
-        p->linked_editor->is_below = true;
-        p->linked_editor->linked_editor = p;
-        p->left_margin_offset = LEFT_MARGIN_OFFSET;
-      } 
-      get_note(id); //if id == -1 does not try to retrieve note
-      
-    } else {
-      p = *it;
-    }    
-  } else {
-    p = new Editor;
-    sess.editors.push_back(p);
-    p->id = id;
-    p->top_margin = TOP_MARGIN + 1;
-    //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
-
-    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
-    if (folder_tid == 18 || folder_tid == 14) {
-      p->linked_editor = new Editor;
-      sess.editors.push_back(p->linked_editor);
-      p->linked_editor->id = id;
-      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
-      p->linked_editor->is_subeditor = true;
-      p->linked_editor->is_below = true;
-      p->linked_editor->linked_editor = p;
-      p->left_margin_offset = LEFT_MARGIN_OFFSET;
-    }
-    get_note(id); //if id == -1 does not try to retrieve note
- }
-  int editor_slots = 0;
-  //std::unordered_set<int> temp;
-  for (auto z : sess.editors) {
-    if (!z->is_below) editor_slots++;
-    //temp.insert(z->id);
-  }
-
-  // this could be improved - lose at least one column for each additional editor
-  //int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
-  int s_cols = -1 + (sess.screencols - sess.divider)/editor_slots;
-  //temp.clear();
-  int i = -1; //i = number of columns of editors -1
-  for (auto z : sess.editors) {
-    //auto ret = temp.insert(z->id);
-    if (!z->is_below) i++;
-    //if (ret.second == true) i++;
-    z->left_margin = sess.divider + i*s_cols + i;
-    z->screencols = s_cols;
-    z->setLinesMargins();
-  }
-
-  //rightmostr_left_margin = O.divider + i*s_cols + i
-  eraseRightScreen(); //erases editor area + statusbar + msg
-
-  if (p->rows.empty()) {
-    // note editorInsertChar inserts the row
-    p->mode = INSERT;
-    // below all for undo
-    p->last_command = "i";
-    p->prev_fr = 0;
-    p->prev_fc = 0;
-    p->last_repeat = 1;
-    p->snapshot.push_back("");
-    p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-  } else {
-    p->mode = NORMAL;
-  }
-
-  draw_editors();
-
-  O.command[0] = '\0';
-  O.mode = NORMAL;
-}
-*/
 
 void F_contexts(int pos) {
   if (!pos) {
     eraseRightScreen();
-    O.view = CONTEXT;
-    sess.command_history.push_back(O.command_line); ///////////////////////////////////////////////////////
+    sess.O.view = CONTEXT;
+    sess.command_history.push_back(sess.O.command_line); 
     get_containers();
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     outlineShowMessage("Retrieved contexts");
     return;
   } else {
 
     std::string new_context;
     bool success = false;
-    if (O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
+    if (sess.O.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
-      for (const auto & [k,v] : O.context_map) {
-        if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+      for (const auto & [k,v] : sess.O.context_map) {
+        if (strncmp(&sess.O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
           new_context = k;
           success = true;
           break;
@@ -3361,7 +3255,7 @@ void F_contexts(int pos) {
       }
       if (!success) {
         outlineShowMessage("What you typed did not match any context");
-        O.mode = NORMAL;
+        sess.O.mode = NORMAL;
         return;
       }
 
@@ -3369,11 +3263,11 @@ void F_contexts(int pos) {
       outlineShowMessage("You need to provide at least 3 characters "
                         "that match a context!");
 
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
     success = false;
-    for (const auto& it : O.rows) {
+    for (const auto& it : sess.O.rows) {
       if (it.mark) {
         update_task_context(new_context, it.id);
         success = true;
@@ -3383,10 +3277,10 @@ void F_contexts(int pos) {
     if (success) {
       outlineShowMessage("Marked tasks moved into context %s", new_context.c_str());
     } else {
-      update_task_context(new_context, O.rows.at(O.fr).id);
+      update_task_context(new_context, sess.O.rows.at(sess.O.fr).id);
       outlineShowMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
     }
-    O.mode = O.last_mode;
+    sess.O.mode = sess.O.last_mode;
     return;
   }
 }
@@ -3394,20 +3288,20 @@ void F_contexts(int pos) {
 void F_folders(int pos) {
   if (!pos) {
     eraseRightScreen();
-    O.view = FOLDER;
-    sess.command_history.push_back(O.command_line); 
+    sess.O.view = FOLDER;
+    sess.command_history.push_back(sess.O.command_line); 
     get_containers();
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     outlineShowMessage("Retrieved folders");
     return;
   } else {
 
     std::string new_folder;
     bool success = false;
-    if (O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
+    if (sess.O.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
-      for (const auto & [k,v] : O.folder_map) {
-        if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+      for (const auto & [k,v] : sess.O.folder_map) {
+        if (strncmp(&sess.O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
           new_folder = k;
           success = true;
           break;
@@ -3415,7 +3309,7 @@ void F_folders(int pos) {
       }
       if (!success) {
         outlineShowMessage("What you typed did not match any folder");
-        O.mode = NORMAL;
+        sess.O.mode = NORMAL;
         return;
       }
 
@@ -3423,11 +3317,11 @@ void F_folders(int pos) {
       outlineShowMessage("You need to provide at least 3 characters "
                         "that match a folder!");
 
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
     success = false;
-    for (const auto& it : O.rows) {
+    for (const auto& it : sess.O.rows) {
       if (it.mark) {
         update_task_folder(new_folder, it.id);
         success = true;
@@ -3437,23 +3331,23 @@ void F_folders(int pos) {
     if (success) {
       outlineShowMessage("Marked tasks moved into folder %s", new_folder.c_str());
     } else {
-      update_task_folder(new_folder, O.rows.at(O.fr).id);
+      update_task_folder(new_folder, sess.O.rows.at(sess.O.fr).id);
       outlineShowMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
     }
-    O.mode = O.last_mode;
+    sess.O.mode = sess.O.last_mode;
     return;
   }
 }
 
 void F_recent(int) {
   outlineShowMessage("Will retrieve recent items");
-  sess.command_history.push_back(O.command_line);
-  sess.page_history.push_back(O.command_line);
+  sess.command_history.push_back(sess.O.command_line);
+  sess.page_history.push_back(sess.O.command_line);
   sess.page_hx_idx = sess.page_history.size() - 1;
-  marked_entries.clear();
-  O.context = "No Context";
-  O.taskview = BY_RECENT;
-  O.folder = "No Folder";
+  sess.O.marked_entries.clear();
+  sess.O.context = "No Context";
+  sess.O.taskview = BY_RECENT;
+  sess.O.folder = "No Folder";
   get_items(MAX);
 }
 
@@ -3461,7 +3355,7 @@ void F_recent(int) {
 void F_createLink(int) {
   if (sess.editors.empty()) {
     outlineShowMessage("There are no entries being edited");
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
   std::unordered_set<int> temp;
@@ -3471,7 +3365,7 @@ void F_createLink(int) {
 
   if (temp.size() != 2) {
     outlineShowMessage("At the moment you can only link two entries at a time");
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
   std::array<int, 2> task_ids{};
@@ -3493,20 +3387,20 @@ void F_createLink(int) {
   if (int res = q.step(); res != SQLITE_DONE) {
     std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
     outlineShowMessage3("Problem in 'add_task_keyword': {}", error);
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
 
    Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
    q1.step();
 
-   O.mode = NORMAL;
+   sess.O.mode = NORMAL;
 }
 
 void F_getLinked(int) {
-  if (!p) return;
+  if (!sess.p) return;
 
-  int id = p->id;
+  int id = sess.p->id;
 
   Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
   if (int res = q.step(); res != SQLITE_ROW) {
@@ -3538,19 +3432,19 @@ void F_linked(int) {
 */
 
 void F_find(int pos) {
-  if (O.command_line.size() < 6) {
+  if (sess.O.command_line.size() < 6) {
     outlineShowMessage("You need more characters");
     return;
   }  
-  O.context = "";
-  O.folder = "";
-  O.taskview = BY_FIND;
+  sess.O.context = "";
+  sess.O.folder = "";
+  sess.O.taskview = BY_FIND;
   //O.mode = FIND; ////// it's in get_items_by_id
-  std::string st = O.command_line.substr(pos+1);
+  std::string st = sess.O.command_line.substr(pos+1);
   std::transform(st.begin(), st.end(), st.begin(), ::tolower);
-  sess.command_history.push_back(O.command_line); 
+  sess.command_history.push_back(sess.O.command_line); 
   sess.page_hx_idx++;
-  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, sess.O.command_line);
   outlineShowMessage("Searching for %s", st.c_str());
   sess.fts_search_terms = st;
   search_db(st);
@@ -3561,7 +3455,7 @@ void F_sync(int) {
   map_context_titles();
   map_folder_titles();
   initial_file_row = 0; //for arrowing or displaying files
-  O.mode = FILE_DISPLAY; // needs to appear before displayFile
+  sess.O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Synching local db and server and displaying results");
   readFile("log");
   displayFile();//put them in the command mode case synch
@@ -3570,137 +3464,137 @@ void F_sync(int) {
 void F_sync_test(int) {
   synchronize(1); //1 -> report_only
   initial_file_row = 0; //for arrowing or displaying files
-  O.mode = FILE_DISPLAY; // needs to appear before displayFile
+  sess.O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Testing synching local db and server and displaying results");
   readFile("log");
   displayFile();//put them in the command mode case synch
 }
 
 void F_updatecontext(int) {
-  O.current_task_id = O.rows.at(O.fr).id;
+  sess.O.current_task_id = sess.O.rows.at(sess.O.fr).id;
   eraseRightScreen();
-  O.view = CONTEXT;
-  sess.command_history.push_back(O.command_line); 
+  sess.O.view = CONTEXT;
+  sess.command_history.push_back(sess.O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
-  O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  sess.O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select context to add to marked or current entry");
 }
 
 void F_updatefolder(int) {
-  O.current_task_id = O.rows.at(O.fr).id;
+  sess.O.current_task_id = sess.O.rows.at(sess.O.fr).id;
   eraseRightScreen();
-  O.view = FOLDER;
-  sess.command_history.push_back(O.command_line); 
+  sess.O.view = FOLDER;
+  sess.command_history.push_back(sess.O.command_line); 
   get_containers(); //O.mode = NORMAL is in get_containers
-  O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+  sess.O.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   outlineShowMessage("Select folder to add to marked or current entry");
 }
 
 void F_delmarks(int) {
-  for (auto& it : O.rows) {
+  for (auto& it : sess.O.rows) {
     it.mark = false;}
-  if (O.view == TASK) marked_entries.clear(); //why the if??
-  O.mode = O.last_mode;
+  if (sess.O.view == TASK) sess.O.marked_entries.clear(); //why the if??
+  sess.O.mode = sess.O.last_mode;
   outlineShowMessage("Marks all deleted");
 }
 
 // to avoid confusion should only be an editor command line function
 void F_savefile(int pos) {
-  sess.command_history.push_back(O.command_line);
+  sess.command_history.push_back(sess.O.command_line);
   std::string filename;
-  if (pos) filename = O.command_line.substr(pos+1);
+  if (pos) filename = sess.O.command_line.substr(pos+1);
   else filename = "example.cpp";
-  p->editorSaveNoteToFile(filename);
+  sess.p->editorSaveNoteToFile(filename);
   outlineShowMessage("Note saved to file: %s", filename.c_str());
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
 }
 
 //this really needs work - needs to be picked like keywords, folders etc.
 void F_sort(int pos) { 
-  if (pos && O.view == TASK && O.taskview != BY_FIND) {
-    O.sort = O.command_line.substr(pos + 1);
+  if (pos && sess.O.view == TASK && sess.O.taskview != BY_FIND) {
+    sess.O.sort = sess.O.command_line.substr(pos + 1);
     get_items(MAX);
-    outlineShowMessage("sorted by \'%s\'", O.sort.c_str());
+    outlineShowMessage("sorted by \'%s\'", sess.O.sort.c_str());
   } else {
     outlineShowMessage("Currently can't sort search, which is sorted on best match");
   }
 }
 
 void  F_showall(int) {
-  if (O.view == TASK) {
-    O.show_deleted = !O.show_deleted;
-    O.show_completed = !O.show_completed;
-    if (O.taskview == BY_FIND)
+  if (sess.O.view == TASK) {
+    sess.O.show_deleted = !sess.O.show_deleted;
+    sess.O.show_completed = !sess.O.show_completed;
+    if (sess.O.taskview == BY_FIND)
       ; //search_db();
     else
       get_items(MAX);
   }
-  outlineShowMessage((O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
+  outlineShowMessage((sess.O.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
 }
 
 // does not seem to work
 void F_syntax(int pos) {
   if (pos) {
-    std::string action = O.command_line.substr(pos + 1);
+    std::string action = sess.O.command_line.substr(pos + 1);
     if (action == "on") {
-      p->highlight_syntax = true;
+      sess.p->highlight_syntax = true;
       outlineShowMessage("Syntax highlighting will be turned on");
     } else if (action == "off") {
-      p->highlight_syntax = false;
+      sess.p->highlight_syntax = false;
       outlineShowMessage("Syntax highlighting will be turned off");
     } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'"); }
   } else {outlineShowMessage("The syntax is 'sh on' or 'sh off'");}
-  p->editorRefreshScreen(true);
-  O.mode = NORMAL;
+  sess.p->editorRefreshScreen(true);
+  sess.O.mode = NORMAL;
 }
 
 // set spell | set nospell
 // should also only be an editor function
 void F_set(int pos) {
-  std::string action = O.command_line.substr(pos + 1);
+  std::string action = sess.O.command_line.substr(pos + 1);
   if (pos) {
     if (action == "spell") {
-      p->spellcheck = true;
+      sess.p->spellcheck = true;
       outlineShowMessage("Spellcheck active");
     } else if (action == "nospell") {
-      p->spellcheck = false;
+      sess.p->spellcheck = false;
       outlineShowMessage("Spellcheck off");
     } else {outlineShowMessage("Unknown option: %s", action.c_str()); }
   } else {outlineShowMessage("Unknown option: %s", action.c_str());}
-  p->editorRefreshScreen(true);
-  O.mode = NORMAL;
+  sess.p->editorRefreshScreen(true);
+  sess.O.mode = NORMAL;
 }
 
 // also should be only editor function
 void F_open_in_vim(int) {
   open_in_vim(); //send you into editor mode
-  p->mode = NORMAL;
+  sess.p->mode = NORMAL;
   //O.command[0] = '\0';
   //O.repeat = 0;
   //O.mode = NORMAL;
 }
 
 void F_join(int pos) {
-  if (O.view != TASK || O.taskview == BY_JOIN || pos == 0) {
+  if (sess.O.view != TASK || sess.O.taskview == BY_JOIN || pos == 0) {
     outlineShowMessage("You are either in a view where you can't join or provided no join container");
-    O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
-    O.mode = O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+    sess.O.mode = NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
+    sess.O.mode = sess.O.last_mode; //NORMAL; //you are in command_line as long as switch to normal - don't need above two lines
     return;
   }
   bool success = false;
 
-  if (O.taskview == BY_CONTEXT) {
-    for (const auto & [k,v] : O.folder_map) {
-      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-        O.folder = k;
+  if (sess.O.taskview == BY_CONTEXT) {
+    for (const auto & [k,v] : sess.O.folder_map) {
+      if (strncmp(&sess.O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        sess.O.folder = k;
         success = true;
         break;
       }
     }
-  } else if (O.taskview == BY_FOLDER) {
-    for (const auto & [k,v] : O.context_map) {
-      if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
-        O.context = k;
+  } else if (sess.O.taskview == BY_FOLDER) {
+    for (const auto & [k,v] : sess.O.context_map) {
+      if (strncmp(&sess.O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
+        sess.O.context = k;
         success = true;
         break;
       }
@@ -3708,21 +3602,21 @@ void F_join(int pos) {
   }
   if (!success) {
     outlineShowMessage("You did not provide a valid folder or context to join!");
-    O.command_line.resize(1);
+    sess.O.command_line.resize(1);
     return;
   }
 
-  outlineShowMessage("Will join \'%s\' with \'%s\'", O.folder.c_str(), O.context.c_str());
-  O.taskview = BY_JOIN;
+  outlineShowMessage("Will join \'%s\' with \'%s\'", sess.O.folder.c_str(), sess.O.context.c_str());
+  sess.O.taskview = BY_JOIN;
   get_items(MAX);
   return;
 }
 
 void F_saveoutline(int pos) { 
   if (pos) {
-    std::string fname = O.command_line.substr(pos + 1);
+    std::string fname = sess.O.command_line.substr(pos + 1);
     outlineSave(fname);
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     outlineShowMessage("Saved outline to %s", fname.c_str());
   } else {
     outlineShowMessage("You didn't provide a file name!");
@@ -3733,27 +3627,27 @@ void F_valgrind(int) {
   initial_file_row = 0; //for arrowing or displaying files
   readFile("valgrind_log_file");
   displayFile();//put them in the command mode case synch
-  O.last_mode = O.mode;
-  O.mode = FILE_DISPLAY;
+  sess.O.last_mode = sess.O.mode;
+  sess.O.mode = FILE_DISPLAY;
 }
 
 void F_help(int pos) {
   if (!pos) {             
     /*This needs to be changed to show database text not ext file*/
     initial_file_row = 0;
-    O.last_mode = O.mode;
-    O.mode = FILE_DISPLAY;
+    sess.O.last_mode = sess.O.mode;
+    sess.O.mode = FILE_DISPLAY;
     outlineShowMessage("Displaying help file");
     readFile("listmanager_commands");
     displayFile();
   } else {
-    std::string st = O.command_line.substr(pos+1);
-    O.context = "";
-    O.folder = "";
-    O.taskview = BY_FIND;
+    std::string st = sess.O.command_line.substr(pos+1);
+    sess.O.context = "";
+    sess.O.folder = "";
+    sess.O.taskview = BY_FIND;
     //O.mode = FIND; ////// it's in get_items_by_id
     std::transform(st.begin(), st.end(), st.begin(), ::tolower);
-    sess.command_history.push_back(O.command_line); 
+    sess.command_history.push_back(sess.O.command_line); 
     sess.fts_search_terms = st;
     search_db2(st);
     outlineShowMessage("Will look for help on %s", st.c_str());
@@ -3764,14 +3658,14 @@ void F_help(int pos) {
 //case 'q':
 void F_quit_app(int) {
   bool unsaved_changes = false;
-  for (auto it : O.rows) {
+  for (auto it : sess.O.rows) {
     if (it.dirty) {
       unsaved_changes = true;
       break;
     }
   }
   if (unsaved_changes) {
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     outlineShowMessage("No db write since last change");
   } else {
     run = false;
@@ -3809,7 +3703,7 @@ void F_lsp_start(int pos) {
   }
   */
 
-  std::string_view name = O.command_line;
+  std::string_view name = sess.O.command_line;
   if (pos) name = name.substr(pos + 1);
   else {
     outlineShowMessage("Which lsp do you want?");
@@ -3829,13 +3723,13 @@ void F_lsp_start(int pos) {
     lsp->language = "cpp";
   } else {
     outlineShowMessage3("There is no lsp named {}", name);
-    O.mode = NORMAL;
+    sess.O.mode = NORMAL;
     return;
   }
 
   outlineShowMessage3("Starting {}", lsp->name);
   lsp_start(lsp);
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
 }
 
 void F_launch_lm_browser(int) {
@@ -3845,7 +3739,7 @@ void F_launch_lm_browser(int) {
   }
   lm_browser = true; 
   std::system("./lm_browser current.html &"); //&=> returns control
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
 }
 
 void F_quit_lm_browser(int) {
@@ -3853,7 +3747,7 @@ void F_quit_lm_browser(int) {
   snprintf ((char *) message.data(), 20, "%s", "quit"); //25 - complete hack but works ok
   publisher.send(message, zmq::send_flags::dontwait);
   lm_browser = false;
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
 }
 /* END OUTLINE COMMAND mode functions */
 
@@ -3865,145 +3759,145 @@ void goto_editor_N(void) {
   }
 
   eraseRightScreen();
-  draw_editors();
+  sess.draw_editors();
 
   sess.editor_mode = true;
 }
 
 void F_resize(int pos) {
-  std::string s = O.command_line;
+  std::string s = sess.O.command_line;
   if (pos) {
     //s = O.command_line.substr(pos + 1);
     size_t p = s.find_first_of("0123456789");
     if (p != pos + 1) {
       outlineShowMessage("You need to provide a number between 10 and 90");
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
     int pct = stoi(s.substr(p));
     if (pct > 90 || pct < 10) { 
       outlineShowMessage("You need to provide a number between 10 and 90");
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
     }
     c.ed_pct = pct;
   } else {
       outlineShowMessage("You need to provide a number between 10 and 90");
-      O.mode = NORMAL;
+      sess.O.mode = NORMAL;
       return;
   }
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
   signalHandler(0);
 }
 
 void return_N(void) {
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
   if(row.dirty){
-    if (O.view == TASK) update_title();
-    else if (O.view == CONTEXT || O.view == FOLDER) update_container();
-    else if (O.view == KEYWORD) update_keyword();
-    O.command[0] = '\0'; //11-26-2019
-    O.mode = NORMAL;
-    if (O.fc > 0) O.fc--;
+    if (sess.O.view == TASK) update_title();
+    else if (sess.O.view == CONTEXT || sess.O.view == FOLDER) update_container();
+    else if (sess.O.view == KEYWORD) update_keyword();
+    sess.O.command[0] = '\0'; //11-26-2019
+    sess.O.mode = NORMAL;
+    if (sess.O.fc > 0) sess.O.fc--;
     return;
     //outlineShowMessage("");
   }
 
   // return means retrieve items by context or folder
   // do this in database mode
-  if (O.view == CONTEXT) {
-    O.context = row.title;
-    O.folder = "";
-    O.taskview = BY_CONTEXT;
-    outlineShowMessage("\'%s\' will be opened", O.context.c_str());
-    O.command_line = "o " + O.context;
-  } else if (O.view == FOLDER) {
-    O.folder = row.title;
-    O.context = "";
-    O.taskview = BY_FOLDER;
-    outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
-    O.command_line = "o " + O.folder;
-  } else if (O.view == KEYWORD) {
-    O.keyword = row.title;
-    O.folder = "";
-    O.context = "";
-    O.taskview = BY_KEYWORD;
-    outlineShowMessage("\'%s\' will be opened", O.keyword.c_str());
-    O.command_line = "ok " + O.keyword;
+  if (sess.O.view == CONTEXT) {
+    sess.O.context = row.title;
+    sess.O.folder = "";
+    sess.O.taskview = BY_CONTEXT;
+    outlineShowMessage("\'%s\' will be opened", sess.O.context.c_str());
+    sess.O.command_line = "o " + sess.O.context;
+  } else if (sess.O.view == FOLDER) {
+    sess.O.folder = row.title;
+    sess.O.context = "";
+    sess.O.taskview = BY_FOLDER;
+    outlineShowMessage("\'%s\' will be opened", sess.O.folder.c_str());
+    sess.O.command_line = "o " + sess.O.folder;
+  } else if (sess.O.view == KEYWORD) {
+    sess.O.keyword = row.title;
+    sess.O.folder = "";
+    sess.O.context = "";
+    sess.O.taskview = BY_KEYWORD;
+    outlineShowMessage("\'%s\' will be opened", sess.O.keyword.c_str());
+    sess.O.command_line = "ok " + sess.O.keyword;
   }
 
-  sess.command_history.push_back(O.command_line);
+  sess.command_history.push_back(sess.O.command_line);
   sess.page_hx_idx++;
-  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, O.command_line);
-  marked_entries.clear();
+  sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, sess.O.command_line);
+  sess.O.marked_entries.clear();
 
   get_items(MAX);
 }
 
 //case 'i':
 void insert_N(void){
-  O.mode = INSERT;
+  sess.O.mode = INSERT;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
 //case 's':
 void s_N(void){
-  orow& row = O.rows.at(O.fr);
-  row.title.erase(O.fc, O.repeat);
+  orow& row = sess.O.rows.at(sess.O.fr);
+  row.title.erase(sess.O.fc, sess.O.repeat);
   row.dirty = true;
-  O.mode = INSERT;
+  sess.O.mode = INSERT;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m"); //[1m=bold
 }          
 
 //case 'x':
 void x_N(void){
-  orow& row = O.rows.at(O.fr);
-  row.title.erase(O.fc, O.repeat);
+  orow& row = sess.O.rows.at(sess.O.fr);
+  row.title.erase(sess.O.fc, sess.O.repeat);
   row.dirty = true;
 }        
 
 void daw_N(void) {
-  for (int i = 0; i < O.repeat; i++) outlineDelWord();
+  for (int i = 0; i < sess.O.repeat; i++) outlineDelWord();
 }
 
 void caw_N(void) {
-  for (int i = 0; i < O.repeat; i++) outlineDelWord();
-  O.mode = INSERT;
+  for (int i = 0; i < sess.O.repeat; i++) outlineDelWord();
+  sess.O.mode = INSERT;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
 void dw_N(void) {
-  for (int j = 0; j < O.repeat; j++) {
-    int start = O.fc;
+  for (int j = 0; j < sess.O.repeat; j++) {
+    int start = sess.O.fc;
     outlineMoveEndWord2();
-    int end = O.fc;
-    O.fc = start;
-    orow& row = O.rows.at(O.fr);
-    row.title.erase(O.fc, end - start + 2);
+    int end = sess.O.fc;
+    sess.O.fc = start;
+    orow& row = sess.O.rows.at(sess.O.fr);
+    row.title.erase(sess.O.fc, end - start + 2);
   }
 }
 
 void cw_N(void) {
-  for (int j = 0; j < O.repeat; j++) {
-    int start = O.fc;
+  for (int j = 0; j < sess.O.repeat; j++) {
+    int start = sess.O.fc;
     outlineMoveEndWord2();
-    int end = O.fc;
-    O.fc = start;
-    orow& row = O.rows.at(O.fr);
-    row.title.erase(O.fc, end - start + 2);
+    int end = sess.O.fc;
+    sess.O.fc = start;
+    orow& row = sess.O.rows.at(sess.O.fr);
+    row.title.erase(sess.O.fc, end - start + 2);
   }
-  O.mode = INSERT;
+  sess.O.mode = INSERT;
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
 void de_N(void) {
-  int start = O.fc;
+  int start = sess.O.fc;
   outlineMoveEndWord(); //correct one to use to emulate vim
-  int end = O.fc;
-  O.fc = start; 
+  int end = sess.O.fc;
+  sess.O.fc = start; 
   for (int j = 0; j < end - start + 1; j++) outlineDelChar();
-  O.fc = (start < O.rows.at(O.fr).title.size()) ? start : O.rows.at(O.fr).title.size() -1;
+  sess.O.fc = (start < sess.O.rows.at(sess.O.fr).title.size()) ? start : sess.O.rows.at(sess.O.fr).title.size() -1;
 }
 
 void d$_N(void) {
@@ -4011,17 +3905,17 @@ void d$_N(void) {
 }
 //case 'r':
 void r_N(void) {
-  O.mode = REPLACE;
+  sess.O.mode = REPLACE;
 }
 
 //case '~'
 void tilde_N(void) {
-  for (int i = 0; i < O.repeat; i++) outlineChangeCase();
+  for (int i = 0; i < sess.O.repeat; i++) outlineChangeCase();
 }
 
 //case 'a':
 void a_N(void){
-  O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
+  sess.O.mode = INSERT; //this has to go here for MoveCursor to work right at EOLs
   outlineMoveCursor(ARROW_RIGHT);
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
@@ -4029,7 +3923,7 @@ void a_N(void){
 //case 'A':
 void A_N(void) {
   outlineMoveCursorEOL();
-  O.mode = INSERT; //needs to be here for movecursor to work at EOLs
+  sess.O.mode = INSERT; //needs to be here for movecursor to work at EOLs
   outlineMoveCursor(ARROW_RIGHT);
   outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
@@ -4046,7 +3940,7 @@ void e_N(void) {
 
 //case '0':
 void zero_N(void) {
-  if (!O.rows.empty()) O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
+  if (!sess.O.rows.empty()) sess.O.fc = 0; // this was commented out - not sure why but might be interfering with O.repeat
 }
 
 //case '$':
@@ -4056,51 +3950,51 @@ void dollar_N(void) {
 
 //case 'I':
 void I_N(void) {
-  if (!O.rows.empty()) {
-    O.fc = 0;
-    O.mode = 1;
+  if (!sess.O.rows.empty()) {
+    sess.O.fc = 0;
+    sess.O.mode = 1;
     outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
   }
 }
 
 void gg_N(void) {
-  O.fc = O.rowoff = 0;
-  O.fr = O.repeat-1; //this needs to take into account O.rowoff
-  if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
-  else display_container_info(O.rows.at(O.fr).id);
+  sess.O.fc = sess.O.rowoff = 0;
+  sess.O.fr = sess.O.repeat-1; //this needs to take into account O.rowoff
+  if (sess.O.view == TASK) get_preview(sess.O.rows.at(sess.O.fr).id);
+  else display_container_info(sess.O.rows.at(sess.O.fr).id);
 }
 
 //case 'G':
 void G_N(void) {
-  O.fc = 0;
-  O.fr = O.rows.size() - 1;
-  if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
-  else display_container_info(O.rows.at(O.fr).id);
+  sess.O.fc = 0;
+  sess.O.fr = sess.O.rows.size() - 1;
+  if (sess.O.view == TASK) get_preview(sess.O.rows.at(sess.O.fr).id);
+  else display_container_info(sess.O.rows.at(sess.O.fr).id);
 }
 
 void gt_N(void) {
   std::map<std::string, int>::iterator it;
 
-  if ((O.view == TASK && O.taskview == BY_FOLDER) || O.view == FOLDER) {
-    if (!O.folder.empty()) {
-      it = O.folder_map.find(O.folder);
+  if ((sess.O.view == TASK && sess.O.taskview == BY_FOLDER) || sess.O.view == FOLDER) {
+    if (!sess.O.folder.empty()) {
+      it = sess.O.folder_map.find(sess.O.folder);
       it++;
-      if (it == O.folder_map.end()) it = O.folder_map.begin();
+      if (it == sess.O.folder_map.end()) it = sess.O.folder_map.begin();
     } else {
-      it = O.folder_map.begin();
+      it = sess.O.folder_map.begin();
     }
-    O.folder = it->first;
-    outlineShowMessage("\'%s\' will be opened", O.folder.c_str());
+    sess.O.folder = it->first;
+    outlineShowMessage("\'%s\' will be opened", sess.O.folder.c_str());
   } else {
-    if (O.context.empty() || O.context == "search") {
-      it = O.context_map.begin();
+    if (sess.O.context.empty() || sess.O.context == "search") {
+      it = sess.O.context_map.begin();
     } else {
-      it = O.context_map.find(O.context);
+      it = sess.O.context_map.find(sess.O.context);
       it++;
-      if (it == O.context_map.end()) it = O.context_map.begin();
+      if (it == sess.O.context_map.end()) it = sess.O.context_map.begin();
     }
-    O.context = it->first;
-    outlineShowMessage("\'%s\' will be opened", O.context.c_str());
+    sess.O.context = it->first;
+    outlineShowMessage("\'%s\' will be opened", sess.O.context.c_str());
   }
   get_items(MAX);
 }
@@ -4120,21 +4014,21 @@ void O_N(void) {
 //case ':':
 void colon_N(void) {
   outlineShowMessage(":");
-  O.command_line.clear();
-  O.last_mode = O.mode;
-  O.mode = COMMAND_LINE;
+  sess.O.command_line.clear();
+  sess.O.last_mode = sess.O.mode;
+  sess.O.mode = COMMAND_LINE;
 }
 
 //case 'v':
 void v_N(void) {
-  O.mode = VISUAL;
-  O.highlight[0] = O.highlight[1] = O.fc;
+  sess.O.mode = VISUAL;
+  sess.O.highlight[0] = sess.O.highlight[1] = sess.O.fc;
   outlineShowMessage("\x1b[1m-- VISUAL --\x1b[0m");
 }
 
 //case 'p':  
 void p_N(void) {
-  if (!O.string_buffer.empty()) outlinePasteString();
+  if (!sess.O.string_buffer.empty()) outlinePasteString();
 }
 
 //case '*':  
@@ -4145,13 +4039,13 @@ void asterisk_N(void) {
 
 //case 'm':
 void m_N(void) {
-  O.rows.at(O.fr).mark = !O.rows.at(O.fr).mark;
-  if (O.rows.at(O.fr).mark) {
-    marked_entries.insert(O.rows.at(O.fr).id);
+  sess.O.rows.at(sess.O.fr).mark = !sess.O.rows.at(sess.O.fr).mark;
+  if (sess.O.rows.at(sess.O.fr).mark) {
+    sess.O.marked_entries.insert(sess.O.rows.at(sess.O.fr).id);
   } else {
-    marked_entries.erase(O.rows.at(O.fr).id);
+    sess.O.marked_entries.erase(sess.O.rows.at(sess.O.fr).id);
   }  
-  outlineShowMessage("Toggle mark for item %d", O.rows.at(O.fr).id);
+  outlineShowMessage("Toggle mark for item %d", sess.O.rows.at(sess.O.fr).id);
 }
 
 //case 'n':
@@ -4180,12 +4074,12 @@ void completed_N(void) {
 }
 
 void navigate_page_hx(int direction) {
-  if (sess.page_history.size() == 1 && O.view == TASK) return;
+  if (sess.page_history.size() == 1 && sess.O.view == TASK) return;
 
   if (direction == PAGE_UP) {
 
     // if O.view!=TASK and PAGE_UP - moves back to last page
-    if (O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
+    if (sess.O.view == TASK) { //if in a container viewa - fall through to previous TASK view page
 
       if (sess.page_hx_idx == 0) sess.page_hx_idx = sess.page_history.size() - 1;
       else sess.page_hx_idx--;
@@ -4197,13 +4091,13 @@ void navigate_page_hx(int direction) {
   }
 
   /* go into COMMAND_LINE mode */
-  O.mode = COMMAND_LINE;
-  O.command_line = sess.page_history.at(sess.page_hx_idx);
+  sess.O.mode = COMMAND_LINE;
+  sess.O.command_line = sess.page_history.at(sess.page_hx_idx);
   outlineProcessKeypress('\r');
-  O.command_line.clear();
+  sess.O.command_line.clear();
 
   /* return to NORMAL mode */
-  O.mode = NORMAL;
+  sess.O.mode = NORMAL;
   sess.page_history.erase(sess.page_history.begin() + sess.page_hx_idx);
   sess.page_hx_idx--;
   outlineShowMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
@@ -4220,7 +4114,7 @@ void navigate_cmd_hx(int direction) {
     else sess.cmd_hx_idx++;
   }
   outlineShowMessage(":%s", sess.command_history.at(sess.cmd_hx_idx).c_str());
-  O.command_line = sess.command_history.at(sess.cmd_hx_idx);
+  sess.O.command_line = sess.command_history.at(sess.cmd_hx_idx);
 }
 
 /*** outline operations ***/
@@ -4240,44 +4134,44 @@ void outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool com
 
   row.mark = false;
 
-  auto pos = O.rows.begin() + at;
-  O.rows.insert(pos, row);
+  auto pos = sess.O.rows.begin() + at;
+  sess.O.rows.insert(pos, row);
 }
 
 void outlineInsertChar(int c) {
 
-  if (O.rows.size() == 0) return;
+  if (sess.O.rows.size() == 0) return;
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
   if (row.title.empty()) row.title.push_back(c);
-  else row.title.insert(row.title.begin() + O.fc, c);
+  else row.title.insert(row.title.begin() + sess.O.fc, c);
   row.dirty = true;
-  O.fc++;
+  sess.O.fc++;
 }
 
 void outlineDelChar(void) {
 
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
-  if (O.rows.empty() || row.title.empty()) return;
+  if (sess.O.rows.empty() || row.title.empty()) return;
 
-  row.title.erase(row.title.begin() + O.fc);
+  row.title.erase(row.title.begin() + sess.O.fc);
   row.dirty = true;
 }
 
 void outlineBackspace(void) {
-  orow& row = O.rows.at(O.fr);
-  if (O.rows.empty() || row.title.empty() || O.fc == 0) return;
-  row.title.erase(row.title.begin() + O.fc - 1);
+  orow& row = sess.O.rows.at(sess.O.fr);
+  if (sess.O.rows.empty() || row.title.empty() || sess.O.fc == 0) return;
+  row.title.erase(row.title.begin() + sess.O.fc - 1);
   row.dirty = true;
-  O.fc--;
+  sess.O.fc--;
 }
 
 /*** file i/o ***/
 
 std::string outlineRowsToString() {
   std::string s = "";
-  for (auto i: O.rows) {
+  for (auto i: sess.O.rows) {
       s += i.title;
       s += '\n';
   }
@@ -4286,7 +4180,7 @@ std::string outlineRowsToString() {
 }
 
 void outlineSave(const std::string& fname) {
-  if (O.rows.empty()) return;
+  if (sess.O.rows.empty()) return;
 
   std::ofstream f;
   f.open(fname);
@@ -4419,11 +4313,11 @@ void displayFile(void) {
 
 void get_preview(int id) {
   std::stringstream query;
-  O.preview_rows.clear();
+  sess.O.preview_rows.clear();
   query << "SELECT note FROM task WHERE id = " << id;
   if (!db_query(S.db, query.str().c_str(), preview_callback, nullptr, &S.err_msg, __func__)) return;
 
-  if (O.taskview != BY_FIND) draw_preview();
+  if (sess.O.taskview != BY_FIND) draw_preview();
   else {
     word_positions.clear(); 
     get_search_positions(id);
@@ -4432,7 +4326,7 @@ void get_preview(int id) {
   //draw_preview();
 
   if (lm_browser) {
-    int folder_tid = get_folder_tid(O.rows.at(O.fr).id);
+    int folder_tid = get_folder_tid(sess.O.rows.at(sess.O.fr).id);
     if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
     else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
@@ -4489,7 +4383,7 @@ int preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
   std::string s;
   while (getline(snote, s, '\n')) {
     //snote will not contain the '\n'
-    O.preview_rows.push_back(s);
+    sess.O.preview_rows.push_back(s);
   }
   return 0;
 }
@@ -4531,7 +4425,7 @@ void draw_preview(void) {
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
                TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
-  if (O.preview_rows.empty()) {
+  if (sess.O.preview_rows.empty()) {
     ab.append(buf);
     ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
     ab.append(draw_preview_box(width, length));
@@ -4541,7 +4435,7 @@ void draw_preview(void) {
 
   ab.append(buf);
   ab.append("\x1b[48;5;235m");
-  ab.append(generateWWString(O.preview_rows, width, length, lf_ret));
+  ab.append(generateWWString(sess.O.preview_rows, width, length, lf_ret));
   ab.append(draw_preview_box(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
@@ -4642,7 +4536,7 @@ void draw_search_preview(void) {
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
                TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
-  if (O.preview_rows.empty()) {
+  if (sess.O.preview_rows.empty()) {
     ab.append(buf);
     ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
     ab.append(draw_preview_box(width, length));
@@ -4651,7 +4545,7 @@ void draw_search_preview(void) {
   }
   ab.append(buf);
   ab.append("\x1b[48;5;235m");
-  std::string t = generateWWString(O.preview_rows, width, length, "\f");
+  std::string t = generateWWString(sess.O.preview_rows, width, length, "\f");
   //ab.append(generateWWString(O.preview_rows, width, length, lf_ret));
   highlight_terms_string(t);
 
@@ -4751,44 +4645,45 @@ std::string draw_preview_box(int width, int length) {
 // should also just be editor command
 void open_in_vim(void){
   std::string filename;
-  if (get_folder_tid(O.rows.at(O.fr).id) != 18) filename = "vim_file.txt";
+  if (get_folder_tid(sess.O.rows.at(sess.O.fr).id) != 18) filename = "vim_file.txt";
   else filename = "vim_file.cpp";
-  p->editorSaveNoteToFile(filename);
+  sess.p->editorSaveNoteToFile(filename);
   std::stringstream s;
   s << "vim " << filename << " >/dev/tty";
   system(s.str().c_str());
-  p->editorReadFileIntoNote(filename);
+  sess.p->editorReadFileIntoNote(filename);
 }
 
+/*************************************start outline commands **********************************************/
 // positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
 void outlineScroll(void) {
 
   int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
-  if(O.rows.empty()) {
-      O.fr = O.fc = O.coloff = O.cx = O.cy = 0;
+  if(sess.O.rows.empty()) {
+      sess.O.fr = sess.O.fc = sess.O.coloff = sess.O.cx = sess.O.cy = 0;
       return;
   }
 
-  if (O.fr > sess.textlines + O.rowoff - 1) {
-    O.rowoff =  O.fr - sess.textlines + 1;
+  if (sess.O.fr > sess.textlines + sess.O.rowoff - 1) {
+    sess.O.rowoff =  sess.O.fr - sess.textlines + 1;
   }
 
-  if (O.fr < O.rowoff) {
-    O.rowoff =  O.fr;
+  if (sess.O.fr < sess.O.rowoff) {
+    sess.O.rowoff =  sess.O.fr;
   }
 
-  if (O.fc > titlecols + O.coloff - 1) {
-    O.coloff =  O.fc - titlecols + 1;
+  if (sess.O.fc > titlecols + sess.O.coloff - 1) {
+    sess.O.coloff =  sess.O.fc - titlecols + 1;
   }
 
-  if (O.fc < O.coloff) {
-    O.coloff =  O.fc;
+  if (sess.O.fc < sess.O.coloff) {
+    sess.O.coloff =  sess.O.fc;
   }
 
 
-  O.cx = O.fc - O.coloff;
-  O.cy = O.fr - O.rowoff;
+  sess.O.cx = sess.O.fc - sess.O.coloff;
+  sess.O.cy = sess.O.fr - sess.O.rowoff;
 }
 
 void outlineDrawRows(std::string& ab) {
@@ -4796,20 +4691,20 @@ void outlineDrawRows(std::string& ab) {
   char buf[32];
   int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
-  if (O.rows.empty()) return;
+  if (sess.O.rows.empty()) return;
 
   unsigned int y;
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
 
   for (y = 0; y < sess.textlines; y++) {
-    unsigned int fr = y + O.rowoff;
-    if (fr > O.rows.size() - 1) return;
-    orow& row = O.rows[fr];
+    unsigned int fr = y + sess.O.rowoff;
+    if (fr > sess.O.rows.size() - 1) return;
+    orow& row = sess.O.rows[fr];
 
     // if a line is long you only draw what fits on the screen
     //below solves problem when deleting chars from a scrolled long line
-    unsigned int len = (fr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
+    unsigned int len = (fr == sess.O.fr) ? row.title.size() - sess.O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > titlecols) len = titlecols;
 
     if (row.star) {
@@ -4820,28 +4715,28 @@ void outlineDrawRows(std::string& ab) {
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
     //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
     else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
-    if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
+    if (fr == sess.O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
     //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
-    if (marked_entries.find(row.id) != marked_entries.end()) ab.append("\x1b[46m", 5);
+    if (sess.O.marked_entries.find(row.id) != sess.O.marked_entries.end()) ab.append("\x1b[46m", 5);
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
-    if (O.mode == VISUAL && fr == O.fr) {
+    if (sess.O.mode == VISUAL && fr == sess.O.fr) {
 
        // below in case O.highlight[1] < O.highlight[0]
-      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
+      k = (sess.O.highlight[1] > sess.O.highlight[0]) ? 1 : 0;
       j =!k;
-      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append(&(row.title[sess.O.coloff]), sess.O.highlight[j] - sess.O.coloff);
       ab.append("\x1b[48;5;242m", 11);
-      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
-                                             - O.highlight[j]);
+      ab.append(&(row.title[sess.O.highlight[j]]), sess.O.highlight[k]
+                                             - sess.O.highlight[j]);
       ab.append("\x1b[49m", 5); // return background to normal
-      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+      ab.append(&(row.title[sess.O.highlight[k]]), len - sess.O.highlight[k] + sess.O.coloff);
 
     } else {
         // current row is only row that is scrolled if O.coloff != 0
-        ab.append(&row.title[((fr == O.fr) ? O.coloff : 0)], len);
+        ab.append(&row.title[((fr == sess.O.fr) ? sess.O.coloff : 0)], len);
     }
 
     // the spaces make it look like the whole row is highlighted
@@ -4860,7 +4755,7 @@ void outlineDrawRows(std::string& ab) {
 
 void outlineDrawFilters(std::string& ab) {
 
-  if (O.rows.empty()) return;
+  if (sess.O.rows.empty()) return;
 
   char lf_ret[16];
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
@@ -4871,10 +4766,10 @@ void outlineDrawFilters(std::string& ab) {
   ab.append(buf); 
 
   for (int y = 0; y < sess.textlines; y++) {
-    unsigned int fr = y + O.rowoff;
-    if (fr > O.rows.size() - 1) return;
+    unsigned int fr = y + sess.O.rowoff;
+    if (fr > sess.O.rows.size() - 1) return;
 
-    orow& row = O.rows[fr];
+    orow& row = sess.O.rows[fr];
 
     size_t len = (row.title.size() > titlecols) ? titlecols : row.title.size();
 
@@ -4883,7 +4778,7 @@ void outlineDrawFilters(std::string& ab) {
       ab.append("\x1b[1;36m");
     }  
     //? do this after everything drawn
-    if (fr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
+    if (fr == sess.O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
 
     ab.append(&row.title[0], len);
     int spaces = titlecols - len; //needs to change but reveals stuff being written
@@ -4896,7 +4791,7 @@ void outlineDrawFilters(std::string& ab) {
 
 void outlineDrawSearchRows(std::string& ab) {
 
-  if (O.rows.empty()) return;
+  if (sess.O.rows.empty()) return;
 
   char buf[32];
   unsigned int y;
@@ -4907,9 +4802,9 @@ void outlineDrawSearchRows(std::string& ab) {
   int spaces;
 
   for (y = 0; y < sess.textlines; y++) {
-    int fr = y + O.rowoff;
-    if (fr > static_cast<int>(O.rows.size()) - 1) return;
-    orow& row = O.rows[fr];
+    int fr = y + sess.O.rowoff;
+    if (fr > static_cast<int>(sess.O.rows.size()) - 1) return;
+    orow& row = sess.O.rows[fr];
     int len;
 
     //if (row.star) ab.append("\x1b[1m"); //bold
@@ -4950,11 +4845,13 @@ void outlineDrawSearchRows(std::string& ab) {
   }
 }
 
+/*
 void outlineRefreshAllEditors(void) {
   //may be a redundant partial erase in each editorRefreshScreen
   for (auto e : sess.editors) e->editorRefreshScreen(true);
     
 }
+*/
 
 void outlineDrawStatusBar(void) {
 
@@ -4980,26 +4877,26 @@ void outlineDrawStatusBar(void) {
   char status[300], status0[300], rstatus[80];
 
   std::string s;
-  switch (O.view) {
+  switch (sess.O.view) {
     case TASK:
-      switch (O.taskview) {
+      switch (sess.O.taskview) {
         case BY_FIND:
           s =  "search"; 
           break;
         case BY_FOLDER:
-          s = O.folder + "[f]";
+          s = sess.O.folder + "[f]";
           break;
         case BY_CONTEXT:
-          s = O.context + "[c]";
+          s = sess.O.context + "[c]";
           break;
         case BY_RECENT:
           s = "recent";
           break;
         case BY_JOIN:
-          s = O.context + "[c] + " + O.folder + "[f]";
+          s = sess.O.context + "[c] + " + sess.O.folder + "[f]";
           break;
         case BY_KEYWORD:
-          s = O.keyword + "[k]";
+          s = sess.O.keyword + "[k]";
           break;
       }    
       break;
@@ -5014,47 +4911,47 @@ void outlineDrawStatusBar(void) {
       break;
   }
 
-  if (!O.rows.empty()) {
+  if (!sess.O.rows.empty()) {
 
-    orow& row = O.rows.at(O.fr);
+    orow& row = sess.O.rows.at(sess.O.fr);
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
     
     //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
 
     // needs to be here because O.rows could be empty
-    std::string keywords = (O.view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
+    std::string keywords = (sess.O.view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
 
     // because video is reversted [42 sets text to green and 49 undoes it
     // also [0;35;7m -> because of 7m it reverses background and foreground
     // I think the [0;7m is revert to normal and reverse video
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (sess.O.taskview == BY_FIND)  ? " - " : "",
+                              (sess.O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, sess.O.fr + 1, sess.O.rows.size(), mode_text[sess.O.mode].c_str());
 
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %s  %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (sess.O.taskview == BY_FIND)  ? " - " : "",
+                              (sess.O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, sess.O.fr + 1, sess.O.rows.size(), mode_text[sess.O.mode].c_str());
 
   } else {
 
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (sess.O.taskview == BY_FIND)  ? " - " : "",
+                              (sess.O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, sess.O.rows.size(), mode_text[sess.O.mode].c_str());
     
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (sess.O.taskview == BY_FIND)  ? " - " : "",
+                              (sess.O.taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, sess.O.rows.size(), mode_text[sess.O.mode].c_str());
   }
 
   int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
@@ -5080,32 +4977,32 @@ void return_cursor() {
 
   if (sess.editor_mode) {
   // the lines below position the cursor where it should go
-    if (p->mode != COMMAND_LINE){
+    if (sess.p->mode != COMMAND_LINE){
       //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + p->top_margin, p->cx + p->left_margin + p->left_margin_offset + 1); //03022019
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", sess.p->cy + sess.p->top_margin, sess.p->cx + sess.p->left_margin + sess.p->left_margin_offset + 1); //03022019
       ab.append(buf, strlen(buf));
     } else { //E.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + TOP_MARGIN + 2, p->command_line.size() + sess.divider + 2); 
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + TOP_MARGIN + 2, sess.p->command_line.size() + sess.divider + 2); 
       ab.append(buf, strlen(buf));
       ab.append("\x1b[?25h"); // show cursor
     }
   } else {
-    if (O.mode == ADD_CHANGE_FILTER){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, sess.divider + 1); 
+    if (sess.O.mode == ADD_CHANGE_FILTER){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", sess.O.cy + TOP_MARGIN + 1, sess.divider + 1); 
       ab.append(buf, strlen(buf));
-    } else if (O.mode == FIND) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
+    } else if (sess.O.mode == FIND) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", sess.O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
       ab.append(buf, strlen(buf));
-    } else if (O.mode != COMMAND_LINE) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN);
+    } else if (sess.O.mode != COMMAND_LINE) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", sess.O.cy + TOP_MARGIN + 1, LEFT_MARGIN);
       ab.append(buf, strlen(buf));
       // below restores the cursor position based on O.cx and O.cy + margin
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + LEFT_MARGIN + 1); /// ****
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", sess.O.cy + TOP_MARGIN + 1, sess.O.cx + LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
     } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + 2 + TOP_MARGIN, sess.O.command_line.size() + LEFT_MARGIN); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
     }
@@ -5115,6 +5012,7 @@ void return_cursor() {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+/*
 void outlineDrawMessageBar(std::string& ab) {
   std::stringstream buf;
 
@@ -5131,6 +5029,7 @@ void outlineDrawMessageBar(std::string& ab) {
   if (msglen > sess.divider) msglen = sess.divider;
   ab.append(O.message, msglen);
 }
+*/
 
 void outlineRefreshScreen(void) {
 
@@ -5144,7 +5043,7 @@ void outlineRefreshScreen(void) {
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
   //if (O.view != KEYWORD) {
-  if (O.mode != ADD_CHANGE_FILTER) {
+  if (sess.O.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
       titlecols + LEFT_MARGIN + 17); 
@@ -5155,8 +5054,8 @@ void outlineRefreshScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-  if (O.mode == FIND) outlineDrawSearchRows(ab);
-  else if (O.mode == ADD_CHANGE_FILTER) outlineDrawFilters(ab);
+  if (sess.O.mode == FIND) outlineDrawSearchRows(ab);
+  else if (sess.O.mode == ADD_CHANGE_FILTER) outlineDrawFilters(ab);
   else  outlineDrawRows(ab);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -5213,50 +5112,50 @@ void outlineShowMessage2(const std::string &s) {
 //OutlineScroll worries about moving cursor beyond the screen
 void outlineMoveCursor(int key) {
 
-  if (O.rows.empty()) return;
+  if (sess.O.rows.empty()) return;
 
   switch (key) {
     case ARROW_LEFT:
     case 'h':
-      if (O.fc > 0) O.fc--; 
+      if (sess.O.fc > 0) sess.O.fc--; 
       break;
 
     case ARROW_RIGHT:
     case 'l':
     {
-      O.fc++;
+      sess.O.fc++;
       break;
     }
     case ARROW_UP:
     case 'k':
-      if (O.fr > 0) O.fr--; 
-      O.fc = O.coloff = 0; 
+      if (sess.O.fr > 0) sess.O.fr--; 
+      sess.O.fc = sess.O.coloff = 0; 
 
-      if (O.view == TASK) {
-        get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
+      if (sess.O.view == TASK) {
+        get_preview(sess.O.rows.at(sess.O.fr).id); //if id == -1 does not try to retrieve note
 
-      } else display_container_info(O.rows.at(O.fr).id);
+      } else display_container_info(sess.O.rows.at(sess.O.fr).id);
       break;
 
     case ARROW_DOWN:
     case 'j':
-      if (O.fr < O.rows.size() - 1) O.fr++;
-      O.fc = O.coloff = 0;
-      if (O.view == TASK) {
-        get_preview(O.rows.at(O.fr).id); //if id == -1 does not try to retrieve note
-      } else display_container_info(O.rows.at(O.fr).id);
+      if (sess.O.fr < sess.O.rows.size() - 1) sess.O.fr++;
+      sess.O.fc = sess.O.coloff = 0;
+      if (sess.O.view == TASK) {
+        get_preview(sess.O.rows.at(sess.O.fr).id); //if id == -1 does not try to retrieve note
+      } else display_container_info(sess.O.rows.at(sess.O.fr).id);
       break;
   }
 
-  orow& row = O.rows.at(O.fr);
-  if (O.fc >= row.title.size()) O.fc = row.title.size() - (O.mode != INSERT);
-  if (row.title.empty()) O.fc = 0;
+  orow& row = sess.O.rows.at(sess.O.fr);
+  if (sess.O.fc >= row.title.size()) sess.O.fc = row.title.size() - (sess.O.mode != INSERT);
+  if (row.title.empty()) sess.O.fc = 0;
 }
 
 std::string outlinePreviewRowsToString(void) {
 
   std::string z = "";
-  for (auto i: O.preview_rows) {
+  for (auto i: sess.O.preview_rows) {
       z += i;
       z += '\n';
   }
@@ -5264,6 +5163,7 @@ std::string outlinePreviewRowsToString(void) {
   return z;
 }
 
+/*************************************(maybe end outline commands **********************************************/
 // depends on readKey()
 //void outlineProcessKeypress(void) {
 void outlineProcessKeypress(int c) { //prototype has int = 0  
@@ -5273,7 +5173,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
   //int c = readKey();
   c = (!c) ? readKey() : c;
-  switch (O.mode) {
+  switch (sess.O.mode) {
   size_t n;
   //switch (int c = readKey(); O.mode)  //init statement for if/switch
 
@@ -5281,15 +5181,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       switch(c) {
         case ':':
-          O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
-          O.command_line.clear();
+          sess.O.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
+          sess.O.command_line.clear();
           outlineShowMessage(":");
-          O.mode = COMMAND_LINE;
+          sess.O.mode = COMMAND_LINE;
           return;
 
         case '\x1b':
-          O.command[0] = '\0';
-          O.repeat = 0;
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
           return;
 
         case 'i':
@@ -5298,20 +5198,20 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case 'A':
         case 's':
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
-          O.mode = INSERT;
-          O.command[0] = '\0';
-          O.repeat = 0;
+          sess.O.mode = INSERT;
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
           outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
         case 'O': //Same as C_new in COMMAND_LINE mode
           outlineInsertRow(0, "", true, false, false, BASE_DATE);
-          O.fc = O.fr = O.rowoff = 0;
-          O.command[0] = '\0';
-          O.repeat = 0;
+          sess.O.fc = sess.O.fr = sess.O.rowoff = 0;
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
           outlineShowMessage("\x1b[1m-- INSERT --\x1b[0m");
           eraseRightScreen(); //erases the note area
-          O.mode = INSERT;
+          sess.O.mode = INSERT;
           return;
       }
 
@@ -5322,7 +5222,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
-          if (O.view == TASK)  {
+          if (sess.O.view == TASK)  {
             update_title();
             //updating lm_browser file because title changed
             // moved to update_title which should be update_title
@@ -5330,22 +5230,22 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
              // if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
               ////else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
             //}   
-          } else if (O.view == CONTEXT || O.view == FOLDER) update_container();
-          else if (O.view == KEYWORD) update_keyword();
-          O.command[0] = '\0'; //11-26-2019
-          O.mode = NORMAL;
-          if (O.fc > 0) O.fc--;
+          } else if (sess.O.view == CONTEXT || sess.O.view == FOLDER) update_container();
+          else if (sess.O.view == KEYWORD) update_keyword();
+          sess.O.command[0] = '\0'; //11-26-2019
+          sess.O.mode = NORMAL;
+          if (sess.O.fc > 0) sess.O.fc--;
           //outlineShowMessage("");
           return;
 
         case HOME_KEY:
-          O.fc = 0;
+          sess.O.fc = 0;
           return;
 
         case END_KEY:
           {
-            orow& row = O.rows.at(O.fr);
-          if (row.title.size()) O.fc = row.title.size(); // mimics vim to remove - 1;
+            orow& row = sess.O.rows.at(sess.O.fr);
+          if (row.title.size()) sess.O.fc = row.title.size(); // mimics vim to remove - 1;
           return;
           }
 
@@ -5372,9 +5272,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
 
         case '\x1b':
-          O.command[0] = '\0';
-          O.mode = NORMAL;
-          if (O.fc > 0) O.fc--;
+          sess.O.command[0] = '\0';
+          sess.O.mode = NORMAL;
+          if (sess.O.fc > 0) sess.O.fc--;
           outlineShowMessage("");
           return;
 
@@ -5388,39 +5288,39 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case NORMAL:  
 
       if (c == '\x1b') {
-        if (O.view == TASK) get_preview(O.rows.at(O.fr).id); //get out of display_item_info
+        if (sess.O.view == TASK) get_preview(sess.O.rows.at(sess.O.fr).id); //get out of display_item_info
         outlineShowMessage("");
-        O.command[0] = '\0';
-        O.repeat = 0;
+        sess.O.command[0] = '\0';
+        sess.O.repeat = 0;
         return;
       }
  
       /*leading digit is a multiplier*/
       //if (isdigit(c))  //equiv to if (c > 47 && c < 58)
 
-      if ((c > 47 && c < 58) && (strlen(O.command) == 0)) {
+      if ((c > 47 && c < 58) && (strlen(sess.O.command) == 0)) {
 
-        if (O.repeat == 0 && c == 48) {
+        if (sess.O.repeat == 0 && c == 48) {
 
-        } else if (O.repeat == 0) {
-          O.repeat = c - 48;
+        } else if (sess.O.repeat == 0) {
+          sess.O.repeat = c - 48;
           return;
         }  else {
-          O.repeat = O.repeat*10 + c - 48;
+          sess.O.repeat = sess.O.repeat*10 + c - 48;
           return;
         }
       }
 
-      if (O.repeat == 0) O.repeat = 1;
+      if (sess.O.repeat == 0) sess.O.repeat = 1;
 
-      n = strlen(O.command);
-      O.command[n] = c;
-      O.command[n+1] = '\0';
+      n = strlen(sess.O.command);
+      sess.O.command[n] = c;
+      sess.O.command[n+1] = '\0';
 
-      if (n_lookup.count(O.command)) {
-        n_lookup.at(O.command)();
-        O.command[0] = '\0';
-        O.repeat = 0;
+      if (n_lookup.count(sess.O.command)) {
+        n_lookup.at(sess.O.command)();
+        sess.O.command[0] = '\0';
+        sess.O.repeat = 0;
         return;
       }
 
@@ -5430,16 +5330,16 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       // needs to be here because needs to pick up repeat
       //Arrows + h,j,k,l
       if (navigation.count(c)) {
-          for (int j = 0;j < O.repeat;j++) outlineMoveCursor(c);
-          O.command[0] = '\0'; 
-          O.repeat = 0;
+          for (int j = 0;j < sess.O.repeat;j++) outlineMoveCursor(c);
+          sess.O.command[0] = '\0'; 
+          sess.O.repeat = 0;
           return;
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
         navigate_page_hx(c);
-        O.command[0] = '\0';
-        O.repeat = 0;
+        sess.O.command[0] = '\0';
+        sess.O.repeat = 0;
         return;
       }
         
@@ -5448,7 +5348,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case COMMAND_LINE:
 
       if (c == '\x1b') {
-          O.mode = NORMAL;
+          sess.O.mode = NORMAL;
           outlineShowMessage(""); 
           return;
       }
@@ -5459,8 +5359,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       }  
 
       if (c == '\r') {
-        std::size_t pos = O.command_line.find(' ');
-        std::string cmd = O.command_line.substr(0, pos);
+        std::size_t pos = sess.O.command_line.find(' ');
+        std::string cmd = sess.O.command_line.substr(0, pos);
         if (cmd_lookup.count(cmd)) {
           if (pos == std::string::npos) pos = 0;
           cmd_lookup.at(cmd)(pos);
@@ -5468,17 +5368,17 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         }
 
         outlineShowMessage("\x1b[41mNot an outline command: %s\x1b[0m", cmd.c_str());
-        O.mode = NORMAL;
+        sess.O.mode = NORMAL;
         return;
       }
 
       if (c == DEL_KEY || c == BACKSPACE) {
-        if (!O.command_line.empty()) O.command_line.pop_back();
+        if (!sess.O.command_line.empty()) sess.O.command_line.pop_back();
       } else {
-        O.command_line.push_back(c);
+        sess.O.command_line.push_back(c);
       }
 
-      outlineShowMessage(":%s", O.command_line.c_str());
+      outlineShowMessage(":%s", sess.O.command_line.c_str());
       return; //end of case COMMAND_LINE
 
     case FIND:  
@@ -5487,10 +5387,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case PAGE_UP:
         case PAGE_DOWN:
           if (c == PAGE_UP) {
-            O.fr = (sess.textlines > O.fr) ? 0 : O.fr - sess.textlines; //O.fr and sess.textlines are unsigned ints
+            sess.O.fr = (sess.textlines > sess.O.fr) ? 0 : sess.O.fr - sess.textlines; //O.fr and sess.textlines are unsigned ints
           } else if (c == PAGE_DOWN) {
-             O.fr += sess.textlines;
-             if (O.fr > O.rows.size() - 1) O.fr = O.rows.size() - 1;
+             sess.O.fr += sess.textlines;
+             if (sess.O.fr > sess.O.rows.size() - 1) sess.O.fr = sess.O.rows.size() - 1;
           }
           return;
 
@@ -5506,15 +5406,15 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         //TAB and SHIFT_TAB moves from FIND to OUTLINE NORMAL mode but SHIFT_TAB gets back
         case '\t':  
         case SHIFT_TAB:  
-          O.fc = 0; 
-          O.mode = NORMAL;
-          get_preview(O.rows.at(O.fr).id); //only needed if previous comand was 'i'
+          sess.O.fc = 0; 
+          sess.O.mode = NORMAL;
+          get_preview(sess.O.rows.at(sess.O.fr).id); //only needed if previous comand was 'i'
           outlineShowMessage("");
           return;
 
         default:
-          O.mode = NORMAL;
-          O.command[0] = '\0'; 
+          sess.O.mode = NORMAL;
+          sess.O.command[0] = '\0'; 
           outlineProcessKeypress(c); 
           //if (c < 33 || c > 127) outlineShowMessage("<%d> doesn't do anything in FIND mode", c);
           //else outlineShowMessage("<%c> doesn't do anything in FIND mode", c);
@@ -5534,40 +5434,40 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         //case 'k':
         case 'l':
           outlineMoveCursor(c);
-          O.highlight[1] = O.fc; //this needs to be getFileCol
+          sess.O.highlight[1] = sess.O.fc; //this needs to be getFileCol
           return;
   
         case 'x':
-          O.repeat = abs(O.highlight[1] - O.highlight[0]) + 1;
+          sess.O.repeat = abs(sess.O.highlight[1] - sess.O.highlight[0]) + 1;
           outlineYankString(); //reportedly segfaults on the editor side
 
           // the delete below requires positioning the cursor
-          O.fc = (O.highlight[1] > O.highlight[0]) ? O.highlight[0] : O.highlight[1];
+          sess.O.fc = (sess.O.highlight[1] > sess.O.highlight[0]) ? sess.O.highlight[0] : sess.O.highlight[1];
 
-          for (int i = 0; i < O.repeat; i++) {
+          for (int i = 0; i < sess.O.repeat; i++) {
             outlineDelChar(); //uses editorDeleteChar2! on editor side
           }
-          if (O.fc) O.fc--; 
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.mode = 0;
+          if (sess.O.fc) sess.O.fc--; 
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
+          sess.O.mode = 0;
           outlineShowMessage("");
           return;
   
         case 'y':  
-          O.repeat = O.highlight[1] - O.highlight[0] + 1;
-          O.fc = O.highlight[0];
+          sess.O.repeat = sess.O.highlight[1] - sess.O.highlight[0] + 1;
+          sess.O.fc = sess.O.highlight[0];
           outlineYankString();
-          O.command[0] = '\0';
-          O.repeat = 0;
-          O.mode = 0;
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
+          sess.O.mode = 0;
           outlineShowMessage("");
           return;
   
         case '\x1b':
-          O.mode = NORMAL;
-          O.command[0] = '\0';
-          O.repeat = 0;
+          sess.O.mode = NORMAL;
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
           outlineShowMessage("");
           return;
   
@@ -5579,23 +5479,23 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
     case REPLACE: 
 
-      if (O.repeat == 0) O.repeat = 1; //10062020
+      if (sess.O.repeat == 0) sess.O.repeat = 1; //10062020
 
       if (c == '\x1b') {
-        O.command[0] = '\0';
-        O.repeat = 0;
-        O.mode = NORMAL;
+        sess.O.command[0] = '\0';
+        sess.O.repeat = 0;
+        sess.O.mode = NORMAL;
         return;
       }
 
-      for (int i = 0; i < O.repeat; i++) {
+      for (int i = 0; i < sess.O.repeat; i++) {
         outlineDelChar();
         outlineInsertChar(c);
       }
 
-      O.repeat = 0;
-      O.command[0] = '\0';
-      O.mode = NORMAL;
+      sess.O.repeat = 0;
+      sess.O.command[0] = '\0';
+      sess.O.mode = NORMAL;
 
       return; //////// end of outer case REPLACE
 
@@ -5605,18 +5505,18 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case '\x1b':
           {
-          O.mode = COMMAND_LINE;
+          sess.O.mode = COMMAND_LINE;
           size_t temp = sess.page_hx_idx;  
           outlineShowMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
-          O.command_line = sess.page_history.at(sess.page_hx_idx);
+          sess.O.command_line = sess.page_history.at(sess.page_hx_idx);
           outlineProcessKeypress('\r');
-          O.mode = NORMAL;
-          O.command[0] = '\0';
-          O.command_line.clear();
+          sess.O.mode = NORMAL;
+          sess.O.command[0] = '\0';
+          sess.O.command_line.clear();
           sess.page_history.pop_back();
           sess.page_hx_idx = temp;
-          O.repeat = 0;
-          O.current_task_id = -1; //not sure this is right
+          sess.O.repeat = 0;
+          sess.O.current_task_id = -1; //not sure this is right
           }
           return;
 
@@ -5626,29 +5526,29 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         // maybe make update_task_context(int, int)
         case '\r':
           {
-          orow& row = O.rows.at(O.fr); //currently highlighted keyword
-          if (marked_entries.empty()) {
-            switch (O.view) {
+          orow& row = sess.O.rows.at(sess.O.fr); //currently highlighted keyword
+          if (sess.O.marked_entries.empty()) {
+            switch (sess.O.view) {
               case KEYWORD:
-                add_task_keyword(row.id, O.current_task_id);
+                add_task_keyword(row.id, sess.O.current_task_id);
                 outlineShowMessage("No tasks were marked so added keyword %s to current task",
                                    row.title.c_str());
                 break;
               case FOLDER:
-                update_task_folder(row.title, O.current_task_id);
+                update_task_folder(row.title, sess.O.current_task_id);
                 outlineShowMessage("No tasks were marked so current task had folder changed to %s",
                                    row.title.c_str());
                 break;
               case CONTEXT:
-                update_task_context(row.title, O.current_task_id);
+                update_task_context(row.title, sess.O.current_task_id);
                 outlineShowMessage("No tasks were marked so current task had context changed to %s",
                                    row.title.c_str());
                 break;
             }
           } else {
-            for (const auto& task_id : marked_entries) {
+            for (const auto& task_id : sess.O.marked_entries) {
               //add_task_keyword(row.id, task_id);
-              switch (O.view) {
+              switch (sess.O.view) {
                 case KEYWORD:
                   add_task_keyword(row.id, task_id);
                   outlineShowMessage("Marked tasks had keyword %s added",
@@ -5669,7 +5569,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
           }
 
-          O.command[0] = '\0'; //might not be necessary
+          sess.O.command[0] = '\0'; //might not be necessary
           return;
 
         case ARROW_UP:
@@ -5716,19 +5616,19 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
         case ':':
           outlineShowMessage(":");
-          O.command[0] = '\0';
-          O.command_line.clear();
+          sess.O.command[0] = '\0';
+          sess.O.command_line.clear();
           //O.last_mode was set when entering file mode
-          O.mode = COMMAND_LINE;
+          sess.O.mode = COMMAND_LINE;
           return;
 
         case '\x1b':
-          O.mode = O.last_mode;
+          sess.O.mode = sess.O.last_mode;
           eraseRightScreen();
-          if (O.view == TASK) get_preview(O.rows.at(O.fr).id);
-          else display_container_info(O.rows.at(O.fr).id);
-          O.command[0] = '\0';
-          O.repeat = 0;
+          if (sess.O.view == TASK) get_preview(sess.O.rows.at(sess.O.fr).id);
+          else display_container_info(sess.O.rows.at(sess.O.fr).id);
+          sess.O.command[0] = '\0';
+          sess.O.repeat = 0;
           outlineShowMessage("");
           return;
       }
@@ -5799,12 +5699,12 @@ void synchronize(int report_only) { //using 1 or 0
 }
 
 int get_id(void) { 
-  return O.rows.at(O.fr).id;
+  return sess.O.rows.at(sess.O.fr).id;
 }
 
 void outlineChangeCase() {
-  orow& row = O.rows.at(O.fr);
-  char d = row.title.at(O.fc);
+  orow& row = sess.O.rows.at(sess.O.fr);
+  char d = row.title.at(sess.O.fc);
   if (d < 91 && d > 64) d = d + 32;
   else if (d > 96 && d < 123) d = d - 32;
   else {
@@ -5829,37 +5729,37 @@ void outlineYankLine(int n){
 */
 
 void outlineYankString() {
-  orow& row = O.rows.at(O.fr);
-  O.string_buffer.clear();
+  orow& row = sess.O.rows.at(sess.O.fr);
+  sess.O.string_buffer.clear();
 
-  std::string::const_iterator first = row.title.begin() + O.highlight[0];
-  std::string::const_iterator last = row.title.begin() + O.highlight[1];
-  O.string_buffer = std::string(first, last);
+  std::string::const_iterator first = row.title.begin() + sess.O.highlight[0];
+  std::string::const_iterator last = row.title.begin() + sess.O.highlight[1];
+  sess.O.string_buffer = std::string(first, last);
 }
 
 void outlinePasteString(void) {
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
-  if (O.rows.empty() || O.string_buffer.empty()) return;
+  if (sess.O.rows.empty() || sess.O.string_buffer.empty()) return;
 
-  row.title.insert(row.title.begin() + O.fc, O.string_buffer.begin(), O.string_buffer.end());
-  O.fc += O.string_buffer.size();
+  row.title.insert(row.title.begin() + sess.O.fc, sess.O.string_buffer.begin(), sess.O.string_buffer.end());
+  sess.O.fc += sess.O.string_buffer.size();
   row.dirty = true;
 }
 
 void outlineDelWord() {
 
-  orow& row = O.rows.at(O.fr);
-  if (row.title[O.fc] < 48) return;
+  orow& row = sess.O.rows.at(sess.O.fr);
+  if (row.title[sess.O.fc] < 48) return;
 
   int i,j,x;
-  for (i = O.fc; i > -1; i--){
+  for (i = sess.O.fc; i > -1; i--){
     if (row.title[i] < 48) break;
     }
-  for (j = O.fc; j < row.title.size() ; j++) {
+  for (j = sess.O.fc; j < row.title.size() ; j++) {
     if (row.title[j] < 48) break;
   }
-  O.fc = i+1;
+  sess.O.fc = i+1;
 
   for (x = 0 ; x < j-i; x++) {
       outlineDelChar();
@@ -5869,89 +5769,89 @@ void outlineDelWord() {
 }
 
 void outlineDeleteToEndOfLine(void) {
-  orow& row = O.rows.at(O.fr);
-  row.title.resize(O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  orow& row = sess.O.rows.at(sess.O.fr);
+  row.title.resize(sess.O.fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
   row.dirty = true;
   }
 
 void outlineMoveCursorEOL() {
 
-  O.fc = O.rows.at(O.fr).title.size() - 1;  //if O.cx > O.titlecols will be adjusted in EditorScroll
+  sess.O.fc = sess.O.rows.at(sess.O.fr).title.size() - 1;  //if O.cx > O.titlecols will be adjusted in EditorScroll
 }
 
 // not same as 'e' but moves to end of word or stays put if already on end of word
 void outlineMoveEndWord2() {
   int j;
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
-  for (j = O.fc + 1; j < row.title.size() ; j++) {
+  for (j = sess.O.fc + 1; j < row.title.size() ; j++) {
     if (row.title[j] < 48) break;
   }
-  O.fc = j - 1;
+  sess.O.fc = j - 1;
 }
 
 //void outlineMoveNextWord() {
 void w_N(void) {
   int j;
-  orow& row = O.rows.at(O.fr);
+  orow& row = sess.O.rows.at(sess.O.fr);
 
-  for (j = O.fc + 1; j < row.title.size(); j++) {
+  for (j = sess.O.fc + 1; j < row.title.size(); j++) {
     if (row.title[j] < 48) break;
   }
 
-  O.fc = j - 1;
+  sess.O.fc = j - 1;
 
-  for (j = O.fc + 1; j < row.title.size() ; j++) { //+1
+  for (j = sess.O.fc + 1; j < row.title.size() ; j++) { //+1
     if (row.title[j] > 48) break;
   }
-  O.fc = j;
+  sess.O.fc = j;
 
-  O.command[0] = '\0';
-  O.repeat = 0;
+  sess.O.command[0] = '\0';
+  sess.O.repeat = 0;
 }
 
 void outlineMoveBeginningWord() {
-  orow& row = O.rows.at(O.fr);
-  if (O.fc == 0) return;
+  orow& row = sess.O.rows.at(sess.O.fr);
+  if (sess.O.fc == 0) return;
   for (;;) {
-    if (row.title[O.fc - 1] < 48) O.fc--;
+    if (row.title[sess.O.fc - 1] < 48) sess.O.fc--;
     else break;
-    if (O.fc == 0) return;
+    if (sess.O.fc == 0) return;
   }
   int i;
-  for (i = O.fc - 1; i > -1; i--){
+  for (i = sess.O.fc - 1; i > -1; i--){
     if (row.title[i] < 48) break;
   }
-  O.fc = i + 1;
+  sess.O.fc = i + 1;
 }
 
 void outlineMoveEndWord() {
-  orow& row = O.rows.at(O.fr);
-  if (O.fc == row.title.size() - 1) return;
+  orow& row = sess.O.rows.at(sess.O.fr);
+  if (sess.O.fc == row.title.size() - 1) return;
   for (;;) {
-    if (row.title[O.fc + 1] < 48) O.fc++;
+    if (row.title[sess.O.fc + 1] < 48) sess.O.fc++;
     else break;
-    if (O.fc == row.title.size() - 1) return;
+    if (sess.O.fc == row.title.size() - 1) return;
   }
   int j;
-  for (j = O.fc + 1; j < row.title.size() ; j++) {
+  for (j = sess.O.fc + 1; j < row.title.size() ; j++) {
     if (row.title[j] < 48) break;
   }
-  O.fc = j - 1;
+  sess.O.fc = j - 1;
 }
 
 void outlineGetWordUnderCursor(){
-  std::string& title = O.rows.at(O.fr).title;
-  if (title[O.fc] < 48) return;
+  std::string& title = sess.O.rows.at(sess.O.fr).title;
+  if (title[sess.O.fc] < 48) return;
 
   title_search_string.clear();
   int i,j,x;
 
-  for (i = O.fc - 1; i > -1; i--){
+  for (i = sess.O.fc - 1; i > -1; i--){
     if (title[i] < 48) break;
   }
 
-  for (j = O.fc + 1; j < title.size() ; j++) {
+  for (j = sess.O.fc + 1; j < title.size() ; j++) {
     if (title[j] < 48) break;
   }
 
@@ -5965,20 +5865,20 @@ void outlineFindNextWord() {
 
   int y, x;
   //y = O.fr;
-  y = (O.fr < O.rows.size() -1) ? O.fr + 1 : 0;
+  y = (sess.O.fr < sess.O.rows.size() -1) ? sess.O.fr + 1 : 0;
   //x = O.fc + 1; //in case sitting on beginning of the word
   x = 0; //you've advanced y since not worried about multiple same words in one title
-   for (unsigned int n=0; n < O.rows.size(); n++) {
-     std::string& title = O.rows.at(y).title;
+   for (unsigned int n=0; n < sess.O.rows.size(); n++) {
+     std::string& title = sess.O.rows.at(y).title;
      auto res = std::search(std::begin(title) + x, std::end(title), std::begin(title_search_string), std::end(title_search_string));
      if (res != std::end(title)) {
-         O.fr = y;
-         O.fc = res - title.begin();
+         sess.O.fr = y;
+         sess.O.fc = res - title.begin();
          break;
      }
      y++;
      x = 0;
-     if (y == O.rows.size()) y = 0;
+     if (y == sess.O.rows.size()) y = 0;
    }
 
     outlineShowMessage("x = %d; y = %d", x, y); 
@@ -5992,22 +5892,22 @@ bool editorProcessKeypress(void) {
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
-  switch (int c = readKey(); p->mode) {
+  switch (int c = readKey(); sess.p->mode) {
 
     case NO_ROWS:
 
       switch(c) {
 
         case '\x1b':
-          p->command[0] = '\0';
-          p->repeat = 0;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           return false;
 
         case ':':
-          p->mode = COMMAND_LINE;
-          p->command_line.clear();
-          p->command[0] = '\0';
-          p->editorSetMessage(":");
+          sess.p->mode = COMMAND_LINE;
+          sess.p->command_line.clear();
+          sess.p->command[0] = '\0';
+          sess.p->editorSetMessage(":");
           return false;
 
         case 'i':
@@ -6018,14 +5918,14 @@ bool editorProcessKeypress(void) {
         case 'O':
         case 'o':
           //p->editorInsertRow(0, std::string());
-          p->mode = INSERT;
-          p->last_command = "i"; //all the commands equiv to i
-          p->prev_fr = 0;
-          p->prev_fc = 0;
-          p->last_repeat = 1;
-          p->snapshot.clear();
-          p->snapshot.push_back("");
-          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          sess.p->mode = INSERT;
+          sess.p->last_command = "i"; //all the commands equiv to i
+          sess.p->prev_fr = 0;
+          sess.p->prev_fc = 0;
+          sess.p->last_repeat = 1;
+          sess.p->snapshot.clear();
+          sess.p->snapshot.push_back("");
+          sess.p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
           //p->command[0] = '\0';
           //p->repeat = 0;
           // ? p->redraw = true;
@@ -6040,54 +5940,54 @@ bool editorProcessKeypress(void) {
          */
 
         case CTRL_KEY('h'):
-          p->command[0] = '\0';
+          sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
             sess.editor_mode = false;
-            get_preview(O.rows.at(O.fr).id); 
+            get_preview(sess.O.rows.at(sess.O.fr).id); 
             return false;
           }
           {
-            if (p->is_subeditor) p = p->linked_editor;
+            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
             auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), p);
+            auto it = std::find(temp.begin(), temp.end(), sess.p);
             int index = std::distance(temp.begin(), it);
             Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
             if (index) {
-              p = temp[index - 1];
-              if (p->rows.empty()) p->mode = NO_ROWS;
-              else p->mode = NORMAL;
+              sess.p = temp[index - 1];
+              if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+              else sess.p->mode = NORMAL;
               return false;
             } else {sess.editor_mode = false;
-              get_preview(O.rows.at(O.fr).id); // with change in while loop should not get overwritten
+              get_preview(sess.O.rows.at(sess.O.fr).id); // with change in while loop should not get overwritten
               return false;
             }
           }
       
         case  CTRL_KEY('l'):
-          p->command[0] = '\0';
+          sess.p->command[0] = '\0';
           {
-            if (p->is_subeditor) p = p->linked_editor;
+            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
             auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), p);
+            auto it = std::find(temp.begin(), temp.end(), sess.p);
             int index = std::distance(temp.begin(), it);
             Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
-            if (index < temp.size() - 1) p = temp[index + 1];
-            if (p->rows.empty()) p->mode = NO_ROWS;
-            else p->mode = NORMAL;
+            if (index < temp.size() - 1) sess.p = temp[index + 1];
+            if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+            else sess.p->mode = NORMAL;
           }
           return false;
 
         case CTRL_KEY('k'):  
         case CTRL_KEY('j'):  
           Editor::editorSetMessage("Editor <-> subEditor");
-          p->command[0] = '\0';
-          if (p->linked_editor) p=p->linked_editor;
+          sess.p->command[0] = '\0';
+          if (sess.p->linked_editor) sess.p = sess.p->linked_editor;
           else return false;
 
-          if (p->rows.empty()) p->mode = NO_ROWS;
-          else p->mode = NORMAL;
+          if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+          else sess.p->mode = NORMAL;
 
           return false;
       }
@@ -6099,57 +5999,57 @@ bool editorProcessKeypress(void) {
       switch (c) {
 
         case '\r':
-          p->editorInsertReturn();
-          p->last_typed += c;
+          sess.p->editorInsertReturn();
+          sess.p->last_typed += c;
           return true;
 
         // not sure this is in use
         case CTRL_KEY('s'):
-          p->editorSaveNoteToFile("lm_temp");
+          sess.p->editorSaveNoteToFile("lm_temp");
           return false;
 
         case HOME_KEY:
-          p->editorMoveCursorBOL();
+          sess.p->editorMoveCursorBOL();
           return false;
 
         case END_KEY:
-          p->editorMoveCursorEOL();
-          p->editorMoveCursor(ARROW_RIGHT);
+          sess.p->editorMoveCursorEOL();
+          sess.p->editorMoveCursor(ARROW_RIGHT);
           return false;
 
         case BACKSPACE:
-          p->editorBackspace();
+          sess.p->editorBackspace();
 
           //not handling backspace correctly
           //when backspacing deletes more than currently entered text
           //A common case would be to enter insert mode  and then just start backspacing
           //because then dotting would actually delete characters
           //I could record a \b and then handle similar to handling \r
-          if (!p->last_typed.empty()) p->last_typed.pop_back();
+          if (!sess.p->last_typed.empty()) sess.p->last_typed.pop_back();
           return true;
     
         case DEL_KEY:
-          p->editorDelChar();
+          sess.p->editorDelChar();
           return true;
     
         case ARROW_UP:
         case ARROW_DOWN:
         case ARROW_LEFT:
         case ARROW_RIGHT:
-          p->editorMoveCursor(c);
+          sess.p->editorMoveCursor(c);
           return false;
     
         case CTRL_KEY('b'):
         //case CTRL_KEY('i'): CTRL_KEY('i') -> 9 same as tab
         case CTRL_KEY('e'):
-          p->push_current(); //p->editorCreateSnapshot();
-          p->editorDecorateWord(c);
+          sess.p->push_current(); //p->editorCreateSnapshot();
+          sess.p->editorDecorateWord(c);
           return true;
     
         // this should be a command line command
         case CTRL_KEY('z'):
-          p->smartindent = (p->smartindent) ? 0 : SMARTINDENT;
-          p->editorSetMessage("smartindent = %d", p->smartindent); 
+          sess.p->smartindent = (sess.p->smartindent) ? 0 : SMARTINDENT;
+          sess.p->editorSetMessage("smartindent = %d", sess.p->smartindent); 
           return false;
     
         case '\x1b':
@@ -6160,94 +6060,94 @@ bool editorProcessKeypress(void) {
            */
 
           //i,I,a,A - deals with repeat
-          if(cmd_map1.contains(p->last_command)) { 
-            p->push_current(); //
-            for (int n=0; n<p->last_repeat-1; n++) {
-              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
+          if(cmd_map1.contains(sess.p->last_command)) { 
+            sess.p->push_current(); //
+            for (int n=0; n<sess.p->last_repeat-1; n++) {
+              for (char const &c : sess.p->last_typed) {sess.p->editorInsertChar(c);}
             }
           }
 
           //cmd_map2 -> E_o_escape and E_O_escape - here deals with deals with repeat > 1
-          if (cmd_map2.contains(p->last_command)) {
-            (p->*cmd_map2.at(p->last_command))(p->last_repeat - 1);
-            p->push_current();
+          if (cmd_map2.contains(sess.p->last_command)) {
+            (sess.p->*cmd_map2.at(sess.p->last_command))(sess.p->last_repeat - 1);
+            sess.p->push_current();
           }
 
           //cw, caw, s
-          if (cmd_map4.contains(p->last_command)) {
-            p->push_current();
+          if (cmd_map4.contains(sess.p->last_command)) {
+            sess.p->push_current();
           }
           //'I' in VISUAL BLOCK mode
-          if (p->last_command == "VBI") {
-            for (int n=0; n<p->last_repeat-1; n++) {
-              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
+          if (sess.p->last_command == "VBI") {
+            for (int n=0; n<sess.p->last_repeat-1; n++) {
+              for (char const &c : sess.p->last_typed) {sess.p->editorInsertChar(c);}
             }
-            int temp = p->fr;
+            int temp = sess.p->fr;
 
-            for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
-              for (int n=0; n<p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
-                p->fc = p->vb0[0]; 
-                for (char const &c : p->last_typed) {p->editorInsertChar(c);}
+            for (sess.p->fr=sess.p->fr+1; sess.p->fr<sess.p->vb0[1]+1; sess.p->fr++) {
+              for (int n=0; n<sess.p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
+                sess.p->fc = sess.p->vb0[0]; 
+                for (char const &c : sess.p->last_typed) {sess.p->editorInsertChar(c);}
               }
             }
-            p->fr = temp;
-            p->fc = p->vb0[0];
+            sess.p->fr = temp;
+            sess.p->fc = sess.p->vb0[0];
           }
 
           //'A' in VISUAL BLOCK mode
-          if (p->last_command == "VBA") {
-            for (int n=0; n<p->last_repeat-1; n++) {
-              for (char const &c : p->last_typed) {p->editorInsertChar(c);}
+          if (sess.p->last_command == "VBA") {
+            for (int n=0; n<sess.p->last_repeat-1; n++) {
+              for (char const &c : sess.p->last_typed) {sess.p->editorInsertChar(c);}
             }
             //{ 12302020
-            int temp = p->fr;
+            int temp = sess.p->fr;
 
-            for (p->fr=p->fr+1; p->fr<p->vb0[1]+1; p->fr++) {
-              for (int n=0; n<p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
-                int size = p->rows.at(p->fr).size();
-                if (p->vb0[2] > size) p->rows.at(p->fr).insert(size, p->vb0[2]-size, ' ');
-                p->fc = p->vb0[2];
-                for (char const &c : p->last_typed) {p->editorInsertChar(c);}
+            for (sess.p->fr=sess.p->fr+1; sess.p->fr<sess.p->vb0[1]+1; sess.p->fr++) {
+              for (int n=0; n<sess.p->last_repeat; n++) { //NOTICE not p->last_repeat - 1
+                int size = sess.p->rows.at(sess.p->fr).size();
+                if (sess.p->vb0[2] > size) sess.p->rows.at(sess.p->fr).insert(size, sess.p->vb0[2]-size, ' ');
+                sess.p->fc = sess.p->vb0[2];
+                for (char const &c : sess.p->last_typed) {sess.p->editorInsertChar(c);}
               }
             }
-            p->fr = temp;
-            p->fc = p->vb0[0];
+            sess.p->fr = temp;
+            sess.p->fc = sess.p->vb0[0];
           //} 12302020
           }
 
           /*Escape whatever else happens falls through to here*/
-          p->mode = NORMAL;
-          p->repeat = 0;
+          sess.p->mode = NORMAL;
+          sess.p->repeat = 0;
 
           //? redundant - see 10 lines below
-          p->last_typed = std::string(); 
+          sess.p->last_typed = std::string(); 
 
-          if (p->fc > 0) p->fc--;
+          if (sess.p->fc > 0) sess.p->fc--;
 
           // below - if the indent amount == size of line then it's all blanks
           // can hit escape with p->row == NULL or p->row[p->fr].size == 0
-          if (!p->rows.empty() && p->rows[p->fr].size()) {
-            int n = p->editorIndentAmount(p->fr);
-            if (n == p->rows[p->fr].size()) {
-              p->fc = 0;
+          if (!sess.p->rows.empty() && sess.p->rows[sess.p->fr].size()) {
+            int n = sess.p->editorIndentAmount(sess.p->fr);
+            if (n == sess.p->rows[sess.p->fr].size()) {
+              sess.p->fc = 0;
               for (int i = 0; i < n; i++) {
-                p->editorDelChar();
+                sess.p->editorDelChar();
               }
             }
           }
-          p->editorSetMessage(""); // commented out to debug push_current
+          sess.p->editorSetMessage(""); // commented out to debug push_current
           //editorSetMessage(p->last_typed.c_str());
-          p->last_typed.clear();//////////// 09182020
+          sess.p->last_typed.clear();//////////// 09182020
           return true; //end case x1b:
     
         // deal with tab in insert mode - was causing segfault  
         case '\t':
-          for (int i=0; i<4; i++) p->editorInsertChar(' ');
+          for (int i=0; i<4; i++) sess.p->editorInsertChar(' ');
           return true;  
 
         default:
-          p->editorInsertChar(c);
-          p->last_typed += c;
+          sess.p->editorInsertChar(c);
+          sess.p->last_typed += c;
           return true;
      
       } //end inner switch for outer case INSERT
@@ -6259,32 +6159,32 @@ bool editorProcessKeypress(void) {
       switch(c) {
  
         case '\x1b':
-          p->command[0] = '\0';
-          p->repeat = 0;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           return false;
 
         case ':':
-          p->mode = COMMAND_LINE;
-          p->command_line.clear();
-          p->command[0] = '\0';
-          p->editorSetMessage(":");
+          sess.p->mode = COMMAND_LINE;
+          sess.p->command_line.clear();
+          sess.p->command[0] = '\0';
+          sess.p->editorSetMessage(":");
           return false;
 
         case '/':
-          p->mode = SEARCH;
-          p->command_line.clear();
-          p->command[0] = '\0';
-          p->editorSetMessage("/");
+          sess.p->mode = SEARCH;
+          sess.p->command_line.clear();
+          sess.p->command[0] = '\0';
+          sess.p->editorSetMessage("/");
           return false;
 
         case 'u':
-          p->command[0] = '\0';
-          p->undo();
+          sess.p->command[0] = '\0';
+          sess.p->undo();
           return true;
 
         case CTRL_KEY('r'):
-          p->command[0] = '\0';
-          p->redo();
+          sess.p->command[0] = '\0';
+          sess.p->redo();
           return true;
 
           /*
@@ -6296,60 +6196,60 @@ bool editorProcessKeypress(void) {
          */
 
         case CTRL_KEY('h'):
-          p->command[0] = '\0';
+          sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
             sess.editor_mode = false;
-            get_preview(O.rows.at(O.fr).id); 
-            O.mode = NORMAL;
+            get_preview(sess.O.rows.at(sess.O.fr).id); 
+            sess.O.mode = NORMAL;
             return_cursor(); 
             return false;
           }
           {
-            if (p->is_subeditor) p = p->linked_editor;
+            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
             auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), p);
+            auto it = std::find(temp.begin(), temp.end(), sess.p);
             int index = std::distance(temp.begin(), it);
             Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
             if (index) {
-              p = temp[index - 1];
-              if (p->rows.empty()) p->mode = NO_ROWS;
-              else p->mode = NORMAL;
+              sess.p = temp[index - 1];
+              if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+              else sess.p->mode = NORMAL;
               return false;
             } else {sess.editor_mode = false;
-              get_preview(O.rows.at(O.fr).id);
-              O.mode = NORMAL;
+              get_preview(sess.O.rows.at(sess.O.fr).id);
+              sess.O.mode = NORMAL;
               return_cursor(); 
               return false;
             }
           }
       
         case  CTRL_KEY('l'):
-          p->command[0] = '\0';
+          sess.p->command[0] = '\0';
           {
-            if (p->is_subeditor) p = p->linked_editor;
+            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
             auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
             std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), p);
+            auto it = std::find(temp.begin(), temp.end(), sess.p);
             int index = std::distance(temp.begin(), it);
             Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
             //p->editorSetMessage("index: %d", index);
             //p->editorRefreshScreen(false); // needs to be here because p moves!
-            if (index < temp.size() - 1) p = temp[index + 1];
-            if (p->rows.empty()) p->mode = NO_ROWS;
-            else p->mode = NORMAL;
+            if (index < temp.size() - 1) sess.p = temp[index + 1];
+            if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+            else sess.p->mode = NORMAL;
           }
           return false;
 
         case  CTRL_KEY('k'):
         case  CTRL_KEY('j'):
           Editor::editorSetMessage("Editor <-> subEditor");
-          p->command[0] = '\0';
-          if (p->linked_editor) p=p->linked_editor;
+          sess.p->command[0] = '\0';
+          if (sess.p->linked_editor) sess.p=sess.p->linked_editor;
           else return false;
 
-          if (p->rows.empty()) p->mode = NO_ROWS;
-          else p->mode = NORMAL;
+          if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+          else sess.p->mode = NORMAL;
 
           return false;
 
@@ -6357,25 +6257,25 @@ bool editorProcessKeypress(void) {
 
       /*leading digit is a multiplier*/
 
-      if ((c > 47 && c < 58) && (strlen(p->command) == 0)) {
+      if ((c > 47 && c < 58) && (strlen(sess.p->command) == 0)) {
 
-        if (p->repeat == 0 && c == 48) {
+        if (sess.p->repeat == 0 && c == 48) {
 
-        } else if (p->repeat == 0) {
-          p->repeat = c - 48;
+        } else if (sess.p->repeat == 0) {
+          sess.p->repeat = c - 48;
           // return false because command not complete
           return false;
         } else {
-          p->repeat = p->repeat*10 + c - 48;
+          sess.p->repeat = sess.p->repeat*10 + c - 48;
           // return false because command not complete
           return false;
         }
       }
-      if ( p->repeat == 0 ) p->repeat = 1;
+      if ( sess.p->repeat == 0 ) sess.p->repeat = 1;
       {
-        int n = strlen(p->command);
-        p->command[n] = c;
-        p->command[n+1] = '\0';
+        int n = strlen(sess.p->command);
+        sess.p->command[n] = c;
+        sess.p->command[n+1] = '\0';
       }
 
       /* this and next if should probably be dropped
@@ -6386,53 +6286,53 @@ bool editorProcessKeypress(void) {
 
       //if (std::string_view(p->command) == std::string({0x17,'='})) {
       //if (p->command == std::string({0x17,'='})) {
-      if (p->command == std::string_view("\x17" "=")) {
-        p->E_resize(0);
-        p->command[0] = '\0';
-        p->repeat = 0;
+      if (sess.p->command == std::string_view("\x17" "=")) {
+        sess.p->E_resize(0);
+        sess.p->command[0] = '\0';
+        sess.p->repeat = 0;
         return false;
       }
 
       //if (std::string_view(p->command) == std::string({0x17,'_'})) {
       //if (p->command == std::string({0x17,'_'})) {
-      if (p->command == std::string_view("\x17" "_")) {
-        p->E_resize(0);
-        p->command[0] = '\0';
-        p->repeat = 0;
+      if (sess.p->command == std::string_view("\x17" "_")) {
+        sess.p->E_resize(0);
+        sess.p->command[0] = '\0';
+        sess.p->repeat = 0;
         return false;
       }
 
-      if (e_lookup.contains(p->command)) {
+      if (e_lookup.contains(sess.p->command)) {
 
-        p->prev_fr = p->fr;
-        p->prev_fc = p->fc;
+        sess.p->prev_fr = sess.p->fr;
+        sess.p->prev_fc = sess.p->fc;
 
-        p->snapshot = p->rows; ////////////////////////////////////////////09182020
+        sess.p->snapshot = sess.p->rows; ////////////////////////////////////////////09182020
 
-        (p->*e_lookup.at(p->command))(p->repeat); //money shot
+        (sess.p->*e_lookup.at(sess.p->command))(sess.p->repeat); //money shot
 
-        if (insert_cmds.count(p->command)) {
-          p->mode = INSERT;
-          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
-          p->last_repeat = p->repeat;
-          p->last_command = p->command; //p->last_command must be a string
-          p->command[0] = '\0';
-          p->repeat = 0;
+        if (insert_cmds.count(sess.p->command)) {
+          sess.p->mode = INSERT;
+          sess.p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          sess.p->last_repeat = sess.p->repeat;
+          sess.p->last_command = sess.p->command; //p->last_command must be a string
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           return true;
-        } else if (move_only.count(p->command)) {
-          p->command[0] = '\0';
-          p->repeat = 0;
+        } else if (move_only.count(sess.p->command)) {
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           return false; //note text did not change
         } else {
-          if (p->command[0] != '.') {
-            p->last_repeat = p->repeat;
-            p->last_command = p->command; //p->last_command must be a string
-            p->push_current();
-            p->command[0] = '\0';
-            p->repeat = 0;
+          if (sess.p->command[0] != '.') {
+            sess.p->last_repeat = sess.p->repeat;
+            sess.p->last_command = sess.p->command; //p->last_command must be a string
+            sess.p->push_current();
+            sess.p->command[0] = '\0';
+            sess.p->repeat = 0;
           } else {//if dot
             //if dot then just repeast last command at new location
-            p->push_previous();
+            sess.p->push_previous();
           }
         }    
       }
@@ -6440,16 +6340,16 @@ bool editorProcessKeypress(void) {
       // needs to be here because needs to pick up repeat
       //Arrows + h,j,k,l
       if (navigation.count(c)) {
-          for (int j=0; j<p->repeat; j++) p->editorMoveCursor(c);
-          p->command[0] = '\0';
-          p->repeat = 0;
+          for (int j=0; j<sess.p->repeat; j++) sess.p->editorMoveCursor(c);
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           return false;
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
-          p->editorPageUpDown(c);
-          p->command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
-          p->repeat = 0;
+          sess.p->editorPageUpDown(c);
+          sess.p->command[0] = '\0'; //arrow does reset command in vim although left/right arrow don't do anything = escape
+          sess.p->repeat = 0;
           return false;
       }
 
@@ -6458,18 +6358,18 @@ bool editorProcessKeypress(void) {
     case COMMAND_LINE:
 
       if (c == '\x1b') {
-        p->mode = NORMAL;
-        p->command[0] = '\0';
-        p->repeat = p->last_repeat = 0;
-        p->editorSetMessage(""); 
+        sess.p->mode = NORMAL;
+        sess.p->command[0] = '\0';
+        sess.p->repeat = sess.p->last_repeat = 0;
+        sess.p->editorSetMessage(""); 
         return false;
       }
       // prevfilename is everything after :readfile 
       if (c == '\t') {
-        std::size_t pos = p->command_line.find(' ');
-        std::string cmd = p->command_line.substr(0, pos);
+        std::size_t pos = sess.p->command_line.find(' ');
+        std::string cmd = sess.p->command_line.substr(0, pos);
         if (file_cmds.contains(cmd)) { // can't use string_view here 
-          std::string s = p->command_line.substr(pos+1);
+          std::string s = sess.p->command_line.substr(pos+1);
           // should to deal with s being empty
           if (s.front() == '~') s = fmt::format("{}/{}", getenv("HOME"), s.substr(2));
 
@@ -6502,11 +6402,11 @@ bool editorProcessKeypress(void) {
             if (completion_index == completions.size()) completion_index = 0;
             prevfilename = prefix + completions.at(completion_index++);
             //p->command_line = "readfile " + prevfilename;
-            p->command_line = fmt::format("{} {}", cmd, prevfilename);
-            p->editorSetMessage(":%s", p->command_line.c_str());
+            sess.p->command_line = fmt::format("{} {}", cmd, prevfilename);
+            sess.p->editorSetMessage(":%s", sess.p->command_line.c_str());
           }
         } else {
-        p->editorSetMessage("tab"); 
+        sess.p->editorSetMessage("tab"); 
         }
         return false;
       }
@@ -6514,45 +6414,45 @@ bool editorProcessKeypress(void) {
       if (c == '\r') {
 
         // right now only command that has a space is readfile
-        std::size_t pos = p->command_line.find(' ');
-        std::string cmd = p->command_line.substr(0, pos);
+        std::size_t pos = sess.p->command_line.find(' ');
+        std::string cmd = sess.p->command_line.substr(0, pos);
 
         // note that right now we are not calling editor commands like E_write_close_C
         // and E_quit_C and E_quit0_C
         if (quit_cmds.count(cmd)) {
           if (cmd == "x") {
-            if (p->is_subeditor) {
-              p->mode = NORMAL;
-              p->command[0] = '\0';
-              p->command_line.clear();
-              p->editorSetMessage("You can't save the contents of the Output Window");
+            if (sess.p->is_subeditor) {
+              sess.p->mode = NORMAL;
+              sess.p->command[0] = '\0';
+              sess.p->command_line.clear();
+              sess.p->editorSetMessage("You can't save the contents of the Output Window");
               return false;
             }
             //update_note(p->is_subeditor, true); //should be p->E_write_C(); closing_editor = true;
             update_note(false, true); //should be p->E_write_C(); closing_editor = true;
           } else if (cmd == "q!" || cmd == "quit!") {
             // do nothing = allow editor to be closed
-          } else if (p->dirty) {
-              p->mode = NORMAL;
-              p->command[0] = '\0';
-              p->command_line.clear();
-              p->editorSetMessage("No write since last change");
+          } else if (sess.p->dirty) {
+              sess.p->mode = NORMAL;
+              sess.p->command[0] = '\0';
+              sess.p->command_line.clear();
+              sess.p->editorSetMessage("No write since last change");
               return false;
           }
 
           //eraseRightScreen(); //moved below on 10-24-2020
 
-          std::erase(sess.editors, p); //c++20
-          if (p->linked_editor) {
-             std::erase(sess.editors, p->linked_editor); //c++20
-             delete p->linked_editor;
+          std::erase(sess.editors, sess.p); //c++20
+          if (sess.p->linked_editor) {
+             std::erase(sess.editors, sess.p->linked_editor); //c++20
+             delete sess.p->linked_editor;
           }
 
-          delete p; //p given new value below
+          delete sess.p; //p given new value below
 
           if (!sess.editors.empty()) {
 
-            p = sess.editors[0]; //kluge should move in some logical fashion
+            sess.p = sess.editors[0]; //kluge should move in some logical fashion
 
             /*
             std::unordered_set<int> temp;
@@ -6576,10 +6476,10 @@ bool editorProcessKeypress(void) {
             sess.draw_editors();
 
           } else { // we've quit the last remaining editor(s)
-            p = nullptr;
+            sess.p = nullptr;
             sess.editor_mode = false;
             eraseRightScreen();
-            get_preview(O.rows.at(O.fr).id);
+            get_preview(sess.O.rows.at(sess.O.fr).id);
             return_cursor(); //because main while loop if started in editor_mode -- need this 09302020
           }
 
@@ -6587,55 +6487,55 @@ bool editorProcessKeypress(void) {
         } //end quit_cmds
 
         if (E_lookup_C.count(cmd)) {
-          (p->*E_lookup_C.at(cmd))();
+          (sess.p->*E_lookup_C.at(cmd))();
 
-          p->mode = NORMAL;
-          p->command[0] = '\0';
-          p->command_line.clear();
+          sess.p->mode = NORMAL;
+          sess.p->command[0] = '\0';
+          sess.p->command_line.clear();
 
           return true; //note spellcheck and cmd require redraw but not all command line commands (e.g. w)
         }
 
-        p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", p->command_line.c_str());
-        p->mode = NORMAL;
+        sess.p->editorSetMessage("\x1b[41mNot an editor command: %s\x1b[0m", sess.p->command_line.c_str());
+        sess.p->mode = NORMAL;
         return false;
       }
 
       if (c == DEL_KEY || c == BACKSPACE) {
-        if (!p->command_line.empty()) p->command_line.pop_back();
+        if (!sess.p->command_line.empty()) sess.p->command_line.pop_back();
       } else {
-        p->command_line.push_back(c);
+        sess.p->command_line.push_back(c);
       }
 
-      p->editorSetMessage(":%s", p->command_line.c_str());
+      sess.p->editorSetMessage(":%s", sess.p->command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case SEARCH:
 
       if (c == '\x1b') {
-        p->mode = NORMAL;
-        p->command[0] = '\0';
-        p->repeat = p->last_repeat = 0;
-        p->editorSetMessage(""); 
+        sess.p->mode = NORMAL;
+        sess.p->command[0] = '\0';
+        sess.p->repeat = sess.p->last_repeat = 0;
+        sess.p->editorSetMessage(""); 
         return false;
       }
 
       if (c == '\r') {
-        p->mode = NORMAL;
-        p->command[0] = '\0';
-        p->search_string = p->command_line;
-        p->command_line.clear();
-        p->editorFindNextWord();
+        sess.p->mode = NORMAL;
+        sess.p->command[0] = '\0';
+        sess.p->search_string = sess.p->command_line;
+        sess.p->command_line.clear();
+        sess.p->editorFindNextWord();
         return false;
       }
 
       if (c == DEL_KEY || c == BACKSPACE) {
-        if (!p->command_line.empty()) p->command_line.pop_back();
+        if (!sess.p->command_line.empty()) sess.p->command_line.pop_back();
       } else if (c != '\t') { //ignore tabs
-        p->command_line.push_back(c);
+        sess.p->command_line.push_back(c);
       }
 
-      Editor::editorSetMessage("/%s", p->command_line.c_str());
+      Editor::editorSetMessage("/%s", sess.p->command_line.c_str());
       return false; //end of case COMMAND_LINE
 
     case VISUAL_LINE:
@@ -6650,89 +6550,89 @@ bool editorProcessKeypress(void) {
         case 'j':
         case 'k':
         case 'l':
-          p->editorMoveCursor(c);
-          p->highlight[1] = p->fr;
+          sess.p->editorMoveCursor(c);
+          sess.p->highlight[1] = sess.p->fr;
           return true;
     
         case 'x':
-          if (!p->rows.empty()) {
-            p->push_current(); //p->editorCreateSnapshot();
-            p->repeat = p->highlight[1] - p->highlight[0] + 1;
-            p->fr = p->highlight[0]; 
-            p->editorYankLine(p->repeat);
+          if (!sess.p->rows.empty()) {
+            sess.p->push_current(); //p->editorCreateSnapshot();
+            sess.p->repeat = sess.p->highlight[1] - sess.p->highlight[0] + 1;
+            sess.p->fr = sess.p->highlight[0]; 
+            sess.p->editorYankLine(sess.p->repeat);
     
-            for (int i=0; i < p->repeat; i++) p->editorDelRow(p->highlight[0]);
+            for (int i=0; i < sess.p->repeat; i++) sess.p->editorDelRow(sess.p->highlight[0]);
           }
 
-          p->fc = 0;
-          p->command[0] = '\0';
-          p->repeat = p->last_repeat = 0;
-          if (p->mode != NO_ROWS) p->mode = NORMAL;
-          p->editorSetMessage("");
+          sess.p->fc = 0;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = sess.p->last_repeat = 0;
+          if (sess.p->mode != NO_ROWS) sess.p->mode = NORMAL;
+          sess.p->editorSetMessage("");
           return true;
     
         case 'y':  
-          p->repeat = p->highlight[1] - p->highlight[0] + 1;
-          p->fr = p->highlight[0];
-          p->editorYankLine(p->repeat);
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->repeat = sess.p->highlight[1] - sess.p->highlight[0] + 1;
+          sess.p->fr = sess.p->highlight[0];
+          sess.p->editorYankLine(sess.p->repeat);
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         case CTRL_KEY('c'):  
           {
-          int fr = p->highlight[0];
-          int n = p->highlight[1] - fr + 1;
+          int fr = sess.p->highlight[0];
+          int n = sess.p->highlight[1] - fr + 1;
           std::vector<std::string>clipboard_buffer{};
 
           for (int i=0; i < n; i++) {
-            clipboard_buffer.push_back(p->rows.at(fr+i)+'\n');
+            clipboard_buffer.push_back(sess.p->rows.at(fr+i)+'\n');
           }
 
           Editor::convert2base64(clipboard_buffer); 
           }
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
 
         case '>':
-          p->push_current(); //p->editorCreateSnapshot();
-          p->repeat = p->highlight[1] - p->highlight[0] + 1;
-          p->fr = p->highlight[0];
-          for ( i = 0; i < p->repeat; i++ ) {
-            p->editorIndentRow();
-            p->fr++;}
-          p->fr-=i;
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->push_current(); //p->editorCreateSnapshot();
+          sess.p->repeat = sess.p->highlight[1] - sess.p->highlight[0] + 1;
+          sess.p->fr = sess.p->highlight[0];
+          for ( i = 0; i < sess.p->repeat; i++ ) {
+            sess.p->editorIndentRow();
+            sess.p->fr++;}
+          sess.p->fr-=i;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         // changed to p->fr on 11-26-2019
         case '<':
-          p->push_current(); //p->editorCreateSnapshot();
-          p->repeat = p->highlight[1] - p->highlight[0] + 1;
-          p->fr = p->highlight[0];
-          for ( i = 0; i < p->repeat; i++ ) {
-            p->editorUnIndentRow();
-            p->fr++;}
-          p->fr-=i;
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->push_current(); //p->editorCreateSnapshot();
+          sess.p->repeat = sess.p->highlight[1] - sess.p->highlight[0] + 1;
+          sess.p->fr = sess.p->highlight[0];
+          for ( i = 0; i < sess.p->repeat; i++ ) {
+            sess.p->editorUnIndentRow();
+            sess.p->fr++;}
+          sess.p->fr-=i;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         case '\x1b':
-          p->mode = 0;
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->editorSetMessage("");
+          sess.p->mode = 0;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         default:
@@ -6753,100 +6653,100 @@ bool editorProcessKeypress(void) {
         case 'j':
         case 'k':
         case 'l':
-          p->editorMoveCursor(c);
+          sess.p->editorMoveCursor(c);
           //p->highlight[1] = E.fr;
           return true;
     
         case '$':
-          p->editorMoveCursorEOL();
-          p->command[0] = '\0';
-          p->repeat = p->last_repeat = 0;
-          p->editorSetMessage("");
+          sess.p->editorMoveCursorEOL();
+          sess.p->command[0] = '\0';
+          sess.p->repeat = sess.p->last_repeat = 0;
+          sess.p->editorSetMessage("");
           return true;
 
         case 'x':
-          if (!p->rows.empty()) {
+          if (!sess.p->rows.empty()) {
             //p->editorCreateSnapshot();
     
-          for (int i = p->vb0[1]; i < p->fr + 1; i++) {
-            p->rows.at(i).erase(p->vb0[0], p->fc - p->vb0[0] + 1); //needs to be cleaned up for p->fc < p->vb0[0] ? abs
+          for (int i = sess.p->vb0[1]; i < sess.p->fr + 1; i++) {
+            sess.p->rows.at(i).erase(sess.p->vb0[0], sess.p->fc - sess.p->vb0[0] + 1); //needs to be cleaned up for p->fc < p->vb0[0] ? abs
           }
 
-          p->fc = p->vb0[0];
-          p->fr = p->vb0[1];
+          sess.p->fc = sess.p->vb0[0];
+          sess.p->fr = sess.p->vb0[1];
           }
-          p->command[0] = '\0';
-          p->repeat = p->last_repeat = 0;
-          p->mode = NORMAL;
-          p->editorSetMessage("");
+          sess.p->command[0] = '\0';
+          sess.p->repeat = sess.p->last_repeat = 0;
+          sess.p->mode = NORMAL;
+          sess.p->editorSetMessage("");
           return true;
     
         case 'I':
-          if (!p->rows.empty()) {
+          if (!sess.p->rows.empty()) {
             //p->editorCreateSnapshot();
       
           //p->repeat = p->fr - p->vb0[1];  
             {
-          int temp = p->fr; //p->fr is wherever cursor Y is    
+          int temp = sess.p->fr; //p->fr is wherever cursor Y is    
           //p->vb0[2] = p->fr;
-          p->fc = p->vb0[0]; //vb0[0] is where cursor X was when ctrl-v happened
-          p->fr = p->vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
-          p->vb0[1] = temp; // resets p->vb0 to last cursor Y position - this could just be p->vb0[2]
+          sess.p->fc = sess.p->vb0[0]; //vb0[0] is where cursor X was when ctrl-v happened
+          sess.p->fr = sess.p->vb0[1]; //vb0[1] is where cursor Y was when ctrl-v happened
+          sess.p->vb0[1] = temp; // resets p->vb0 to last cursor Y position - this could just be p->vb0[2]
           //cmd_map1[c](p->repeat);
           //command = -1;
-          p->repeat = 1;
-          p->mode = INSERT;
-          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          sess.p->repeat = 1;
+          sess.p->mode = INSERT;
+          sess.p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
 
-          p->last_repeat = p->repeat;
-          p->last_typed.clear();
+          sess.p->last_repeat = sess.p->repeat;
+          sess.p->last_typed.clear();
           //p->last_command = command;
-          p->last_command = "VBI";
-          p->command[0] = '\0';
-          p->repeat = 0;
+          sess.p->last_command = "VBI";
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           //editorSetMessage("command = %d", command);
           return true;
 
         case 'A':
-          if (!p->rows.empty()) {
+          if (!sess.p->rows.empty()) {
             //p->editorCreateSnapshot();
       
           //p->repeat = p->fr - p->vb0[1];  
             {
-          int temp = p->fr;    
-          p->fr = p->vb0[1];
-          p->vb0[1] = temp;
-          p->fc++;
-          p->vb0[2] = p->fc;
+          int temp = sess.p->fr;    
+          sess.p->fr = sess.p->vb0[1];
+          sess.p->vb0[1] = temp;
+          sess.p->fc++;
+          sess.p->vb0[2] = sess.p->fc;
           //int last_row_size = p->rows.at(p->vb0[1]).size();
-          int first_row_size = p->rows.at(p->fr).size();
-          if (p->vb0[2] > first_row_size) p->rows.at(p->fr).insert(first_row_size, p->vb0[2]-first_row_size, ' ');
+          int first_row_size = sess.p->rows.at(sess.p->fr).size();
+          if (sess.p->vb0[2] > first_row_size) sess.p->rows.at(sess.p->fr).insert(first_row_size, sess.p->vb0[2]-first_row_size, ' ');
           //cmd_map1[c](p->repeat);
           //command = -2;
-          p->repeat = 1;
-          p->mode = INSERT;
-          p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
+          sess.p->repeat = 1;
+          sess.p->mode = INSERT;
+          sess.p->editorSetMessage("\x1b[1m-- INSERT --\x1b[0m");
             }
 
           }
 
-          p->last_repeat = p->repeat;
-          p->last_typed.clear();
+          sess.p->last_repeat = sess.p->repeat;
+          sess.p->last_typed.clear();
           //p->last_command = command;
-          p->last_command = "VBA";
-          p->command[0] = '\0';
-          p->repeat = 0;
+          sess.p->last_command = "VBA";
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
           //editorSetMessage("command = %d", command);
           return true;
 
         case '\x1b':
-          p->mode = 0;
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->editorSetMessage("");
+          sess.p->mode = 0;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         default:
@@ -6867,65 +6767,65 @@ bool editorProcessKeypress(void) {
         //case 'j':
         //case 'k':
         case 'l':
-          p->editorMoveCursor(c);
-          p->highlight[1] = p->fc;
+          sess.p->editorMoveCursor(c);
+          sess.p->highlight[1] = sess.p->fc;
           return true;
     
         case 'x':
-          if (!p->rows.empty()) {
-            p->push_current(); //p->editorCreateSnapshot();
-            p->editorYankString(); 
-            p->editorDeleteVisual();
+          if (!sess.p->rows.empty()) {
+            sess.p->push_current(); //p->editorCreateSnapshot();
+            sess.p->editorYankString(); 
+            sess.p->editorDeleteVisual();
           }
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         case 'y':
-          p->fc = p->highlight[0];
-          p->editorYankString();
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->fc = sess.p->highlight[0];
+          sess.p->editorYankString();
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         case 'p':
-          p->push_current();
-          if (!Editor::string_buffer.empty()) p->editorPasteStringVisual();
-          else p->editorPasteLineVisual();
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = NORMAL;
+          sess.p->push_current();
+          if (!Editor::string_buffer.empty()) sess.p->editorPasteStringVisual();
+          else sess.p->editorPasteLineVisual();
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = NORMAL;
           return true;
 
         case CTRL_KEY('b'):
         case CTRL_KEY('i'):
         case CTRL_KEY('e'):
-          p->push_current(); //p->editorCreateSnapshot();
-          p->editorDecorateVisual(c);
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->push_current(); //p->editorCreateSnapshot();
+          sess.p->editorDecorateVisual(c);
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         case CTRL_KEY('c'):  
-          p->fc = p->highlight[0];
-          p->copyStringToClipboard();
-          p->command[0] = '\0';
-          p->repeat = 0;
-          p->mode = 0;
-          p->editorSetMessage("");
+          sess.p->fc = sess.p->highlight[0];
+          sess.p->copyStringToClipboard();
+          sess.p->command[0] = '\0';
+          sess.p->repeat = 0;
+          sess.p->mode = 0;
+          sess.p->editorSetMessage("");
           return true;
 
         case '\x1b':
-          p->mode = NORMAL;
-          p->command[0] = '\0';
-          p->repeat = p->last_repeat = 0;
-          p->editorSetMessage("");
+          sess.p->mode = NORMAL;
+          sess.p->command[0] = '\0';
+          sess.p->repeat = sess.p->last_repeat = 0;
+          sess.p->editorSetMessage("");
           return true;
     
         default:
@@ -6937,101 +6837,59 @@ bool editorProcessKeypress(void) {
     case REPLACE:
 
       if (c == '\x1b') {
-        p->command[0] = '\0';
-        p->repeat = p->last_repeat = 0;
-        p->last_command = "";
-        p->last_typed.clear();
-        p->mode = NORMAL;
+        sess.p->command[0] = '\0';
+        sess.p->repeat = sess.p->last_repeat = 0;
+        sess.p->last_command = "";
+        sess.p->last_typed.clear();
+        sess.p->mode = NORMAL;
         return true;
       }
 
       //editorCreateSnapshot();
-      for (int i = 0; i < p->last_repeat; i++) {
-        p->editorDelChar();
-        p->editorInsertChar(c);
-        p->last_typed.clear();
-        p->last_typed += c;
+      for (int i = 0; i < sess.p->last_repeat; i++) {
+        sess.p->editorDelChar();
+        sess.p->editorInsertChar(c);
+        sess.p->last_typed.clear();
+        sess.p->last_typed += c;
       }
       //other than p->mode = NORMAL - all should go
-      p->last_command = "r";
-      p->push_current();
+      sess.p->last_command = "r";
+      sess.p->push_current();
       //p->last_repeat = p->repeat;
-      p->repeat = 0;
-      p->command[0] = '\0';
-      p->mode = NORMAL;
+      sess.p->repeat = 0;
+      sess.p->command[0] = '\0';
+      sess.p->mode = NORMAL;
       return true;
 
   }  //end of outer switch(p->mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
   return true; // this should not be reachable but was getting an error
 } //end of editorProcessKeyPress
 
-void eraseScreenRedrawLines(void) {
-  write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
-  //int pos = screencols/2;
-  int pos = sess.divider;
-  char buf[32];
-  write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
-  for (int j = 1; j < sess.screenlines + 1; j++) {
-
-    // First vertical line
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos - TIME_COL_WIDTH + 1); //don't think need offset
-    write(STDOUT_FILENO, buf, strlen(buf));
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8);
-
-    // Second vertical line
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, pos);
-    write(STDOUT_FILENO, buf, strlen(buf));
-    write(STDOUT_FILENO, "\x1b[37;1mx", 8); 
-}
-
-  write(STDOUT_FILENO, "\x1b[1;1H", 6);
-  for (int k=1; k < sess.screencols ;k++) {
-    // note: cursor advances automatically so don't need to 
-    // do that explicitly
-    write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
-  }
-
-  // draw first column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos - TIME_COL_WIDTH + 1); //may not need offset
-  write(STDOUT_FILENO, buf, strlen(buf));
-  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-
-  // draw next column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, pos);
-  write(STDOUT_FILENO, buf, strlen(buf));
-  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
-
-  write(STDOUT_FILENO, "\x1b[0m", 4); // return background to normal (? necessary)
-  write(STDOUT_FILENO, "\x1b(B", 3); //exit line drawing mode
-}
-
 /*** init ***/
 
 void initOutline() {
-  O.cx = 0; //cursor x position
-  O.cy = 0; //cursor y position
-  O.fc = 0; //file x position
-  O.fr = 0; //file y position
-  O.rowoff = 0;  //number of rows scrolled off the screen
-  O.coloff = 0;  //col the user is currently scrolled to  
-  O.sort = "modified";
-  O.show_deleted = false; //not treating these separately right now
-  O.show_completed = true;
-  O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
-  O.highlight[0] = O.highlight[1] = -1;
-  O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
-  O.last_mode = NORMAL;
-  O.command[0] = '\0';
-  O.command_line = "";
-  O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
+  sess.O.cx = 0; //cursor x position
+  sess.O.cy = 0; //cursor y position
+  sess.O.fc = 0; //file x position
+  sess.O.fr = 0; //file y position
+  sess.O.rowoff = 0;  //number of rows scrolled off the screen
+  sess.O.coloff = 0;  //col the user is currently scrolled to  
+  sess.O.sort = "modified";
+  sess.O.show_deleted = false; //not treating these separately right now
+  sess.O.show_completed = true;
+  sess.O.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
+  sess.O.highlight[0] = sess.O.highlight[1] = -1;
+  sess.O.mode = NORMAL; //0=normal; 1=insert; 2=command line; 3=visual line; 4=visual; 5='r' 
+  sess.O.last_mode = NORMAL;
+  sess.O.command[0] = '\0';
+  sess.O.command_line = "";
+  sess.O.repeat = 0; //number of times to repeat commands like x,s,yy also used for visual line mode x,y
 
-  O.view = TASK; // not necessary here since set when searching database
-  O.taskview = BY_FOLDER;
-  O.folder = "todo";
-  O.context = "No Context";
-  O.keyword = "";
+  sess.O.view = TASK; // not necessary here since set when searching database
+  sess.O.taskview = BY_FOLDER;
+  sess.O.folder = "todo";
+  sess.O.context = "No Context";
+  sess.O.keyword = "";
 
   // ? where this should be.  Also in signal.
   sess.textlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
@@ -7071,7 +6929,7 @@ int main(int argc, char** argv) {
   sess.getWindowSize();
   enableRawMode();
   initOutline();
-  eraseScreenRedrawLines();
+  sess.eraseScreenRedrawLines();
   //Editor::origin = sess.divider + 1; //only used in Editor.cpp
   get_items(MAX);
   sess.command_history.push_back("of todo"); //klugy - this could be read from config and generalized
@@ -7082,10 +6940,10 @@ int main(int argc, char** argv) {
   bool scroll;
   bool redraw;
 
-  outlineRefreshScreen(); 
-  outlineDrawStatusBar();
-  outlineShowMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
-  return_cursor();
+  sess.O.outlineRefreshScreen(); 
+  sess.O.outlineDrawStatusBar();
+  sess.O.outlineShowMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
+  sess.return_cursor();
 
   if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
@@ -7098,26 +6956,26 @@ int main(int argc, char** argv) {
       if (!sess.editor_mode) continue;
       //if (!p) continue; // commented out in favor of the above on 10-24-2020
       //
-      scroll = p->editorScroll();
-      redraw = (text_change || scroll || p->redraw); //instead of p->redraw => clear_highlights
-      p->editorRefreshScreen(redraw);
+      scroll = sess.p->editorScroll();
+      redraw = (text_change || scroll || sess.p->redraw); //instead of p->redraw => clear_highlights
+      sess.p->editorRefreshScreen(redraw);
 
       ////////////////////
       if (lm_browser && scroll) {
         zmq::message_t message(20);
-        snprintf ((char *) message.data(), 20, "%d", p->line_offset*25); //25 - complete hack but works ok
+        snprintf ((char *) message.data(), 20, "%d", sess.p->line_offset*25); //25 - complete hack but works ok
         publisher.send(message, zmq::send_flags::dontwait);
       }
       ////////////////////
 
-    } else if (O.mode != FILE_DISPLAY) { 
+    } else if (sess.O.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       outlineScroll();
       outlineRefreshScreen(); // now just draws rows
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
-    outlineDrawStatusBar();
-    return_cursor();
+    sess.O.outlineDrawStatusBar();
+    sess.return_cursor();
   }
   
   lsp_shutdown("all");
