@@ -18,6 +18,7 @@ struct Session {
   int textlines; //total lines available in editor and organizer
 
   int divider;
+  //int divider_pct
   int totaleditorcols;
   std::vector<Editor*> editors;
   Editor *p;
@@ -25,12 +26,23 @@ struct Session {
 
   void eraseScreenRedrawLines(void);
   void eraseRightScreen(void);
-  void draw_editors(void);
-  void position_editors(void);
-  void return_cursor(void);
+  void drawEditors(void);
+  void positionEditors(void);
+  void returnCursor(void);
   int getWindowSize(void);
   void moveDivider(int pct);
 
+  // same function as outlineDrawStatusBar
+  void drawOrgStatusBar(void);
+
+  /* outlineRefreshScreen depends on three functions below
+   * not sure whether they should be in session or not
+   * right now in Organizer
+  outlineRefreshScreen(void) -> refreshOrgScreen
+  outlineDrawSearchRows(ab) -> drawOrgSearchRows
+  outlineDrawFilters(ab) -> drawOrgFilters
+  outlineDrawRows(ab) -> drawOrgRows
+  */
   // the history of commands to make it easier to go back to earlier views
   // Not sure it is very helpful and I don't use it at all
   std::vector<std::string> page_history;

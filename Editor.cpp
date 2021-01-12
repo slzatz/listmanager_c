@@ -3247,7 +3247,7 @@ void Editor::E_move_output_window_right(int) {
   }
 
   sess.eraseRightScreen(); //moved down here on 10-24-2020
-  sess.draw_editors();
+  sess.drawEditors();
   editorSetMessage("top_margin = %d", top_margin);
 
 }
@@ -3276,7 +3276,7 @@ void Editor::E_move_output_window_below(int) {
   }
 
   sess.eraseRightScreen(); //moved down here on 10-24-2020
-  sess.draw_editors();
+  sess.drawEditors();
   editorSetMessage("top_margin = %d", top_margin);
 }
 
@@ -3378,9 +3378,9 @@ void Editor::getLinked(void) {
     p->linked_editor->rows = std::vector<std::string>{" "};
   }
 
-  sess.position_editors();
+  sess.positionEditors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
-  sess.draw_editors();
+  sess.drawEditors();
   mode = NORMAL;
 }
 
@@ -3406,6 +3406,7 @@ int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+// should change name to avoid confustion with sess.moveDivider
 void Editor::moveDivider(void) {
   int pos = command_line.find(' ');
   if (pos == std::string::npos) {
@@ -3425,24 +3426,6 @@ void Editor::moveDivider(void) {
     mode = NORMAL;
     return;
   }
-  sess.divider = sess.screencols - pct * sess.screencols/100;
-  sess.totaleditorcols = sess.screencols - sess.divider - 2; //? OUTLINE MARGINS?
-
-  sess.eraseScreenRedrawLines();
-
-  sess.position_editors();
-  sess.eraseRightScreen(); //erases editor area + statusbar + msg
-  sess.draw_editors();
-
-  sess.O.outlineRefreshScreen();
-  sess.O.outlineDrawStatusBar();
-  sess.O.outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
-
-  /* get preview not available yet but isn't needed in editor_mode anyway
-  if (sess.O.view == TASK && sess.O.mode != NO_ROWS && !sess.editor_mode)
-    get_preview(sess.O.rows.at(sess.O.fr).id);
-    */
-
-  sess.return_cursor();
+  sess.moveDivider(pct);
   mode = NORMAL;
 }

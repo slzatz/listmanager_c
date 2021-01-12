@@ -62,8 +62,6 @@ class Organizer {
   void outlineDrawFilters(std::string& ab);// needed
   void outlineDrawSearchRows(std::string& ab); // needed
   void outlineDrawStatusBar(void); //needed
-  void return_cursor(); //needed
-  //void outlineDrawMessageBar(std::string& ab);
   void outlineRefreshScreen(void);//needed
   void outlineShowMessage(const char *fmt, ...);//needed
   void outlineShowMessage2(const std::string &s);
@@ -72,19 +70,6 @@ class Organizer {
   void outlineShowMessage3(fmt::string_view format_str, const Args & ... args) {
     fmt::format_args argspack = fmt::make_format_args(args...);
     outlineShowMessage2(fmt::vformat(format_str, argspack));
-}
-  //void outlineMoveCursor(int key);
-  //std::string outlinePreviewRowsToString(void);
+  }
 };
-
-  /*
-  outlineRefreshScreen();
-  outlineDrawStatusBar();
-  outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
-
-  if (O.view == TASK && O.mode != NO_ROWS && !sess.editor_mode)
-    get_preview(O.rows.at(O.fr).id);
-
-  return_cursor();
-  */
 #endif

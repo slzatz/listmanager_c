@@ -1,4 +1,6 @@
 #define TIME_COL_WIDTH 18 // need this if going to have modified col
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
 
 #include "session.h"
 #include "Common.h"
@@ -100,7 +102,7 @@ void Session::eraseRightScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-void Session::position_editors(void) {
+void Session::positionEditors(void) {
   int editor_slots = 0;
   for (auto z : editors) {
     if (!z->is_below) editor_slots++;
@@ -116,7 +118,7 @@ void Session::position_editors(void) {
   }
 }
 
-void Session::draw_editors(void) {
+void Session::drawEditors(void) {
   std::string ab;
   for (auto &e : editors) {
   //for (size_t i=0, max=editors.size(); i!=max; ++i) {
@@ -163,29 +165,38 @@ int Session::getWindowSize(void) {
 }
 
 // right now doesn't include get_preview
+// only matters if in navigation mode (editor_mode == false)
 void Session::moveDivider(int pct) {
-  divider = sess.screencols - pct * sess.screencols/100;
+  // note below only necessary if window resized or font size changed
+  textlines = screenlines - 2 - TOP_MARGIN;
+
+  divider = screencols - pct * screencols/100;
   totaleditorcols = screencols - divider - 2; //? OUTLINE MARGINS?
 
   eraseScreenRedrawLines();
 
-  position_editors();
-  eraseRightScreen(); //erases editor area + statusbar + msg
-  draw_editors();
+  if (editor_mode) {
+    positionEditors();
+    eraseRightScreen(); //erases editor area + statusbar + msg
+    drawEditors();
+  }
 
   O.outlineRefreshScreen();
   O.outlineDrawStatusBar();
-  O.outlineShowMessage("rows: %d  cols: %d ", sess.screenlines, sess.screencols);
+  if (editor_mode)
+      Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
+  else 
+      O.outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
 
   /* need to think about this
   if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
     get_preview(O.rows.at(O.fr).id);
   */
 
-  return_cursor();
+  returnCursor();
 }
 
-void Session::return_cursor() {
+void Session::returnCursor() {
   std::string ab;
   char buf[32];
 
@@ -225,3 +236,126 @@ void Session::return_cursor() {
   ab.append("\x1b[?25h"); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+
+// would replace outlineDrawStatusBar
+// not sure whether in Organizer or Session makes more sense
+void Session::drawOrgStatusBar(void) {
+
+  std::string ab;  
+  int len;
+  Organizer & O = sess.O;
+  /*
+  so the below should 1) position the cursor on the status
+  bar row and midscreen and 2) erase previous statusbar
+  r -> l and then put the cursor back where it should be
+  at LEFT_MARGIN
+  */
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
+                             textlines + TOP_MARGIN + 1,
+                             divider,
+                             textlines + TOP_MARGIN + 1,
+                             1); //status bar comes right out to left margin
+
+  ab.append(buf, strlen(buf));
+
+  ab.append("\x1b[7m"); //switches to inverted colors
+  char status[300], status0[300], rstatus[80];
+
+  std::string s;
+  switch (O.view) {
+    case TASK:
+      switch (O.taskview) {
+        case BY_FIND:
+          s =  "search"; 
+          break;
+        case BY_FOLDER:
+          s = O.folder + "[f]";
+          break;
+        case BY_CONTEXT:
+          s = O.context + "[c]";
+          break;
+        case BY_RECENT:
+          s = "recent";
+          break;
+        case BY_JOIN:
+          s = O.context + "[c] + " + O.folder + "[f]";
+          break;
+        case BY_KEYWORD:
+          s = O.keyword + "[k]";
+          break;
+      }    
+      break;
+    case CONTEXT:
+      s = "Contexts";
+      break;
+    case FOLDER:
+      s = "Folders";
+      break;
+    case KEYWORD:  
+      s = "Keywords";
+      break;
+  }
+
+  if (!O.rows.empty()) {
+
+    orow& row = O.rows.at(O.fr);
+    // note the format is for 15 chars - 12 from substring below and "[+]" when needed
+    std::string truncated_title = row.title.substr(0, 12);
+    
+    //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
+
+    // needs to be here because O.rows could be empty
+    //std::string keywords = (view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
+    std::string keywords = "Not Looking";
+
+    // because video is reversted [42 sets text to green and 49 undoes it
+    // also [0;35;7m -> because of 7m it reverses background and foreground
+    // I think the [0;7m is revert to normal and reverse video
+    snprintf(status, sizeof(status),
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+
+    // klugy way of finding length of string without the escape characters
+    len = snprintf(status0, sizeof(status0),
+                              "%s%s%s %.15s... %s  %d %d/%zu %s",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+
+  } else {
+
+    snprintf(status, sizeof(status),
+                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+    
+    // klugy way of finding length of string without the escape characters
+    len = snprintf(status0, sizeof(status0),
+                              "%s%s%s %.15s... %d %d/%zu %s",
+                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
+                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+  }
+
+  int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
+
+  if (len > divider) {
+    ab.append(status0, divider);
+  } else if (len + rlen > divider) {
+    ab.append(status);
+    ab.append(rstatus, divider - len);
+  } else {
+    ab.append(status);
+    ab.append(divider - len - rlen, ' ');
+    ab.append(rstatus);
+  }
+
+  ab.append("\x1b[0m"); //switches back to normal formatting
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+

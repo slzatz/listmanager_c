@@ -288,49 +288,6 @@ void Organizer::outlineDrawStatusBar(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-/* moved to session
-void Organizer::return_cursor() {
-  std::string ab;
-  char buf[32];
-
-  if (sess.editor_mode) {
-  // the lines below position the cursor where it should go
-    if (sess.p->mode != COMMAND_LINE){
-      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", p->cy + TOP_MARGIN + 1, p->cx + p->left_margin + 1); //03022019
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", sess.p->cy + sess.p->top_margin, sess.p->cx + sess.p->left_margin + sess.p->left_margin_offset + 1); //03022019
-      ab.append(buf, strlen(buf));
-    } else { //E.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + TOP_MARGIN + 2, sess.p->command_line.size() + sess.divider + 2); 
-      ab.append(buf, strlen(buf));
-      ab.append("\x1b[?25h"); // show cursor
-    }
-  } else {
-    if (mode == ADD_CHANGE_FILTER){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, sess.divider + 1); 
-      ab.append(buf, strlen(buf));
-    } else if (mode == FIND) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
-      ab.append(buf, strlen(buf));
-    } else if (mode != COMMAND_LINE) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", cy + TOP_MARGIN + 1, LEFT_MARGIN);
-      ab.append(buf, strlen(buf));
-      // below restores the cursor position based on O.cx and O.cy + margin
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", cy + TOP_MARGIN + 1, cx + LEFT_MARGIN + 1); /// ****
-      ab.append(buf, strlen(buf));
-      //ab.append("\x1b[?25h", 6); // show cursor 
-  // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
-    } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", sess.textlines + 2 + TOP_MARGIN, command_line.size() + LEFT_MARGIN); /// ****
-      ab.append(buf, strlen(buf));
-      //ab.append("\x1b[?25h", 6); // show cursor 
-    }
-  }
-  ab.append("\x1b[0m"); //return background to normal
-  ab.append("\x1b[?25h"); //shows the cursor
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-}
-*/
-
 void Organizer::outlineRefreshScreen(void) {
 
   std::string ab;
