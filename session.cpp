@@ -359,3 +359,31 @@ void Session::drawOrgStatusBar(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+void Session::getNote(int id) {
+  if (id ==-1) return; // id given to new and unsaved entries
+
+  Query q(db, "SELECT note FROM task WHERE id = {}", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    O.outlineShowMessage3("Problem retrieving note from itemi {}: {}", id, res);
+    return;
+  }
+  std::string note = q.column_text(0);
+  std::erase(note, '\r'); //c++20
+  std::stringstream sNote(note);
+  std::string s;
+  while (getline(sNote, s, '\n')) {
+    p->editorInsertRow(p->rows.size(), s);
+  }
+  p->dirty = 0; //assume editorInsertRow increments dirty so this needed
+  if (!p->linked_editor) return;
+
+  p->linked_editor->rows = std::vector<std::string>{" "};
+
+  /* below works but don't think we want to store output_window
+  db.query("SELECT subnote FROM task WHERE id = {}", id);
+  db.callback = note_callback;
+  db.pArg = p->linked_editor;
+  run_sql();
+  */
+
+}

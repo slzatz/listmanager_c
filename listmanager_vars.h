@@ -125,7 +125,7 @@ void outlineChangeCase();
 void outlineInsertRow(int, std::string&&, bool, bool, bool, std::string&&);
 void outlineScroll(void);
 void outlineSave(const std::string &);
-void return_cursor(void);
+//void return_cursor(void);
 void get_preview(int);
 void draw_preview(void);
 void draw_search_preview(void);

@@ -1394,6 +1394,7 @@ int title_callback (void *title, int argc, char **argv, char **azColName) {
   return 0;
 }
 
+/*
 // using class version of sqlite code; previous approach is below
 // not sure I want to convert to this
 void get_note(int id) {
@@ -1407,12 +1408,12 @@ void get_note(int id) {
   if (!sess.p->linked_editor) return;
 
   sess.p->linked_editor->rows = std::vector<std::string>{" "};
-  /* below works but don't think we want to store output_window
-  db.query("SELECT subnote FROM task WHERE id = {}", id);
-  db.callback = note_callback;
-  db.pArg = p->linked_editor;
-  run_sql();
-  */
+ //  below works but don't think we want to store output_window
+ // db.query("SELECT subnote FROM task WHERE id = {}", id);
+//  db.callback = note_callback;
+//  db.pArg = p->linked_editor;
+//  run_sql();
+  
 }
 
 // doesn't appear to be called if row is NULL
@@ -1439,6 +1440,7 @@ int note_callback (void *e, int argc, char **argv, char **azColName) {
   editor->dirty = 0; //assume editorInsertRow increments dirty so this needed
   return 0;
 }
+*/
 
 int rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
 
@@ -2978,7 +2980,7 @@ void F_edit(int id) {
         p->linked_editor->linked_editor = p;
         p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
-      get_note(id); //if id == -1 does not try to retrieve note
+      sess.getNote(id); //if id == -1 does not try to retrieve note
       
     } else {
       sess.p = *it;
@@ -3001,7 +3003,7 @@ void F_edit(int id) {
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
-    get_note(id); //if id == -1 does not try to retrieve note
+    sess.getNote(id); //if id == -1 does not try to retrieve note
  }
   sess.positionEditors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
