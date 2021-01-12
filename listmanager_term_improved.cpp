@@ -385,11 +385,11 @@ void update_html_file(std::string &&fn) {
   int fd;
   //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    sess.lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &sess.lock) != -1) {
     write(fd, html.str().c_str(), html.str().size());
-    lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock);
+    sess.lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &sess.lock);
     } else outlineShowMessage("Couldn't lock file");
   } else outlineShowMessage("Couldn't open file");
 
@@ -462,11 +462,11 @@ void update_html_code_file(std::string &&fn) {
  
   int fd;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    sess.lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &sess.lock) != -1) {
     write(fd, html.str().c_str(), html.str().size());
-    lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock);
+    sess.lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &sess.lock);
     } else outlineShowMessage("Couldn't lock file");
   } else outlineShowMessage("Couldn't open file");
 }
@@ -2433,12 +2433,12 @@ int insert_container(orow& row) {
         << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
         << " datetime('now')," // modified
         //<< " 99999," //tid
-        << " " << temporary_tid << "," //tid originally 100 but that is a legit client tid server id
+        << " " << sess.temporary_tid << "," //tid originally 100 but that is a legit client tid server id
         << " False," //default for context and private for folder
         << " 10" //textcolor
         << ");"; // RETURNING id;",
 
-  temporary_tid++;      
+  sess.temporary_tid++;      
   /*
    * not used:
      "default" (not sure why in quotes but may be system variable
@@ -2924,11 +2924,11 @@ void F_new(int) {
   int fd;
   std::string fn = "assets/" + CURRENT_NOTE_FILE;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    sess.lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &sess.lock) != -1) {
     write(fd, " ", 1);
-    lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &lock);
+    sess.lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &sess.lock);
     } else outlineShowMessage("Couldn't lock file");
   } else outlineShowMessage("Couldn't open file");
 }
@@ -3249,7 +3249,7 @@ void F_sync(int) {
   synchronize(0); // do actual sync
   map_context_titles();
   map_folder_titles();
-  initial_file_row = 0; //for arrowing or displaying files
+  sess.initial_file_row = 0; //for arrowing or displaying files
   sess.O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Synching local db and server and displaying results");
   readFile("log");
@@ -3258,7 +3258,7 @@ void F_sync(int) {
 
 void F_sync_test(int) {
   synchronize(1); //1 -> report_only
-  initial_file_row = 0; //for arrowing or displaying files
+  sess.initial_file_row = 0; //for arrowing or displaying files
   sess.O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Testing synching local db and server and displaying results");
   readFile("log");
@@ -3419,7 +3419,7 @@ void F_saveoutline(int pos) {
 }
 
 void F_valgrind(int) {
-  initial_file_row = 0; //for arrowing or displaying files
+  sess.initial_file_row = 0; //for arrowing or displaying files
   readFile("valgrind_log_file");
   displayFile();//put them in the command mode case synch
   sess.O.last_mode = sess.O.mode;
@@ -3429,7 +3429,7 @@ void F_valgrind(int) {
 void F_help(int pos) {
   if (!pos) {             
     /*This needs to be changed to show database text not ext file*/
-    initial_file_row = 0;
+    sess.initial_file_row = 0;
     sess.O.last_mode = sess.O.mode;
     sess.O.mode = FILE_DISPLAY;
     outlineShowMessage("Displaying help file");
@@ -3987,11 +3987,11 @@ void readFile(const std::string &filename) {
   std::ifstream f(filename);
   std::string line;
 
-  display_text.str(std::string());
-  display_text.clear();
+  sess.display_text.str(std::string());
+  sess.display_text.clear();
 
   while (getline(f, line)) {
-    display_text << line << '\n';
+    sess.display_text << line << '\n';
   }
   f.close();
 }
@@ -4025,12 +4025,12 @@ void displayFile(void) {
   std::string line;
   int row_num = -1;
   int line_num = 0;
-  display_text.clear();
-  display_text.seekg(0, std::ios::beg);
-  while(std::getline(display_text, row, '\n')) {
+  sess.display_text.clear();
+  sess.display_text.seekg(0, std::ios::beg);
+  while(std::getline(sess.display_text, row, '\n')) {
     if (line_num > sess.textlines - 2) break;
     row_num++;
-    if (row_num < initial_file_row) continue;
+    if (row_num < sess.initial_file_row) continue;
     if (static_cast<int>(row.size()) < sess.totaleditorcols) {
       ab.append(row);
       ab.append(lf_ret);
@@ -4963,22 +4963,22 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
   
         case ARROW_UP:
         case 'k':
-          initial_file_row--;
-          initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
+          sess.initial_file_row--;
+          sess.initial_file_row = (sess.initial_file_row < 0) ? 0: sess.initial_file_row;
           break;
 
         case ARROW_DOWN:
         case 'j':
-          initial_file_row++;
+          sess.initial_file_row++;
           break;
 
         case PAGE_UP:
-          initial_file_row = initial_file_row - sess.textlines;
-          initial_file_row = (initial_file_row < 0) ? 0: initial_file_row;
+          sess.initial_file_row = sess.initial_file_row - sess.textlines;
+          sess.initial_file_row = (sess.initial_file_row < 0) ? 0: sess.initial_file_row;
           break;
 
         case PAGE_DOWN:
-          initial_file_row = initial_file_row + sess.textlines;
+          sess.initial_file_row = sess.initial_file_row + sess.textlines;
           break;
 
         case ':':
@@ -6273,10 +6273,10 @@ int main(int argc, char** argv) {
   publisher.bind("tcp://*:5556");
   //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this
 
-  lock.l_whence = SEEK_SET;
-  lock.l_start = 0;
-  lock.l_len = 0;
-  lock.l_pid = getpid();
+  sess.lock.l_whence = SEEK_SET;
+  sess.lock.l_start = 0;
+  sess.lock.l_len = 0;
+  sess.lock.l_pid = getpid();
 
   if (argc > 1 && argv[1][0] == '-') lm_browser = false;
 

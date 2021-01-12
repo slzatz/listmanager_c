@@ -1,3 +1,4 @@
+// note that listmanager_vars.h is really the future expanded Organizer header
 #define LEFT_MARGIN 2
 #define TIME_COL_WIDTH 18 // need this if going to have modified col
 #define UNUSED(x) (void)(x)
@@ -28,7 +29,7 @@
 #include <chrono>
 #include <iomanip>  //provides get_time used in time_delta function
 #include <fmt/format.h>
-#include <fcntl.h> //file locking
+//#include <fcntl.h> //file locking
 #include "Common.h"
 #include "Organizer.h"
 
@@ -45,17 +46,17 @@ const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
 
 //std::string meta;
-std::stringstream display_text;
-int initial_file_row = 0; //for arrowing or displaying files
+//std::stringstream display_text;
+//int initial_file_row = 0; //for arrowing or displaying files
 
 std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 const int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
-int temporary_tid = 99999;
+//int temporary_tid = 99999;
 int link_id = 0;
 char link_text[20];
 //std::unordered_set<int> marked_entries;
-struct flock lock; 
+//struct flock lock; 
 //std::vector<std::string> line_buffer = {}; //yanking lines
 
 struct sqlite_db {

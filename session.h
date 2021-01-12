@@ -5,6 +5,8 @@
 #include <vector>
 #include <string>
 #include <termios.h>
+#include <sstream>
+#include <fcntl.h> //file locking
 #include "Organizer.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
@@ -18,6 +20,10 @@ struct Session {
   int textlines; //total lines available in editor and organizer
 
   int divider;
+  std::stringstream display_text; //klugy display of sync log file
+  int initial_file_row = 0; //for arrowing or displaying files
+  int temporary_tid = 99999;
+  struct flock lock; 
   //int divider_pct
   int totaleditorcols;
   std::vector<Editor*> editors;
@@ -37,7 +43,7 @@ struct Session {
 
   /* outlineRefreshScreen depends on three functions below
    * not sure whether they should be in session or not
-   * right now in Organizer
+   * right now in Organizer - I think they should stay in Organizer
   outlineRefreshScreen(void) -> refreshOrgScreen
   outlineDrawSearchRows(ab) -> drawOrgSearchRows
   outlineDrawFilters(ab) -> drawOrgFilters
