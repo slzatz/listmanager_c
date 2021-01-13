@@ -46,14 +46,12 @@ struct Session {
   void generateContextMap(void);
   void generateFolderMap(void);
 
-  /* outlineRefreshScreen depends on three functions below
-   * not sure whether they should be in session or not
-   * right now in Organizer - I think they should stay in Organizer
-  outlineRefreshScreen(void) -> refreshOrgScreen
-  outlineDrawSearchRows(ab) -> drawOrgSearchRows
-  outlineDrawFilters(ab) -> drawOrgFilters
-  outlineDrawRows(ab) -> drawOrgRows
-  */
+
+  void drawOrgRows(std::string& ab); //-> outlineDrawRows
+  void drawOrgFilters(std::string& ab); //-> outlineDrawFilters
+  void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
+  void refreshOrgScreen(void); //-> outlineRefreshScreen
+
   // the history of commands to make it easier to go back to earlier views
   // Not sure it is very helpful and I don't use it at all
   std::vector<std::string> page_history;

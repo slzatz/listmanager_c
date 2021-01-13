@@ -2025,7 +2025,8 @@ void update_note(bool is_subnote, bool closing_editor) {
 
   if (is_subnote) {
     outlineShowMessage("Updated *sub*note for item %d", sess.p->id);
-    sess.O.outlineRefreshScreen();
+    //sess.O.outlineRefreshScreen();
+    sess.refreshOrgScreen();
     return;
   }
   /***************fts virtual table update*********************/
@@ -2033,7 +2034,8 @@ void update_note(bool is_subnote, bool closing_editor) {
   if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   outlineShowMessage("Updated note and fts entry for item %d", sess.p->id);
-  sess.O.outlineRefreshScreen();
+  //sess.O.outlineRefreshScreen();
+  sess.refreshOrgScreen();
 }
 
 void update_task_context(std::string &new_context, int id) {
@@ -2187,7 +2189,8 @@ void update_title(void) {
   if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
 
   outlineShowMessage("Updated title and fts entry for item %d", row.id);
-  sess.O.outlineRefreshScreen();
+  //sess.O.outlineRefreshScreen();
+  sess.refreshOrgScreen();
 
   // moved here 10262020
   if (lm_browser) {
@@ -2953,7 +2956,8 @@ void F_edit(int id) {
   }
 
   outlineShowMessage("Edit note %d", id);
-  sess.O.outlineRefreshScreen();
+  //sess.O.outlineRefreshScreen();
+  sess.refreshOrgScreen();
   sess.editor_mode = true;
 
   if (!sess.editors.empty()){
@@ -6307,7 +6311,8 @@ int main(int argc, char** argv) {
   //bool scroll;
   //bool redraw;
 
-  sess.O.outlineRefreshScreen(); 
+  //sess.O.outlineRefreshScreen(); 
+  sess.refreshOrgScreen();
   //sess.O.outlineDrawStatusBar();
   sess.drawOrgStatusBar();
   sess.O.outlineShowMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
@@ -6339,7 +6344,8 @@ int main(int argc, char** argv) {
     } else if (sess.O.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       outlineScroll();
-      sess.O.outlineRefreshScreen(); // now just draws rows
+      //sess.O.outlineRefreshScreen(); // now just draws rows
+      sess.refreshOrgScreen();
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
     //sess.O.outlineDrawStatusBar();

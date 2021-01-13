@@ -419,3 +419,193 @@ void Session::generateFolderMap(void) {
     O.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
+
+//this is Organizer::outlinedrawRows
+void Session::drawOrgRows(std::string& ab) {
+  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
+  char buf[32];
+  int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
+
+  if (O.rows.empty()) return;
+
+  unsigned int y;
+  char lf_ret[16];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
+
+  for (y = 0; y < textlines; y++) {
+    int frr = y + O.rowoff;
+    if (frr > O.rows.size() - 1) return;
+    orow& row = O.rows[frr];
+
+    // if a line is long you only draw what fits on the screen
+    //below solves problem when deleting chars from a scrolled long line
+    int len = (frr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
+    if (len > titlecols) len = titlecols;
+
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
+    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
+    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
+    //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+    else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
+    if (frr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
+    if (row.dirty) ab.append("\x1b[41m", 5); //red background
+    //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
+    if (O.marked_entries.find(row.id) != O.marked_entries.end()) ab.append("\x1b[46m", 5);
+
+    // below - only will get visual highlighting if it's the active
+    // then also deals with column offset
+    if (O.mode == VISUAL && frr == O.fr) {
+
+       // below in case O.highlight[1] < O.highlight[0]
+      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
+      j =!k;
+      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append("\x1b[48;5;242m", 11);
+      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
+                                             - O.highlight[j]);
+      ab.append("\x1b[49m", 5); // return background to normal
+      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+
+    } else {
+        // current row is only row that is scrolled if O.coloff != 0
+        ab.append(&row.title[((frr == O.fr) ? O.coloff : 0)], len);
+    }
+
+    // the spaces make it look like the whole row is highlighted
+    //note len can't be greater than titlecols so always positive
+    ab.append(titlecols - len + 1, ' ');
+
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); // + offset
+    // believe the +2 is just to give some space from the end of long titles
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, divider - TIME_COL_WIDTH + 2); // + offset
+    ab.append(buf, strlen(buf));
+    ab.append(row.modified);
+    ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
+    ab.append(lf_ret, nchars);
+  }
+}
+
+void Session::drawOrgFilters(std::string& ab) {
+
+  if (O.rows.empty()) return;
+
+  char lf_ret[16];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 1);
+  int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
+
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%dG", divider + 2); 
+  ab.append(buf); 
+
+  for (int y = 0; y < textlines; y++) {
+    int frr = y + O.rowoff;
+    if (frr > O.rows.size() - 1) return;
+
+    orow& row = O.rows[frr];
+
+    size_t len = (row.title.size() > titlecols) ? titlecols : row.title.size();
+
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
+    //? do this after everything drawn
+    if (frr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
+
+    ab.append(&row.title[0], len);
+    int spaces = titlecols - len; //needs to change but reveals stuff being written
+    std::string s(spaces, ' '); 
+    ab.append(s);
+    ab.append("\x1b[0m"); // return background to normal /////
+    ab.append(lf_ret);
+  }
+}
+void Session::drawOrgSearchRows(std::string& ab) {
+
+  if (O.rows.empty()) return;
+
+  char buf[32];
+  unsigned int y;
+  char lf_ret[16];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
+  int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
+
+  int spaces;
+
+  for (y = 0; y < textlines; y++) {
+    int frr = y + O.rowoff;
+    if (frr > static_cast<int>(O.rows.size()) - 1) return;
+    orow& row = O.rows[frr];
+    int len;
+
+    //if (row.star) ab.append("\x1b[1m"); //bold
+    if (row.star) {
+      ab.append("\x1b[1m"); //bold
+      ab.append("\x1b[1;36m");
+    }  
+
+    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
+    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
+    else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
+
+    //if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey but gets stopped as soon as it hits search highlight
+
+    //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+
+    // I think the following blows up if there are multiple search terms hits in a line longer than O.titlecols
+
+    if (row.title.size() <= titlecols) // we know it fits
+      ab.append(row.fts_title.c_str(), row.fts_title.size());
+    else {
+      size_t pos = row.fts_title.find("\x1b[49m");
+      if (pos < titlecols + 10) //length of highlight escape
+        ab.append(row.fts_title.c_str(), titlecols + 15); // length of highlight escape + remove formatting escape
+      else
+        ab.append(row.title.c_str(), titlecols);
+}
+    len = (row.title.size() <= titlecols) ? row.title.size() : titlecols;
+    spaces = titlecols - len;
+    for (int i=0; i < spaces; i++) ab.append(" ", 1);
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - TIME_COL_WIDTH + 2); //wouldn't need offset
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, divider - TIME_COL_WIDTH + 2); //wouldn't need offset
+    ab.append("\x1b[0m", 4); // return background to normal
+    ab.append(buf, strlen(buf));
+    ab.append(row.modified);
+    ab.append(lf_ret, nchars);
+    //abAppend(ab, "\x1b[0m", 4); // return background to normal
+  }
+}
+
+void Session::refreshOrgScreen(void) {
+
+  std::string ab;
+  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+
+  char buf[20];
+
+  //Below erase screen from middle to left - `1K` below is cursor to left erasing
+  //Now erases time/sort column (+ 17 in line below)
+  //if (O.view != KEYWORD) {
+  if (O.mode != ADD_CHANGE_FILTER) {
+    for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
+      titlecols + LEFT_MARGIN + 17); 
+      ab.append(buf, strlen(buf));
+    }
+  }
+  // put cursor at upper left after erasing
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
+  ab.append(buf, strlen(buf));
+
+  if (O.mode == FIND) drawOrgSearchRows(ab);
+  else if (O.mode == ADD_CHANGE_FILTER) drawOrgFilters(ab);
+  else  drawOrgRows(ab);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
