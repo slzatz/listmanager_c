@@ -182,7 +182,9 @@ void Session::moveDivider(int pct) {
   }
 
   O.outlineRefreshScreen();
-  O.outlineDrawStatusBar();
+  //O.outlineDrawStatusBar();
+  drawOrgStatusBar();
+
   if (editor_mode)
       Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
   else 
@@ -351,7 +353,7 @@ void Session::drawOrgStatusBar(void) {
     ab.append(rstatus, divider - len);
   } else {
     ab.append(status);
-    ab.append(divider - len - rlen, ' ');
+    ab.append(divider - len - rlen - 1, ' ');
     ab.append(rstatus);
   }
 
@@ -386,4 +388,34 @@ void Session::getNote(int id) {
   run_sql();
   */
 
+}
+void Session::generateContextMap(void) {
+  // note it's tid because it's sqlite
+  Query q(db, "SELECT tid, title FROM context;"); 
+  /*
+  if (q.result != SQLITE_OK) {
+    outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
+    return;
+  }
+  */
+
+  while (q.step() == SQLITE_ROW) {
+    O.context_map[q.column_text(1)] = q.column_int(0);
+  }
+}
+
+void Session::generateFolderMap(void) {
+
+  // note it's tid because it's sqlite
+  Query q(db, "SELECT tid,title FROM folder;"); 
+  /*
+  if (q.result != SQLITE_OK) {
+    outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
+    return;
+  }
+  */
+
+  while (q.step() == SQLITE_ROW) {
+    O.folder_map[q.column_text(1)] = q.column_int(0);
+  }
 }

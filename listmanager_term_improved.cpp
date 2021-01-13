@@ -774,16 +774,15 @@ void F_copy_entry(int) {
   get_items(MAX);
 }
 
+/* sess.generateContextMap
 void map_context_titles(void) {
 
   // note it's tid because it's sqlite
   Query q(sess.db, "SELECT tid, title FROM context;"); 
-  /*
-  if (q.result != SQLITE_OK) {
-    outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
-    return;
-  }
-  */
+  //if (q.result != SQLITE_OK) {
+  //  outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
+  //  return;
+ // }
 
   while (q.step() == SQLITE_ROW) {
     sess.O.context_map[q.column_text(1)] = q.column_int(0);
@@ -794,17 +793,16 @@ void map_folder_titles(void) {
 
   // note it's tid because it's sqlite
   Query q(sess.db, "SELECT tid,title FROM folder;"); 
-  /*
-  if (q.result != SQLITE_OK) {
-    outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
-    return;
-  }
-  */
+ // if (q.result != SQLITE_OK) {
+ //   outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
+ //   return;
+ // }
 
   while (q.step() == SQLITE_ROW) {
     sess.O.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
+*/
 
 void get_containers(void) {
 
@@ -3249,8 +3247,10 @@ void F_find(int pos) {
 
 void F_sync(int) {
   synchronize(0); // do actual sync
-  map_context_titles();
-  map_folder_titles();
+  //map_context_titles();
+  sess.generateContextMap();
+  //map_folder_titles();
+  sess.generateFolderMap();
   sess.initial_file_row = 0; //for arrowing or displaying files
   sess.O.mode = FILE_DISPLAY; // needs to appear before displayFile
   outlineShowMessage("Synching local db and server and displaying results");
@@ -6288,8 +6288,10 @@ int main(int argc, char** argv) {
 
   //which_db = SQLITE; //this can go since not using postgres on client
 
-  map_context_titles();
-  map_folder_titles();
+  //map_context_titles();
+  sess.generateContextMap();
+  //map_folder_titles();
+  sess.generateFolderMap();
 
   sess.getWindowSize();
   enableRawMode();

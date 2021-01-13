@@ -43,6 +43,9 @@ struct Session {
 
   void getNote(int id);
 
+  void generateContextMap(void);
+  void generateFolderMap(void);
+
   /* outlineRefreshScreen depends on three functions below
    * not sure whether they should be in session or not
    * right now in Organizer - I think they should stay in Organizer
