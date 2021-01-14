@@ -80,31 +80,31 @@ class Organizer {
   void outlineMoveEndWord();//OK
   void outlineMoveEndWord2();//OK    not 'e' but just moves to end of word even if on last letter
   //void outlineMoveNextWord();// now w_N
-  void outlineGetWordUnderCursor();//
-  void outlineFindNextWord();//
-  void outlineChangeCase();//
-  void outlineInsertRow(int, std::string&&, bool, bool, bool, std::string&&);//
+  void outlineGetWordUnderCursor();//OK
+  void outlineFindNextWord();//OK
+  void outlineChangeCase();//OK
+  void outlineInsertRow(int, std::string&&, bool, bool, bool, std::string&&);//OK
   void outlineScroll(void);//OK
-  void outlineSave(const std::string &);//
+  void outlineSave(const std::string &);//OK
   //void return_cursor(void);
-  void get_preview(int);//
-  void draw_preview(void);//
-  void draw_search_preview(void);//
-  std::string draw_preview_box(int, int);//
-  std::string generateWWString(std::vector<std::string> &, int, int, std::string);//
-  void highlight_terms_string(std::string &);//
-  void get_search_positions(int);//
-  void outlineInsertChar(int c);//
-  std::string outlineRowsToString(void);//
-  void display_container_info(int id);
+  void get_preview(int);//OK
+  void draw_preview(void);//OK
+  void draw_search_preview(void);//OK
+  std::string draw_preview_box(int, int);//OK
+  std::string generateWWString(std::vector<std::string> &, int, int, std::string);//OK
+  void highlight_terms_string(std::string &);//OK
+  void get_search_positions(int);//OK
+  void outlineInsertChar(int c);//OK
+  std::string outlineRowsToString(void);//OK
+  void display_container_info(int id);//OK
   
-  static int rowid_callback(void *, int, char **, char **);
-  static int offset_callback(void *, int, char **, char **);
-  static int preview_callback (void *, int, char **, char **);
-  static int keyword_info_callback(void *, int, char **, char **);
-  static int context_info_callback(void *, int, char **, char **); 
-  static int folder_info_callback(void *, int, char **, char **); 
-  static int count_callback(void *, int, char **, char **);
+  static int rowid_callback(void *, int, char **, char **);//OK
+  static int offset_callback(void *, int, char **, char **);//OK
+  static int preview_callback (void *, int, char **, char **);//OK
+  static int keyword_info_callback(void *, int, char **, char **);//OK
+  static int context_info_callback(void *, int, char **, char **);//OK
+  static int folder_info_callback(void *, int, char **, char **);//OK 
+  static int count_callback(void *, int, char **, char **);//OK
   /*
   //Database-related Prototypes
   void db_open(void);
@@ -139,7 +139,6 @@ class Organizer {
   void display_item_info(int); 
   void display_item_info(void); //ctrl-i in NORMAL mode 0x9
   void display_item_info_pg(int);
-  void display_container_info(int);
   int keyword_exists(const std::string &);  
   int folder_exists(std::string &);
   int context_exists(std::string &);

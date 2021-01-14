@@ -33,33 +33,15 @@
 #include "Common.h"
 #include "Organizer.h"
 
-//void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
-
-/*
-template<typename... Args>
-void outlineShowMessage3(fmt::string_view format_str, const Args & ... args) {
-  fmt::format_args argspack = fmt::make_format_args(args...);
-  outlineShowMessage2(fmt::vformat(format_str, argspack));
-}
-*/
-
 const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
-
-//std::string meta;
-//std::stringstream display_text;
-//int initial_file_row = 0; //for arrowing or displaying files
-
-std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 const int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
-//int temporary_tid = 99999;
+
+std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
 int link_id = 0;
 char link_text[20];
-//std::unordered_set<int> marked_entries;
-//struct flock lock; 
-//std::vector<std::string> line_buffer = {}; //yanking lines
 
 struct sqlite_db {
   sqlite3 *db;
