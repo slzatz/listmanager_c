@@ -9,9 +9,20 @@
 #include <fmt/format.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
+#include <fstream>
+#include "pstream.h"
+
+extern "C" {
+#include <mkdio.h>
+}
 
 #define TOP_MARGIN 1
 #define LEFT_MARGIN 2
+
+using namespace redi; //pstream
+
+int Session::link_id = 0;
+char Session::link_text[20] = {};
 
 Session sess = Session(); //global; extern Session sess in session.h
 
@@ -181,14 +192,14 @@ void Session::moveDivider(int pct) {
     drawEditors();
   }
 
-  O.outlineRefreshScreen();
+  refreshOrgScreen();
   //O.outlineDrawStatusBar();
   drawOrgStatusBar();
 
   if (editor_mode)
       Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
   else 
-      O.outlineShowMessage("rows: %d  cols: %d ", screenlines, screencols);
+      showOrgMessage("rows: %d  cols: %d ", screenlines, screencols);
 
   /* need to think about this
   if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
@@ -366,7 +377,7 @@ void Session::getNote(int id) {
 
   Query q(db, "SELECT note FROM task WHERE id = {}", id);
   if (int res = q.step(); res != SQLITE_ROW) {
-    O.outlineShowMessage3("Problem retrieving note from itemi {}: {}", id, res);
+    showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
     return;
   }
   std::string note = q.column_text(0);
@@ -609,3 +620,180 @@ void Session::refreshOrgScreen(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+void Session::showOrgMessage(const char *fmt, ...) {
+  char message[100];  
+  std::string ab;
+  va_list ap; //type for iterating arguments
+  va_start(ap, fmt); // start iterating arguments with a va_list
+
+
+  /* vsnprint from <stdio.h> writes to the character string str
+     vsnprint(char *str,size_t size, const char *format, va_list ap)*/
+
+  std::vsnprintf(message, sizeof(message), fmt, ap);
+  va_end(ap); //free a va_list
+
+  std::stringstream buf;
+
+  // Erase from mid-screen to the left and then place cursor all the way left
+  buf << "\x1b[" << sess.textlines + 2 + TOP_MARGIN << ";"
+      //<< screencols/2 << "H" << "\x1b[1K\x1b["
+      << sess.divider << "H" << "\x1b[1K\x1b["
+      << sess.textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+
+  ab = buf.str();
+  //ab.append("\x1b[0m"); //checking if necessary
+
+  int msglen = strlen(message);
+  //if (msglen > screencols/2) msglen = screencols/2;
+  if (msglen > sess.divider) msglen = sess.divider;
+  ab.append(message, msglen);
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+void Session::showOrgMessage2(const std::string &s) {
+  std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
+                                 sess.textlines + 2 + TOP_MARGIN,
+                                 sess.divider,
+                                 sess.textlines + 2 + TOP_MARGIN);
+
+  if (s.length() > sess.divider) buf.append(s, sess.divider) ;
+  else buf.append(s);
+
+  write(STDOUT_FILENO, buf.c_str(), buf.size());
+}
+
+int Session::get_folder_tid(int id) {
+
+  std::stringstream query;
+  query << "SELECT folder_tid FROM task WHERE id = " << id;
+
+  int folder_tid = -1;
+  //int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
+  if (!db_query(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg, __func__)) return -1;
+  return folder_tid;
+}
+
+int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
+  int *f_tid = static_cast<int*>(folder_tid);
+  *f_tid = atoi(argv[0]);
+  return 0;
+}
+
+void Session::update_html_file(std::string &&fn) {
+  std::string note;
+  if (editor_mode) note = p->editorRowsToString();
+  else note = O.outlinePreviewRowsToString();
+  std::stringstream text;
+  std::stringstream html;
+  char *doc = nullptr;
+  std::string title = O.rows.at(O.fr).title;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  //MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), MKD_FENCEDCODE);//11-16-2020
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, MKD_FENCEDCODE); //did something
+  mkd_document(blob, &doc);
+  html << meta_ << doc << "</article></body><html>";
+  
+  int fd;
+  //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, html.str().c_str(), html.str().size());
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else showOrgMessage("Couldn't lock file");
+  } else showOrgMessage("Couldn't open file");
+
+  /* don't know if below is correct or necessary - I don't think so*/
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+  //
+  mkd_cleanup(blob);
+  link_id = 0;
+}
+
+char * Session::url_callback(const char *x, const int y, void *z) {
+  link_id++;
+  sprintf(link_text,"id=\"%d\"", link_id);
+  return link_text;
+}  
+
+void Session::update_html_code_file(std::string &&fn) {
+  std::string note;
+  std::ofstream myfile;
+  note = O.outlinePreviewRowsToString();
+  myfile.open("code_file");
+  myfile << note;
+  myfile.close();
+
+  std::stringstream html;
+  std::string line;
+  int tid = get_folder_tid(O.rows.at(O.fr).id);
+  ipstream highlight(fmt::format("highlight code_file --out-format=html "
+                             "--style=gruvbox-dark-hard-slz --syntax={}",
+                             (tid == 18) ? "cpp" : "go"));
+
+  while(getline(highlight, line)) { html << line << '\n';}
+ 
+  int fd;
+  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
+    lock.l_type = F_WRLCK;  
+    if (fcntl(fd, F_SETLK, &lock) != -1) {
+    write(fd, html.str().c_str(), html.str().size());
+    lock.l_type = F_UNLCK;
+    fcntl(fd, F_SETLK, &lock);
+    } else showOrgMessage("Couldn't lock file");
+  } else showOrgMessage("Couldn't open file");
+}
+/************************************db stuff *************************************/
+void Session::run_sql(void) {
+  if (!db.run()) {
+    showOrgMessage("SQL error: %s", db.errmsg);
+    return;
+  }  
+}
+
+void Session::db_open(void) {
+  int rc = sqlite3_open(SQLITE_DB_.c_str(), &S.db);
+  if (rc != SQLITE_OK) {
+    sqlite3_close(S.db);
+    exit(1);
+  }
+
+  rc = sqlite3_open(FTS_DB_.c_str(), &S.fts_db);
+  if (rc != SQLITE_OK) {
+    sqlite3_close(S.fts_db);
+    exit(1);
+  }
+}
+
+bool Session::db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
+   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
+   if (rc != SQLITE_OK) {
+     showOrgMessage("SQL error: %s", errmsg);
+     sqlite3_free(errmsg);
+     return false;
+   }
+   return true;
+}
+
+bool Session::db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
+   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
+   if (rc != SQLITE_OK) {
+     showOrgMessage("SQL error in %s: %s", func, errmsg);
+     sqlite3_free(errmsg);
+     return false;
+   }
+   return true;
+}

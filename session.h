@@ -12,23 +12,51 @@
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
 
+struct sqlite_db_ {
+  sqlite3 *db;
+  char *err_msg;
+  sqlite3 *fts_db;
+};
+
 struct Session {
   int screencols;
   int screenlines;
-
-  //O.screenlines = sess.screenlines - 2 - TOP_MARGIN; // -2 for status bar and message bar
   int textlines; //total lines available in editor and organizer
-
   int divider;
+  int totaleditorcols;
+
   std::stringstream display_text; //klugy display of sync log file
   int initial_file_row = 0; //for arrowing or displaying files
   int temporary_tid = 99999;
   struct flock lock; 
   //int divider_pct
-  int totaleditorcols;
+  //
+  bool lm_browser = false;
+
+  static int link_id;
+  static char link_text[20];
+
   std::vector<Editor*> editors;
   Editor *p;
   Organizer O;
+
+  Sqlite db;
+  Sqlite fts;
+  //
+  // the history of commands to make it easier to go back to earlier views
+  // Not sure it is very helpful and I don't use it at all
+  std::vector<std::string> page_history;
+  int page_hx_idx = 0;
+  //
+  // the history of commands to make it easier to go back to earlier views
+  // Not sure it is very helpful and I don't use it at all
+  std::vector<std::string> command_history; 
+  int cmd_hx_idx = 0;
+  bool editor_mode = false;
+  std::string fts_search_terms;
+
+  struct termios orig_termios;
+  std::string meta; // meta content for html for ultralight browser
 
   void eraseScreenRedrawLines(void);
   void eraseRightScreen(void);
@@ -46,29 +74,32 @@ struct Session {
   void generateContextMap(void);
   void generateFolderMap(void);
 
-
   void drawOrgRows(std::string& ab); //-> outlineDrawRows
   void drawOrgFilters(std::string& ab); //-> outlineDrawFilters
   void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
   void refreshOrgScreen(void); //-> outlineRefreshScreen
 
-  // the history of commands to make it easier to go back to earlier views
-  // Not sure it is very helpful and I don't use it at all
-  std::vector<std::string> page_history;
-  int page_hx_idx = 0;
-  //
-  // the history of commands to make it easier to go back to earlier views
-  // Not sure it is very helpful and I don't use it at all
-  std::vector<std::string> command_history; 
-  int cmd_hx_idx = 0;
-  bool editor_mode = false;
-  std::string fts_search_terms;
+  void showOrgMessage(const char *fmt, ...);
+  void showOrgMessage2(const std::string &s);
 
-  Sqlite db;
-  Sqlite fts;
+  template<typename... Args>
+  void showOrgMessage3(fmt::string_view format_str, const Args & ... args) {
+    fmt::format_args argspack = fmt::make_format_args(args...);
+    showOrgMessage2(fmt::vformat(format_str, argspack));
+  }
 
-  struct termios orig_termios;
-  std::string meta; // meta content for html for ultralight browser
+  void update_html_file(std::string &&fn);
+  void update_html_code_file(std::string &&fn);
+  static char * (url_callback)(const char *x, const int y, void *z);
+
+  struct sqlite_db_ S;
+  void run_sql(void);
+  void db_open(void);
+  bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg);
+  bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func);
+
+  int get_folder_tid(int id);
+  static int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName);
 
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };

@@ -33,13 +33,15 @@
 #include "Common.h"
 #include "Organizer.h"
 
-void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
+//void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
 
+/*
 template<typename... Args>
 void outlineShowMessage3(fmt::string_view format_str, const Args & ... args) {
   fmt::format_args argspack = fmt::make_format_args(args...);
   outlineShowMessage2(fmt::vformat(format_str, argspack));
 }
+*/
 
 const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -86,26 +88,18 @@ struct config c;
 
 PGconn *conn = nullptr;
 
-void eraseScreenRedrawLines(void);
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
-//void outlineDrawPreview(std::string &ab);
-void outlineDrawRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawFilters(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineDrawSearchRows(std::string&); // doesn't do any erasing; done in outlineRefreshRows
-void outlineShowMessage(const char *fmt, ...); //erases outline message area and writes message so can be called separately
-//void outlineShowMessage2(const std::string &); //erases outline message area and writes message so can be called separately
-void outlineRefreshScreen(void); //erases outline area and sort/time screen columns and writes outline rows so can be called separately
-void outlineDrawStatusBar(void);
-void outlineDrawMessageBar(std::string&);
-void outlineRefreshAllEditors(void);
-std::string outlinePreviewRowsToString(void);
+
 void lsp_start(void);
 void lsp_shutdown(void);
 
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
 
+void outlineInsertChar(int);
+/* started here */
+std::string outlinePreviewRowsToString(void);
 void outlineDelWord();
 void outlineMoveCursor(int key);
 void outlineBackspace(void);
@@ -154,11 +148,8 @@ void update_container(void);
 void update_keyword(void);
 void get_items(int); 
 void get_containers(void); //has an if that determines callback: context_callback or folder_callback
-//std::pair<std::string, std::vector<std::string>> get_task_keywords(void); // puts them in comma delimited string
 std::pair<std::string, std::vector<std::string>> get_task_keywords(int); // used in F_copy_entry
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
-void update_note(bool); //used by Editor class 
-//void solr_find(void);
 void search_db(const std::string &); //void fts5_sqlite(std::string);
 void search_db2(const std::string &); //just searches documentation - should be combined with above
 void get_items_by_id(std::stringstream &);
@@ -167,7 +158,6 @@ void map_context_titles(void);
 void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
 void add_task_keyword(int, int, bool update_fts=true);
-//void delete_task_keywords(void); -> F_deletekeywords
 void display_item_info(int); 
 void display_item_info(void); //ctrl-i in NORMAL mode 0x9
 void display_item_info_pg(int);
@@ -204,13 +194,14 @@ int keyword_info_callback(void *, int, char **, char **);
 int count_callback(void *, int, char **, char **);
 int unique_data_callback(void *, int, char **, char **);
 int preview_callback (void *, int, char **, char **);
+/* end here */
 
 void synchronize(int);
 
 // Not used by Editor class
 void readFile(const std::string &);
 void displayFile(void);
-void eraseRightScreen(void); //erases the note section; redundant if just did an eraseScreenRedrawLines
+//void eraseRightScreen(void); //erases the note section; redundant if just did an eraseScreenRedrawLines
 
 //std::string generate_html(void);
 //std::string generate_html2(void);

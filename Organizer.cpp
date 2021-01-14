@@ -3,366 +3,967 @@
 #define TIME_COL_WIDTH 18 // need this if going to have modified col
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
+#define UNUSED(x) (void)(x)
 
 #include <unistd.h>
 #include "session.h"
 #include "Organizer.h"
 #include "Common.h"
 #include <sstream>
+#include <fstream>
 
-void Organizer::outlineDrawRows(std::string& ab) {
-  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
-  char buf[32];
-  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+std::vector<std::string> Organizer::preview_rows = {};//static
+std::vector<std::vector<int>> Organizer::word_positions = {};//static
 
-  if (rows.empty()) return;
+std::string Organizer::outlinePreviewRowsToString(void) {
 
-  unsigned int y;
-  char lf_ret[16];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
-
-  for (y = 0; y < sess.textlines; y++) {
-    int frr = y + rowoff;
-    if (frr > rows.size() - 1) return;
-    orow& row = rows[frr];
-
-    // if a line is long you only draw what fits on the screen
-    //below solves problem when deleting chars from a scrolled long line
-    int len = (frr == fr) ? row.title.size() - coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
-    if (len > titlecols) len = titlecols;
-
-    if (row.star) {
-      ab.append("\x1b[1m"); //bold
-      ab.append("\x1b[1;36m");
-    }  
-    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
-    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
-    //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
-    else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
-    if (frr == fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
-    if (row.dirty) ab.append("\x1b[41m", 5); //red background
-    //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
-    if (marked_entries.find(row.id) != marked_entries.end()) ab.append("\x1b[46m", 5);
-
-    // below - only will get visual highlighting if it's the active
-    // then also deals with column offset
-    if (mode == VISUAL && frr == fr) {
-
-       // below in case O.highlight[1] < O.highlight[0]
-      k = (highlight[1] > highlight[0]) ? 1 : 0;
-      j =!k;
-      ab.append(&(row.title[coloff]), highlight[j] - coloff);
-      ab.append("\x1b[48;5;242m", 11);
-      ab.append(&(row.title[highlight[j]]), highlight[k]
-                                             - highlight[j]);
-      ab.append("\x1b[49m", 5); // return background to normal
-      ab.append(&(row.title[highlight[k]]), len - highlight[k] + coloff);
-
-    } else {
-        // current row is only row that is scrolled if O.coloff != 0
-        ab.append(&row.title[((frr == fr) ? coloff : 0)], len);
-    }
-
-    // the spaces make it look like the whole row is highlighted
-    //note len can't be greater than titlecols so always positive
-    ab.append(titlecols - len + 1, ' ');
-
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); // + offset
-    // believe the +2 is just to give some space from the end of long titles
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, sess.divider - TIME_COL_WIDTH + 2); // + offset
-    ab.append(buf, strlen(buf));
-    ab.append(row.modified);
-    ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
-    ab.append(lf_ret, nchars);
+  std::string z = "";
+  for (auto i: preview_rows) {
+      z += i;
+      z += '\n';
   }
+  if (!z.empty()) z.pop_back(); //pop last return that we added
+  return z;
 }
 
-void Organizer::outlineDrawFilters(std::string& ab) {
+void Organizer::outlineDelWord() {
+
+  orow& row = rows.at(fr);
+  if (row.title[fc] < 48) return;
+
+  int i,j,x;
+  for (i = fc; i > -1; i--){
+    if (row.title[i] < 48) break;
+    }
+  for (j = fc; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
+  }
+  fc = i+1;
+
+  for (x = 0 ; x < j-i; x++) {
+      outlineDelChar();
+  }
+  row.dirty = true;
+  //sess.showOrgMessage("i = %d, j = %d", i, j ); 
+}
+//
+//Note: outlineMoveCursor worries about moving cursor beyond the size of the row
+//OutlineScroll worries about moving cursor beyond the screen
+void Organizer::outlineMoveCursor(int key) {
 
   if (rows.empty()) return;
 
-  char lf_ret[16];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
+  switch (key) {
+    case ARROW_LEFT:
+    case 'h':
+      if (fc > 0) fc--; 
+      break;
+
+    case ARROW_RIGHT:
+    case 'l':
+    {
+      fc++;
+      break;
+    }
+    case ARROW_UP:
+    case 'k':
+      if (fr > 0) fr--; 
+      fc = coloff = 0; 
+
+      if (view == TASK) {
+        get_preview(rows.at(fr).id); //if id == -1 does not try to retrieve note
+
+      } else display_container_info(rows.at(fr).id);
+      break;
+
+    case ARROW_DOWN:
+    case 'j':
+      if (fr < rows.size() - 1) fr++;
+      fc = coloff = 0;
+      if (view == TASK) {
+        get_preview(rows.at(fr).id); //if id == -1 does not try to retrieve note
+      } else display_container_info(rows.at(fr).id);
+      break;
+  }
+
+  orow& row = rows.at(fr);
+  if (fc >= row.title.size()) fc = row.title.size() - (mode != INSERT);
+  if (row.title.empty()) fc = 0;
+}
+
+void Organizer::outlineBackspace(void) {
+  orow& row = rows.at(fr);
+  if (rows.empty() || row.title.empty() || fc == 0) return;
+  row.title.erase(row.title.begin() + fc - 1);
+  row.dirty = true;
+  fc--;
+}
+
+void Organizer::outlineDelChar(void) {
+
+  orow& row = rows.at(fr);
+
+  if (rows.empty() || row.title.empty()) return;
+
+  row.title.erase(row.title.begin() + fc);
+  row.dirty = true;
+}
+
+void Organizer::outlineDeleteToEndOfLine(void) {
+  orow& row = rows.at(fr);
+  row.title.resize(fc); // or row.chars.erase(row.chars.begin() + O.fc, row.chars.end())
+  row.dirty = true;
+}
+
+void Organizer::outlinePasteString(void) {
+  orow& row = rows.at(fr);
+
+  if (rows.empty() || string_buffer.empty()) return;
+
+  row.title.insert(row.title.begin() + fc, string_buffer.begin(), string_buffer.end());
+  fc += string_buffer.size();
+  row.dirty = true;
+}
+
+void Organizer::outlineYankString() {
+  orow& row = rows.at(fr);
+  string_buffer.clear();
+
+  std::string::const_iterator first = row.title.begin() + highlight[0];
+  std::string::const_iterator last = row.title.begin() + highlight[1];
+  string_buffer = std::string(first, last);
+}
+
+void Organizer::outlineMoveCursorEOL() {
+  fc = rows.at(fr).title.size() - 1;  //if O.cx > O.titlecols will be adjusted in EditorScroll
+}
+
+void Organizer::outlineMoveBeginningWord() {
+  orow& row = rows.at(fr);
+  if (fc == 0) return;
+  for (;;) {
+    if (row.title[fc - 1] < 48) fc--;
+    else break;
+    if (fc == 0) return;
+  }
+  int i;
+  for (i = fc - 1; i > -1; i--){
+    if (row.title[i] < 48) break;
+  }
+  fc = i + 1;
+}
+
+void Organizer::outlineMoveEndWord() {
+  orow& row = rows.at(fr);
+  if (fc == row.title.size() - 1) return;
+  for (;;) {
+    if (row.title[fc + 1] < 48) fc++;
+    else break;
+    if (fc == row.title.size() - 1) return;
+  }
+  int j;
+  for (j = fc + 1; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
+  }
+  fc = j - 1;
+}
+
+// not same as 'e' but moves to end of word or stays put if already on end of word
+void Organizer::outlineMoveEndWord2() {
+  int j;
+  orow& row = rows.at(fr);
+
+  for (j = fc + 1; j < row.title.size() ; j++) {
+    if (row.title[j] < 48) break;
+  }
+  fc = j - 1;
+}
+
+void Organizer::outlineGetWordUnderCursor(){
+  std::string& title = rows.at(fr).title;
+  if (title[fc] < 48) return;
+
+  title_search_string.clear();
+  int i,j,x;
+
+  for (i = fc - 1; i > -1; i--){
+    if (title[i] < 48) break;
+  }
+
+  for (j = fc + 1; j < title.size() ; j++) {
+    if (title[j] < 48) break;
+  }
+
+  for (x=i+1; x<j; x++) {
+      title_search_string.push_back(title.at(x));
+  }
+  sess.showOrgMessage("word under cursor: <%s>", title_search_string.c_str());
+}
+
+void Organizer::outlineFindNextWord() {
+
+  int y, x;
+  //y = O.fr;
+  y = (fr < rows.size() -1) ? fr + 1 : 0;
+  //x = O.fc + 1; //in case sitting on beginning of the word
+  x = 0; //you've advanced y since not worried about multiple same words in one title
+   for (unsigned int n=0; n < rows.size(); n++) {
+     std::string& title = rows.at(y).title;
+     auto res = std::search(std::begin(title) + x, std::end(title), std::begin(title_search_string), std::end(title_search_string));
+     if (res != std::end(title)) {
+         fr = y;
+         fc = res - title.begin();
+         break;
+     }
+     y++;
+     x = 0;
+     if (y == rows.size()) y = 0;
+   }
+
+    sess.showOrgMessage("x = %d; y = %d", x, y); 
+}
+
+void Organizer::outlineChangeCase() {
+  orow& row = rows.at(fr);
+  char d = row.title.at(fc);
+  if (d < 91 && d > 64) d = d + 32;
+  else if (d > 96 && d < 123) d = d - 32;
+  else {
+    outlineMoveCursor(ARROW_RIGHT);
+    return;
+  }
+  outlineDelChar();
+  outlineInsertChar(d);
+}
+
+void Organizer::outlineInsertRow(int at, std::string&& s, bool star, bool deleted, bool completed, std::string&& modified) {
+  /* note since only inserting blank line at top, don't really need at, s and also don't need size_t*/
+
+  orow row;
+
+  row.title = s;
+  row.id = -1;
+  row.star = star;
+  row.deleted = deleted;
+  row.completed = completed;
+  row.dirty = true;
+  row.modified = modified;
+
+  row.mark = false;
+
+  auto pos = rows.begin() + at;
+  rows.insert(pos, row);
+}
+
+// positions the cursor ( O.cx and O.cy) and O.coloff and O.rowoff
+void Organizer::outlineScroll(void) {
+
   int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%dG", sess.divider + 2); 
-  ab.append(buf); 
+  if(rows.empty()) {
+      fr = fc = coloff = cx = cy = 0;
+      return;
+  }
 
-  for (int y = 0; y < sess.textlines; y++) {
-    int frr = y + rowoff;
-    if (frr > rows.size() - 1) return;
+  if (fr > sess.textlines + rowoff - 1) {
+    rowoff =  fr - sess.textlines + 1;
+  }
 
-    orow& row = rows[frr];
+  if (fr < rowoff) {
+    rowoff =  fr;
+  }
 
-    size_t len = (row.title.size() > titlecols) ? titlecols : row.title.size();
+  if (fc > titlecols + coloff - 1) {
+    coloff =  fc - titlecols + 1;
+  }
 
-    if (row.star) {
-      ab.append("\x1b[1m"); //bold
-      ab.append("\x1b[1;36m");
-    }  
-    //? do this after everything drawn
-    if (frr == fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
+  if (fc < coloff) {
+    coloff =  fc;
+  }
 
-    ab.append(&row.title[0], len);
-    int spaces = titlecols - len; //needs to change but reveals stuff being written
-    std::string s(spaces, ' '); 
-    ab.append(s);
-    ab.append("\x1b[0m"); // return background to normal /////
+
+  cx = fc - coloff;
+  cy = fr - rowoff;
+}
+
+void Organizer::outlineSave(const std::string& fname) {
+  if (rows.empty()) return;
+
+  std::ofstream f;
+  f.open(fname);
+  f << outlineRowsToString();
+  f.close();
+
+  //sess.showOrgMessage("Can't save! I/O error: %s", strerror(errno));
+  sess.showOrgMessage("saved to outline.txt");
+}
+
+void Organizer::get_preview(int id) {
+  std::stringstream query;
+  preview_rows.clear();
+  query << "SELECT note FROM task WHERE id = " << id;
+  if (!sess.db_query(sess.S.db, query.str().c_str(), preview_callback, nullptr, &sess.S.err_msg, __func__)) return;
+
+  if (taskview != BY_FIND) draw_preview();
+  else {
+    word_positions.clear(); 
+    get_search_positions(id);
+    draw_search_preview();
+  }
+  //draw_preview();
+
+  if (sess.lm_browser) {
+    int folder_tid = sess.get_folder_tid(rows.at(fr).id);
+    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE_);
+    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE_);
+  }   
+}
+
+void Organizer::draw_preview(void) {
+
+  char buf[50];
+  std::string ab;
+  int width = sess.totaleditorcols - 10;
+  int length = sess.textlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
+  ab.append(buf, strlen(buf));
+  //std::string abs = "";
+ 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 6);
+  //ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
+  ab.append(buf0.str());
+
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", sess.totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
     ab.append(lf_ret);
   }
-}
 
-void Organizer::outlineDrawSearchRows(std::string& ab) {
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
+  ab.append(buf2.str()); //reposition cursor
 
-  if (rows.empty()) return;
-
-  char buf[32];
-  unsigned int y;
-  char lf_ret[16];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
-  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
-
-  int spaces;
-
-  for (y = 0; y < sess.textlines; y++) {
-    int frr = y + rowoff;
-    if (frr > static_cast<int>(rows.size()) - 1) return;
-    orow& row = rows[frr];
-    int len;
-
-    //if (row.star) ab.append("\x1b[1m"); //bold
-    if (row.star) {
-      ab.append("\x1b[1m"); //bold
-      ab.append("\x1b[1;36m");
-    }  
-
-    if (row.completed && row.deleted) ab.append("\x1b[32m", 5); //green foreground
-    else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
-    else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
-
-    //if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey but gets stopped as soon as it hits search highlight
-
-    //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
-
-    // I think the following blows up if there are multiple search terms hits in a line longer than O.titlecols
-
-    if (row.title.size() <= titlecols) // we know it fits
-      ab.append(row.fts_title.c_str(), row.fts_title.size());
-    else {
-      size_t pos = row.fts_title.find("\x1b[49m");
-      if (pos < titlecols + 10) //length of highlight escape
-        ab.append(row.fts_title.c_str(), titlecols + 15); // length of highlight escape + remove formatting escape
-      else
-        ab.append(row.title.c_str(), titlecols);
-}
-    len = (row.title.size() <= titlecols) ? row.title.size() : titlecols;
-    spaces = titlecols - len;
-    for (int i=0; i < spaces; i++) ab.append(" ", 1);
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, screencols/2 - TIME_COL_WIDTH + 2); //wouldn't need offset
-    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, sess.divider - TIME_COL_WIDTH + 2); //wouldn't need offset
-    ab.append("\x1b[0m", 4); // return background to normal
-    ab.append(buf, strlen(buf));
-    ab.append(row.modified);
-    ab.append(lf_ret, nchars);
-    //abAppend(ab, "\x1b[0m", 4); // return background to normal
-  }
-}
-
-void Organizer::outlineDrawStatusBar(void) {
-
-  std::string ab;  
-  int len;
-  /*
-  so the below should 1) position the cursor on the status
-  bar row and midscreen and 2) erase previous statusbar
-  r -> l and then put the cursor back where it should be
-  at LEFT_MARGIN
-  */
-
-  char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K\x1b[%d;%dH",
-                             sess.textlines + TOP_MARGIN + 1,
-                             sess.divider,
-                             sess.textlines + TOP_MARGIN + 1,
-                             1); //status bar comes right out to left margin
-
-  ab.append(buf, strlen(buf));
-
-  ab.append("\x1b[7m"); //switches to inverted colors
-  char status[300], status0[300], rstatus[80];
-
-  std::string s;
-  switch (view) {
-    case TASK:
-      switch (taskview) {
-        case BY_FIND:
-          s =  "search"; 
-          break;
-        case BY_FOLDER:
-          s = folder + "[f]";
-          break;
-        case BY_CONTEXT:
-          s = context + "[c]";
-          break;
-        case BY_RECENT:
-          s = "recent";
-          break;
-        case BY_JOIN:
-          s = context + "[c] + " + folder + "[f]";
-          break;
-        case BY_KEYWORD:
-          s = keyword + "[k]";
-          break;
-      }    
-      break;
-    case CONTEXT:
-      s = "Contexts";
-      break;
-    case FOLDER:
-      s = "Folders";
-      break;
-    case KEYWORD:  
-      s = "Keywords";
-      break;
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
+  if (preview_rows.empty()) {
+    ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(draw_preview_box(width, length));
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
   }
 
-  if (!rows.empty()) {
-
-    orow& row = rows.at(fr);
-    // note the format is for 15 chars - 12 from substring below and "[+]" when needed
-    std::string truncated_title = row.title.substr(0, 12);
-    
-    //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
-
-    // needs to be here because O.rows could be empty
-    //std::string keywords = (view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
-    std::string keywords = "Not Looking";
-
-    // because video is reversted [42 sets text to green and 49 undoes it
-    // also [0;35;7m -> because of 7m it reverses background and foreground
-    // I think the [0;7m is revert to normal and reverse video
-    snprintf(status, sizeof(status),
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (taskview == BY_FIND)  ? " - " : "",
-                              (taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, fr + 1, rows.size(), mode_text[mode].c_str());
-
-    // klugy way of finding length of string without the escape characters
-    len = snprintf(status0, sizeof(status0),
-                              "%s%s%s %.15s... %s  %d %d/%zu %s",
-                              s.c_str(), (taskview == BY_FIND)  ? " - " : "",
-                              (taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, fr + 1, rows.size(), mode_text[mode].c_str());
-
-  } else {
-
-    snprintf(status, sizeof(status),
-                              "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (taskview == BY_FIND)  ? " - " : "",
-                              (taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, rows.size(), mode_text[mode].c_str());
-    
-    // klugy way of finding length of string without the escape characters
-    len = snprintf(status0, sizeof(status0),
-                              "%s%s%s %.15s... %d %d/%zu %s",
-                              s.c_str(), (taskview == BY_FIND)  ? " - " : "",
-                              (taskview == BY_FIND) ? sess.fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, rows.size(), mode_text[mode].c_str());
-  }
-
-  int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
-
-  if (len > sess.divider) {
-    ab.append(status0, sess.divider);
-  } else if (len + rlen > sess.divider) {
-    ab.append(status);
-    ab.append(rstatus, sess.divider - len);
-  } else {
-    ab.append(status);
-    ab.append(sess.divider - len - rlen, ' ');
-    ab.append(rstatus);
-  }
-
-  ab.append("\x1b[0m"); //switches back to normal formatting
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  ab.append(generateWWString(preview_rows, width, length, lf_ret));
+  ab.append(draw_preview_box(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-void Organizer::outlineRefreshScreen(void) {
+void Organizer::draw_search_preview(void) {
+  //need to bring back the note with some marker around the words that
+  //we search and replace or retrieve the note with the actual
+  //escape codes and not worry that the word wrap will be messed up
+  //but it shouldn't ever split an escaped word.  Would start
+  //with escapes and go from there
+ //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+ //fts_query << "SELECT highlight(fts, ??1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE lm_id=? AND fts MATCH '" << search_terms << "' ORDER BY rank";
 
+  char buf[50];
   std::string ab;
-  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+  int width = sess.totaleditorcols - 10;
+  int length = sess.textlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, sess.divider + 6);
+  ab.append(buf, strlen(buf));
+  //std::string abs = "";
+ 
+  // \x1b[NC moves cursor forward by N columns
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 6);
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
 
-  char buf[20];
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
+  ab.append(buf0.str());
 
-  //Below erase screen from middle to left - `1K` below is cursor to left erasing
-  //Now erases time/sort column (+ 17 in line below)
-  //if (O.view != KEYWORD) {
-  if (mode != ADD_CHANGE_FILTER) {
-    for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-      titlecols + LEFT_MARGIN + 17); 
-      ab.append(buf, strlen(buf));
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", sess.totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  sess.divider + 7 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width);
+  if (preview_rows.empty()) {
+    ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(draw_preview_box(width, length));
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
+  }
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  std::string t = generateWWString(preview_rows, width, length, "\f");
+  //ab.append(generateWWString(O.preview_rows, width, length, lf_ret));
+  highlight_terms_string(t);
+
+  size_t p = 0;
+  for (;;) {
+    if (p > t.size()) break;
+    p = t.find('\f', p);
+    if (p == std::string::npos) break;
+    t.replace(p, 1, lf_ret);
+    p +=7;
+   }
+
+  ab.append(t);
+  ab.append(draw_preview_box(width, length));
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+std::string Organizer::draw_preview_box(int width, int length) {
+  std::string ab;
+  fmt::memory_buffer move_cursor;
+  fmt::format_to(move_cursor, "\x1b[{}C", width);
+  ab.append("\x1b(0"); // Enter line drawing mode
+  fmt::memory_buffer buf;
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 6); 
+  ab.append(buf.data(), buf.size());
+  buf.clear();
+  ab.append("\x1b[37;1ml"); //upper left corner
+  for (int j=1; j<length; j++) { //+1
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, sess.divider + 6); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    // x=0x78 vertical line (q=0x71 is horizontal) 37=white; 1m=bold (only need 1 m)
+    ab.append("\x1b[37;1mx");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mx");
+  }
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, sess.divider + 6));
+  ab.append("\x1b[1B");
+  ab.append("\x1b[37;1mm"); //lower left corner
+
+  move_cursor.clear();
+  fmt::format_to(move_cursor, "\x1b[1D\x1b[{}B", length);
+  for (int j=1; j<width+1; j++) {
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 6 + j); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    ab.append("\x1b[37;1mq");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mq");
+  }
+  ab.append("\x1b[37;1mj"); //lower right corner
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, sess.divider + 7 + width); 
+  ab.append(buf.data(), buf.size());
+  ab.append("\x1b[37;1mk"); //upper right corner
+
+  //exit line drawing mode
+  ab.append("\x1b(B");
+  ab.append("\x1b[0m");
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  return ab;
+}
+
+std::string Organizer::generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  //int y = -line_offset; **set to zero because always starting previews at line 0**
+  int y = 0;
+  int filerow = 0;
+
+  for (;;) {
+    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+    if (filerow == rows.size()) return ab;
+
+    std::string_view row = rows.at(filerow);
+    
+    if (row.empty()) {
+      if (y == length - 1) return ab;
+      ab.append(ret);
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + width > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+
+        if (y == length - 1) return ab;
+        ab.append(ret);
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + width - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + width - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
+      ab.append(ret);
+      y++;
+      prev_pos = pos + 1;
     }
   }
-  // put cursor at upper left after erasing
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
+}
+
+void Organizer::highlight_terms_string(std::string &text) {
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\f\\"; //must have \f if using as placeholder
+
+  for (auto v: word_positions) { //v will be an int vector of word positions like 15, 30, 70
+    int word_num = -1;
+    auto pos = v.begin(); //pos = word count of the next word
+    auto prev_pos = pos;
+    int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+    int start;
+    for (;;) {
+      if (end >= static_cast<int>(text.size()) - 1) break;
+      //if (word_num > v.back()) break; ///////////
+      start = end + 1;
+      end = text.find_first_of(delimiters, start);
+      if (end == std::string::npos) end = text.size() - 1;
+      
+      if (end != start) word_num++;
+
+      // start the search from the last match? 12-23-2019
+      pos = std::find(pos, v.end(), word_num); // is this saying if word_num is in the vector you have a match
+      if (pos != v.end()) {
+        //editorHighlightWord(n, start, end-start); put escape codes or [at end and start]
+        text.insert(end, "\x1b[48;5;235m"); //49m"); //48:5:235
+        text.insert(start, "\x1b[48;5;31m");
+        if (pos == v.end() - 1) break;
+        end += 21;
+        pos++;
+        prev_pos = pos;
+      } else pos = prev_pos; //pos == v.end() => the current word position was not in v[n]
+    }
+  }
+}
+
+void Organizer::get_search_positions(int id) {
+  std::stringstream query;
+  query << "SELECT rowid FROM fts WHERE lm_id = " << id << ";";
+
+  int rowid = -1;
+  // callback is *not* called if result (argv) is null
+  if (!sess.db_query(sess.S.fts_db, query.str().c_str(), rowid_callback, &rowid, &sess.S.err_msg, __func__)) return;
+
+  // split string into a vector of words
+  std::vector<std::string> vec;
+  std::istringstream iss(sess.fts_search_terms);
+  for(std::string ss; iss >> ss; ) vec.push_back(ss);
+  std::stringstream query3;
+  int n = 0;
+  for(auto v: vec) {
+    word_positions.push_back(std::vector<int>{});
+    query.str(std::string()); // how you clear a stringstream
+    query << "SELECT offset FROM fts_v WHERE doc =" << rowid << " AND term = '" << v << "' AND col = 'note';";
+    if (!sess.db_query(sess.S.fts_db, query.str().c_str(), offset_callback, &n, &sess.S.err_msg, __func__)) return;
+
+    n++;
+  }
+
+  int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
+  sess.showOrgMessage("Word position first: %d; id = %d ", ww, id);
+
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  /*
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  } 
+  */
+}
+
+void Organizer::outlineInsertChar(int c) {
+  if (rows.size() == 0) return;
+  orow& row = rows.at(fr);
+  if (row.title.empty()) row.title.push_back(c);
+  else row.title.insert(row.title.begin() + fc, c);
+  row.dirty = true;
+  fc++;
+}
+
+std::string Organizer::outlineRowsToString(void) {
+  std::string s = "";
+  for (auto i: rows) {
+      s += i.title;
+      s += '\n';
+  }
+  s.pop_back(); //pop last return that we added
+  return s;
+}
+
+void Organizer::display_container_info(int id) {
+  if (id ==-1) return;
+
+  std::string table;
+  std::string count_query;
+  int (*callback)(void *, int, char **, char **);
+
+  switch(view) {
+    case CONTEXT:
+      table = "context";
+      callback = context_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id = ";
+      break;
+    case FOLDER:
+      table = "folder";
+      callback = folder_info_callback;
+      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id = ";
+      break;
+    case KEYWORD:
+      table = "keyword";
+      callback = keyword_info_callback;
+      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id = ";
+      break;
+    default:
+      sess.showOrgMessage("Somehow you are in a view I can't handle");
+      return;
+  }
+  std::stringstream query;
+  int count = 0;
+
+  query << count_query << id;
+    
+  // note count obtained here but passed to the next callback so it can be printed
+  if (!sess.db_query(sess.S.db, query.str().c_str(), count_callback, &count, &sess.S.err_msg)) return;
+
+  std::stringstream query2;
+  query2 << "SELECT * FROM " << table << " WHERE id = " << id;
+
+  // callback is *not* called if result (argv) is null
+
+  if (!sess.db_query(sess.S.db, query2.str().c_str(), callback, &count, &sess.S.err_msg)) return;
+
+}
+
+int Organizer::preview_callback (void *NotUsed, int argc, char **argv, char **azColName) {
+
+  UNUSED(NotUsed);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  if (!argv[0]) return 0; ////////////////////////////////////////////////////////////////////////////
+  std::string note(argv[0]);
+  //note.erase(std::remove(note.begin(), note.end(), '\r'), note.end());
+  std::erase(note, '\r'); //c++20
+  std::stringstream snote;
+  snote << note;
+  std::string s;
+  while (getline(snote, s, '\n')) {
+    //snote will not contain the '\n'
+    preview_rows.push_back(s);
+  }
+  return 0;
+}
+
+int Organizer::rowid_callback (void *rowid, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *rwid = static_cast<int*>(rowid);
+  *rwid = atoi(argv[0]);
+  return 0;
+}
+
+int Organizer::offset_callback (void *n, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  int *nn= static_cast<int*>(n);
+
+  word_positions.at(*nn).push_back(atoi(argv[0]));
+
+  return 0;
+}
+
+int Organizer::count_callback (void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+
+  int *cnt = static_cast<int*>(count);
+  *cnt = atoi(argv[0]);
+  return 0;
+}
+
+int Organizer::context_info_callback(void *count, int argc, char **argv, char **azColName) {
+
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
+  4: created = 2016-08-05 23:05:16.256135
+  5: deleted => bool
+  6: icon => string 32
+  7: textcolor, Integer
+  8: image, largebinary
+  9: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
   ab.append(buf, strlen(buf));
 
-  if (mode == FIND) outlineDrawSearchRows(ab);
-  else if (mode == ADD_CHANGE_FILTER) outlineDrawFilters(ab);
-  else  outlineDrawRows(ab);
+  //need to erase the screen
+  for (int i=0; i < sess.textlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  int tid = atoi(argv[1]);
+  //auto it = std::find_if(std::begin(context_map), std::end(context_map),
+  //                       [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+
+  auto it = std::ranges::find_if(sess.O.context_map, [&tid](auto& z) {return z.second == tid;});
+
+  sprintf(str,"context: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/default: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[9]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
 }
 
-/*va_list, va_start(), and va_end() come from <stdarg.h> and vsnprintf() is
-from <stdio.h> and time() is from <time.h>.  stdarg.h allows functions to accept a
-variable number of arguments and are declared with an ellipsis in place of the last parameter.*/
+int Organizer::folder_info_callback(void *count, int argc, char **argv, char **azColName) {
 
-// this should probably be in session since doesn't use any Organizer vars
-void Organizer::outlineShowMessage(const char *fmt, ...) {
-  char message[100];  
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
+  /*
+  0: id => int
+  1: tid => int
+  2: title = string 32
+  3: private = Boolean ? what this is
+  4: archived = Boolean ? what this is
+  5: "order" = integer
+  6: created = 2016-08-05 23:05:16.256135
+  7: deleted => bool
+  8: icon => string 32
+  9: textcolor, Integer
+  10: image, largebinary
+  11: modified
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
+
   std::string ab;
-  va_list ap; //type for iterating arguments
-  va_start(ap, fmt); // start iterating arguments with a va_list
 
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
 
-  /* vsnprint from <stdio.h> writes to the character string str
-     vsnprint(char *str,size_t size, const char *format, va_list ap)*/
+  //need to erase the screen
+  for (int i=0; i < sess.textlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
 
-  std::vsnprintf(message, sizeof(message), fmt, ap);
-  va_end(ap); //free a va_list
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
 
-  std::stringstream buf;
+  ab.append(COLOR_6); // Blue depending on theme
 
-  // Erase from mid-screen to the left and then place cursor all the way left
-  buf << "\x1b[" << sess.textlines + 2 + TOP_MARGIN << ";"
-      //<< screencols/2 << "H" << "\x1b[1K\x1b["
-      << sess.divider << "H" << "\x1b[1K\x1b["
-      << sess.textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
 
-  ab = buf.str();
-  //ab.append("\x1b[0m"); //checking if necessary
+  int tid = atoi(argv[1]);
 
-  int msglen = strlen(message);
-  //if (msglen > screencols/2) msglen = screencols/2;
-  if (msglen > sess.divider) msglen = sess.divider;
-  ab.append(message, msglen);
+  //auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
+  //                        [&tid](auto& p) { return p.second == tid; }); //auto&& also works
+
+  auto it = std::ranges::find_if(sess.O.folder_map, [&tid](auto& z) {return z.second == tid;});
+
+  sprintf(str,"folder: %s", it->first.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star/private: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"created: %s", argv[6]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[7]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[11]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m", 4);
+
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
 }
 
-void Organizer::outlineShowMessage2(const std::string &s) {
-  std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
-                                 sess.textlines + 2 + TOP_MARGIN,
-                                 sess.divider,
-                                 sess.textlines + 2 + TOP_MARGIN);
+int Organizer::keyword_info_callback(void *count, int argc, char **argv, char **azColName) {
 
-  if (s.length() > sess.divider) buf.append(s, sess.divider) ;
-  else buf.append(s);
+  UNUSED(argc); //number of columns in the result
+  UNUSED(azColName);
 
-  write(STDOUT_FILENO, buf.c_str(), buf.size());
+  /*
+  0: id => int
+  1: name = string 25
+  2: tid => int
+  3: star = Boolean
+  4: modified
+  5: deleted
+  */
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l"); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf);
+
+  //need to erase the screen
+  for (int i=0; i < sess.textlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %s", argv[0]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %s", argv[2]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"name: %s", argv[1]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"star: %s", (atoi(argv[3]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", argv[4]);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (atoi(argv[5]) == 1) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", *static_cast<int*>(count));
+  ab.append(str, strlen(str));
+  //ab.append(lf_ret, nchars);
+
+  ///////////////////////////
+
+  ab.append("\x1b[0m");
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  return 0;
 }
 
