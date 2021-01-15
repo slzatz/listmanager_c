@@ -1573,6 +1573,7 @@ void update_note(bool is_subnote, bool closing_editor) {
   sess.refreshOrgScreen();
 }
 
+/*
 void update_task_context(std::string &new_context, int id) {
 
   int context_tid = sess.O.context_map.at(new_context);
@@ -1591,6 +1592,7 @@ void update_task_folder(std::string& new_folder, int id) {
 
   db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__);
 }
+*/
 
 void toggle_completed(void) {
 
@@ -1691,6 +1693,7 @@ void toggle_star(void) {
   sess.showOrgMessage("Toggle star succeeded");
   row.star = !row.star;
 }
+
 
 void update_title(void) {
 
@@ -2604,7 +2607,7 @@ void F_contexts(int pos) {
     success = false;
     for (const auto& it : sess.O.rows) {
       if (it.mark) {
-        update_task_context(new_context, it.id);
+        sess.O.update_task_context(new_context, it.id);
         success = true;
       }
     }
@@ -2612,7 +2615,7 @@ void F_contexts(int pos) {
     if (success) {
       sess.showOrgMessage("Marked tasks moved into context %s", new_context.c_str());
     } else {
-      update_task_context(new_context, sess.O.rows.at(sess.O.fr).id);
+      sess.O.update_task_context(new_context, sess.O.rows.at(sess.O.fr).id);
       sess.showOrgMessage("No tasks were marked so moved current task into context %s", new_context.c_str());
     }
     sess.O.mode = sess.O.last_mode;
@@ -2658,7 +2661,7 @@ void F_folders(int pos) {
     success = false;
     for (const auto& it : sess.O.rows) {
       if (it.mark) {
-        update_task_folder(new_folder, it.id);
+        sess.O.update_task_folder(new_folder, it.id);
         success = true;
       }
     }
@@ -2666,7 +2669,7 @@ void F_folders(int pos) {
     if (success) {
       sess.showOrgMessage("Marked tasks moved into folder %s", new_folder.c_str());
     } else {
-      update_task_folder(new_folder, sess.O.rows.at(sess.O.fr).id);
+      sess.O.update_task_folder(new_folder, sess.O.rows.at(sess.O.fr).id);
       sess.showOrgMessage("No tasks were marked so moved current task into folder %s", new_folder.c_str());
     }
     sess.O.mode = sess.O.last_mode;
@@ -3940,12 +3943,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                                    row.title.c_str());
                 break;
               case FOLDER:
-                update_task_folder(row.title, sess.O.current_task_id);
+                sess.O.update_task_folder(row.title, sess.O.current_task_id);
                 sess.showOrgMessage("No tasks were marked so current task had folder changed to %s",
                                    row.title.c_str());
                 break;
               case CONTEXT:
-                update_task_context(row.title, sess.O.current_task_id);
+                sess.O.update_task_context(row.title, sess.O.current_task_id);
                 sess.showOrgMessage("No tasks were marked so current task had context changed to %s",
                                    row.title.c_str());
                 break;
@@ -3960,12 +3963,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
                                      row.title.c_str());
                 break;
                 case FOLDER:
-                  update_task_folder(row.title, task_id);
+                  sess.O.update_task_folder(row.title, task_id);
                   sess.showOrgMessage("Marked tasks had folder changed to %s",
                                      row.title.c_str());
                 break;
                 case CONTEXT:
-                  update_task_context(row.title, task_id);
+                  sess.O.update_task_context(row.title, task_id);
                   sess.showOrgMessage("Marked tasks had context changed to %s",
                                      row.title.c_str());
                 break;

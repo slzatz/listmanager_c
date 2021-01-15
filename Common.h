@@ -11,6 +11,21 @@ const std::string COLOR_5 = "\x1b[0;35m"; //magenta
 const std::string COLOR_6 = "\x1b[0;36m"; //cyan
 const std::string COLOR_7 = "\x1b[0;37m"; //White
 
+typedef struct orow {
+  std::string title;
+  std::string fts_title;
+  int id; //listmanager db id of the row
+  bool star;
+  bool deleted;
+  bool completed;
+  std::string modified;
+
+  // note the members below are temporary editing flags
+  // and don't need to be reflected in database
+  bool dirty;
+  bool mark;
+} orow;
+
 enum outlineKey {
   BACKSPACE = 127,
   ARROW_LEFT = 1000, //would have to be < 127 to be chars

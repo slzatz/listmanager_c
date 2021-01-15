@@ -966,4 +966,17 @@ int Organizer::keyword_info_callback(void *count, int argc, char **argv, char **
 
   return 0;
 }
+//Database-related Prototypes
+void Organizer::update_task_context(std::string &new_context, int id) {
+  int context_tid = context_map.at(new_context);
+  std::string query = fmt::format("UPDATE task SET context_tid={}, modified=datetime('now') WHERE id={}",
+                                    context_tid, id);
+  sess.db_query(sess.S.db, query.c_str(), 0, 0, &sess.S.err_msg);
+}
 
+void Organizer::update_task_folder(std::string& new_folder, int id) {
+  int folder_tid = folder_map.at(new_folder);
+  std::string query = fmt::format("UPDATE task SET folder_tid={}, modified=datetime('now') WHERE id={}",
+                                    folder_tid, id);
+  sess.db_query(sess.S.db, query.c_str(), 0, 0, &sess.S.err_msg, __func__);
+}

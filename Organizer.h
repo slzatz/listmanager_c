@@ -6,10 +6,12 @@
 #include <map>
 #include <unordered_set>
 #include <fmt/format.h>
+#include "Common.h"
 
 const std::string CURRENT_NOTE_FILE_ = "current.html";
 const std::string META_FILE_ = "assets/meta.html";
 
+/*
 typedef struct orow {
   std::string title;
   std::string fts_title;
@@ -24,6 +26,7 @@ typedef struct orow {
   bool dirty;
   bool mark;
 } orow;
+*/
 
 class Organizer {
   public:
@@ -105,13 +108,13 @@ class Organizer {
   static int context_info_callback(void *, int, char **, char **);//OK
   static int folder_info_callback(void *, int, char **, char **);//OK 
   static int count_callback(void *, int, char **, char **);//OK
-  /*
   //Database-related Prototypes
-  void db_open(void);
+  //void db_open(void); -> in session
   void update_task_context(std::string &, int);
   void update_task_folder(std::string &, int);
+  /*
   int get_id(void);
-  void get_note(int);
+  void get_note(int); -> getNote in session
   std::string get_title(int);
   void update_title(void);
   void update_rows(void);

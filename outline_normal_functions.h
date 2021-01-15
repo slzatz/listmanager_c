@@ -30,7 +30,7 @@ void m_N(void);
 void n_N(void);
 void u_N(void);
 void dd_N(void);
-void star_N(void);
+void star_N(void); //toggleStar
 void completed_N(void);
 void daw_N(void);
 void caw_N(void);
