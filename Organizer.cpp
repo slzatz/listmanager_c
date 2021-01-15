@@ -14,6 +14,10 @@
 
 std::vector<std::string> Organizer::preview_rows = {};//static
 std::vector<std::vector<int>> Organizer::word_positions = {};//static
+std::map<std::string, int> Organizer::folder_map = {}; //static - filled in by map_folder_titles_[db]
+std::map<std::string, int> Organizer::context_map = {}; //static filled in by map_context_titles_[db]
+
+Organizer org = Organizer(); //global; extern Session sess in session.h
 
 std::string Organizer::outlinePreviewRowsToString(void) {
 
@@ -314,8 +318,8 @@ void Organizer::get_preview(int id) {
 
   if (sess.lm_browser) {
     int folder_tid = sess.get_folder_tid(rows.at(fr).id);
-    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE_);
-    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE_);
+    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
 }
 
@@ -625,6 +629,7 @@ std::string Organizer::outlineRowsToString(void) {
   return s;
 }
 
+// not sure if this should be here or not
 void Organizer::display_container_info(int id) {
   if (id ==-1) return;
 
@@ -772,7 +777,7 @@ int Organizer::context_info_callback(void *count, int argc, char **argv, char **
   //auto it = std::find_if(std::begin(context_map), std::end(context_map),
   //                       [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(sess.O.context_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(context_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"context: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -862,7 +867,7 @@ int Organizer::folder_info_callback(void *count, int argc, char **argv, char **a
   //auto it = std::find_if(std::begin(folder_map), std::end(folder_map),
   //                        [&tid](auto& p) { return p.second == tid; }); //auto&& also works
 
-  auto it = std::ranges::find_if(sess.O.folder_map, [&tid](auto& z) {return z.second == tid;});
+  auto it = std::ranges::find_if(folder_map, [&tid](auto& z) {return z.second == tid;});
 
   sprintf(str,"folder: %s", it->first.c_str());
   ab.append(str, strlen(str));
@@ -966,6 +971,7 @@ int Organizer::keyword_info_callback(void *count, int argc, char **argv, char **
 
   return 0;
 }
+/*
 //Database-related Prototypes
 void Organizer::update_task_context(std::string &new_context, int id) {
   int context_tid = context_map.at(new_context);
@@ -980,3 +986,4 @@ void Organizer::update_task_folder(std::string& new_folder, int id) {
                                     folder_tid, id);
   sess.db_query(sess.S.db, query.c_str(), 0, 0, &sess.S.err_msg, __func__);
 }
+*/

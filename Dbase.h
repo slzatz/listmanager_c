@@ -31,6 +31,9 @@ class Sqlite {
     std::string sql;
 };
 
+extern Sqlite db;
+extern Sqlite fts_db;
+
 class Query {
   public:
     //note the constructor must take a reference to db

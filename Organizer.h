@@ -8,26 +8,6 @@
 #include <fmt/format.h>
 #include "Common.h"
 
-const std::string CURRENT_NOTE_FILE_ = "current.html";
-const std::string META_FILE_ = "assets/meta.html";
-
-/*
-typedef struct orow {
-  std::string title;
-  std::string fts_title;
-  int id; //listmanager db id of the row
-  bool star;
-  bool deleted;
-  bool completed;
-  std::string modified;
-
-  // note the members below are temporary editing flags
-  // and don't need to be reflected in database
-  bool dirty;
-  bool mark;
-} orow;
-*/
-
 class Organizer {
   public:
   int cx, cy; //cursor x and y position
@@ -56,8 +36,8 @@ class Organizer {
   std::string string_buffer; //yanking chars
   std::map<int, std::string> fts_titles;
 
-  std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
-  std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
+  static std::map<std::string, int> context_map; //filled in by map_context_titles_[db]
+  static std::map<std::string, int> folder_map; //filled in by map_folder_titles_[db]
   const std::map<std::string, int> sort_map = {{"modified", 16}, {"added", 9}, {"created", 15}, {"startdate", 17}}; //filled in by map_folder_titles_[db]
 
   std::vector<int> fts_ids;
@@ -110,17 +90,17 @@ class Organizer {
   static int count_callback(void *, int, char **, char **);//OK
   //Database-related Prototypes
   //void db_open(void); -> in session
-  void update_task_context(std::string &, int);
-  void update_task_folder(std::string &, int);
+  //void update_task_context(std::string &, int);
+  //void update_task_folder(std::string &, int);
   /*
   int get_id(void);
   void get_note(int); -> getNote in session
   std::string get_title(int);
   void update_title(void);
-  void update_rows(void);
-  void toggle_deleted(void);
-  void toggle_star(void);
-  void toggle_completed(void);
+  void update_rows(void); 
+  void toggle_deleted(void);-> in outline_normal_functions
+  void toggle_star(void);-> in outline_normal_functions
+  void toggle_completed(void);-> in outline_normal_functions
   void touch(void);
   int insert_row(orow&);
   int insert_container(orow&);
@@ -172,4 +152,5 @@ class Organizer {
   */
   /* end here */
 };
+extern Organizer org;
 #endif

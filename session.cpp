@@ -11,6 +11,7 @@
 #include <sys/ioctl.h>
 #include <fstream>
 #include "pstream.h"
+#include "Organizer.h"
 
 extern "C" {
 #include <mkdio.h>
@@ -81,7 +82,7 @@ void Session::eraseRightScreen(void) {
 
   //erase the screen
   fmt::memory_buffer lf_ret;
-  //note O.divider -1 would take out center divider line and don't want to do that
+  //note org.divider -1 would take out center divider line and don't want to do that
   fmt::format_to(lf_ret, "\r\n\x1b[{}C", divider);
   for (int i=0; i < screenlines - TOP_MARGIN; i++) { 
     ab.append("\x1b[K");
@@ -94,9 +95,9 @@ void Session::eraseRightScreen(void) {
   // erase but not draw
   ab.append("\x1b(0"); // Enter line drawing mode
   //for (int j=1; j<screencols/2; j++) {
-  //for (int j=1; j<O.divider; j++) {
+  //for (int j=1; j<org.divider; j++) {
   for (int j=1; j<totaleditorcols+1; j++) { //added +1 0906/2020
-    //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, O.divider + j);
+    //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, org.divider + j);
     std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, divider + j);
     ab.append(buf2);
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
@@ -193,7 +194,7 @@ void Session::moveDivider(int pct) {
   }
 
   refreshOrgScreen();
-  //O.outlineDrawStatusBar();
+  //org.outlineDrawStatusBar();
   drawOrgStatusBar();
 
   if (editor_mode)
@@ -202,8 +203,8 @@ void Session::moveDivider(int pct) {
       showOrgMessage("rows: %d  cols: %d ", screenlines, screencols);
 
   /* need to think about this
-  if (O.view == TASK && O.mode != NO_ROWS && !editor_mode)
-    get_preview(O.rows.at(O.fr).id);
+  if (org.view == TASK && org.mode != NO_ROWS && !editor_mode)
+    get_preview(org.rows.at(org.fr).id);
   */
 
   returnCursor();
@@ -225,22 +226,22 @@ void Session::returnCursor() {
       ab.append("\x1b[?25h"); // show cursor
     }
   } else {
-    if (O.mode == ADD_CHANGE_FILTER){
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, divider + 1); 
+    if (org.mode == ADD_CHANGE_FILTER){
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", org.cy + TOP_MARGIN + 1, divider + 1); 
       ab.append(buf, strlen(buf));
-    } else if (O.mode == FIND) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
+    } else if (org.mode == FIND) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;34m>", org.cy + TOP_MARGIN + 1, LEFT_MARGIN); //blue
       ab.append(buf, strlen(buf));
-    } else if (O.mode != COMMAND_LINE) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", O.cy + TOP_MARGIN + 1, LEFT_MARGIN);
+    } else if (org.mode != COMMAND_LINE) {
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1;31m>", org.cy + TOP_MARGIN + 1, LEFT_MARGIN);
       ab.append(buf, strlen(buf));
-      // below restores the cursor position based on O.cx and O.cy + margin
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", O.cy + TOP_MARGIN + 1, O.cx + LEFT_MARGIN + 1); /// ****
+      // below restores the cursor position based on org.cx and org.cy + margin
+      snprintf(buf, sizeof(buf), "\x1b[%d;%dH", org.cy + TOP_MARGIN + 1, org.cx + LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
-    } else { //O.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + 2 + TOP_MARGIN, O.command_line.size() + LEFT_MARGIN); /// ****
+    } else { //org.mode == COMMAND_LINE
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + 2 + TOP_MARGIN, org.command_line.size() + LEFT_MARGIN); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
     }
@@ -256,7 +257,7 @@ void Session::drawOrgStatusBar(void) {
 
   std::string ab;  
   int len;
-  Organizer & O = sess.O;
+  //Organizer & O = sess.O;
   /*
   so the below should 1) position the cursor on the status
   bar row and midscreen and 2) erase previous statusbar
@@ -277,26 +278,26 @@ void Session::drawOrgStatusBar(void) {
   char status[300], status0[300], rstatus[80];
 
   std::string s;
-  switch (O.view) {
+  switch (org.view) {
     case TASK:
-      switch (O.taskview) {
+      switch (org.taskview) {
         case BY_FIND:
           s =  "search"; 
           break;
         case BY_FOLDER:
-          s = O.folder + "[f]";
+          s = org.folder + "[f]";
           break;
         case BY_CONTEXT:
-          s = O.context + "[c]";
+          s = org.context + "[c]";
           break;
         case BY_RECENT:
           s = "recent";
           break;
         case BY_JOIN:
-          s = O.context + "[c] + " + O.folder + "[f]";
+          s = org.context + "[c] + " + org.folder + "[f]";
           break;
         case BY_KEYWORD:
-          s = O.keyword + "[k]";
+          s = org.keyword + "[k]";
           break;
       }    
       break;
@@ -311,15 +312,15 @@ void Session::drawOrgStatusBar(void) {
       break;
   }
 
-  if (!O.rows.empty()) {
+  if (!org.rows.empty()) {
 
-    orow& row = O.rows.at(O.fr);
+    orow& row = org.rows.at(org.fr);
     // note the format is for 15 chars - 12 from substring below and "[+]" when needed
     std::string truncated_title = row.title.substr(0, 12);
     
     //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
 
-    // needs to be here because O.rows could be empty
+    // needs to be here because org.rows could be empty
     //std::string keywords = (view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
     std::string keywords = "Not Looking";
 
@@ -328,31 +329,31 @@ void Session::drawOrgStatusBar(void) {
     // I think the [0;7m is revert to normal and reverse video
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s...\x1b[0;35;7m %s \x1b[0;7m %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (org.taskview == BY_FIND)  ? " - " : "",
+                              (org.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, org.fr + 1, org.rows.size(), mode_text[org.mode].c_str());
 
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %s  %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
-                              truncated_title.c_str(), keywords.c_str(), row.id, O.fr + 1, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (org.taskview == BY_FIND)  ? " - " : "",
+                              (org.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              truncated_title.c_str(), keywords.c_str(), row.id, org.fr + 1, org.rows.size(), mode_text[org.mode].c_str());
 
   } else {
 
     snprintf(status, sizeof(status),
                               "\x1b[1m%s%s%s\x1b[0;7m %.15s... %d %d/%zu \x1b[1;42m%s\x1b[49m",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (org.taskview == BY_FIND)  ? " - " : "",
+                              (org.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, org.rows.size(), mode_text[org.mode].c_str());
     
     // klugy way of finding length of string without the escape characters
     len = snprintf(status0, sizeof(status0),
                               "%s%s%s %.15s... %d %d/%zu %s",
-                              s.c_str(), (O.taskview == BY_FIND)  ? " - " : "",
-                              (O.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
-                              "     No Results   ", -1, 0, O.rows.size(), mode_text[O.mode].c_str());
+                              s.c_str(), (org.taskview == BY_FIND)  ? " - " : "",
+                              (org.taskview == BY_FIND) ? fts_search_terms.c_str() : "\0",
+                              "     No Results   ", -1, 0, org.rows.size(), mode_text[org.mode].c_str());
   }
 
   int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
@@ -411,7 +412,7 @@ void Session::generateContextMap(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    O.context_map[q.column_text(1)] = q.column_int(0);
+    org.context_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
@@ -427,30 +428,30 @@ void Session::generateFolderMap(void) {
   */
 
   while (q.step() == SQLITE_ROW) {
-    O.folder_map[q.column_text(1)] = q.column_int(0);
+    org.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
 
 //this is Organizer::outlinedrawRows
 void Session::drawOrgRows(std::string& ab) {
-  int j, k; //to swap highlight if O.highlight[1] < O.highlight[0]
+  int j, k; //to swap highlight if org.highlight[1] < org.highlight[0]
   char buf[32];
   int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
-  if (O.rows.empty()) return;
+  if (org.rows.empty()) return;
 
   unsigned int y;
   char lf_ret[16];
   int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", LEFT_MARGIN);
 
   for (y = 0; y < textlines; y++) {
-    int frr = y + O.rowoff;
-    if (frr > O.rows.size() - 1) return;
-    orow& row = O.rows[frr];
+    int frr = y + org.rowoff;
+    if (frr > org.rows.size() - 1) return;
+    orow& row = org.rows[frr];
 
     // if a line is long you only draw what fits on the screen
     //below solves problem when deleting chars from a scrolled long line
-    int len = (frr == O.fr) ? row.title.size() - O.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
+    int len = (frr == org.fr) ? row.title.size() - org.coloff : row.title.size(); //can run into this problem when deleting chars from a scrolled log line
     if (len > titlecols) len = titlecols;
 
     if (row.star) {
@@ -461,35 +462,35 @@ void Session::drawOrgRows(std::string& ab) {
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
     //else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
     else if (row.deleted) ab.append(COLOR_1); //red (specific color depends on theme)
-    if (frr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
+    if (frr == org.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey
     if (row.dirty) ab.append("\x1b[41m", 5); //red background
     //if (row.mark) ab.append("\x1b[46m", 5); //cyan background
-    if (O.marked_entries.find(row.id) != O.marked_entries.end()) ab.append("\x1b[46m", 5);
+    if (org.marked_entries.find(row.id) != org.marked_entries.end()) ab.append("\x1b[46m", 5);
 
     // below - only will get visual highlighting if it's the active
     // then also deals with column offset
-    if (O.mode == VISUAL && frr == O.fr) {
+    if (org.mode == VISUAL && frr == org.fr) {
 
-       // below in case O.highlight[1] < O.highlight[0]
-      k = (O.highlight[1] > O.highlight[0]) ? 1 : 0;
+       // below in case org.highlight[1] < org.highlight[0]
+      k = (org.highlight[1] > org.highlight[0]) ? 1 : 0;
       j =!k;
-      ab.append(&(row.title[O.coloff]), O.highlight[j] - O.coloff);
+      ab.append(&(row.title[org.coloff]), org.highlight[j] - org.coloff);
       ab.append("\x1b[48;5;242m", 11);
-      ab.append(&(row.title[O.highlight[j]]), O.highlight[k]
-                                             - O.highlight[j]);
+      ab.append(&(row.title[org.highlight[j]]), org.highlight[k]
+                                             - org.highlight[j]);
       ab.append("\x1b[49m", 5); // return background to normal
-      ab.append(&(row.title[O.highlight[k]]), len - O.highlight[k] + O.coloff);
+      ab.append(&(row.title[org.highlight[k]]), len - org.highlight[k] + org.coloff);
 
     } else {
-        // current row is only row that is scrolled if O.coloff != 0
-        ab.append(&row.title[((frr == O.fr) ? O.coloff : 0)], len);
+        // current row is only row that is scrolled if org.coloff != 0
+        ab.append(&row.title[((frr == org.fr) ? org.coloff : 0)], len);
     }
 
     // the spaces make it look like the whole row is highlighted
     //note len can't be greater than titlecols so always positive
     ab.append(titlecols - len + 1, ' ');
 
-    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, O.divider - TIME_COL_WIDTH + 2); // + offset
+    //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + 2, org.divider - TIME_COL_WIDTH + 2); // + offset
     // believe the +2 is just to give some space from the end of long titles
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", y + TOP_MARGIN + 1, divider - TIME_COL_WIDTH + 2); // + offset
     ab.append(buf, strlen(buf));
@@ -501,7 +502,7 @@ void Session::drawOrgRows(std::string& ab) {
 
 void Session::drawOrgFilters(std::string& ab) {
 
-  if (O.rows.empty()) return;
+  if (org.rows.empty()) return;
 
   char lf_ret[16];
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 1);
@@ -512,10 +513,10 @@ void Session::drawOrgFilters(std::string& ab) {
   ab.append(buf); 
 
   for (int y = 0; y < textlines; y++) {
-    int frr = y + O.rowoff;
-    if (frr > O.rows.size() - 1) return;
+    int frr = y + org.rowoff;
+    if (frr > org.rows.size() - 1) return;
 
-    orow& row = O.rows[frr];
+    orow& row = org.rows[frr];
 
     size_t len = (row.title.size() > titlecols) ? titlecols : row.title.size();
 
@@ -524,7 +525,7 @@ void Session::drawOrgFilters(std::string& ab) {
       ab.append("\x1b[1;36m");
     }  
     //? do this after everything drawn
-    if (frr == O.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
+    if (frr == org.fr) ab.append("\x1b[48;5;236m"); // 236 is a grey
 
     ab.append(&row.title[0], len);
     int spaces = titlecols - len; //needs to change but reveals stuff being written
@@ -536,7 +537,7 @@ void Session::drawOrgFilters(std::string& ab) {
 }
 void Session::drawOrgSearchRows(std::string& ab) {
 
-  if (O.rows.empty()) return;
+  if (org.rows.empty()) return;
 
   char buf[32];
   unsigned int y;
@@ -547,9 +548,9 @@ void Session::drawOrgSearchRows(std::string& ab) {
   int spaces;
 
   for (y = 0; y < textlines; y++) {
-    int frr = y + O.rowoff;
-    if (frr > static_cast<int>(O.rows.size()) - 1) return;
-    orow& row = O.rows[frr];
+    int frr = y + org.rowoff;
+    if (frr > static_cast<int>(org.rows.size()) - 1) return;
+    orow& row = org.rows[frr];
     int len;
 
     //if (row.star) ab.append("\x1b[1m"); //bold
@@ -562,11 +563,11 @@ void Session::drawOrgSearchRows(std::string& ab) {
     else if (row.completed) ab.append("\x1b[33m", 5); //yellow foreground
     else if (row.deleted) ab.append("\x1b[31m", 5); //red foreground
 
-    //if (fr == O.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey but gets stopped as soon as it hits search highlight
+    //if (fr == org.fr) ab.append("\x1b[48;5;236m", 11); // 236 is a grey but gets stopped as soon as it hits search highlight
 
     //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
 
-    // I think the following blows up if there are multiple search terms hits in a line longer than O.titlecols
+    // I think the following blows up if there are multiple search terms hits in a line longer than org.titlecols
 
     if (row.title.size() <= titlecols) // we know it fits
       ab.append(row.fts_title.c_str(), row.fts_title.size());
@@ -601,8 +602,8 @@ void Session::refreshOrgScreen(void) {
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
-  //if (O.view != KEYWORD) {
-  if (O.mode != ADD_CHANGE_FILTER) {
+  //if (org.view != KEYWORD) {
+  if (org.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
       titlecols + LEFT_MARGIN + 17); 
@@ -613,8 +614,8 @@ void Session::refreshOrgScreen(void) {
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
   ab.append(buf, strlen(buf));
 
-  if (O.mode == FIND) drawOrgSearchRows(ab);
-  else if (O.mode == ADD_CHANGE_FILTER) drawOrgFilters(ab);
+  if (org.mode == FIND) drawOrgSearchRows(ab);
+  else if (org.mode == ADD_CHANGE_FILTER) drawOrgFilters(ab);
   else  drawOrgRows(ab);
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -683,11 +684,11 @@ int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char *
 void Session::update_html_file(std::string &&fn) {
   std::string note;
   if (editor_mode) note = p->editorRowsToString();
-  else note = O.outlinePreviewRowsToString();
+  else note = org.outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
-  std::string title = O.rows.at(O.fr).title;
+  std::string title = org.rows.at(org.fr).title;
   text << "# " << title << "\n\n" << note;
 
   // inserting title to tell if note displayed by ultralight 
@@ -732,14 +733,14 @@ char * Session::url_callback(const char *x, const int y, void *z) {
 void Session::update_html_code_file(std::string &&fn) {
   std::string note;
   std::ofstream myfile;
-  note = O.outlinePreviewRowsToString();
+  note = org.outlinePreviewRowsToString();
   myfile.open("code_file");
   myfile << note;
   myfile.close();
 
   std::stringstream html;
   std::string line;
-  int tid = get_folder_tid(O.rows.at(O.fr).id);
+  int tid = get_folder_tid(org.rows.at(org.fr).id);
   ipstream highlight(fmt::format("highlight code_file --out-format=html "
                              "--style=gruvbox-dark-hard-slz --syntax={}",
                              (tid == 18) ? "cpp" : "go"));

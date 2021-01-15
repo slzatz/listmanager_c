@@ -7,7 +7,6 @@
 #include <termios.h>
 #include <sstream>
 #include <fcntl.h> //file locking
-#include "Organizer.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -38,7 +37,7 @@ struct Session {
 
   std::vector<Editor*> editors;
   Editor *p;
-  Organizer O;
+  //Organizer O;
 
   Sqlite db;
   Sqlite fts;

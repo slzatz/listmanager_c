@@ -11,6 +11,9 @@ const std::string COLOR_5 = "\x1b[0;35m"; //magenta
 const std::string COLOR_6 = "\x1b[0;36m"; //cyan
 const std::string COLOR_7 = "\x1b[0;37m"; //White
 
+const std::string CURRENT_NOTE_FILE = "current.html";
+const std::string META_FILE = "assets/meta.html";
+
 typedef struct orow {
   std::string title;
   std::string fts_title;

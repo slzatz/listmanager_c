@@ -2,6 +2,7 @@
 #include "Editor.h"
 #include "session.h"
 #include "Dbase.h"
+#include "Common.h"
 #include <fstream>
 #include <cstdarg> //va_start etc
 #include <nuspell/finder.hxx>
@@ -2247,8 +2248,14 @@ void Editor::E_write_C(void) {
       return;
   }
 
-  //update_note(is_subeditor);
-  update_note(false);
+  //update_note(false);
+  updateNote();
+  int folder_tid = get_folder_tid(id);
+  //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
+  if (folder_tid == 18 || folder_tid == 14) {
+    code = editorRowsToString();
+    update_code_file();
+  }
   //problem - can't have dirty apply to both note and subnote
   dirty = 0; //is in update_note but dirty = 0 is probably better here.
   editorSetMessage("");

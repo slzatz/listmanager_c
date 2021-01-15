@@ -79,51 +79,29 @@ void lsp_shutdown(void);
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
 
-void outlineInsertChar(int);
-/* started here */
-std::string outlinePreviewRowsToString(void);
-void outlineDelWord();
-void outlineMoveCursor(int key);
-void outlineBackspace(void);
-void outlineDelChar(void);
-void outlineDeleteToEndOfLine(void);
-void outlineYankLine(int n);
-void outlinePasteString(void);
-void outlineYankString();
-void outlineMoveCursorEOL();
-void outlineMoveBeginningWord();
-void outlineMoveEndWord(); 
-void outlineMoveEndWord2(); //not 'e' but just moves to end of word even if on last letter
-//void outlineMoveNextWord();// now w_N
-void outlineGetWordUnderCursor();
-void outlineFindNextWord();
-void outlineChangeCase();
-void outlineInsertRow(int, std::string&&, bool, bool, bool, std::string&&);
-void outlineScroll(void);
-void outlineSave(const std::string &);
-//void return_cursor(void);
-void get_preview(int);
-void draw_preview(void);
-void draw_search_preview(void);
-std::string draw_preview_box(int, int);
-std::string generateWWString(std::vector<std::string> &, int, int, std::string);
-void highlight_terms_string(std::string &);
-void get_search_positions(int);
-
 //Database-related Prototypes
+void updateNote(void);/////////////////////////////
 void db_open(void);
-void update_task_context(std::string &, int);
-void update_task_folder(std::string &, int);
+//void update_task_context(std::string &, int);
+void updateTaskContext(std::string &, int);
+//void update_task_folder(std::string &, int);
+void updateTaskFolder(std::string &, int);
 int get_id(void);
+int getId(void);/////////////////////////////////////////////////////////////////////////////////////////
 void get_note(int);
 std::string get_title(int);
-void update_title(void);
+//void update_title(void);
+void updateTitle(void);
 void update_rows(void);
-void toggle_deleted(void);
-void toggle_star(void);
-void toggle_completed(void);
+//void toggle_deleted(void);
+void toggleDeleted(void);
+//void toggle_star(void);
+void toggleStar(void);////////////////////////////////////////////////////////////////////////////////////
+//void toggle_completed(void);
+void toggleCompleted(void);
 void touch(void);
-int insert_row(orow&);
+//int insert_row(orow&);
+int insertRow(orow&);
 int insert_container(orow&);
 int insert_keyword(orow &);
 void update_container(void);

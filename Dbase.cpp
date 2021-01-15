@@ -3,6 +3,9 @@
 //typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 //using sq_callback = int (*)(void *, int, char **, char **);
 
+Sqlite db = Sqlite(SQLITE_DB__); //global; extern Session sess in session.h
+Sqlite fts_db = Sqlite(FTS_DB__); //global; extern Session sess in session.h
+
 Sqlite::Sqlite(std::string db_path) {
   int rc = sqlite3_open(db_path.c_str(), &db);
   if (rc != SQLITE_OK) {
@@ -59,3 +62,4 @@ int Query2::column_int(int col) {
 bool Query2::column_bool(int col) {
   return (sqlite3_column_int(res, col) == 1) ? true : false;
 }
+
