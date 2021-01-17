@@ -14,7 +14,7 @@ const std::string COLOR_7 = "\x1b[0;37m"; //White
 const std::string CURRENT_NOTE_FILE = "current.html";
 const std::string META_FILE = "assets/meta.html";
 
-typedef struct orow {
+struct orow {  //Entry
   std::string title;
   std::string fts_title;
   int id; //listmanager db id of the row
@@ -27,7 +27,7 @@ typedef struct orow {
   // and don't need to be reflected in database
   bool dirty;
   bool mark;
-} orow;
+};
 
 enum outlineKey {
   BACKSPACE = 127,
@@ -93,4 +93,49 @@ enum TaskView {
   BY_RECENT,
   BY_FIND
 };
+
+struct Container {
+  int id;
+  int tid;
+  std::string title;
+  bool star;
+  std::string created;
+  bool deleted;
+  std::string modified;
+  int count;   
+};
+/* Context
+0: id => int in use
+1: tid => int in use
+2: title = string 32 in use
+3: "default" = Boolean ? -> star in use
+4: created = 2016-08-05 23:05:16.256135 in use
+5: deleted => bool in use
+6: icon => string 32
+7: textcolor, Integer
+8: image, largebinary
+9: modified in use
+*/
+  /* Folder
+0: id => int
+1: tid => int
+2: title = string 32
+3: private = Boolean -> star
+4: archived = Boolean ? what this is
+5: "order" = integer
+6: created = 2016-08-05 23:05:16.256135
+7: deleted => bool
+8: icon => string 32
+9: textcolor, Integer
+10: image, largebinary
+11: modified
+*/
+/* Keyword
+0: id => int
+1: name = string 25
+2: tid => int
+3: star = Boolean
+4: modified
+5: deleted
+  */
 #endif

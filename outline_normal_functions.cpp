@@ -926,52 +926,74 @@ void getItems(int max) {
     org.get_preview(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
   }
 }
-/*
 // Not sure if this type of function should be here
 // or in Organizer
 // needs its callback
-void display_container_info(int id) {
-  if (id ==-1) return;
+Container getContainerInfo(int id) {
+  Container c = {};
+  if (id ==-1) return c;
 
   std::string table;
   std::string count_query;
-  int (*callback)(void *, int, char **, char **);
 
-  switch(view) {
+  switch(org.view) {
     case CONTEXT:
       table = "context";
-      callback = context_info_callback;
-      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id = ";
+      count_query = "SELECT COUNT(*) FROM task JOIN context ON context.tid = task.context_tid WHERE context.id={}";
       break;
     case FOLDER:
       table = "folder";
-      callback = folder_info_callback;
-      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id = ";
+      count_query = "SELECT COUNT(*) FROM task JOIN folder ON folder.tid = task.folder_tid WHERE folder.id={}";
       break;
     case KEYWORD:
       table = "keyword";
-      callback = keyword_info_callback;
-      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id = ";
+      count_query = "SELECT COUNT(*) FROM task_keyword WHERE keyword_id={}";
       break;
     default:
       sess.showOrgMessage("Somehow you are in a view I can't handle");
-      return;
+      return c;
   }
-  std::stringstream query;
-  int count = 0;
 
-  query << count_query << id;
+  Query q1(db, count_query, id);
+  if (int res = q1.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving container info in getContainerInfo: {}", res);
+    return c;
+  }
+  c.count = q1.column_int(0);
     
-  // note count obtained here but passed to the next callback so it can be printed
-  if (!sess.db_query(sess.S.db, query.str().c_str(), count_callback, &count, &sess.S.err_msg)) return;
-
-  std::stringstream query2;
-  query2 << "SELECT * FROM " << table << " WHERE id = " << id;
-
-  // callback is *not* called if result (argv) is null
-
-  if (!sess.db_query(sess.S.db, query2.str().c_str(), callback, &count, &sess.S.err_msg)) return;
-
+  Query q2(db, "SELECT * FROM {} WHERE id ={};", table, id);
+  if (int res = q2.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving container info in getContainerInfo(2): {}", res);
+    return c;
+  }
+  switch(org.view) {
+    case CONTEXT:
+      c.id = q2.column_int(0);
+      c.tid = q2.column_int(1);
+      c.title = q2.column_text(2);
+      c.star = q2.column_bool(3);
+      c.created = q2.column_text(4);
+      c.deleted = q2.column_bool(5);
+      c.modified = q2.column_text(9);
+      break;
+    case FOLDER:
+      c.id = q2.column_int(0);
+      c.tid = q2.column_int(1);
+      c.title = q2.column_text(2);
+      c.star = q2.column_bool(3);
+      c.created = q2.column_text(6);
+      c.deleted = q2.column_bool(7);
+      c.modified = q2.column_text(11);
+      break;
+    case KEYWORD:
+      c.id = q2.column_int(0);
+      c.tid = q2.column_int(2);
+      c.title = q2.column_text(1);
+      c.star = q2.column_bool(3);
+      c.deleted = q2.column_bool(5);
+      c.modified = q2.column_text(4);
+      break;
+  }
+  return c;
 }
-*/
 #endif

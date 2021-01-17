@@ -108,18 +108,14 @@ int getFolderTid(int);
 std::pair<std::string, std::vector<std::string>> getTaskKeywords(int); // used in F_copy_entry
 int keywordExists(const std::string &);  
 void getItems(int); 
+void searchDB(const std::string & st, bool help=false);
+Container getContainerInfo(int id);
 
 void update_container(void);
 int insert_container(orow&);
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 
-//void searchDB(const std::string &); //void fts5_sqlite(std::string);
-void searchDB(const std::string & st, bool help=false);
-void search_db2(const std::string &); //just searches documentation - should be combined with above
-void get_items_by_id(std::stringstream &);
-void map_context_titles(void);
-void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
 void add_task_keyword(int, int, bool update_fts=true);
 void display_item_info(int); 

@@ -46,6 +46,7 @@ class Organizer {
   std::string title_search_string; //word under cursor works with *, n, N etc.
   static std::vector<std::vector<int>> word_positions;
 
+  void displayContainerInfo(Container &c); //probably should not be here but in session
 
   /* started here */
   std::string outlinePreviewRowsToString(void);//OK

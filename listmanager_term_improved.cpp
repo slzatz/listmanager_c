@@ -1813,11 +1813,7 @@ void F_find(int pos) {
 
 void F_sync(int) {
   synchronize(0); // do actual sync
-  //map_context_titles();
-  //sess.generateContextMap();
   generateContextMap();
-  //map_folder_titles();
-  //sess.generateFolderMap();
   generateFolderMap();
   sess.initial_file_row = 0; //for arrowing or displaying files
   org.mode = FILE_DISPLAY; // needs to appear before displayFile
@@ -2330,7 +2326,11 @@ void gg_N(void) {
   org.fc = org.rowoff = 0;
   org.fr = org.repeat-1; //this needs to take into account O.rowoff
   if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-  else org.display_container_info(org.rows.at(org.fr).id);
+  else {
+    Container c = getContainerInfo(org.rows.at(org.fr).id);
+    if (c.id != 0) 
+      sess.displayContainerInfo(c);
+  }
 }
 
 //case 'G':
@@ -2338,7 +2338,11 @@ void G_N(void) {
   org.fc = 0;
   org.fr = org.rows.size() - 1;
   if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-  else org.display_container_info(org.rows.at(org.fr).id);
+  else {
+    Container c = getContainerInfo(org.rows.at(org.fr).id);
+    if (c.id != 0) 
+      sess.displayContainerInfo(c);
+  }
 }
 
 void gt_N(void) {
@@ -3081,7 +3085,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           org.mode = org.last_mode;
           sess.eraseRightScreen();
           if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-          else org.display_container_info(org.rows.at(org.fr).id);
+          //else org.display_container_info(org.rows.at(org.fr).id);
+          else {
+            Container c = getContainerInfo(org.rows.at(org.fr).id);
+            if (c.id != 0) 
+              sess.displayContainerInfo(c);
+          }
           org.command[0] = '\0';
           org.repeat = 0;
           sess.showOrgMessage("");
@@ -4214,11 +4223,7 @@ int main(int argc, char** argv) {
 
   //which_db = SQLITE; //this can go since not using postgres on client
 
-  //map_context_titles();
   generateContextMap();
-  //sess.generateContextMap();
-  //map_folder_titles();
-  //sess.generateFolderMap();
   generateFolderMap();
 
   sess.getWindowSize();

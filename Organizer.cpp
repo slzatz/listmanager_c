@@ -629,6 +629,76 @@ std::string Organizer::outlineRowsToString(void) {
   return s;
 }
 
+void Organizer::displayContainerInfo(Container &c) {
+
+  char lf_ret[10];
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
+
+  //need to erase the screen
+  for (int i=0; i < sess.textlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, nchars);
+  }
+
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  ab.append(buf, strlen(buf));
+
+  ab.append(COLOR_6); // Blue depending on theme
+
+  char str[300];
+  sprintf(str,"id: %d", c.id);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"tid: %d", c.tid);
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+  sprintf(str,"title: %s", c.title.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  if (view == CONTEXT || view == FOLDER) {
+    if (org.view == CONTEXT) {
+      auto it = std::ranges::find_if(context_map, [&c](auto& z) {return z.second == c.tid;});
+      sprintf(str,"context: %s", it->first.c_str());
+    } else if (org.view == FOLDER) {
+      auto it = std::ranges::find_if(folder_map, [&c](auto& z) {return z.second == c.tid;});
+      sprintf(str,"folder: %s", it->first.c_str());
+    }
+    ab.append(str, strlen(str));
+    ab.append(lf_ret, nchars);
+
+    sprintf(str,"created: %s", c.created.c_str());
+    ab.append(str, strlen(str));
+    ab.append(lf_ret, nchars);
+  }
+
+  sprintf(str,"star: %s", (c.star) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"deleted: %s", (c.deleted) ? "true": "false");
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"modified: %s", c.modified.c_str());
+  ab.append(str, strlen(str));
+  ab.append(lf_ret, nchars);
+
+  sprintf(str,"Task count: %d", c.count);
+  ab.append(str, strlen(str));
+
+  ab.append("\x1b[0m", 4);
+
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
 // not sure if this should be here or not
 void Organizer::display_container_info(int id) {
   if (id ==-1) return;

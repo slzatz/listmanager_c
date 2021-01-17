@@ -7,6 +7,7 @@
 #include <termios.h>
 #include <sstream>
 #include <fcntl.h> //file locking
+#include "Common.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -78,6 +79,7 @@ struct Session {
   void drawOrgFilters(std::string& ab); //-> outlineDrawFilters
   void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
   void refreshOrgScreen(void); //-> outlineRefreshScreen
+  void displayContainerInfo(Container &c);
 
   void showOrgMessage(const char *fmt, ...);
   void showOrgMessage2(const std::string &s);
