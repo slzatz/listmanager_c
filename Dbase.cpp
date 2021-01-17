@@ -36,6 +36,7 @@ int Query::step(void) {
   return sqlite3_step(res);
  }
 std::string Query::column_text(int col) {
+  if (sqlite3_column_text(res, col) == nullptr) return "";
   return std::string(reinterpret_cast<const char *>(sqlite3_column_text(res, col)));
 }
 

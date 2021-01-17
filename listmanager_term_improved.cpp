@@ -443,7 +443,7 @@ void update_html_code_file(std::string &&fn) {
 
   std::stringstream html;
   std::string line;
-  int tid = get_folder_tid(org.rows.at(org.fr).id);
+  int tid = getFolderTid(org.rows.at(org.fr).id);
   ipstream highlight(fmt::format("highlight code_file --out-format=html "
                              "--style=gruvbox-dark-hard-slz --syntax={}",
                              (tid == 18) ? "cpp" : "go"));
@@ -467,7 +467,7 @@ void update_code_file(void) {
   std::ofstream myfile;
   std::string file_path;
   std::string lsp_name;
-  int tid = get_folder_tid(sess.p->id);
+  int tid = getFolderTid(sess.p->id);
 
   //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
   if (tid == 18) {
@@ -628,7 +628,6 @@ std::string time_delta(std::string t) {
   */
 
   auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
-  //int adj_secs = (int)int_secs.count() + 3600; //time zone adjustment of 1 hour works - no idea why!
   int adj_secs = (int)int_secs.count() + 18000; //kluge that requires tz adjustment; need utc_clock
 
   std::string s;
@@ -645,9 +644,6 @@ std::string time_delta(std::string t) {
 
 /********************Beginning sqlite************************************/
 
-//Sqlite db(SQLITE_DB);
-//Sqlite fts(FTS_DB);
-
 void run_sql(void) {
   if (!sess.db.run()) {
     sess.showOrgMessage("SQL error: %s", sess.db.errmsg);
@@ -655,7 +651,7 @@ void run_sql(void) {
   }  
 }
 
-void db_open(void) {
+void db_open(void) { //needed for db_query to work
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
   if (rc != SQLITE_OK) {
     sqlite3_close(S.db);
@@ -751,7 +747,7 @@ void F_copy_entry(int) {
   }
 
   /***************fts virtual table update*********************/
-  std::string tag = get_task_keywords(new_id).first;
+  std::string tag = getTaskKeywords(new_id).first;
   Query q3(sess.fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
                title, note, tag, new_id); 
 
@@ -759,167 +755,7 @@ void F_copy_entry(int) {
     sess.showOrgMessage3("Problem inserting in fts in copy_entry: {}", res);
     return;
   }
-  get_items(MAX);
-}
-
-void get_containers(void) {
-
-  org.rows.clear();
-  org.fc = org.fr = org.rowoff = 0;
-
-  std::string table;
-  std::string column = "title"; //only needs to be change for keyword
-  int (*callback)(void *, int, char **, char **);
-  switch (org.view) {
-    case CONTEXT:
-      table = "context";
-      callback = context_callback;
-      break;
-    case FOLDER:
-      table = "folder";
-      callback = folder_callback;
-      break;
-    case KEYWORD:
-      table = "keyword";
-      column = "name";
-      callback = keyword_callback;
-      break;
-    default:
-      sess.showOrgMessage("Somehow you are in a view I can't handle");
-      return;
-  }
-  
-  sess.db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
-  bool no_rows = true;
-  sess.db.params(callback, &no_rows);
-  run_sql();
-
-  if (no_rows) {
-    sess.showOrgMessage("No results were returned");
-    org.mode = NO_ROWS;
-  } else {
-    //O.mode = NORMAL;
-    org.mode = org.last_mode;
-    org.display_container_info(org.rows.at(org.fr).id);
-  }
-
-  org.context = org.folder = org.keyword = ""; // this makes sense if you are not in an O.view == TASK
-}
-
-int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
-  4: created = 2016-08-05 23:05:16.256135
-  5: deleted => bool
-  6: icon => string 32
-  7: textcolor, Integer
-  8: image, largebinary
-  9: modified
-  */
-
-  orow row;
-
-  row.title = std::string(argv[2]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; //"default"
-  row.deleted = (atoi(argv[5]) == 1) ? true: false;
-  row.modified = time_delta(std::string(argv[9], 16));
-
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: private = Boolean ? what this is
-  4: archived = Boolean ? what this is
-  5: "order" = integer
-  6: created = 2016-08-05 23:05:16.256135
-  7: deleted => bool
-  8: icon => string 32
-  9: textcolor, Integer
-  10: image, largebinary
-  11: modified
-  */
-
-  orow row;
-
-  row.title = std::string(argv[2]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; //private
-  row.deleted = (atoi(argv[7]) == 1) ? true: false;
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-  row.modified = time_delta(std::string(argv[11], 16));
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: name = string 25
-  2: tid => int
-  3: star = Boolean
-  4: modified
-  5:deleted
-  */
-
-  orow row;
-
-  row.title = std::string(argv[1]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; 
-  row.deleted = (atoi(argv[5]) == 1) ? true: false;
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-  row.modified = time_delta(std::string(argv[4], 16));
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-std::pair<std::string, std::vector<std::string>> get_task_keywords(int id) {
-
-  Query q(sess.db, "SELECT keyword.name FROM task_keyword LEFT OUTER JOIN keyword ON "
-              "keyword.id=task_keyword.keyword_id WHERE {}=task_keyword.task_id;",
-              id);
-
-  std::vector<std::string> task_keywords = {}; 
-  while (q.step() == SQLITE_ROW) {
-    task_keywords.push_back(q.column_text(0));
- }
-
-  if (task_keywords.empty()) return std::make_pair(std::string(), std::vector<std::string>());
-
-  std::string s = fmt::format("{}", fmt::join(task_keywords, ","));
-  return std::make_pair(s, task_keywords);
+  getItems(MAX);
 }
 
 //overload that takes keyword_id and task_id
@@ -939,7 +775,7 @@ void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
    q1.step();
   // *************fts virtual table update**********************
   if (!update_fts) return;
-  std::string s = get_task_keywords(task_id).first;
+  std::string s = getTaskKeywords(task_id).first;
   Query q2(sess.fts, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
 
   if (int res = q2.step(); res != SQLITE_DONE)
@@ -990,49 +826,13 @@ void add_task_keyword(std::string &kws, int id) {
 
     /**************fts virtual table update**********************/
 
-    std::string s = get_task_keywords(id).first; // 11-10-2020
+    std::string s = getTaskKeywords(id).first; // 11-10-2020
     std::stringstream query4;
     query4 << "UPDATE fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
     if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
   }
 }
 
-//returns keyword id
-int keyword_exists(const std::string &name) {
-  Query q(sess.db, "SELECT keyword.id FROM keyword WHERE keyword.name='{}';", name); 
-  if (q.result != SQLITE_OK) {
-    sess.showOrgMessage3("Problem in 'keyword_exists'; result code: {}", q.result);
-    return -1;
-  }
-  // if there are no rows returned q.step() returns SQLITE_DONE = 101; SQLITE_ROW = 100
-  if (q.step() == SQLITE_ROW) return q.column_int(0);
-  else return -1;
-}
-
-// not in use but might have some use
-int folder_exists(std::string &name) {  
-  std::stringstream query;
-  query << "SELECT folder.id from folder WHERE folder.name = '" << name << "';";
-  int folder_id = 0;
-  if (!db_query(S.db, query.str().c_str(), container_id_callback, &folder_id, &S.err_msg, __func__)) return -1;
-  return folder_id;
-}
-
-// not in use but might have some use
-int context_exists(std::string &name) {  
-  std::stringstream query;
-  query << "SELECT context.id from context WHERE context.name = '" << name << "';";
-  int context_id = 0;
-  if (!db_query(S.db, query.str().c_str(), container_id_callback, &context_id, &S.err_msg, __func__)) return -1;
-  return context_id;
-}
-
-int container_id_callback(void *container_id, int argc, char **argv, char **azColName) {
-  int *id = static_cast<int*>(container_id);
-  *id = atoi(argv[0]);
-  return 0;
-}
-//void delete_task_keywords(void) {
 void F_deletekeywords(int) {
 
   std::stringstream query;
@@ -1051,394 +851,6 @@ void F_deletekeywords(int) {
 
   sess.showOrgMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", org.rows.at(org.fr).id);
   org.mode = org.last_mode;
-}
-
-void get_items(int max) {
-  std::stringstream query;
-  std::vector<std::string> keyword_vec;
-  int (*callback)(void *, int, char **, char **);
-  callback = data_callback;
-
-  org.rows.clear();
-  org.fc = org.fr = org.rowoff = 0;
-
-  if (org.taskview == BY_CONTEXT) {
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-          << " WHERE context.title = '" << org.context << "' ";
-  } else if (org.taskview == BY_FOLDER) {
-    query << "SELECT * FROM task JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE folder.title = '" << org.folder << "' ";
-  } else if (org.taskview == BY_RECENT) {
-    query << "SELECT * FROM task WHERE 1=1";
-  } else if (org.taskview == BY_JOIN) {
-    query << "SELECT * FROM task JOIN context ON context.tid = task.context_tid"
-          << " JOIN folder ON folder.tid = task.folder_tid"
-          << " WHERE context.title = '" << org.context << "'"
-          << " AND folder.title = '" << org.folder << "'";
-  } else if (org.taskview == BY_KEYWORD) {
-
- // if O.keyword has more than one keyword
-    std::string k;
-    std::stringstream skeywords;
-    skeywords << org.keyword;
-    while (getline(skeywords, k, ',')) {
-      keyword_vec.push_back(k);
-    }
-
-    query << "SELECT * FROM task JOIN task_keyword ON task.id = task_keyword.task_id JOIN keyword ON keyword.id = task_keyword.keyword_id"
-          << " WHERE task.id = task_keyword.task_id AND task_keyword.keyword_id = keyword.id AND (";
-
-    for (auto it = keyword_vec.begin(); it != keyword_vec.end() - 1; ++it) {
-      query << "keyword.name = '" << *it << "' OR ";
-    }
-    query << "keyword.name = '" << keyword_vec.back() << "')";
-
-    callback = unique_data_callback;
-    //unique_ids.clear();//01072020
-
-  } else {
-    sess.showOrgMessage("You asked for an unsupported db query");
-    return;
-  }
-
-  query << ((!org.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        //<< " ORDER BY task."
-        << " ORDER BY task.star DESC,"
-        << " task."
-        << org.sort
-        << " DESC LIMIT " << max;
-
-  int sortcolnum = org.sort_map.at(org.sort);
-  if (!db_query(S.db, query.str().c_str(), callback, &sortcolnum, &S.err_msg, __func__)) return;
-
-  org.view = TASK;
-
-  if (org.rows.empty()) {
-    sess.showOrgMessage("No results were returned");
-    org.mode = NO_ROWS;
-    sess.eraseRightScreen(); // in case there was a note displayed in previous view
-  } else {
-    org.mode = org.last_mode;
-    org.get_preview(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
-  }
-}
-
-int data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag = 
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-
-  I thought I should be using tid as the "id" for sqlite version but realized
-  that would work and mean you could always compare the tid to the pg id
-  but for new items created with sqlite, there would be no tid so
-  the right thing to use is the id.  At some point might also want to
-  store the tid in orow row
-  */
-
-
-  orow row;
-
-  row.title = std::string(argv[3]);
-  row.id = atoi(argv[0]);
-  row.star = (atoi(argv[8]) == 1) ? true: false;
-  row.deleted = (atoi(argv[14]) == 1) ? true: false;
-  row.completed = (argv[10]) ? true: false;
-
-  int *sc = static_cast<int*>(sortcolnum);
-  if (argv[*sc] != nullptr) row.modified = time_delta(std::string(argv[*sc], 16));
-  else row.modified.assign(15, ' ');
-
-  row.dirty = false;
-  row.mark = false;
-
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-int unique_data_callback(void *sortcolnum, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  orow row;
-  row.id = atoi(argv[0]);
-  row.title = std::string(argv[3]);
-  row.id = atoi(argv[0]);
-  row.star = (atoi(argv[8]) == 1) ? true: false;
-  row.deleted = (atoi(argv[14]) == 1) ? true: false;
-  row.completed = (argv[10]) ? true: false;
-
-  int *sc = static_cast<int*>(sortcolnum);
-  if (argv[*sc] != nullptr) row.modified = time_delta(std::string(argv[*sc], 16));
-  else row.modified.assign(15, ' ');
-
-  row.dirty = false;
-  row.mark = false;
-
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-// called as part of :find -> search_db -> fts5_callback -> search_db -> get_items_by_id -> by_id_data_callback
-void get_items_by_id(std::string query) {
-  /*
-   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
-   * may be retrieved from the fts db but they will not match when we look for them in the regular db
-  */
-
-  bool no_rows = true;
-  if (!db_query(S.db, query, by_id_data_callback, &no_rows, &S.err_msg, __func__)) return;
-
-  org.view = TASK;
-
-  if (no_rows) {
-    sess.showOrgMessage("No results were returned");
-    org.mode = NO_ROWS;
-    sess.eraseRightScreen(); // in case there was a note displayed in previous view
-  } else {
-    org.mode = FIND;
-    org.get_preview(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
-  }
-}
-
-int by_id_data_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag =
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-
-  I thought I should be using tid as the "id" for sqlite version but realized
-  that would work and mean you could always compare the tid to the pg id
-  but for new items created with sqlite, there would be no tid so
-  the right thing to use is the id.  At some point might also want to
-  store the tid in orow row
-  */
-
-  orow row;
-
-  row.title = std::string(argv[3]);
-  row.id = atoi(argv[0]);
-  row.fts_title = org.fts_titles.at(row.id);
-  row.star = (atoi(argv[8]) == 1) ? true: false;
-  row.deleted = (atoi(argv[14]) == 1) ? true: false;
-  row.completed = (argv[10]) ? true: false;
-
-  // we're not giving user choice of time column here but could 
-  if (argv[16] != nullptr) row.modified = time_delta(std::string(argv[16], 16));
-  else row.modified.assign(15, ' ');
-
-  row.dirty = false;
-  row.mark = false;
-
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-/*** not used right now ****/
-std::string get_title(int id) {
-  std::string title;
-  std::stringstream query;
-  query << "SELECT title FROM task WHERE id = " << id;
-  if (!db_query(S.db, query.str().c_str(), title_callback, &title, &S.err_msg, __func__)) return std::string("SQL Problem");
-  return title;
-}
-
-int title_callback (void *title, int argc, char **argv, char **azColName) {
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-  std::string *t = static_cast<std::string*>(title);
-  *t = std::string(argv[0]);
-  return 0;
-}
-
-void search_db(const std::string & st ) {
-
-  org.rows.clear();
-  org.fc = org.fr = org.rowoff = 0;
-
-  /*
-  std::stringstream fts_query;
-  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            << search_terms << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
-  */
-
-  /*
-   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
-   * may be retrieved from the fts db but they will not match when we look for them in the regular db
-  */
-  std::string fts_query = fmt::format("SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') "
-                                      "FROM fts WHERE fts MATCH '{}' ORDER BY bm25(fts, 2.0, 1.0, 5.0);",
-                                      st);
-
-  org.fts_ids.clear();
-  org.fts_titles.clear();
-  //fts_counter = 0;
-
-  bool no_rows = true;
-  if (!db_query(S.fts_db, fts_query, fts5_callback, &no_rows, &S.err_msg, __func__)) return;
-
-  if (no_rows) {
-    sess.showOrgMessage("No results were returned");
-    sess.eraseRightScreen(); //note can still return no rows from get_items_by_id if we found rows above that were deleted
-    org.mode = NO_ROWS;
-    return;
-  }
-  std::stringstream query;
-
-  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
-  query << "SELECT * FROM task WHERE task.id IN (";
-
-  //for (int i = 0; i < fts_counter-1; i++) {
-  int max = org.fts_ids.size() - 1;
-  for (int i=0; i < max; i++) {
-    query << org.fts_ids[i] << ", ";
-  }
-  //query << fts_ids[fts_counter-1]
-  query << org.fts_ids[max]
-        << ")"
-        << ((!org.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY ";
-
-  //for (int i = 0; i < fts_counter-1; i++) {
-  for (int i=0; i < max; i++) {
-    query << "task.id = " << org.fts_ids[i] << " DESC, ";
-  }
-  //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
-  query << "task.id = " << org.fts_ids[max] << " DESC";
-
-  get_items_by_id(query.str());
-}
-
-//total kluge but just brings back context_tid = 16
-void search_db2(const std::string & st) {
-
-  org.rows.clear();
-  org.fc = org.fr = org.rowoff = 0;
-
-  std::stringstream fts_query;
-  /*
-   * Note that since we are not at the moment deleting tasks from the fts db, deleted task ids
-   * may be retrieved from the fts db but they will not match when we look for them in the regular db
-  */
-  fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;31m', '\x1b[49m') FROM fts WHERE fts MATCH '"
-            << st << "' ORDER BY bm25(fts, 2.0, 1.0, 5.0);";
-
-  org.fts_ids.clear();
-  org.fts_titles.clear();
-  //fts_counter = 0;
-
-  bool no_rows = true;
-  if (!db_query(S.fts_db, fts_query.str().c_str(), fts5_callback, &no_rows, &S.err_msg, __func__)) return;
-
-  if (no_rows) {
-    sess.showOrgMessage("No results were returned");
-    sess.eraseRightScreen();
-    org.mode = NO_ROWS;
-    return;
-  }
-  std::stringstream query;
-
-  // As noted above, if the item is deleted (gone) from the db it's id will not be found if it's still in fts
-  query << "SELECT * FROM task WHERE task.context_tid = 16 and task.id IN (";
-
-  //for (int i = 0; i < fts_counter-1; i++) {
-  int max = org.fts_ids.size() - 1;
-  for (int i=0; i < max; i++) {
-    query << org.fts_ids[i] << ", ";
-  }
-  //query << fts_ids[fts_counter-1]
-  query << org.fts_ids[max]
-        << ")"
-        << ((!org.show_deleted) ? " AND task.completed IS NULL AND task.deleted = False" : "")
-        << " ORDER BY ";
-
-  //for (int i = 0; i < fts_counter-1; i++) {
-  for (int i=0; i < max; i++) {
-    query << "task.id = " << org.fts_ids[i] << " DESC, ";
-  }
-  //query << "task.id = " << fts_ids[fts_counter-1] << " DESC";
-  query << "task.id = " << org.fts_ids[max] << " DESC";
-
-  get_items_by_id(query.str());
-}
-
-int fts5_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  UNUSED(argc); //number of columns in the result
-  UNUSED(azColName);
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  org.fts_ids.push_back(atoi(argv[0]));
-  org.fts_titles[atoi(argv[0])] = std::string(argv[1]);
-  //fts_counter++;
-
-  return 0;
-}
-
-int get_folder_tid(int id) {
-
-  std::stringstream query;
-  query << "SELECT folder_tid FROM task WHERE id = " << id;
-
-  int folder_tid = -1;
-  //int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
-  if (!db_query(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg, __func__)) return -1;
-  return folder_tid;
-}
-
-int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
-  int *f_tid = static_cast<int*>(folder_tid);
-  *f_tid = atoi(argv[0]);
-  return 0;
 }
 
 void display_item_info(void) {
@@ -1503,7 +915,7 @@ void display_item_info(void) {
   s.append(fmt::format("modified: {}{}", q.column_text(16), lf_ret));
   s.append(fmt::format("added: {}{}", q.column_text(9), lf_ret));
 
-  s.append(fmt::format("keywords: {}", get_task_keywords(id).first, lf_ret));
+  s.append(fmt::format("keywords: {}", getTaskKeywords(id).first, lf_ret));
 
   std::string ab{};
   //hide the cursor
@@ -1531,91 +943,6 @@ void display_item_info(void) {
   // display_item_info_pg needs to be updated if it is going to be used
   //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
 }
-
-/*
-void update_note(bool is_subnote, bool closing_editor) {
-
-  std::string column = (is_subnote) ? "subnote" : "note";
-  std::string text = sess.p->editorRowsToString();
-
-  int folder_tid = get_folder_tid(sess.p->id);
-  if (!is_subnote && !closing_editor && (folder_tid == 18 || folder_tid == 14)) {
-    sess.p->code = text;
-    //code_changed = true;
-    update_code_file();
-  }
-
-  // need to escape single quotes with two single quotes
-  size_t pos = text.find("'");
-  while(pos != std::string::npos) {
-    text.replace(pos, 1, "''");
-    pos = text.find("'", pos + 2);
-  }
-
-  std::string query = fmt::format("UPDATE task SET {}='{}', modified=datetime('now'), "
-                                  "startdate=datetime('now', '-{} hours') where id={}",
-                                   column, text, TZ_OFFSET, sess.p->id);
-
-  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg)) return;
-
-  if (is_subnote) {
-    sess.showOrgMessage("Updated *sub*note for item %d", sess.p->id);
-    //org.outlineRefreshScreen();
-    sess.refreshOrgScreen();
-    return;
-  }
-  query = fmt::format("UPDATE fts SET note='{}' WHERE lm_id={}", text, sess.p->id);
-  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  sess.showOrgMessage("Updated note and fts entry for item %d", sess.p->id);
-  //org.outlineRefreshScreen();
-  sess.refreshOrgScreen();
-}
-*/
-
-/*
-void update_title(void) {
-
-  orow& row = org.rows.at(org.fr);
-
-  if (!row.dirty) {
-    sess.showOrgMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id == -1) {
-    insert_row(row);
-    return;
-  }
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos) {
-    title.replace(pos, 1, "''");
-    pos = title.find("'", pos + 2);
-  }
-
-  std::string query = fmt::format("UPDATE task SET title='{}', modified=datetime('now') WHERE id={}",
-                                     title, row.id);
-
-  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
-  row.dirty = false;
-
-  query = fmt::format("Update fts SET title='{}' WHERE lm_id={}", title, row.id);
-  if (!db_query(S.fts_db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  sess.showOrgMessage("Updated title and fts entry for item %d", row.id);
-  //org.outlineRefreshScreen();
-  sess.refreshOrgScreen();
-
-  // moved here 10262020
-  if (lm_browser) {
-    int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
-    if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    //else update_html_code_file("assets/" + CURRENT_NOTE_FILE);//don't need to update b/o title
-  }   
-}
-*/
 
 void update_container(void) {
 
@@ -1648,181 +975,10 @@ void update_container(void) {
   sess.showOrgMessage("Successfully updated row %d", row.id);
 }
 
-/* note that after changing a keyword's name would really have to update every entry
- * in the fts_db that had a tag that included that keyword
- */
-void update_keyword(void) {
-
-  orow& row = org.rows.at(org.fr);
-
-  if (!row.dirty) {
-    sess.showOrgMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id == -1) {
-    insert_keyword(row);
-    return;
-  }
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos) {
-    title.replace(pos, 1, "''");
-    pos = title.find("'", pos + 2);
-  }
-
-  std::string query = fmt::format("UPDATE keyword SET name='{}', modified=datetime('now') WHERE id={}",
-                                   title, row.id);
-
-  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  row.dirty = false;
-  sess.showOrgMessage("Successfully updated row %d", row.id);
-}
 /*Inserting a new keyword should not require any fts_db update. Just like any keyword
  *added to an entry - the tag created is entered into fts_db when that keyword is
  *attached to an entry.
 */
-int insert_keyword(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos) {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-  }
-
-  //note below that the temp tid is zero for all inserted keywords
-  std::string query = fmt::format("INSERT INTO keyword (name, star, deleted, modified, tid) " \
-                                   "VALUES ('{}', {}, False, datetime('now'), 0);",
-                                   title, row.star);
-
-  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return -1;
-
-  row.id =  sqlite3_last_insert_rowid(S.db);
-  row.dirty = false;
-  sess.showOrgMessage("Successfully inserted new keyword with id %d and indexed it", row.id);
-
-  return row.id;
-}
-
-// sqlite cleanup start here
-/*
-int insert_row(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find('\'');
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find('\'', pos + 2);
-    }
-
-  std::string queryx = fmt::format("INSERT INTO task (priority, title, folder_tid, context_tid, " \
-                                   "star, added, note, deleted, created, modified) " \
-                                   "VALUES (3, '{0}', {1}, {2}, True, date(), '', False, " \
-                                   "datetime('now', '-{3} hours'), " \
-                                   "datetime('now'));", 
-                                   title,
-                                   (org.folder == "") ? 1 : org.folder_map.at(org.folder),
-                                   (org.context == "") ? 1 : org.context_map.at(org.context),
-                                   TZ_OFFSET);
-
-  std::stringstream query;
-  query << "INSERT INTO task ("
-        << "priority, "
-        << "title, "
-        << "folder_tid, "
-        << "context_tid, "
-        << "star, "
-        << "added, "
-        << "note, "
-        << "deleted, "
-        << "created, "
-        << "modified "
-        //<< "startdate "
-        << ") VALUES ("
-        << " 3," //priority
-        << "'" << title << "'," //title
-        //<< " 1," //folder_tid
-        << ((org.folder == "") ? 1 : org.folder_map.at(org.folder)) << ", "
-        //<< ((O.context != "search") ? context_map.at(O.context) : 1) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        //<< ((O.context == "search" || O.context == "recent" || O.context == "") ? 1 : context_map.at(O.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << ((org.context == "") ? 1 : org.context_map.at(org.context)) << ", " //context_tid; if O.context == "search" context_id = 1 "No Context"
-        << " True," //star
-        << "date()," //added
-        //<< "'<This is a new note from sqlite>'," //note
-        << "''," //note
-        << " False," //deleted
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now')" // modified
-        //<< " date()" //startdate
-        << ");"; // RETURNING id;",
-
-    not used:
-    tid,
-    tag,
-    duetime,
-    completed,
-    duedate,
-    repeat,
-    remind
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    sess.showOrgMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    sess.showOrgMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-
-  //should probably create a separate function that is a klugy
-  //way of making up for fact that pg created tasks don't appear in fts db
-  //"INSERT OR IGNORE INTO fts (title, lm_id) VALUES ('" << title << row.id << ");";
-
-  std::stringstream query2;
-  query2 << "INSERT INTO fts (title, lm_id) VALUES ('" << title << "', " << row.id << ")";
-
-  rc = sqlite3_open(FTS_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-    sess.showOrgMessage("Cannot open FTS database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return row.id;
-  }
-
-  rc = sqlite3_exec(db, query2.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    sess.showOrgMessage("SQL error doing FTS insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return row.id; // would mean regular insert succeeded and fts failed - need to fix this
-  }
-  sqlite3_close(db);
-  sess.showOrgMessage("Successfully inserted new row with id %d and indexed it", row.id);
-
-  return row.id;
-}
-*/
-
 int insert_container(orow& row) {
 
   std::string title = row.title;
@@ -1895,6 +1051,7 @@ int insert_container(orow& row) {
   return row.id;
 }
 
+/*
 void update_rows(void) {
   int n = 0; //number of updated rows
   int updated_rows[20];
@@ -1965,7 +1122,7 @@ void update_rows(void) {
   msg[slen-2] = '\0'; //end of string has a trailing space and comma 
   sess.showOrgMessage("%s",  msg);
 }
-
+*/
 /*************************end sql**************************************/
 
 void update_solr(void) {
@@ -2160,7 +1317,7 @@ void F_open(int pos) { //C_open - by context
   org.marked_entries.clear();
   org.folder = "";
   org.taskview = BY_CONTEXT;
-  get_items(MAX);
+  getItems(MAX);
   //O.mode = O.last_mode;
   org.mode = NORMAL;
   return;
@@ -2198,7 +1355,7 @@ void F_openfolder(int pos) {
   org.marked_entries.clear();
   org.context = "";
   org.taskview = BY_FOLDER;
-  get_items(MAX);
+  getItems(MAX);
   org.mode = NORMAL;
   return;
 }
@@ -2212,7 +1369,7 @@ void F_openkeyword(int pos) {
  
   //O.keyword = O.command_line.substr(pos+1);
   std::string keyword = org.command_line.substr(pos+1);
-  if (!keyword_exists(keyword)) {
+  if (keywordExists(keyword) == -1) {
     org.mode = org.last_mode;
     sess.showOrgMessage("keyword '%s' does not exist!", keyword.c_str());
     return;
@@ -2227,7 +1384,7 @@ void F_openkeyword(int pos) {
   org.context = "";
   org.folder = "";
   org.taskview = BY_KEYWORD;
-  get_items(MAX);
+  getItems(MAX);
   org.mode = NORMAL;
   return;
 }
@@ -2238,7 +1395,7 @@ void F_addkeyword(int pos) {
     sess.eraseRightScreen();
     org.view = KEYWORD;
     sess.command_history.push_back(org.command_line);
-    get_containers(); //O.mode = NORMAL is in get_containers
+    getContainers(); //O.mode = NORMAL is in get_containers
     org.mode = ADD_CHANGE_FILTER;
     sess.showOrgMessage("Select keyword to add to marked or current entry");
     return;
@@ -2249,7 +1406,7 @@ void F_addkeyword(int pos) {
 
   {
   std::string keyword = org.command_line.substr(pos+1);
-  if (!keyword_exists(keyword)) {
+  if (keywordExists(keyword) == -1) {
       org.mode = org.last_mode;
       sess.showOrgMessage("keyword '%s' does not exist!", keyword.c_str());
       return;
@@ -2274,7 +1431,7 @@ void F_keywords(int pos) {
     sess.eraseRightScreen();
     org.view = KEYWORD;
     sess.command_history.push_back(org.command_line); 
-    get_containers(); //O.mode = NORMAL is in get_containers
+    getContainers(); //O.mode = NORMAL is in get_containers
     sess.showOrgMessage("Retrieved keywords");
     return;
   }  
@@ -2284,7 +1441,7 @@ void F_keywords(int pos) {
 
   {
   std::string keyword = org.command_line.substr(pos+1);
-  if (!keyword_exists(keyword)) {
+  if (keywordExists(keyword) == -1) {
       org.mode = org.last_mode;
       sess.showOrgMessage("keyword '%s' does not exist!", keyword.c_str());
       return;
@@ -2305,13 +1462,13 @@ void F_keywords(int pos) {
 }
 
 void F_write(int) {
-  if (org.view == TASK) update_rows();
+  if (org.view == TASK) updateRows();
   org.mode = org.last_mode;
   org.command_line.clear();
 }
 
 void F_x(int) {
-  if (org.view == TASK) update_rows();
+  if (org.view == TASK) updateRows();
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //sends cursor home (upper left)
   exit(0);
@@ -2321,12 +1478,12 @@ void F_refresh(int) {
   if (org.view == TASK) {
     sess.showOrgMessage("Entries will be refreshed");
     if (org.taskview == BY_FIND)
-      search_db(sess.fts_search_terms);
+      searchDB(sess.fts_search_terms);
     else
-      get_items(MAX);
+      getItems(MAX);
   } else {
     sess.showOrgMessage("contexts/folders will be refreshed");
-    get_containers();
+    getContainers();
   }
   org.mode = org.last_mode;
 }
@@ -2364,7 +1521,7 @@ void F_edit(int id) {
   }
 
   //pos is zero if no space and command modifier
-  if (id == 0) id = get_id();
+  if (id == 0) id = getId();
   if (id == -1) {
     sess.showOrgMessage("You need to save item before you can create a note");
     org.command[0] = '\0';
@@ -2388,7 +1545,7 @@ void F_edit(int id) {
       sess.p->id = id;
       sess.p->top_margin = TOP_MARGIN + 1;
 
-      int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+      int folder_tid = getFolderTid(org.rows.at(org.fr).id);
       if (folder_tid == 18 || folder_tid == 14) {
         sess.p->linked_editor = new Editor;
         Editor * & p = sess.p;
@@ -2399,7 +1556,8 @@ void F_edit(int id) {
         p->linked_editor->linked_editor = p;
         p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
-      sess.getNote(id); //if id == -1 does not try to retrieve note
+      //sess.getNote(id); //if id == -1 does not try to retrieve note
+      getNote(id); //if id == -1 does not try to retrieve note
       
     } else {
       sess.p = *it;
@@ -2411,7 +1569,7 @@ void F_edit(int id) {
     p->id = id;
     p->top_margin = TOP_MARGIN + 1;
 
-    int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+    int folder_tid = getFolderTid(org.rows.at(org.fr).id);
     if (folder_tid == 18 || folder_tid == 14) {
       sess.p->linked_editor = new Editor;
       Editor * & p = sess.p;
@@ -2422,7 +1580,8 @@ void F_edit(int id) {
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
-    sess.getNote(id); //if id == -1 does not try to retrieve note
+    //sess.getNote(id); //if id == -1 does not try to retrieve note
+    getNote(id); //if id == -1 does not try to retrieve note
  }
   sess.positionEditors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
@@ -2452,7 +1611,7 @@ void F_contexts(int pos) {
     sess.eraseRightScreen();
     org.view = CONTEXT;
     sess.command_history.push_back(org.command_line); 
-    get_containers();
+    getContainers();
     org.mode = NORMAL;
     sess.showOrgMessage("Retrieved contexts");
     return;
@@ -2508,7 +1667,7 @@ void F_folders(int pos) {
     sess.eraseRightScreen();
     org.view = FOLDER;
     sess.command_history.push_back(org.command_line); 
-    get_containers();
+    getContainers();
     org.mode = NORMAL;
     sess.showOrgMessage("Retrieved folders");
     return;
@@ -2568,7 +1727,7 @@ void F_recent(int) {
   org.context = "No Context";
   org.taskview = BY_RECENT;
   org.folder = "No Folder";
-  get_items(MAX);
+  getItems(MAX);
 }
 
 
@@ -2642,7 +1801,6 @@ void F_find(int pos) {
   org.context = "";
   org.folder = "";
   org.taskview = BY_FIND;
-  //O.mode = FIND; ////// it's in get_items_by_id
   std::string st = org.command_line.substr(pos+1);
   std::transform(st.begin(), st.end(), st.begin(), ::tolower);
   sess.command_history.push_back(org.command_line); 
@@ -2650,15 +1808,17 @@ void F_find(int pos) {
   sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, org.command_line);
   sess.showOrgMessage("Searching for %s", st.c_str());
   sess.fts_search_terms = st;
-  search_db(st);
+  searchDB(st);
 }
 
 void F_sync(int) {
   synchronize(0); // do actual sync
   //map_context_titles();
-  sess.generateContextMap();
+  //sess.generateContextMap();
+  generateContextMap();
   //map_folder_titles();
-  sess.generateFolderMap();
+  //sess.generateFolderMap();
+  generateFolderMap();
   sess.initial_file_row = 0; //for arrowing or displaying files
   org.mode = FILE_DISPLAY; // needs to appear before displayFile
   sess.showOrgMessage("Synching local db and server and displaying results");
@@ -2680,7 +1840,7 @@ void F_updatecontext(int) {
   sess.eraseRightScreen();
   org.view = CONTEXT;
   sess.command_history.push_back(org.command_line); 
-  get_containers(); //O.mode = NORMAL is in get_containers
+  getContainers(); //O.mode = NORMAL is in get_containers
   org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   sess.showOrgMessage("Select context to add to marked or current entry");
 }
@@ -2690,7 +1850,7 @@ void F_updatefolder(int) {
   sess.eraseRightScreen();
   org.view = FOLDER;
   sess.command_history.push_back(org.command_line); 
-  get_containers(); //O.mode = NORMAL is in get_containers
+  getContainers(); //O.mode = NORMAL is in get_containers
   org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
   sess.showOrgMessage("Select folder to add to marked or current entry");
 }
@@ -2718,7 +1878,7 @@ void F_savefile(int pos) {
 void F_sort(int pos) { 
   if (pos && org.view == TASK && org.taskview != BY_FIND) {
     org.sort = org.command_line.substr(pos + 1);
-    get_items(MAX);
+    getItems(MAX);
     sess.showOrgMessage("sorted by \'%s\'", org.sort.c_str());
   } else {
     sess.showOrgMessage("Currently can't sort search, which is sorted on best match");
@@ -2732,7 +1892,7 @@ void  F_showall(int) {
     if (org.taskview == BY_FIND)
       ; //search_db();
     else
-      get_items(MAX);
+      getItems(MAX);
   }
   sess.showOrgMessage((org.show_deleted) ? "Showing completed/deleted" : "Hiding completed/deleted");
 }
@@ -2813,7 +1973,7 @@ void F_join(int pos) {
 
   sess.showOrgMessage("Will join \'%s\' with \'%s\'", org.folder.c_str(), org.context.c_str());
   org.taskview = BY_JOIN;
-  get_items(MAX);
+  getItems(MAX);
   return;
 }
 
@@ -2850,11 +2010,10 @@ void F_help(int pos) {
     org.context = "";
     org.folder = "";
     org.taskview = BY_FIND;
-    //O.mode = FIND; ////// it's in get_items_by_id
     std::transform(st.begin(), st.end(), st.begin(), ::tolower);
     sess.command_history.push_back(org.command_line); 
     sess.fts_search_terms = st;
-    search_db2(st);
+    searchDB(st, true);
     sess.showOrgMessage("Will look for help on %s", st.c_str());
     //O.mode = NORMAL;
   }  
@@ -2938,11 +2097,11 @@ void F_lsp_start(int pos) {
 }
 
 void F_launch_lm_browser(int) {
-  if (lm_browser) {
+  if (sess.lm_browser) {
     sess.showOrgMessage3("There is already an active browser");
     return;
   }
-  lm_browser = true; 
+  sess.lm_browser = true; 
   std::system("./lm_browser current.html &"); //&=> returns control
   org.mode = NORMAL;
 }
@@ -2951,7 +2110,7 @@ void F_quit_lm_browser(int) {
   zmq::message_t message(20);
   snprintf ((char *) message.data(), 20, "%s", "quit"); //25 - complete hack but works ok
   publisher.send(message, zmq::send_flags::dontwait);
-  lm_browser = false;
+  sess.lm_browser = false;
   org.mode = NORMAL;
 }
 /* END OUTLINE COMMAND mode functions */
@@ -3001,12 +2160,12 @@ void return_N(void) {
   if(row.dirty){
     if (org.view == TASK) {
       updateTitle();
-      if (lm_browser) {
-        int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+      if (sess.lm_browser) {
+        int folder_tid = getFolderTid(org.rows.at(org.fr).id);
         if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
       }
     } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
-    else if (org.view == KEYWORD) update_keyword();
+    else if (org.view == KEYWORD) updateKeyword();
     org.command[0] = '\0'; //11-26-2019
     org.mode = NORMAL;
     if (org.fc > 0) org.fc--;
@@ -3042,7 +2201,7 @@ void return_N(void) {
   sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, org.command_line);
   org.marked_entries.clear();
 
-  get_items(MAX);
+  getItems(MAX);
 }
 
 //case 'i':
@@ -3206,7 +2365,7 @@ void gt_N(void) {
     org.context = it->first;
     sess.showOrgMessage("\'%s\' will be opened", org.context.c_str());
   }
-  get_items(MAX);
+  getItems(MAX);
 }
 
 /*
@@ -3450,7 +2609,7 @@ std::string generateWWString(std::vector<std::string> &rows, int width, int leng
 // should also just be editor command
 void open_in_vim(void){
   std::string filename;
-  if (get_folder_tid(org.rows.at(org.fr).id) != 18) filename = "vim_file.txt";
+  if (getFolderTid(org.rows.at(org.fr).id) != 18) filename = "vim_file.txt";
   else filename = "vim_file.cpp";
   sess.p->editorSaveNoteToFile(filename);
   std::stringstream s;
@@ -3519,12 +2678,12 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\r': //also does escape into NORMAL mode
           if (org.view == TASK)  {
             updateTitle();
-            if (lm_browser) {
-              int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+            if (sess.lm_browser) {
+              int folder_tid = getFolderTid(org.rows.at(org.fr).id);
               if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
             }
           } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
-          else if (org.view == KEYWORD) update_keyword();
+          else if (org.view == KEYWORD) updateKeyword();
           org.command[0] = '\0'; //11-26-2019
           org.mode = NORMAL;
           if (org.fc > 0) org.fc--;
@@ -5045,26 +4204,29 @@ int main(int argc, char** argv) {
   sess.lock.l_len = 0;
   sess.lock.l_pid = getpid();
 
-  if (argc > 1 && argv[1][0] == '-') lm_browser = false;
+  if (argc > 1 && argv[1][0] == '-') sess.lm_browser = false;
 
-  db_open(); //for sqlite
-  sess.db_open(); //for sqlite
+  db_open(); //for sqlite //needed for db_query to work
+  //sess.db_open(); //for sqlite
+  dbOpen(); //seems to be needed by org.get_preview because initializes sess.S 
   get_conn(); //for pg
   load_meta(); //meta html for lm_browser 
 
   //which_db = SQLITE; //this can go since not using postgres on client
 
   //map_context_titles();
-  sess.generateContextMap();
+  generateContextMap();
+  //sess.generateContextMap();
   //map_folder_titles();
-  sess.generateFolderMap();
+  //sess.generateFolderMap();
+  generateFolderMap();
 
   sess.getWindowSize();
   enableRawMode();
   initOutline();
   sess.eraseScreenRedrawLines();
   //Editor::origin = sess.divider + 1; //only used in Editor.cpp
-  get_items(MAX);
+  getItems(MAX);
   sess.command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   sess.page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
@@ -5079,7 +4241,7 @@ int main(int argc, char** argv) {
   sess.showOrgMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
   sess.returnCursor();
 
-  if (lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
+  if (sess.lm_browser) std::system("./lm_browser current.html &"); //&=> returns control
 
   while (run) {
     // just refresh what has changed
@@ -5095,7 +4257,7 @@ int main(int argc, char** argv) {
       sess.p->editorRefreshScreen(redraw);
 
       ////////////////////
-      if (lm_browser && scroll) {
+      if (sess.lm_browser && scroll) {
         zmq::message_t message(20);
         snprintf ((char *) message.data(), 20, "%d", sess.p->line_offset*25); //25 - complete hack but works ok
         publisher.send(message, zmq::send_flags::dontwait);

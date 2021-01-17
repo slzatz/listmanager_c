@@ -68,10 +68,11 @@ struct Session {
   // same function as outlineDrawStatusBar
   void drawOrgStatusBar(void);
 
+  /*
   void getNote(int id);
-
   void generateContextMap(void);
   void generateFolderMap(void);
+  */
 
   void drawOrgRows(std::string& ab); //-> outlineDrawRows
   void drawOrgFilters(std::string& ab); //-> outlineDrawFilters

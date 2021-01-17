@@ -373,6 +373,7 @@ void Session::drawOrgStatusBar(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
+/*
 void Session::getNote(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
@@ -393,23 +394,22 @@ void Session::getNote(int id) {
 
   p->linked_editor->rows = std::vector<std::string>{" "};
 
-  /* below works but don't think we want to store output_window
-  db.query("SELECT subnote FROM task WHERE id = {}", id);
-  db.callback = note_callback;
-  db.pArg = p->linked_editor;
-  run_sql();
-  */
-
+ // below works but don't think we want to store output_window
+ // db.query("SELECT subnote FROM task WHERE id = {}", id);
+ // db.callback = note_callback;
+ // db.pArg = p->linked_editor;
+ // run_sql();
 }
+*/
+
+/*
 void Session::generateContextMap(void) {
   // note it's tid because it's sqlite
   Query q(db, "SELECT tid, title FROM context;"); 
-  /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
     return;
   }
-  */
 
   while (q.step() == SQLITE_ROW) {
     org.context_map[q.column_text(1)] = q.column_int(0);
@@ -420,17 +420,16 @@ void Session::generateFolderMap(void) {
 
   // note it's tid because it's sqlite
   Query q(db, "SELECT tid,title FROM folder;"); 
-  /*
   if (q.result != SQLITE_OK) {
     outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
     return;
   }
-  */
 
   while (q.step() == SQLITE_ROW) {
     org.folder_map[q.column_text(1)] = q.column_int(0);
   }
 }
+*/
 
 //this is Organizer::outlinedrawRows
 void Session::drawOrgRows(std::string& ab) {

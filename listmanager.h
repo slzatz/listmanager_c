@@ -34,20 +34,22 @@ extern "C" {
 }
 
 /* as of C++17 you can do inline and variables will only be defined once */
-inline bool lm_browser = true; //soon eliminate ./m_nb and make default false
+//inline bool lm_browser = true; //soon eliminate ./m_nb and make default false
 //inline bool editor_mode = false;
-inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
-inline std::vector<std::vector<int>> word_positions = {};
+//inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
+//inline std::vector<std::vector<int>> word_positions = {};
 //inline Session sess;
 //inline std::vector<std::string> line_buffer = {}; //yanking lines
 //void update_note(bool is_subeditor, bool closing_editor=false); //used by Editor class 
+
 void updateNote(void); //used by Editor class 
 void update_code_file(void);
-std::string get_title(int id);
+std::string getTitle(int id);
 
 
 /* also used by Editor class */
-int get_folder_tid(int); 
+//int get_folder_tid(int); 
+int getFolderTid(int); 
 void update_html_file(std::string &&);
 void update_html_code_file(std::string &&);
 void open_in_vim(void);

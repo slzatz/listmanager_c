@@ -1260,7 +1260,7 @@ void Editor::editorRefreshScreen(bool draw) {
       ab.append(lf_ret);
     }
 
-    tid = get_folder_tid(id);
+    tid = getFolderTid(id);
     if ((tid == 18 || tid == 14) && !(is_subeditor)) editorDrawCodeRows(ab);
     else editorDrawRows(ab);
   }
@@ -1281,7 +1281,7 @@ void Editor::editorRefreshScreen(bool draw) {
 
   if (rows.empty() || rows.at(fr).empty()) return;
 
-  if (!tid) tid = get_folder_tid(id);
+  if (!tid) tid = getFolderTid(id);
   if ((tid == 18 || tid == 14) && !(is_subeditor)) draw_highlighted_braces();;
 }
 
@@ -1332,7 +1332,7 @@ void Editor::editorDrawStatusBar(std::string& ab) {
                                       cx, cy, rows.size(), line_offset);
     }
   } else {
-    std::string title = get_title(id);
+    std::string title = getTitle(id);
     std::string truncated_title = title.substr(0, 30);
     if (dirty) truncated_title.append("[+]"); 
     len = snprintf(status, sizeof(status), "%d - %s ... %s", id, truncated_title.c_str(), (is_subeditor) ? "subeditor" : "");
@@ -1429,7 +1429,7 @@ void Editor::editorDrawCodeRows(std::string &ab) {
   std::stringstream display;
   std::string line;
 
-  int tid = get_folder_tid(id);
+  int tid = getFolderTid(id);
   ipstream highlight(fmt::format("highlight code_file --out-format=xterm256 "
                              "--style=gruvbox-dark-hard-slz --syntax={}",
                              (tid == 18) ? "cpp" : "go"));
@@ -2250,7 +2250,7 @@ void Editor::E_write_C(void) {
 
   //update_note(false);
   updateNote();
-  int folder_tid = get_folder_tid(id);
+  int folder_tid = getFolderTid(id);
   //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
   if (folder_tid == 18 || folder_tid == 14) {
     code = editorRowsToString();
@@ -2262,8 +2262,8 @@ void Editor::E_write_C(void) {
 
   if (is_subeditor) return;
 
-  int tid = get_folder_tid(id);
-  if (lm_browser && !(tid == 18 || tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  int tid = getFolderTid(id);
+  if (sess.lm_browser && !(tid == 18 || tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
 }
 
 /* the following are not being called and were written for single editor
@@ -2980,7 +2980,7 @@ void Editor::E_compile_C(void) {
   }
   std::stringstream text;
   std::string line;
-  if (get_folder_tid(id) == 18) {
+  if (getFolderTid(id) == 18) {
     chdir("/home/slzatz/clangd_examples/");
     ipstream make("make");
 
@@ -3034,7 +3034,7 @@ void Editor::E_runlocal_C(void) {
   if (pos != std::string::npos) args = command_line.substr(pos); //include the space
   else args = "";
 
-  if (get_folder_tid(id) == 18) {
+  if (getFolderTid(id) == 18) {
       cmd = "/home/slzatz/clangd_examples/test_cpp";
   } else {
       cmd = "/home/slzatz/go/src/example/main";
@@ -3360,7 +3360,7 @@ void Editor::getLinked(void) {
     p->top_margin = TOP_MARGIN + 1;
     //p->screenlines = Editor::total_screenlines - LINKED_NOTE_HEIGHT - 1;
 
-    int folder_tid = get_folder_tid(linked_id);
+    int folder_tid = getFolderTid(linked_id);
     if (folder_tid == 18 || folder_tid == 14) {
       p->linked_editor = new Editor;
       sess.editors.push_back(p->linked_editor);

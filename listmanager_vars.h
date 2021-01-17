@@ -80,40 +80,44 @@ void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
 
 //Database-related Prototypes
+void getNote(int id);
+void generateContextMap(void);
+void generateFolderMap(void);
 void updateNote(void);/////////////////////////////
-void db_open(void);
-//void update_task_context(std::string &, int);
+
+//void db_open(void);
+void dbOpen(void);
+void runSQL(void);
+
 void updateTaskContext(std::string &, int);
-//void update_task_folder(std::string &, int);
 void updateTaskFolder(std::string &, int);
-int get_id(void);
 int getId(void);/////////////////////////////////////////////////////////////////////////////////////////
-void get_note(int);
-std::string get_title(int);
-//void update_title(void);
+void getNote(int);
+std::string getTitle(int); //right now only in Editor.cpp
 void updateTitle(void);
-void update_rows(void);
-//void toggle_deleted(void);
+void updateRows(void);
 void toggleDeleted(void);
-//void toggle_star(void);
 void toggleStar(void);////////////////////////////////////////////////////////////////////////////////////
-//void toggle_completed(void);
 void toggleCompleted(void);
 void touch(void);
-//int insert_row(orow&);
 int insertRow(orow&);
-int insert_container(orow&);
-int insert_keyword(orow &);
+void getContainers(void); //has an if that determines callback: context_callback or folder_callback
+int insertKeyword(orow &);
+void updateKeyword(void);
+int getFolderTid(int); 
+std::pair<std::string, std::vector<std::string>> getTaskKeywords(int); // used in F_copy_entry
+int keywordExists(const std::string &);  
+void getItems(int); 
+
 void update_container(void);
-void update_keyword(void);
-void get_items(int); 
-void get_containers(void); //has an if that determines callback: context_callback or folder_callback
-std::pair<std::string, std::vector<std::string>> get_task_keywords(int); // used in F_copy_entry
+int insert_container(orow&);
+
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
-void search_db(const std::string &); //void fts5_sqlite(std::string);
+
+//void searchDB(const std::string &); //void fts5_sqlite(std::string);
+void searchDB(const std::string & st, bool help=false);
 void search_db2(const std::string &); //just searches documentation - should be combined with above
 void get_items_by_id(std::stringstream &);
-int get_folder_tid(int); 
 void map_context_titles(void);
 void map_folder_titles(void);
 void add_task_keyword(std::string &, int);
@@ -122,9 +126,6 @@ void display_item_info(int);
 void display_item_info(void); //ctrl-i in NORMAL mode 0x9
 void display_item_info_pg(int);
 void display_container_info(int);
-int keyword_exists(const std::string &);  
-int folder_exists(std::string &);
-int context_exists(std::string &);
 std::string time_delta(std::string);
 std::string now(void);
 
