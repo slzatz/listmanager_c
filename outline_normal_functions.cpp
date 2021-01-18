@@ -11,9 +11,6 @@
 
 int insertRow(orow& row);
 int insertKeyword(orow& row);
-int context_callback(void *no_rows, int argc, char **argv, char **azColName);
-int folder_callback(void *no_rows, int argc, char **argv, char **azColName); 
-int keyword_callback(void *no_rows, int argc, char **argv, char **azColName);
 std::string time_delta_(std::string t);
 void get_items_by_id(std::string query);
 //void searchDB(const std::string & st, bool help=false) {
@@ -478,7 +475,7 @@ void updateRows(void) {
   sess.showOrgMessage("%s",  msg);
 }
 
-void getNote(int id) {
+void readNoteIntoVec(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
   Query q(db, "SELECT note FROM task WHERE id = {}", id);
@@ -505,6 +502,59 @@ void getNote(int id) {
   run_sql();
   */
 
+}
+
+void readNoteIntoPreviewVec(int id) {
+  org.preview_rows.clear();
+  if (id ==-1) return; // id given to new and unsaved entries
+
+  Query q(db, "SELECT note FROM task WHERE id = {}", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
+    return;
+  }
+  std::string note = q.column_text(0);
+  if (note == "") return;
+  std::erase(note, '\r'); //c++20
+  std::stringstream sNote(note);
+  std::string s;
+  while (getline(sNote, s, '\n')) {
+    org.preview_rows.push_back(s);
+  }
+}
+void getNoteSearchPositions(int id) {
+  Query q(fts_db, "SELECT rowid FROM fts WHERE lm_id = {};", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
+    return;
+  }
+  int rowid = q.column_int(0); //should ? return -1 if nullptr
+
+  //if (!sess.db_query(sess.S.fts_db, query.str().c_str(), rowid_callback, &rowid, &sess.S.err_msg, __func__)) return;
+
+ // std::vector<std::vector<int>> word_positions = {};//static
+  // split string into a vector of words
+  std::vector<std::string> vec;
+  std::istringstream iss(sess.fts_search_terms);
+  for(std::string ss; iss >> ss; ) vec.push_back(ss);
+
+  for(auto v: vec) {
+    org.word_positions.push_back(std::vector<int>{});
+    Query q1(fts_db, "SELECT offset FROM fts_v WHERE doc ={} AND term = '{}' AND col = 'note';", rowid, v);
+    while (q1.step() == SQLITE_ROW) 
+      org.word_positions.back().push_back(q1.column_int(0));
+  }
+
+  int ww = (org.word_positions.at(0).empty()) ? -1 : org.word_positions.at(0).at(0);
+  sess.showOrgMessage("Word position first: %d; id = %d (new)", ww, id);
+
+  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
+  /*
+  if (lm_browser) {
+    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  } 
+  */
 }
 
 void generateContextMap(void) {
@@ -555,141 +605,90 @@ void getContainers(void) {
 
   std::string table;
   std::string column = "title"; //only needs to be change for keyword
-  int (*callback)(void *, int, char **, char **);
+
   switch (org.view) {
     case CONTEXT:
       table = "context";
-      callback = context_callback;
       break;
     case FOLDER:
       table = "folder";
-      callback = folder_callback;
       break;
     case KEYWORD:
       table = "keyword";
       column = "name";
-      callback = keyword_callback;
       break;
     default:
       sess.showOrgMessage("Somehow you are in a view I can't handle");
       return;
   }
-  
-  db.query("SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
-  bool no_rows = true;
-  db.params(callback, &no_rows);
-  db.run();
+ 
+  Query q(db, "SELECT * FROM {} ORDER BY {} COLLATE NOCASE ASC;", table, column);
 
-  if (no_rows) {
-    sess.showOrgMessage("No results were returned");
-    org.mode = NO_ROWS;
-  } else {
-    //O.mode = NORMAL;
-    org.mode = org.last_mode;
-    org.display_container_info(org.rows.at(org.fr).id);
+  if (q.result != SQLITE_OK) {
+    sess.showOrgMessage3("Problem in 'getContainers'; result code: {}", q.result);
+    return;
   }
 
+  switch(org.view) {
+    case CONTEXT:
+      while (q.step() == SQLITE_ROW) {
+        orow row;
+        row.id = q.column_int(0);
+        row.title = q.column_text(2);
+        row.star = q.column_bool(3);
+        row.deleted = q.column_bool(5);
+        row.modified = time_delta_(q.column_text(9));
+
+        row.completed = false;
+        row.dirty = false;
+        row.mark = false;
+
+        org.rows.push_back(row);
+      }
+      break;
+    case FOLDER:
+      while (q.step() == SQLITE_ROW) {
+        orow row;
+        row.id = q.column_int(0);
+        row.title = q.column_text(2);
+        row.star = q.column_bool(3);
+        row.deleted = q.column_bool(7);
+        row.modified = time_delta_(q.column_text(11));
+
+        row.completed = false;
+        row.dirty = false;
+        row.mark = false;
+
+        org.rows.push_back(row);
+      }
+      break;
+    case KEYWORD:
+      while (q.step() == SQLITE_ROW) {
+        orow row;
+        row.id = q.column_int(0);
+        row.title = q.column_text(1);
+        row.star = q.column_bool(3);
+        row.deleted = q.column_bool(5);
+        row.modified = time_delta_(q.column_text(4));
+
+        row.completed = false;
+        row.dirty = false;
+        row.mark = false;
+
+        org.rows.push_back(row);
+      }
+      break;
+  }
+
+  if (org.rows.empty()) {
+    sess.showOrgMessage("No results were returned");
+    org.mode = NO_ROWS;
+  } 
+ 
+  // below should be somewhere else
   org.context = org.folder = org.keyword = ""; // this makes sense if you are not in an O.view == TASK
 }
 
-int context_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: "default" = Boolean ? what this is; sql has to use quotes to refer to column
-  4: created = 2016-08-05 23:05:16.256135
-  5: deleted => bool
-  6: icon => string 32
-  7: textcolor, Integer
-  8: image, largebinary
-  9: modified
-  */
-
-  orow row;
-
-  row.title = std::string(argv[2]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; //"default"
-  row.deleted = (atoi(argv[5]) == 1) ? true: false;
-  row.modified = time_delta_(std::string(argv[9], 16));
-
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-int folder_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: tid => int
-  2: title = string 32
-  3: private = Boolean ? what this is
-  4: archived = Boolean ? what this is
-  5: "order" = integer
-  6: created = 2016-08-05 23:05:16.256135
-  7: deleted => bool
-  8: icon => string 32
-  9: textcolor, Integer
-  10: image, largebinary
-  11: modified
-  */
-
-  orow row;
-
-  row.title = std::string(argv[2]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; //private
-  row.deleted = (atoi(argv[7]) == 1) ? true: false;
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-  row.modified = time_delta_(std::string(argv[11], 16));
-  org.rows.push_back(row);
-
-  return 0;
-}
-
-int keyword_callback(void *no_rows, int argc, char **argv, char **azColName) {
-
-  bool *flag = static_cast<bool*>(no_rows);
-  *flag = false;
-
-  /*
-  0: id => int
-  1: name = string 25
-  2: tid => int
-  3: star = Boolean
-  4: modified
-  5:deleted
-  */
-
-  orow row;
-
-  row.title = std::string(argv[1]);
-  row.id = atoi(argv[0]); //right now pulling sqlite id not tid
-  row.star = (atoi(argv[3]) == 1) ? true: false; 
-  row.deleted = (atoi(argv[5]) == 1) ? true: false;
-  row.completed = false;
-  row.dirty = false;
-  row.mark = false;
-  row.modified = time_delta_(std::string(argv[4], 16));
-  org.rows.push_back(row);
-
-  return 0;
-}
 
 std::string time_delta_(std::string t) {
   struct std::tm tm = {};
@@ -809,37 +808,9 @@ void searchDB(const std::string & st, bool help) {
     sess.eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     org.mode = FIND;
-    org.get_preview(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
+    sess.drawPreviewWindow(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
   }
 }
-
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag =
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-
-  I thought I should be using tid as the "id" for sqlite version but realized
-  that would work and mean you could always compare the tid to the pg id
-  but for new items created with sqlite, there would be no tid so
-  the right thing to use is the id.  At some point might also want to
-  store the tid in orow row
-  */
 
 void getItems(int max) {
   std::stringstream stmt;
@@ -923,7 +894,7 @@ void getItems(int max) {
     sess.eraseRightScreen(); // in case there was a note displayed in previous view
   } else {
     org.mode = org.last_mode;
-    org.get_preview(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
+    sess.drawPreviewWindow(org.rows.at(org.fr).id); //if id == -1 does not try to retrieve note
   }
 }
 // Not sure if this type of function should be here
@@ -995,5 +966,87 @@ Container getContainerInfo(int id) {
       break;
   }
   return c;
+}
+std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
+  if (rows.empty()) return "";
+
+  std::string ab = "";
+  //int y = -line_offset; **set to zero because always starting previews at line 0**
+  int y = 0;
+  int filerow = 0;
+
+  for (;;) {
+    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+    if (filerow == rows.size()) return ab;
+
+    std::string_view row = rows.at(filerow);
+    
+    if (row.empty()) {
+      if (y == length - 1) return ab;
+      ab.append(ret);
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + width > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+
+        if (y == length - 1) return ab;
+        ab.append(ret);
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + width - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + width - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
+      ab.append(ret);
+      y++;
+      prev_pos = pos + 1;
+    }
+  }
+}
+
+void highlight_terms_string(std::string &text) {
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\f\\"; //must have \f if using as placeholder
+
+  for (auto v: org.word_positions) { //v will be an int vector of word positions like 15, 30, 70
+    int word_num = -1;
+    auto pos = v.begin(); //pos = word count of the next word
+    auto prev_pos = pos;
+    int end = -1; //this became a problem in comparing -1 to unsigned int (always larger)
+    int start;
+    for (;;) {
+      if (end >= static_cast<int>(text.size()) - 1) break;
+      //if (word_num > v.back()) break; ///////////
+      start = end + 1;
+      end = text.find_first_of(delimiters, start);
+      if (end == std::string::npos) end = text.size() - 1;
+      
+      if (end != start) word_num++;
+
+      // start the search from the last match? 12-23-2019
+      pos = std::find(pos, v.end(), word_num); // is this saying if word_num is in the vector you have a match
+      if (pos != v.end()) {
+        //editorHighlightWord(n, start, end-start); put escape codes or [at end and start]
+        text.insert(end, "\x1b[48;5;235m"); //49m"); //48:5:235
+        text.insert(start, "\x1b[48;5;31m");
+        if (pos == v.end() - 1) break;
+        end += 21;
+        pos++;
+        prev_pos = pos;
+      } else pos = prev_pos; //pos == v.end() => the current word position was not in v[n]
+    }
+  }
 }
 #endif

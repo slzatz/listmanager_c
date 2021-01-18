@@ -80,7 +80,7 @@ void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);
 
 //Database-related Prototypes
-void getNote(int id);
+void readNoteIntoVec(int id);
 void generateContextMap(void);
 void generateFolderMap(void);
 void updateNote(void);/////////////////////////////
@@ -92,7 +92,6 @@ void runSQL(void);
 void updateTaskContext(std::string &, int);
 void updateTaskFolder(std::string &, int);
 int getId(void);/////////////////////////////////////////////////////////////////////////////////////////
-void getNote(int);
 std::string getTitle(int); //right now only in Editor.cpp
 void updateTitle(void);
 void updateRows(void);

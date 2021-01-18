@@ -22,6 +22,11 @@ extern "C" {
 
 using namespace redi; //pstream
 
+std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret);
+void highlight_terms_string(std::string &text);
+void readNoteIntoPreviewVec(int id);
+void getNoteSearchPositions(int id);
+
 int Session::link_id = 0;
 char Session::link_text[20] = {};
 
@@ -824,6 +829,190 @@ void Session::update_html_code_file(std::string &&fn) {
     fcntl(fd, F_SETLK, &lock);
     } else showOrgMessage("Couldn't lock file");
   } else showOrgMessage("Couldn't open file");
+}
+
+void Session::drawPreviewWindow(int id) { //get_preview
+  readNoteIntoPreviewVec(org.rows.at(org.fr).id);
+
+  if (org.taskview != BY_FIND) drawPreviewText();
+  else {
+    org.word_positions.clear(); 
+    getNoteSearchPositions(id);
+    drawSearchPreview();
+  }
+
+  if (sess.lm_browser) {
+    int folder_tid = sess.get_folder_tid(org.rows.at(org.fr).id);
+    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  }   
+}
+
+void Session::drawPreviewText(void) { //draw_preview
+
+  char buf[50];
+  std::string ab;
+  int width = totaleditorcols - 10;
+  int length = textlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, divider + 6);
+  ab.append(buf, strlen(buf));
+  //std::string abs = "";
+ 
+  char lf_ret[10];
+  // \x1b[NC moves cursor forward by N columns
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 6);
+  //ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  divider + 7 << "H";
+  ab.append(buf0.str());
+
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  divider + 7 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, divider+7, TOP_MARGIN+4+length, divider+7+width);
+  if (org.preview_rows.empty()) {
+    ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(drawPreviewBox(width, length));
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
+  }
+
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  ab.append(generateWWString(org.preview_rows, width, length, lf_ret));
+  ab.append(drawPreviewBox(width, length));
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+
+void Session::drawSearchPreview(void) {
+  //need to bring back the note with some marker around the words that
+  //we search and replace or retrieve the note with the actual
+  //escape codes and not worry that the word wrap will be messed up
+  //but it shouldn't ever split an escaped word.  Would start
+  //with escapes and go from there
+ //fts_query << "SELECT lm_id, highlight(fts, 0, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE fts MATCH '" << search_terms << "' ORDER BY rank";
+ //fts_query << "SELECT highlight(fts, ??1, '\x1b[48;5;17m', '\x1b[49m') FROM fts WHERE lm_id=? AND fts MATCH '" << search_terms << "' ORDER BY rank";
+
+  char buf[50];
+  std::string ab;
+  int width = totaleditorcols - 10;
+  int length = textlines - 10;
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 6, divider + 6);
+  ab.append(buf, strlen(buf));
+  //std::string abs = "";
+ 
+  // \x1b[NC moves cursor forward by N columns
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 6);
+
+  ab.append("\x1b[?25l"); //hides the cursor
+
+  std::stringstream buf0;
+  // format for positioning cursor is "\x1b[%d;%dH"
+  buf0 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  divider + 7 << "H";
+  ab.append(buf0.str());
+
+  //erase set number of chars on each line
+  char erase_chars[10];
+  snprintf(erase_chars, sizeof(erase_chars), "\x1b[%dX", totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  std::stringstream buf2;
+  buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  divider + 7 << "H";
+  ab.append(buf2.str()); //reposition cursor
+
+  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
+  snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, divider+7, TOP_MARGIN+4+length, divider+7+width);
+  if (org.preview_rows.empty()) {
+    ab.append(buf);
+    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+    ab.append(drawPreviewBox(width, length));
+    write(STDOUT_FILENO, ab.c_str(), ab.size());
+    return;
+  }
+  ab.append(buf);
+  ab.append("\x1b[48;5;235m");
+  std::string t = generateWWString(org.preview_rows, width, length, "\f");
+  highlight_terms_string(t);
+
+  size_t p = 0;
+  for (;;) {
+    if (p > t.size()) break;
+    p = t.find('\f', p);
+    if (p == std::string::npos) break;
+    t.replace(p, 1, lf_ret);
+    p +=7;
+   }
+
+  ab.append(t);
+  ab.append(drawPreviewBox(width, length));
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+}
+std::string Session::drawPreviewBox(int width, int length) {
+  std::string ab;
+  fmt::memory_buffer move_cursor;
+  fmt::format_to(move_cursor, "\x1b[{}C", width);
+  ab.append("\x1b(0"); // Enter line drawing mode
+  fmt::memory_buffer buf;
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, divider + 6); 
+  ab.append(buf.data(), buf.size());
+  buf.clear();
+  ab.append("\x1b[37;1ml"); //upper left corner
+  for (int j=1; j<length; j++) { //+1
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5 + j, divider + 6); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    // x=0x78 vertical line (q=0x71 is horizontal) 37=white; 1m=bold (only need 1 m)
+    ab.append("\x1b[37;1mx");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mx");
+  }
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 4 + length, divider + 6));
+  ab.append("\x1b[1B");
+  ab.append("\x1b[37;1mm"); //lower left corner
+
+  move_cursor.clear();
+  fmt::format_to(move_cursor, "\x1b[1D\x1b[{}B", length);
+  for (int j=1; j<width+1; j++) {
+    fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, divider + 6 + j); 
+    ab.append(buf.data(), buf.size());
+    buf.clear();
+    ab.append("\x1b[37;1mq");
+    ab.append(move_cursor.data(), move_cursor.size());
+    ab.append("\x1b[37;1mq");
+  }
+  ab.append("\x1b[37;1mj"); //lower right corner
+  fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN + 5, divider + 7 + width); 
+  ab.append(buf.data(), buf.size());
+  ab.append("\x1b[37;1mk"); //upper right corner
+
+  //exit line drawing mode
+  ab.append("\x1b(B");
+  ab.append("\x1b[0m");
+  ab.append("\x1b[?25h", 6); //shows the cursor
+  return ab;
 }
 /************************************db stuff *************************************/
 void Session::run_sql(void) {

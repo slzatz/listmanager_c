@@ -937,7 +937,7 @@ void display_item_info(void) {
                TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
   ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
   ab.append(s);
-  ab.append(org.draw_preview_box(width, length));
+  ab.append(sess.drawPreviewBox(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
   
   // display_item_info_pg needs to be updated if it is going to be used
@@ -1396,8 +1396,12 @@ void F_addkeyword(int pos) {
     org.view = KEYWORD;
     sess.command_history.push_back(org.command_line);
     getContainers(); //O.mode = NORMAL is in get_containers
-    org.mode = ADD_CHANGE_FILTER;
-    sess.showOrgMessage("Select keyword to add to marked or current entry");
+    if (org.mode != NO_ROWS) {
+      //Container c = getContainerInfo(org.rows.at(org.fr).id);
+      //sess.displayContainerInfo(c);
+      org.mode = ADD_CHANGE_FILTER;
+      sess.showOrgMessage("Select keyword to add to marked or current entry!");
+    }
     return;
   }
 
@@ -1432,7 +1436,13 @@ void F_keywords(int pos) {
     org.view = KEYWORD;
     sess.command_history.push_back(org.command_line); 
     getContainers(); //O.mode = NORMAL is in get_containers
-    sess.showOrgMessage("Retrieved keywords");
+    if (org.mode != NO_ROWS) {
+      // two lines below show first folder's info
+      Container c = getContainerInfo(org.rows.at(org.fr).id);
+      sess.displayContainerInfo(c);
+      org.mode = NORMAL;
+      sess.showOrgMessage("Retrieved keywords");
+    }
     return;
   }  
 
@@ -1484,6 +1494,10 @@ void F_refresh(int) {
   } else {
     sess.showOrgMessage("contexts/folders will be refreshed");
     getContainers();
+    if (org.mode != NO_ROWS) {
+      Container c = getContainerInfo(org.rows.at(org.fr).id);
+      sess.displayContainerInfo(c);
+    }
   }
   org.mode = org.last_mode;
 }
@@ -1556,8 +1570,7 @@ void F_edit(int id) {
         p->linked_editor->linked_editor = p;
         p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
-      //sess.getNote(id); //if id == -1 does not try to retrieve note
-      getNote(id); //if id == -1 does not try to retrieve note
+      readNoteIntoVec(id); //if id == -1 does not try to retrieve note
       
     } else {
       sess.p = *it;
@@ -1580,8 +1593,7 @@ void F_edit(int id) {
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
-    //sess.getNote(id); //if id == -1 does not try to retrieve note
-    getNote(id); //if id == -1 does not try to retrieve note
+    readNoteIntoVec(id); //if id == -1 does not try to retrieve note
  }
   sess.positionEditors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
@@ -1612,8 +1624,13 @@ void F_contexts(int pos) {
     org.view = CONTEXT;
     sess.command_history.push_back(org.command_line); 
     getContainers();
-    org.mode = NORMAL;
-    sess.showOrgMessage("Retrieved contexts");
+    if (org.mode != NO_ROWS) {
+      // two lines below show first context's info
+      Container c = getContainerInfo(org.rows.at(org.fr).id);
+      sess.displayContainerInfo(c);
+      org.mode = NORMAL;
+      sess.showOrgMessage("Retrieved contexts");
+    }
     return;
   } else {
 
@@ -1668,8 +1685,13 @@ void F_folders(int pos) {
     org.view = FOLDER;
     sess.command_history.push_back(org.command_line); 
     getContainers();
-    org.mode = NORMAL;
-    sess.showOrgMessage("Retrieved folders");
+    if (org.mode != NO_ROWS) {
+      // two lines below show first folder's info
+      Container c = getContainerInfo(org.rows.at(org.fr).id);
+      sess.displayContainerInfo(c);
+      org.mode = NORMAL;
+      sess.showOrgMessage("Retrieved folders");
+    }
     return;
   } else {
 
@@ -1837,8 +1859,12 @@ void F_updatecontext(int) {
   org.view = CONTEXT;
   sess.command_history.push_back(org.command_line); 
   getContainers(); //O.mode = NORMAL is in get_containers
-  org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
-  sess.showOrgMessage("Select context to add to marked or current entry");
+  if (org.mode != NO_ROWS) {
+    //Container c = getContainerInfo(org.rows.at(org.fr).id);
+    //sess.displayContainerInfo(c);
+    org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+    sess.showOrgMessage("Select context to add to marked or current entry");
+  }
 }
 
 void F_updatefolder(int) {
@@ -1847,8 +1873,12 @@ void F_updatefolder(int) {
   org.view = FOLDER;
   sess.command_history.push_back(org.command_line); 
   getContainers(); //O.mode = NORMAL is in get_containers
-  org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
-  sess.showOrgMessage("Select folder to add to marked or current entry");
+  if (org.mode != NO_ROWS) {
+    //Container c = getContainerInfo(org.rows.at(org.fr).id);
+    //sess.displayContainerInfo(c);
+    org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
+    sess.showOrgMessage("Select folder to add to marked or current entry");
+  }
 }
 
 void F_delmarks(int) {
@@ -2325,8 +2355,9 @@ void I_N(void) {
 void gg_N(void) {
   org.fc = org.rowoff = 0;
   org.fr = org.repeat-1; //this needs to take into account O.rowoff
-  if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-  else {
+  if (org.view == TASK) { 
+    sess.drawPreviewWindow(org.rows.at(org.fr).id);
+  } else {
     Container c = getContainerInfo(org.rows.at(org.fr).id);
     if (c.id != 0) 
       sess.displayContainerInfo(c);
@@ -2337,8 +2368,9 @@ void gg_N(void) {
 void G_N(void) {
   org.fc = 0;
   org.fr = org.rows.size() - 1;
-  if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-  else {
+  if (org.view == TASK) {
+    sess.drawPreviewWindow(org.rows.at(org.fr).id);
+  } else {
     Container c = getContainerInfo(org.rows.at(org.fr).id);
     if (c.id != 0) 
       sess.displayContainerInfo(c);
@@ -2561,6 +2593,7 @@ void displayFile(void) {
 
 // there is a ? identical editorGenerateWWString
 // used by draw_preview and draw_search_preview (it is used by this)
+/*
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
   if (rows.empty()) return "";
 
@@ -2609,6 +2642,7 @@ std::string generateWWString(std::vector<std::string> &rows, int width, int leng
     }
   }
 }
+*/
 
 // should also just be editor command
 void open_in_vim(void){
@@ -2744,7 +2778,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
     case NORMAL:  
 
       if (c == '\x1b') {
-        if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id); //get out of display_item_info
+        if (org.view == TASK) {
+          sess.drawPreviewWindow(org.rows.at(org.fr).id);
+        }  
         sess.showOrgMessage("");
         org.command[0] = '\0';
         org.repeat = 0;
@@ -2864,7 +2900,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case SHIFT_TAB:  
           org.fc = 0; 
           org.mode = NORMAL;
-          org.get_preview(org.rows.at(org.fr).id); //only needed if previous comand was 'i'
+          sess.drawPreviewWindow(org.rows.at(org.fr).id);
           sess.showOrgMessage("");
           return;
 
@@ -3084,9 +3120,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\x1b':
           org.mode = org.last_mode;
           sess.eraseRightScreen();
-          if (org.view == TASK) org.get_preview(org.rows.at(org.fr).id);
-          //else org.display_container_info(org.rows.at(org.fr).id);
-          else {
+          if (org.view == TASK) {
+            sess.drawPreviewWindow(org.rows.at(org.fr).id);
+          } else {
             Container c = getContainerInfo(org.rows.at(org.fr).id);
             if (c.id != 0) 
               sess.displayContainerInfo(c);
@@ -3245,7 +3281,7 @@ bool editorProcessKeypress(void) {
           sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
             sess.editor_mode = false;
-            org.get_preview(org.rows.at(org.fr).id); 
+            sess.drawPreviewWindow(org.rows.at(org.fr).id);
             return false;
           }
           {
@@ -3261,7 +3297,7 @@ bool editorProcessKeypress(void) {
               else sess.p->mode = NORMAL;
               return false;
             } else {sess.editor_mode = false;
-              org.get_preview(org.rows.at(org.fr).id); // with change in while loop should not get overwritten
+              sess.drawPreviewWindow(org.rows.at(org.fr).id);
               return false;
             }
           }
@@ -3501,7 +3537,7 @@ bool editorProcessKeypress(void) {
           sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
             sess.editor_mode = false;
-            org.get_preview(org.rows.at(org.fr).id); 
+            sess.drawPreviewWindow(org.rows.at(org.fr).id);
             org.mode = NORMAL;
             sess.returnCursor(); 
             return false;
@@ -3519,7 +3555,7 @@ bool editorProcessKeypress(void) {
               else sess.p->mode = NORMAL;
               return false;
             } else {sess.editor_mode = false;
-              org.get_preview(org.rows.at(org.fr).id);
+              sess.drawPreviewWindow(org.rows.at(org.fr).id);
               org.mode = NORMAL;
               sess.returnCursor(); 
               return false;
@@ -3781,7 +3817,7 @@ bool editorProcessKeypress(void) {
             sess.p = nullptr;
             sess.editor_mode = false;
             sess.eraseRightScreen();
-            org.get_preview(org.rows.at(org.fr).id);
+            sess.drawPreviewWindow(org.rows.at(org.fr).id);
             sess.returnCursor(); //because main while loop if started in editor_mode -- need this 09302020
           }
 

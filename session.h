@@ -69,6 +69,10 @@ struct Session {
   // same function as outlineDrawStatusBar
   void drawOrgStatusBar(void);
 
+  void drawPreviewWindow(int id); //used to be get_preview
+  void drawPreviewText(void); //used to be draw_preview
+  std::string drawPreviewBox(int width, int length);
+  void drawSearchPreview(void);
   /*
   void getNote(int id);
   void generateContextMap(void);

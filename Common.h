@@ -104,6 +104,33 @@ struct Container {
   std::string modified;
   int count;   
 };
+/* Task
+0: id = 1
+1: tid = 1
+2: priority = 3
+3: title = Parents refrigerator broken.
+4: tag =
+5: folder_tid = 1
+6: context_tid = 1
+7: duetime = NULL
+8: star = 0
+9: added = 2009-07-04
+10: completed = 2009-12-20
+11: duedate = NULL
+12: note = new one coming on Monday, June 6, 2009.
+13: repeat = NULL
+14: deleted = 0
+15: created = 2016-08-05 23:05:16.256135
+16: modified = 2016-08-05 23:05:16.256135
+17: startdate = 2009-07-04
+18: remind = NULL
+
+I thought I should be using tid as the "id" for sqlite version but realized
+that would work and mean you could always compare the tid to the pg id
+but for new items created with sqlite, there would be no tid so
+the right thing to use is the id.  At some point might also want to
+store the tid in orow row
+*/
 /* Context
 0: id => int in use
 1: tid => int in use
