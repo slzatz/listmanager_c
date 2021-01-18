@@ -71,7 +71,8 @@ struct Session {
 
   void drawPreviewWindow(int id); //used to be get_preview
   void drawPreviewText(void); //used to be draw_preview
-  std::string drawPreviewBox(int width, int length);
+  //std::string drawPreviewBox(int width, int length);
+  void drawPreviewBox(void);
   void drawSearchPreview(void);
   /*
   void getNote(int id);

@@ -81,6 +81,7 @@ void navigate_cmd_hx(int direction);
 
 //Database-related Prototypes
 void readNoteIntoVec(int id);
+std::string readNoteIntoString(int id);
 void generateContextMap(void);
 void generateFolderMap(void);
 void updateNote(void);/////////////////////////////

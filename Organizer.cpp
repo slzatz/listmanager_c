@@ -12,14 +12,15 @@
 #include <sstream>
 #include <fstream>
 
-std::vector<std::string> Organizer::preview_rows = {};//static
-std::vector<std::vector<int>> Organizer::word_positions = {};//static
+//std::vector<std::string> Organizer::preview_rows = {};//static
+//std::vector<std::vector<int>> Organizer::word_positions = {};//static
 std::map<std::string, int> Organizer::folder_map = {}; //static - filled in by map_folder_titles_[db]
 std::map<std::string, int> Organizer::context_map = {}; //static filled in by map_context_titles_[db]
 
 Organizer org = Organizer(); //global; extern Session sess in session.h
 
 
+/*
 std::string Organizer::outlinePreviewRowsToString(void) {
 
   std::string z = "";
@@ -30,6 +31,7 @@ std::string Organizer::outlinePreviewRowsToString(void) {
   if (!z.empty()) z.pop_back(); //pop last return that we added
   return z;
 }
+*/
 
 void Organizer::outlineDelWord() {
 

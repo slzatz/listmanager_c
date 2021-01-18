@@ -475,6 +475,19 @@ void updateRows(void) {
   sess.showOrgMessage("%s",  msg);
 }
 
+std::string readNoteIntoString(int id) {
+  if (id ==-1) return ""; // id given to new and unsaved entries
+
+  Query q(db, "SELECT note FROM task WHERE id = {}", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem in readNoteIntoString for item {}: {}", id, res);
+    return "";
+  }
+  std::string note = q.column_text(0);
+  std::erase(note, '\r'); //c++20
+  return note;
+}
+
 void readNoteIntoVec(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
@@ -504,6 +517,7 @@ void readNoteIntoVec(int id) {
 
 }
 
+/*
 void readNoteIntoPreviewVec(int id) {
   org.preview_rows.clear();
   if (id ==-1) return; // id given to new and unsaved entries
@@ -522,39 +536,39 @@ void readNoteIntoPreviewVec(int id) {
     org.preview_rows.push_back(s);
   }
 }
-void getNoteSearchPositions(int id) {
+*/
+
+//void getNoteSearchPositions(int id) {
+std::vector<std::vector<int>> getNoteSearchPositions(int id) {
+  std::vector<std::vector<int>> word_positions = {};//static
   Query q(fts_db, "SELECT rowid FROM fts WHERE lm_id = {};", id);
   if (int res = q.step(); res != SQLITE_ROW) {
     sess.showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
-    return;
+    return word_positions;
   }
   int rowid = q.column_int(0); //should ? return -1 if nullptr
 
-  //if (!sess.db_query(sess.S.fts_db, query.str().c_str(), rowid_callback, &rowid, &sess.S.err_msg, __func__)) return;
-
- // std::vector<std::vector<int>> word_positions = {};//static
   // split string into a vector of words
   std::vector<std::string> vec;
   std::istringstream iss(sess.fts_search_terms);
   for(std::string ss; iss >> ss; ) vec.push_back(ss);
 
   for(auto v: vec) {
-    org.word_positions.push_back(std::vector<int>{});
+    //org.word_positions.push_back(std::vector<int>{});
+    word_positions.push_back(std::vector<int>{});
     Query q1(fts_db, "SELECT offset FROM fts_v WHERE doc ={} AND term = '{}' AND col = 'note';", rowid, v);
-    while (q1.step() == SQLITE_ROW) 
-      org.word_positions.back().push_back(q1.column_int(0));
+    while (q1.step() == SQLITE_ROW){ 
+      //org.word_positions.back().push_back(q1.column_int(0));
+      word_positions.back().push_back(q1.column_int(0));
+    }
   }
 
-  int ww = (org.word_positions.at(0).empty()) ? -1 : org.word_positions.at(0).at(0);
+  /* debugging
+  int ww = (word_positions.at(0).empty()) ? -1 : word_positions.at(0).at(0);
   sess.showOrgMessage("Word position first: %d; id = %d (new)", ww, id);
-
-  //if (lm_browser) update_html_file("assets/" + CURRENT_NOTE_FILE);
-  /*
-  if (lm_browser) {
-    if (get_folder_tid(O.rows.at(O.fr).id) != 18) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-  } 
   */
+
+  return word_positions;
 }
 
 void generateContextMap(void) {
@@ -967,6 +981,8 @@ Container getContainerInfo(int id) {
   }
   return c;
 }
+/*****************************Non-database-related utilities************************************/
+
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
   if (rows.empty()) return "";
 
@@ -1016,11 +1032,67 @@ std::string generateWWString(std::vector<std::string> &rows, int width, int leng
   }
 }
 
-void highlight_terms_string(std::string &text) {
+std::string generateWWString(const std::string &text, int width, int length, std::string ret) {
 
-  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\f\\"; //must have \f if using as placeholder
+  if (text == "") return "";
 
-  for (auto v: org.word_positions) { //v will be an int vector of word positions like 15, 30, 70
+  std::vector<std::string> rows;
+  std::stringstream t(text);
+  std::string s;
+  while (getline(t, s, '\n')) {
+    rows.push_back(s);
+  }
+
+  std::string ab = "";
+  //int y = -line_offset; **set to zero because always starting previews at line 0**
+  int y = 0;
+  int filerow = 0;
+
+  for (;;) {
+    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
+    if (filerow == rows.size()) return ab;
+
+    std::string_view row = rows.at(filerow);
+    
+    if (row.empty()) {
+      if (y == length - 1) return ab;
+      ab.append(ret);
+      filerow++;
+      y++;
+      continue;
+    }
+
+    size_t pos;
+    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
+    for (;;) {
+      // if remainder of line is less than screen width
+      if (prev_pos + width > row.size() - 1) {
+        ab.append(row.substr(prev_pos));
+
+        if (y == length - 1) return ab;
+        ab.append(ret);
+        y++;
+        filerow++;
+        break;
+      }
+
+      pos = row.find_last_of(' ', prev_pos + width - 1);
+      if (pos == std::string::npos || pos == prev_pos - 1) {
+        pos = prev_pos + width - 1;
+      }
+      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
+      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
+      ab.append(ret);
+      y++;
+      prev_pos = pos + 1;
+    }
+  }
+}
+void highlight_terms_string(std::string &text, std::vector<std::vector<int>> word_positions) {
+
+  std::string delimiters = " |,.;?:()[]{}&#/`-'\"—_<>$~@=&*^%+!\t\f\\"; //must have \f if using it as placeholder
+
+  for (auto v: word_positions) { //v will be an int vector of word positions like 15, 30, 70
     int word_num = -1;
     auto pos = v.begin(); //pos = word count of the next word
     auto prev_pos = pos;

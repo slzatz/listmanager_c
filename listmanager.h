@@ -7,7 +7,6 @@
 #define SCROLL_UP 1 // in Editor.cpp  not in list...improved.cpp
 #define LINKED_NOTE_HEIGHT 10 //height of subnote
 
-//#include "process.h" // https://github.com/skystrife/procxx used by Editor.cpp and list...improved.cpp
 #include <map> //there is an inline map
 #include <nlohmann/json.hpp>
 #include <fmt/core.h>
@@ -22,25 +21,9 @@
   #define NUSPELL
 #endif
 
-//#include <zmq.hpp>
-
-//#include <memory> //unique pointer, shared pointer etc.
-
-//#include <fcntl.h>
-//#include <unistd.h>
-
 extern "C" {
 #include <mkdio.h>
 }
-
-/* as of C++17 you can do inline and variables will only be defined once */
-//inline bool lm_browser = true; //soon eliminate ./m_nb and make default false
-//inline bool editor_mode = false;
-//inline int EDITOR_LEFT_MARGIN; //set in listman...improved.cpp but only used in Editor.cpp = O.divider + 1
-//inline std::vector<std::vector<int>> word_positions = {};
-//inline Session sess;
-//inline std::vector<std::string> line_buffer = {}; //yanking lines
-//void update_note(bool is_subeditor, bool closing_editor=false); //used by Editor class 
 
 void updateNote(void); //used by Editor class 
 void update_code_file(void);

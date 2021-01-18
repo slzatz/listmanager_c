@@ -22,10 +22,12 @@ extern "C" {
 
 using namespace redi; //pstream
 
-std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret);
-void highlight_terms_string(std::string &text);
-void readNoteIntoPreviewVec(int id);
-void getNoteSearchPositions(int id);
+//std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret);
+std::string generateWWString(const std::string &text, int width, int length, std::string ret);
+void highlight_terms_string(std::string &text, std::vector<std::vector<int>> word_positions);
+//void readNoteIntoPreviewVec(int id);
+std::string readNoteIntoString(int id);
+std::vector<std::vector<int>> getNoteSearchPositions(int id);
 
 int Session::link_id = 0;
 char Session::link_text[20] = {};
@@ -755,9 +757,10 @@ int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char *
 }
 
 void Session::update_html_file(std::string &&fn) {
-  std::string note;
-  if (editor_mode) note = p->editorRowsToString();
-  else note = org.outlinePreviewRowsToString();
+  //std::string note;
+  //if (editor_mode) note = p->editorRowsToString();
+  //else note = org.outlinePreviewRowsToString();
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
@@ -804,9 +807,10 @@ char * Session::url_callback(const char *x, const int y, void *z) {
 }  
 
 void Session::update_html_code_file(std::string &&fn) {
-  std::string note;
+  //std::string note;
   std::ofstream myfile;
-  note = org.outlinePreviewRowsToString();
+  //note = org.outlinePreviewRowsToString();
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
   myfile.open("code_file");
   myfile << note;
   myfile.close();
@@ -832,14 +836,10 @@ void Session::update_html_code_file(std::string &&fn) {
 }
 
 void Session::drawPreviewWindow(int id) { //get_preview
-  readNoteIntoPreviewVec(org.rows.at(org.fr).id);
 
   if (org.taskview != BY_FIND) drawPreviewText();
-  else {
-    org.word_positions.clear(); 
-    getNoteSearchPositions(id);
-    drawSearchPreview();
-  }
+  else  drawSearchPreview();
+  drawPreviewBox();
 
   if (sess.lm_browser) {
     int folder_tid = sess.get_folder_tid(org.rows.at(org.fr).id);
@@ -882,21 +882,15 @@ void Session::drawPreviewText(void) { //draw_preview
   buf2 << "\x1b[" << TOP_MARGIN + 6 << ";" <<  divider + 7 << "H";
   ab.append(buf2.str()); //reposition cursor
 
-  //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
                TOP_MARGIN+6, divider+7, TOP_MARGIN+4+length, divider+7+width);
-  if (org.preview_rows.empty()) {
-    ab.append(buf);
-    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
-    ab.append(drawPreviewBox(width, length));
-    write(STDOUT_FILENO, ab.c_str(), ab.size());
-    return;
-  }
 
   ab.append(buf);
   ab.append("\x1b[48;5;235m");
-  ab.append(generateWWString(org.preview_rows, width, length, lf_ret));
-  ab.append(drawPreviewBox(width, length));
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
+  if (note != "")
+    ab.append(generateWWString(note, width, length, lf_ret));
+  //ab.append(drawPreviewBox(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
@@ -945,17 +939,16 @@ void Session::drawSearchPreview(void) {
   //snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;44$r\x1b[*x", 
   snprintf(buf, sizeof(buf), "\x1b[2*x\x1b[%d;%d;%d;%d;48;5;235$r\x1b[*x", 
                TOP_MARGIN+6, divider+7, TOP_MARGIN+4+length, divider+7+width);
-  if (org.preview_rows.empty()) {
-    ab.append(buf);
-    ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
-    ab.append(drawPreviewBox(width, length));
-    write(STDOUT_FILENO, ab.c_str(), ab.size());
-    return;
-  }
   ab.append(buf);
   ab.append("\x1b[48;5;235m");
-  std::string t = generateWWString(org.preview_rows, width, length, "\f");
-  highlight_terms_string(t);
+  //std::string t = generateWWString(org.preview_rows, width, length, "\f");
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
+  std::string t;
+  if (note != ""){
+    t = generateWWString(note, width, length, "\f"); //note the '\f'
+    std::vector<std::vector<int>> wp = getNoteSearchPositions(org.rows.at(org.fr).id);
+    highlight_terms_string(t, wp);
+  }
 
   size_t p = 0;
   for (;;) {
@@ -967,10 +960,13 @@ void Session::drawSearchPreview(void) {
    }
 
   ab.append(t);
-  ab.append(drawPreviewBox(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
-std::string Session::drawPreviewBox(int width, int length) {
+
+//std::string Session::drawPreviewBox(int width, int length) {
+void Session::drawPreviewBox(void) {
+  int width = totaleditorcols - 10;
+  int length = textlines - 10;
   std::string ab;
   fmt::memory_buffer move_cursor;
   fmt::format_to(move_cursor, "\x1b[{}C", width);
@@ -1012,7 +1008,8 @@ std::string Session::drawPreviewBox(int width, int length) {
   ab.append("\x1b(B");
   ab.append("\x1b[0m");
   ab.append("\x1b[?25h", 6); //shows the cursor
-  return ab;
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  //return ab;
 }
 /************************************db stuff *************************************/
 void Session::run_sql(void) {

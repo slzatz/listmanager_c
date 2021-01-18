@@ -349,9 +349,10 @@ char * (url_callback)(const char *x, const int y, void *z) {
  * and only writes to the file once
  */
 void update_html_file(std::string &&fn) {
-  std::string note;
-  if (sess.editor_mode) note = sess.p->editorRowsToString();
-  else note = org.outlinePreviewRowsToString();
+  //std::string note;
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
+  //if (sess.editor_mode) note = sess.p->editorRowsToString();
+  //else note = org.outlinePreviewRowsToString();
   std::stringstream text;
   std::stringstream html;
   char *doc = nullptr;
@@ -396,7 +397,8 @@ void update_html_file(std::string &&fn) {
  * if this is my mistake or intentional
  * */
 void update_html_zmq(std::string &&fn) {
-  std::string note = org.outlinePreviewRowsToString();
+  //std::string note = org.outlinePreviewRowsToString();
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
   std::stringstream text;
   std::stringstream html;
   std::string title = org.rows.at(org.fr).title;
@@ -434,9 +436,10 @@ void update_html_zmq(std::string &&fn) {
 
 // right now only called when previewing a code file
 void update_html_code_file(std::string &&fn) {
-  std::string note;
+  //std::string note;
   std::ofstream myfile;
-  note = org.outlinePreviewRowsToString();
+  //std::string note = org.outlinePreviewRowsToString();
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
   myfile.open("code_file");
   myfile << note;
   myfile.close();
@@ -937,8 +940,8 @@ void display_item_info(void) {
                TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
   ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
   ab.append(s);
-  ab.append(sess.drawPreviewBox(width, length));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+  sess.drawPreviewBox();
   
   // display_item_info_pg needs to be updated if it is going to be used
   //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
@@ -1511,7 +1514,7 @@ void F_new(int) {
   sess.eraseRightScreen(); //erases the note area
   org.mode = INSERT;
 
-  org.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
+  //org.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
   int fd;
   std::string fn = "assets/" + CURRENT_NOTE_FILE;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
