@@ -370,7 +370,8 @@ void Session::drawOrgStatusBar(void) {
     ab.append(rstatus, divider - len);
   } else {
     ab.append(status);
-    ab.append(divider - len - rlen - 1, ' ');
+    //ab.append(divider - len - rlen - 1, ' '); //01192021
+    ab.append(divider - len - rlen, ' ');
     ab.append(rstatus);
   }
 
