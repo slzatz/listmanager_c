@@ -22,10 +22,8 @@ extern "C" {
 
 using namespace redi; //pstream
 
-//std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret);
 std::string generateWWString(const std::string &text, int width, int length, std::string ret);
 void highlight_terms_string(std::string &text, std::vector<std::vector<int>> word_positions);
-//void readNoteIntoPreviewVec(int id);
 std::string readNoteIntoString(int id);
 std::vector<std::vector<int>> getNoteSearchPositions(int id);
 
@@ -380,64 +378,6 @@ void Session::drawOrgStatusBar(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-/*
-void Session::getNote(int id) {
-  if (id ==-1) return; // id given to new and unsaved entries
-
-  Query q(db, "SELECT note FROM task WHERE id = {}", id);
-  if (int res = q.step(); res != SQLITE_ROW) {
-    showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
-    return;
-  }
-  std::string note = q.column_text(0);
-  std::erase(note, '\r'); //c++20
-  std::stringstream sNote(note);
-  std::string s;
-  while (getline(sNote, s, '\n')) {
-    p->editorInsertRow(p->rows.size(), s);
-  }
-  p->dirty = 0; //assume editorInsertRow increments dirty so this needed
-  if (!p->linked_editor) return;
-
-  p->linked_editor->rows = std::vector<std::string>{" "};
-
- // below works but don't think we want to store output_window
- // db.query("SELECT subnote FROM task WHERE id = {}", id);
- // db.callback = note_callback;
- // db.pArg = p->linked_editor;
- // run_sql();
-}
-*/
-
-/*
-void Session::generateContextMap(void) {
-  // note it's tid because it's sqlite
-  Query q(db, "SELECT tid, title FROM context;"); 
-  if (q.result != SQLITE_OK) {
-    outlineShowMessage3("Problem in 'map_context_titles'; result code: {}", q.result);
-    return;
-  }
-
-  while (q.step() == SQLITE_ROW) {
-    org.context_map[q.column_text(1)] = q.column_int(0);
-  }
-}
-
-void Session::generateFolderMap(void) {
-
-  // note it's tid because it's sqlite
-  Query q(db, "SELECT tid,title FROM folder;"); 
-  if (q.result != SQLITE_OK) {
-    outlineShowMessage3("Problem in 'map_folder_titles'; result code: {}", q.result);
-    return;
-  }
-
-  while (q.step() == SQLITE_ROW) {
-    org.folder_map[q.column_text(1)] = q.column_int(0);
-  }
-}
-*/
-
 //this is Organizer::outlinedrawRows
 void Session::drawOrgRows(std::string& ab) {
   int j, k; //to swap highlight if org.highlight[1] < org.highlight[0]
@@ -756,6 +696,9 @@ int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char *
   return 0;
 }
 
+/* this version of update_html_file uses mkd_document
+ * and only writes to the file once
+ */
 void Session::update_html_file(std::string &&fn) {
   //std::string note;
   //if (editor_mode) note = p->editorRowsToString();
@@ -841,10 +784,10 @@ void Session::drawPreviewWindow(int id) { //get_preview
   else  drawSearchPreview();
   drawPreviewBox();
 
-  if (sess.lm_browser) {
-    int folder_tid = sess.get_folder_tid(org.rows.at(org.fr).id);
-    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+  if (lm_browser) {
+    int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+    if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
+    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
   }   
 }
 

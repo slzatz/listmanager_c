@@ -31,10 +31,6 @@ std::string getTitle(int id);
 
 
 /* also used by Editor class */
-//int get_folder_tid(int); 
 int getFolderTid(int); 
-void update_html_file(std::string &&);
-void update_html_code_file(std::string &&);
 void open_in_vim(void);
-void generate_persistent_html_file(int);
 #endif

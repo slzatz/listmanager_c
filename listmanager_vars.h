@@ -90,6 +90,8 @@ void updateNote(void);/////////////////////////////
 void dbOpen(void);
 void runSQL(void);
 
+void addTaskKeyword(std::string &kws, int id);
+void addTaskKeyword(int keyword_id, int task_id, bool update_fts=true);
 void updateTaskContext(std::string &, int);
 void updateTaskFolder(std::string &, int);
 int getId(void);/////////////////////////////////////////////////////////////////////////////////////////

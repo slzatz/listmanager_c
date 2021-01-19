@@ -20,19 +20,6 @@ std::map<std::string, int> Organizer::context_map = {}; //static filled in by ma
 Organizer org = Organizer(); //global; extern Session sess in session.h
 
 
-/*
-std::string Organizer::outlinePreviewRowsToString(void) {
-
-  std::string z = "";
-  for (auto i: preview_rows) {
-      z += i;
-      z += '\n';
-  }
-  if (!z.empty()) z.pop_back(); //pop last return that we added
-  return z;
-}
-*/
-
 void Organizer::outlineDelWord() {
 
   orow& row = rows.at(fr);
@@ -311,25 +298,6 @@ void Organizer::outlineSave(const std::string& fname) {
   //sess.showOrgMessage("Can't save! I/O error: %s", strerror(errno));
   sess.showOrgMessage("saved to outline.txt");
 }
-
-/*
-void Organizer::get_preview(int id) {
-  readNoteIntoPreviewVec(org.rows.at(org.fr).id);
-
-  if (taskview != BY_FIND) sess.draw_preview();
-  else {
-    word_positions.clear(); 
-    getNoteSearchPositions(id);
-    sess.draw_search_preview();
-  }
-
-  if (sess.lm_browser) {
-    int folder_tid = sess.get_folder_tid(rows.at(fr).id);
-    if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else sess.update_html_code_file("assets/" + CURRENT_NOTE_FILE);
-  }   
-}
-*/
 
 void Organizer::outlineInsertChar(int c) {
   if (rows.size() == 0) return;

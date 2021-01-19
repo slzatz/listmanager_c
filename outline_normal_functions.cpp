@@ -1,6 +1,7 @@
 #ifndef OUTLINE_NORMAL_FUNCTIONS_H
 #define OUTLINE_NORMAL_FUNCTIONS_H
 #define TZ_OFFSET 5 // time zone offset - either 4 or 5
+#define MAX 500 // max rows to bring back
 #include "session.h"
 #include "Common.h"
 #include "Organizer.h"
@@ -517,28 +518,6 @@ void readNoteIntoVec(int id) {
 
 }
 
-/*
-void readNoteIntoPreviewVec(int id) {
-  org.preview_rows.clear();
-  if (id ==-1) return; // id given to new and unsaved entries
-
-  Query q(db, "SELECT note FROM task WHERE id = {}", id);
-  if (int res = q.step(); res != SQLITE_ROW) {
-    sess.showOrgMessage3("Problem retrieving note from itemi {}: {}", id, res);
-    return;
-  }
-  std::string note = q.column_text(0);
-  if (note == "") return;
-  std::erase(note, '\r'); //c++20
-  std::stringstream sNote(note);
-  std::string s;
-  while (getline(sNote, s, '\n')) {
-    org.preview_rows.push_back(s);
-  }
-}
-*/
-
-//void getNoteSearchPositions(int id) {
 std::vector<std::vector<int>> getNoteSearchPositions(int id) {
   std::vector<std::vector<int>> word_positions = {};//static
   Query q(fts_db, "SELECT rowid FROM fts WHERE lm_id = {};", id);
@@ -981,6 +960,165 @@ Container getContainerInfo(int id) {
   }
   return c;
 }
+
+//overload that takes keyword_id and task_id
+void addTaskKeyword(int keyword_id, int task_id, bool update_fts) {
+
+  Query q(db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) VALUES ({}, {});",
+              task_id, keyword_id);
+
+  if (int res = q.step(); res != SQLITE_DONE) {
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    sess.showOrgMessage3("Problem in 'addTaskKeyword': (keyword id) {}", error);
+    return;
+  }
+
+   Query q1(db,"UPDATE task SET modified = datetime('now') WHERE id={};", task_id);
+   q1.step();
+  // *************fts virtual table update**********************
+  if (!update_fts) return;
+  std::string s = getTaskKeywords(task_id).first;
+  Query q2(fts_db, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
+
+  if (int res = q2.step(); res != SQLITE_DONE)
+     sess.showOrgMessage3("Problem inserting in fts; result code: {}", res);
+}
+
+//overload that takes keyword name and task_id
+void addTaskKeyword(std::string &kws, int id) {
+
+  std::stringstream temp(kws);
+  std::string phrase;
+  std::vector<std::string> keyword_list;
+  while(getline(temp, phrase, ',')) {
+    keyword_list.push_back(phrase);
+  }    
+
+  for (std::string kw : keyword_list) {
+
+    size_t pos = kw.find("'");
+    while(pos != std::string::npos)
+      {
+        kw.replace(pos, 1, "''");
+        pos = kw.find("'", pos + 2);
+      }
+
+    std::stringstream query;
+
+    /*
+    IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
+      <- doesn't work for sqlite
+      note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
+      on keyword.name but you don't want to trigger an error either so probably best to retain
+      INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity
+      */
+
+    Query q(db, "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ("
+                "'{}', 0, true, datetime('now'), false);", kw);
+
+    if (int res = q.step(); res != SQLITE_DONE) {
+      std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+      sess.showOrgMessage3("Problem in 'addTaskKeyword' (string): {}", error);
+      return;
+    }
+
+    Query q2(db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) SELECT "
+                 "{}, keyword.id FROM keyword WHERE keyword.name = '{}';", id, kw);
+
+    if (int res = q2.step(); res != SQLITE_DONE) {
+      std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+      sess.showOrgMessage3("Problem in 'addTaskKeyword' (string): {}", error);
+      return;
+    }
+
+    // updates task modified column so we know that something changed with the task
+    Query q3(db, "UPDATE task SET modified = datetime('now') WHERE id={};", id);
+    if (int res = q3.step(); res != SQLITE_DONE) {
+      std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+      sess.showOrgMessage3("Problem in 'addTaskKeyword' (string): {}", error);
+      return;
+    }
+  }
+  std::string s = getTaskKeywords(id).first; // 11-10-2020
+  Query q4(fts_db, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, id);
+
+  if (int res = q4.step(); res != SQLITE_DONE)
+    sess.showOrgMessage3("Problem inserting in fts; result code: {}", res);
+}
+
+void copyEntry(int) {
+
+  int id = org.rows.at(org.fr).id;
+  Query q(db, "SELECT * FROM task WHERE id={}", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving entry info in copy_entry: {}", res);
+    return;
+  }
+  int priority = q.column_int(2);
+  std::string title = "Copy of " + q.column_text(3);
+  int folder_tid = q.column_int(5);
+  int context_tid = q.column_int(6);
+  bool star = q.column_bool(8);
+
+  size_t pos;
+  pos = title.find('\'');
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find('\'', pos + 2);
+    }
+
+  std::string note = q.column_text(12);
+  pos = note.find("'");
+  while(pos != std::string::npos) {
+    note.replace(pos, 1, "''");
+    pos = note.find("'", pos + 2);
+  }
+
+  Query q1(db, "INSERT INTO task (priority, title, folder_tid, context_tid, "
+                                   "star, added, note, deleted, created, modified) "
+                                   "VALUES ({0}, '{1}', {2}, {3}, {4}, date(), '{5}', False, "
+                                   "datetime('now', '-{6} hours'), "
+                                   "datetime('now'));", 
+                                   priority,
+                                   title,
+                                   folder_tid,
+                                   context_tid,
+                                   star,
+                                   note,
+                                   TZ_OFFSET);
+
+  if (int res = q1.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem inserting in copy_entry: {}", res);
+    return;
+  }
+
+  int new_id =  sqlite3_last_insert_rowid(sess.db.db);
+
+  Query q2(db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
+              id);
+
+  std::vector<int> task_keyword_ids = {}; 
+  while (q2.step() == SQLITE_ROW) {
+    task_keyword_ids.push_back(q2.column_int(0));
+  }
+
+  for (const int &k : task_keyword_ids) {
+    addTaskKeyword(k, new_id, false); //don't update fts
+  }
+
+  /***************fts virtual table update*********************/
+  std::string tag = getTaskKeywords(new_id).first;
+  Query q3(fts_db, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
+               title, note, tag, new_id); 
+
+  if (int res = q3.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem inserting in fts in copy_entry: {}", res);
+    return;
+  }
+  getItems(MAX);
+}
+
 /*****************************Non-database-related utilities************************************/
 
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {

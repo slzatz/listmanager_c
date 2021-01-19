@@ -17,7 +17,6 @@ class Organizer {
   int rowoff; //the number of rows scrolled (aka number of top rows now off-screen
   int coloff; //the number of columns scrolled (aka number of left rows now off-screen
   std::vector<orow> rows;
-  //static std::vector<std::string> preview_rows;
   std::string context;
   std::string folder;
   std::string keyword;
@@ -46,12 +45,8 @@ class Organizer {
   std::unordered_set<int> marked_entries;
 
   std::string title_search_string; //word under cursor works with *, n, N etc.
-  //static std::vector<std::vector<int>> word_positions;
-
-  //void displayContainerInfo(Container &c); //probably should not be here but in session
 
   /* started here */
-  //std::string outlinePreviewRowsToString(void);//OK
   void outlineDelWord();//OK
   void outlineMoveCursor(int key);//OK
   void outlineBackspace(void);//OK
@@ -71,8 +66,6 @@ class Organizer {
   void outlineSave(const std::string &);//OK
   void outlineInsertChar(int c);//OK
   std::string outlineRowsToString(void);//OK
-
-  //void get_preview(int);//needs to move to sess
 };
 extern Organizer org;
 #endif

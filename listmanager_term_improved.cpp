@@ -336,7 +336,7 @@ void load_meta(void) {
   sess.meta = text.str();
   f.close();
 }
-
+/*
 // typedef char * (*mkd_callback_t)(const char*, const int, void*);
 // needed by markdown code in update_html_file
 char * (url_callback)(const char *x, const int y, void *z) {
@@ -344,10 +344,12 @@ char * (url_callback)(const char *x, const int y, void *z) {
   sprintf(link_text,"id=\"%d\"", link_id);
   return link_text;
 }  
+*/
 
 /* this version of update_html_file uses mkd_document
  * and only writes to the file once
  */
+/*
 void update_html_file(std::string &&fn) {
   //std::string note;
   std::string note = readNoteIntoString(org.rows.at(org.fr).id);
@@ -384,13 +386,22 @@ void update_html_file(std::string &&fn) {
     } else sess.showOrgMessage("Couldn't lock file");
   } else sess.showOrgMessage("Couldn't open file");
 
-  /* don't know if below is correct or necessary - I don't think so*/
+  // don't know if below is correct or necessary - I don't think so
   //mkd_free_t x; 
   //mkd_e_free(blob, x); 
   //
   mkd_cleanup(blob);
   link_id = 0;
 }
+*/
+
+// typedef char * (*mkd_callback_t)(const char*, const int, void*);
+// needed by markdown code in update_html_file
+char * (url_callback)(const char *x, const int y, void *z) {
+  link_id++;
+  sprintf(link_text,"id=\"%d\"", link_id);
+  return link_text;
+}  
 
 /* this zeromq version works but there is a problem on the ultralight
  * side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
@@ -434,6 +445,7 @@ void update_html_zmq(std::string &&fn) {
   link_id = 0;
 }
 
+/*
 // right now only called when previewing a code file
 void update_html_code_file(std::string &&fn) {
   //std::string note;
@@ -463,6 +475,7 @@ void update_html_code_file(std::string &&fn) {
     } else sess.showOrgMessage("Couldn't lock file");
   } else sess.showOrgMessage("Couldn't open file");
 }
+*/
 
 // this is for local compilation and running
 /* PROBLEM: if no lsp activated should still be able to update code file for compilation */
@@ -746,7 +759,8 @@ void F_copy_entry(int) {
   }
 
   for (const int &k : task_keyword_ids) {
-    add_task_keyword(k, new_id, false); //don't update fts
+    //add_task_keyword(k, new_id, false); //don't update fts
+    addTaskKeyword(k, new_id, false); //don't update fts
   }
 
   /***************fts virtual table update*********************/
@@ -761,6 +775,7 @@ void F_copy_entry(int) {
   getItems(MAX);
 }
 
+/*
 //overload that takes keyword_id and task_id
 void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
 
@@ -785,7 +800,6 @@ void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
         sess.showOrgMessage3("Problem inserting in fts; result code: {}", res);
 }
 
-//void add_task_keyword(const std::string &kw, int id) {
 //overload that takes keyword name and task_id
 void add_task_keyword(std::string &kws, int id) {
 
@@ -807,11 +821,11 @@ void add_task_keyword(std::string &kws, int id) {
 
     std::stringstream query;
 
-    /*IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
-     * <- doesn't work for sqlite
-     * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
-     * on keyword.name but you don't want to trigger an error either so probably best to retain
-     * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*/
+  //  *IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
+  //   * <- doesn't work for sqlite
+  //   * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
+  //   * on keyword.name but you don't want to trigger an error either so probably best to retain
+  //   * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*
 
     query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
           <<  kw << "', " << 0 << ", true, datetime('now'), false);"; 
@@ -827,7 +841,7 @@ void add_task_keyword(std::string &kws, int id) {
     query3 << "UPDATE task SET modified = datetime('now') WHERE id =" << id << ";";
     if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-    /**************fts virtual table update**********************/
+   // **************fts virtual table update**********************
 
     std::string s = getTaskKeywords(id).first; // 11-10-2020
     std::stringstream query4;
@@ -835,6 +849,7 @@ void add_task_keyword(std::string &kws, int id) {
     if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
   }
 }
+*/
 
 void F_deletekeywords(int) {
 
@@ -1420,11 +1435,13 @@ void F_addkeyword(int pos) {
   }
 
   if (org.marked_entries.empty()) {
-    add_task_keyword(keyword, org.rows.at(org.fr).id);
+    //add_task_keyword(keyword, org.rows.at(org.fr).id);
+    addTaskKeyword(keyword, org.rows.at(org.fr).id);
     sess.showOrgMessage("No tasks were marked so added %s to current task", keyword.c_str());
   } else {
     for (const auto& id : org.marked_entries) {
-      add_task_keyword(keyword, id);
+      //add_task_keyword(keyword, id);
+      addTaskKeyword(keyword, id);
     }
     sess.showOrgMessage("Marked tasks had keyword %s added", keyword.c_str());
   }
@@ -1461,11 +1478,13 @@ void F_keywords(int pos) {
   }
 
   if (org.marked_entries.empty()) {
-    add_task_keyword(keyword, org.rows.at(org.fr).id);
+    //add_task_keyword(keyword, org.rows.at(org.fr).id);
+    addTaskKeyword(keyword, org.rows.at(org.fr).id);
     sess.showOrgMessage("No tasks were marked so added %s to current task", keyword.c_str());
   } else {
     for (const auto& id : org.marked_entries) {
-      add_task_keyword(keyword, id);
+      //add_task_keyword(keyword, id);
+      addTaskKeyword(keyword, id);
     }
     sess.showOrgMessage("Marked tasks had keyword %s added", keyword.c_str());
   }
@@ -1790,7 +1809,7 @@ void F_createLink(int) {
 
   if (int res = q.step(); res != SQLITE_DONE) {
     std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
-    sess.showOrgMessage3("Problem in 'add_task_keyword': {}", error);
+    sess.showOrgMessage3("Problem in 'createLink': {}", error);
     org.mode = NORMAL;
     return;
   }
@@ -2191,7 +2210,7 @@ void return_N(void) {
       updateTitle();
       if (sess.lm_browser) {
         int folder_tid = getFolderTid(org.rows.at(org.fr).id);
-        if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
+        if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
       }
     } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
     else if (org.view == KEYWORD) updateKeyword();
@@ -2721,7 +2740,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             updateTitle();
             if (sess.lm_browser) {
               int folder_tid = getFolderTid(org.rows.at(org.fr).id);
-              if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
+              if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
             }
           } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
           else if (org.view == KEYWORD) updateKeyword();
@@ -3025,7 +3044,8 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           if (org.marked_entries.empty()) {
             switch (org.view) {
               case KEYWORD:
-                add_task_keyword(row.id, org.current_task_id);
+                //add_task_keyword(row.id, org.current_task_id);
+                addTaskKeyword(row.id, org.current_task_id);
                 sess.showOrgMessage("No tasks were marked so added keyword %s to current task",
                                    row.title.c_str());
                 break;
@@ -3044,10 +3064,10 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             }
           } else {
             for (const auto& task_id : org.marked_entries) {
-              //add_task_keyword(row.id, task_id);
               switch (org.view) {
                 case KEYWORD:
-                  add_task_keyword(row.id, task_id);
+                  //add_task_keyword(row.id, task_id);
+                  addTaskKeyword(row.id, task_id);
                   sess.showOrgMessage("Marked tasks had keyword %s added",
                                      row.title.c_str());
                 break;
