@@ -337,76 +337,15 @@ void load_meta(void) {
   f.close();
 }
 /*
-// typedef char * (*mkd_callback_t)(const char*, const int, void*);
-// needed by markdown code in update_html_file
-char * (url_callback)(const char *x, const int y, void *z) {
-  link_id++;
-  sprintf(link_text,"id=\"%d\"", link_id);
-  return link_text;
-}  
-*/
-
-/* this version of update_html_file uses mkd_document
- * and only writes to the file once
- */
-/*
-void update_html_file(std::string &&fn) {
-  //std::string note;
-  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
-  //if (sess.editor_mode) note = sess.p->editorRowsToString();
-  //else note = org.outlinePreviewRowsToString();
-  std::stringstream text;
-  std::stringstream html;
-  char *doc = nullptr;
-  std::string title = org.rows.at(org.fr).title;
-  text << "# " << title << "\n\n" << note;
-
-  // inserting title to tell if note displayed by ultralight 
-  // has changed to know whether to preserve scroll
-  std::string meta_(sess.meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  //
-  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  //MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), MKD_FENCEDCODE);//11-16-2020
-  mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, MKD_FENCEDCODE); //did something
-  mkd_document(blob, &doc);
-  html << meta_ << doc << "</article></body><html>";
-  
-  int fd;
-  //if ((fd = open(fn.c_str(), O_RDWR|O_CREAT, 0666)) != -1) {
-  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    sess.lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &sess.lock) != -1) {
-    write(fd, html.str().c_str(), html.str().size());
-    sess.lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &sess.lock);
-    } else sess.showOrgMessage("Couldn't lock file");
-  } else sess.showOrgMessage("Couldn't open file");
-
-  // don't know if below is correct or necessary - I don't think so
-  //mkd_free_t x; 
-  //mkd_e_free(blob, x); 
-  //
-  mkd_cleanup(blob);
-  link_id = 0;
-}
-*/
-
-// typedef char * (*mkd_callback_t)(const char*, const int, void*);
-// needed by markdown code in update_html_file
 char * (url_callback)(const char *x, const int y, void *z) {
   link_id++;
   sprintf(link_text,"id=\"%d\"", link_id);
   return link_text;
 }  
 
-/* this zeromq version works but there is a problem on the ultralight
- * side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
- * if this is my mistake or intentional
- * */
+//  this zeromq version works but there is a problem on the ultralight
+//  side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
+//  if this is my mistake or intentional
 void update_html_zmq(std::string &&fn) {
   //std::string note = org.outlinePreviewRowsToString();
   std::string note = readNoteIntoString(org.rows.at(org.fr).id);
@@ -437,14 +376,14 @@ void update_html_zmq(std::string &&fn) {
 
   publisher.send(message, zmq::send_flags::dontwait);
 
-  /* don't know if below is correct or necessary - I don't think so*/
+  // don't know if below is correct or necessary - I don't think so
   //mkd_free_t x; 
   //mkd_e_free(blob, x); 
 
   mkd_cleanup(blob);
   link_id = 0;
 }
-
+*/
 /*
 // right now only called when previewing a code file
 void update_html_code_file(std::string &&fn) {
@@ -660,12 +599,14 @@ std::string time_delta(std::string t) {
 
 /********************Beginning sqlite************************************/
 
+/*
 void run_sql(void) {
   if (!sess.db.run()) {
     sess.showOrgMessage("SQL error: %s", sess.db.errmsg);
     return;
   }  
 }
+*/
 
 void db_open(void) { //needed for db_query to work
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
@@ -852,7 +793,9 @@ void add_task_keyword(std::string &kws, int id) {
 */
 
 void F_deletekeywords(int) {
+  deleteKeywords(getId());
 
+  /*
   std::stringstream query;
   query << "DELETE FROM task_keyword WHERE task_id = " << org.rows.at(org.fr).id << ";";
   if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
@@ -862,37 +805,41 @@ void F_deletekeywords(int) {
   query2 << "UPDATE task SET modified = datetime('now') WHERE id =" << org.rows.at(org.fr).id << ";";
   if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
 
-  /**************fts virtual table update**********************/
+  // **************fts virtual table update**********************x/
   std::stringstream query3;
   query3 << "UPDATE fts SET tag='' WHERE lm_id=" << org.rows.at(org.fr).id << ";";
   if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
+  */
 
   sess.showOrgMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", org.rows.at(org.fr).id);
   org.mode = org.last_mode;
 }
 
 void display_item_info(void) {
-  /*
-  0: id = 1
-  1: tid = 1
-  2: priority = 3
-  3: title = Parents refrigerator broken.
-  4: tag = 
-  5: folder_tid = 1
-  6: context_tid = 1
-  7: duetime = NULL
-  8: star = 0
-  9: added = 2009-07-04
-  10: completed = 2009-12-20
-  11: duedate = NULL
-  12: note = new one coming on Monday, June 6, 2009.
-  13: repeat = NULL
-  14: deleted = 0
-  15: created = 2016-08-05 23:05:16.256135
-  16: modified = 2016-08-05 23:05:16.256135
-  17: startdate = 2009-07-04
-  18: remind = NULL
-  */
+
+  Entry e = getEntryInfo(getId());
+  sess.displayEntryInfo(e);
+  sess.drawPreviewBox();
+/*
+//  0: id = 1
+//  1: tid = 1
+//  2: priority = 3
+//  3: title = Parents refrigerator broken.
+//  4: tag = 
+//  5: folder_tid = 1
+//  6: context_tid = 1
+//  7: duetime = NULL
+//  8: star = 0
+//  9: added = 2009-07-04
+//  10: completed = 2009-12-20
+//  11: duedate = NULL
+//  12: note = new one coming on Monday, June 6, 2009.
+//  13: repeat = NULL
+//  14: deleted = 0
+//  15: created = 2016-08-05 23:05:16.256135
+//  16: modified = 2016-08-05 23:05:16.256135
+//  17: startdate = 2009-07-04
+//  18: remind = NULL
 
   int id = org.rows.at(org.fr).id;
   std::string s{};
@@ -960,6 +907,7 @@ void display_item_info(void) {
   
   // display_item_info_pg needs to be updated if it is going to be used
   //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
+*/
 }
 
 void update_container(void) {
@@ -2210,7 +2158,7 @@ void return_N(void) {
       updateTitle();
       if (sess.lm_browser) {
         int folder_tid = getFolderTid(org.rows.at(org.fr).id);
-        if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
+        if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
       }
     } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
     else if (org.view == KEYWORD) updateKeyword();
@@ -2740,7 +2688,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             updateTitle();
             if (sess.lm_browser) {
               int folder_tid = getFolderTid(org.rows.at(org.fr).id);
-              if (!(folder_tid == 18 || folder_tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
+              if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
             }
           } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
           else if (org.view == KEYWORD) updateKeyword();

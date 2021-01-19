@@ -90,6 +90,7 @@ void updateNote(void);/////////////////////////////
 void dbOpen(void);
 void runSQL(void);
 
+void deleteKeywords(int id);
 void addTaskKeyword(std::string &kws, int id);
 void addTaskKeyword(int keyword_id, int task_id, bool update_fts=true);
 void updateTaskContext(std::string &, int);
@@ -112,14 +113,15 @@ int keywordExists(const std::string &);
 void getItems(int); 
 void searchDB(const std::string & st, bool help=false);
 Container getContainerInfo(int id);
+Entry getEntryInfo(int id);
 
 void update_container(void);
 int insert_container(orow&);
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 
-void add_task_keyword(std::string &, int);
-void add_task_keyword(int, int, bool update_fts=true);
+//void add_task_keyword(std::string &, int);
+//void add_task_keyword(int, int, bool update_fts=true);
 void display_item_info(int); 
 void display_item_info(void); //ctrl-i in NORMAL mode 0x9
 void display_item_info_pg(int);

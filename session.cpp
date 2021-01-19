@@ -26,6 +26,9 @@ std::string generateWWString(const std::string &text, int width, int length, std
 void highlight_terms_string(std::string &text, std::vector<std::vector<int>> word_positions);
 std::string readNoteIntoString(int id);
 std::vector<std::vector<int>> getNoteSearchPositions(int id);
+int getFolderTid(int id);
+int getId(void);
+std::pair<std::string, std::vector<std::string>> getTaskKeywords(int id);
 
 int Session::link_id = 0;
 char Session::link_text[20] = {};
@@ -567,7 +570,65 @@ void Session::refreshOrgScreen(void) {
 
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+void Session::displayEntryInfo(Entry &e) {
+  std::string s{};
+  int width = sess.totaleditorcols - 10;
+  int length = sess.textlines - 10;
 
+  // \x1b[NC moves cursor forward by N columns
+  std::string lf_ret = fmt::format("\r\n\x1b[{}C", sess.divider + 6);
+  s.append(fmt::format("id: {}{}", e.id, lf_ret));
+
+  s.append(fmt::format("tid: {}{}", e.tid, lf_ret));
+  
+  std::string title = fmt::format("title: {}", e.title);
+  if (title.size() > width) {
+    title = title.substr(0, width - 3).append("...");
+  }
+  //coloring labels will take some work b/o gray background
+  //s.append(fmt::format("{}title:{} {}{}", COLOR_1, "\x1b[m", title, lf_ret));
+  s.append(fmt::format("{}{}", title, lf_ret));
+
+
+  auto it = std::ranges::find_if(org.context_map, [&e](auto& z) {return z.second == e.context_tid;});
+  s.append(fmt::format("context: {}{}", it->first, lf_ret));
+
+  auto it2 = std::ranges::find_if(org.folder_map, [&e](auto& z) {return z.second == e.folder_tid;});
+  s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
+
+  s.append(fmt::format("star: {}{}", e.star, lf_ret));
+  s.append(fmt::format("deleted: {}{}", e.deleted, lf_ret));
+  s.append(fmt::format("completed: {}{}",  (e.completed != "") ? true : false, lf_ret));
+  s.append(fmt::format("modified: {}{}", e.modified, lf_ret));
+  s.append(fmt::format("added: {}{}", e.added, lf_ret));
+
+  s.append(fmt::format("keywords: {}", getTaskKeywords(getId()).first, lf_ret));
+
+  std::string ab{};
+  //hide the cursor
+  ab.append("\x1b[?25l");
+  //ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 6));
+ 
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
+
+  //erase set number of chars on each line
+  std::string erase_chars = fmt::format("\x1b[{}X", sess.totaleditorcols - 10);
+  for (int i=0; i < length-1; i++) {
+    ab.append(erase_chars);
+    ab.append(lf_ret);
+  }
+
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
+
+  ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
+               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
+  ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
+  ab.append(s);
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
+  
+  // display_item_info_pg needs to be updated if it is going to be used
+  //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
+}
 void Session::displayContainerInfo(Container &c) {
 
   char lf_ret[10];
@@ -700,7 +761,7 @@ int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char *
 /* this version of update_html_file uses mkd_document
  * and only writes to the file once
  */
-void Session::update_html_file(std::string &&fn) {
+void Session::updateHTMLFile(std::string &&fn) {
   //std::string note;
   //if (editor_mode) note = p->editorRowsToString();
   //else note = org.outlinePreviewRowsToString();
@@ -750,7 +811,7 @@ char * Session::url_callback(const char *x, const int y, void *z) {
   return link_text;
 }  
 
-void Session::update_html_code_file(std::string &&fn) {
+void Session::updateHTMLCodeFile(std::string &&fn) {
   //std::string note;
   std::ofstream myfile;
   //note = org.outlinePreviewRowsToString();
@@ -787,8 +848,8 @@ void Session::drawPreviewWindow(int id) { //get_preview
 
   if (lm_browser) {
     int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
-    if (!(folder_tid == 18 || folder_tid == 14)) update_html_file("assets/" + CURRENT_NOTE_FILE);
-    else update_html_code_file("assets/" + CURRENT_NOTE_FILE);
+    if (!(folder_tid == 18 || folder_tid == 14)) updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
+    else updateHTMLCodeFile("assets/" + CURRENT_NOTE_FILE);
   }   
 }
 
@@ -955,6 +1016,80 @@ void Session::drawPreviewBox(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
   //return ab;
 }
+/*
+void Session::updateCodeFile(void) {
+  std::ofstream myfile;
+  std::string file_path;
+  std::string lsp_name;
+  int tid = getFolderTid(p->id);
+
+  //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
+  if (tid == 18) {
+    file_path  = "/home/slzatz/clangd_examples/test.cpp";
+    lsp_name = "clangd";
+  } else {
+    file_path = "/home/slzatz/go/src/example/main.go";
+    lsp_name = "gopls";
+  }
+
+  //if (!lsp_v.empty()) {
+  //  auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+  //  if (it != lsp_v.end()) (*it)->code_changed = true;
+  //}
+
+  myfile.open(file_path); ///////////////////////////////////////////////////////
+  myfile << sess.p->code;
+  myfile.close();
+
+  if (!lsp_v.empty()) {
+    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+    if (it != lsp_v.end()) (*it)->code_changed = true;
+  }
+}
+*/
+/*
+//  this zeromq version works but there is a problem on the ultralight
+//  side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
+//  if this is my mistake or intentional
+void update_html_zmq(std::string &&fn) {
+  //std::string note = org.outlinePreviewRowsToString();
+  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
+  std::stringstream text;
+  std::stringstream html;
+  std::string title = org.rows.at(org.fr).title;
+  char *doc = nullptr;
+  text << "# " << title << "\n\n" << note;
+
+  // inserting title to tell if note displayed by ultralight 
+  // has changed to know whether to preserve scroll
+  std::string meta_(sess.meta);
+  std::size_t p = meta_.find("</title>");
+  meta_.insert(p, title);
+  //
+  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
+  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
+  mkd_e_flags(blob, url_callback);
+  mkd_compile(blob, 0); 
+
+  mkd_document(blob, &doc);
+  html << meta_ << doc << "</article></body><html>";
+
+  zmq::message_t message(html.str().size()+1);
+
+  // probably don't need snprint to get html into message
+  snprintf ((char *) message.data(), html.str().size()+1, "%s", html.str().c_str()); 
+
+  publisher.send(message, zmq::send_flags::dontwait);
+
+  // don't know if below is correct or necessary - I don't think so
+  //mkd_free_t x; 
+  //mkd_e_free(blob, x); 
+
+  mkd_cleanup(blob);
+  link_id = 0;
+}
+*/
+
 /************************************db stuff *************************************/
 void Session::run_sql(void) {
   if (!db.run()) {

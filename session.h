@@ -8,9 +8,22 @@
 #include <sstream>
 #include <fcntl.h> //file locking
 #include "Common.h"
+#include <thread>
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
+
+/*
+struct Lsp {
+  std::jthread thred;
+  std::string name{};
+  std::string file_name{};
+  std::string client_uri{};
+  std::string language{};
+  std::atomic<bool> code_changed = false;
+  std::atomic<bool> closed = true;
+};
+*/
 
 struct sqlite_db_ {
   sqlite3 *db;
@@ -32,6 +45,7 @@ struct Session {
   //int divider_pct
   //
   bool lm_browser = false;
+  //std::vector<Lsp *> lsp_v;
 
   static int link_id;
   static char link_text[20];
@@ -85,6 +99,7 @@ struct Session {
   void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
   void refreshOrgScreen(void); //-> outlineRefreshScreen
   void displayContainerInfo(Container &c);
+  void displayEntryInfo(Entry &e);
 
   void showOrgMessage(const char *fmt, ...);
   void showOrgMessage2(const std::string &s);
@@ -95,8 +110,9 @@ struct Session {
     showOrgMessage2(fmt::vformat(format_str, argspack));
   }
 
-  void update_html_file(std::string &&fn);
-  void update_html_code_file(std::string &&fn);
+  void updateCodeFile(void);
+  void updateHTMLFile(std::string &&fn);
+  void updateHTMLCodeFile(std::string &&fn);
   static char * (url_callback)(const char *x, const int y, void *z);
 
   struct sqlite_db_ S;

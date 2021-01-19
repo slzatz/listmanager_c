@@ -104,6 +104,20 @@ struct Container {
   std::string modified;
   int count;   
 };
+struct Entry {
+  int id;
+  int tid;
+  std::string title;
+  std::string created;
+  int folder_tid;
+  int context_tid;
+  bool star;
+  std::string added;
+  std::string completed;
+  bool deleted;
+  std::string modified;
+};
+
 /* Task
 0: id = 1
 1: tid = 1

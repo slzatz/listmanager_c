@@ -1119,6 +1119,50 @@ void copyEntry(int) {
   getItems(MAX);
 }
 
+void deleteKeywords(int id) {
+  Query q(db, "DELETE FROM task_keyword WHERE task_id={};", id); 
+  if (int res = q.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem in 'deleteKeywords': {}", res);
+    return;
+  }
+
+  Query q2(db, "UPDATE task SET modified = datetime('now') WHERE id={};", id);
+  if (int res = q2.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem in 'deleteKeywords': {}", res);
+    return;
+  }
+  /**************fts virtual table update**********************/
+  Query q3(fts_db, "UPDATE fts SET tag='' WHERE lm_id={}", id);
+  if (int res = q3.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem in fts update in 'deleteKeywords' (fts): {}", res);
+    return;
+  }
+}
+//void display_item_info(void) {
+Entry getEntryInfo(int id) {
+  Entry e = {};
+  if (id ==-1) return e;
+
+  Query q(sess.db, "SELECT * FROM task WHERE id={};", id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving container info in getEntryInfo: {}", res);
+    return e;
+  }
+
+  e.id = q.column_int(0);
+  e.tid = q.column_int(1);
+  e.title = q.column_text(3);
+  e.created = q.column_text(4);
+  e.folder_tid = q.column_int((5));
+  e.context_tid = q.column_int((6));
+  e.star = q.column_bool(8);
+  e.added = q.column_text(9);
+  e.completed = q.column_text(10);
+  e.deleted = q.column_bool(14);
+  e.modified = q.column_text(16);
+
+  return e;
+}
 /*****************************Non-database-related utilities************************************/
 
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {

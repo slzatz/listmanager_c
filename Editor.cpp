@@ -2263,7 +2263,7 @@ void Editor::E_write_C(void) {
   if (is_subeditor) return;
 
   int tid = getFolderTid(id);
-  if (sess.lm_browser && !(tid == 18 || tid == 14)) sess.update_html_file("assets/" + CURRENT_NOTE_FILE);
+  if (sess.lm_browser && !(tid == 18 || tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
 }
 
 /* the following are not being called and were written for single editor
