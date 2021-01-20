@@ -28,6 +28,9 @@ extern "C" {
 void updateNote(void); //used by Editor class 
 void update_code_file(void);
 std::string getTitle(int id);
+void readNoteIntoEditor(int id);
+void linkEntries(int id1, int id2);
+std::pair<int, int> getLinkedEntry(int id);
 
 
 /* also used by Editor class */

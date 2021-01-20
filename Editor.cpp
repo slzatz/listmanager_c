@@ -3317,6 +3317,9 @@ void Editor::createLink(void) {
     task_ids[1] = t;
   }
 
+  linkEntries(task_ids[0], task_ids[1]);
+
+  /*
   Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
               task_ids[0], task_ids[1]);
 
@@ -3329,12 +3332,15 @@ void Editor::createLink(void) {
 
    Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
    q1.step();
+   */
 
    mode = NORMAL;
 }
 
 void Editor::getLinked(void) {
 
+  auto [task_id0,  task_id1] = getLinkedEntry(id);
+  /*
   Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
   if (int res = q.step(); res != SQLITE_ROW) {
     editorSetMessage("Problem retrieving linked item: %d", res);
@@ -3342,6 +3348,7 @@ void Editor::getLinked(void) {
   }
   int task_id0 = q.column_int(0);
   int task_id1 = q.column_int(1);
+  */
 
   int linked_id = (task_id0 == id) ? task_id1 : task_id0;
 
@@ -3365,14 +3372,17 @@ void Editor::getLinked(void) {
       p->linked_editor = new Editor;
       sess.editors.push_back(p->linked_editor);
       p->linked_editor->id = linked_id;
-      //p->linked_editor->top_margin = Editor::total_screenlines - LINKED_NOTE_HEIGHT + 2;
-      //p->linked_editor->screenlines = LINKED_NOTE_HEIGHT;
       p->linked_editor->is_subeditor = true;
       p->linked_editor->is_below = true;
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
 
+    // if it was OK (and maybe it is) to do:
+    sess.p = p;
+    readNoteIntoEditor(p->id);
+
+    /*
     sess.db.query("SELECT note FROM task WHERE id = {}", linked_id);
     sess.db.callback = editor_note_callback;
     sess.db.pArg = p;
@@ -3380,7 +3390,7 @@ void Editor::getLinked(void) {
     editorSetMessage("SQL error: %s", sess.db.errmsg);
     return;
   }  
-
+  */
   if (p->linked_editor) { 
     p->linked_editor->rows = std::vector<std::string>{" "};
   }

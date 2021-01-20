@@ -336,85 +336,6 @@ void load_meta(void) {
   sess.meta = text.str();
   f.close();
 }
-/*
-char * (url_callback)(const char *x, const int y, void *z) {
-  link_id++;
-  sprintf(link_text,"id=\"%d\"", link_id);
-  return link_text;
-}  
-
-//  this zeromq version works but there is a problem on the ultralight
-//  side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
-//  if this is my mistake or intentional
-void update_html_zmq(std::string &&fn) {
-  //std::string note = org.outlinePreviewRowsToString();
-  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
-  std::stringstream text;
-  std::stringstream html;
-  std::string title = org.rows.at(org.fr).title;
-  char *doc = nullptr;
-  text << "# " << title << "\n\n" << note;
-
-  // inserting title to tell if note displayed by ultralight 
-  // has changed to know whether to preserve scroll
-  std::string meta_(sess.meta);
-  std::size_t p = meta_.find("</title>");
-  meta_.insert(p, title);
-  //
-  //MKIOT blob(const char *text, int size, mkd_flag_t flags)
-  MMIOT *blob = mkd_string(text.str().c_str(), text.str().length(), 0);
-  mkd_e_flags(blob, url_callback);
-  mkd_compile(blob, 0); 
-
-  mkd_document(blob, &doc);
-  html << meta_ << doc << "</article></body><html>";
-
-  zmq::message_t message(html.str().size()+1);
-
-  // probably don't need snprint to get html into message
-  snprintf ((char *) message.data(), html.str().size()+1, "%s", html.str().c_str()); 
-
-  publisher.send(message, zmq::send_flags::dontwait);
-
-  // don't know if below is correct or necessary - I don't think so
-  //mkd_free_t x; 
-  //mkd_e_free(blob, x); 
-
-  mkd_cleanup(blob);
-  link_id = 0;
-}
-*/
-/*
-// right now only called when previewing a code file
-void update_html_code_file(std::string &&fn) {
-  //std::string note;
-  std::ofstream myfile;
-  //std::string note = org.outlinePreviewRowsToString();
-  std::string note = readNoteIntoString(org.rows.at(org.fr).id);
-  myfile.open("code_file");
-  myfile << note;
-  myfile.close();
-
-  std::stringstream html;
-  std::string line;
-  int tid = getFolderTid(org.rows.at(org.fr).id);
-  ipstream highlight(fmt::format("highlight code_file --out-format=html "
-                             "--style=gruvbox-dark-hard-slz --syntax={}",
-                             (tid == 18) ? "cpp" : "go"));
-
-  while(getline(highlight, line)) { html << line << '\n';}
- 
-  int fd;
-  if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
-    sess.lock.l_type = F_WRLCK;  
-    if (fcntl(fd, F_SETLK, &sess.lock) != -1) {
-    write(fd, html.str().c_str(), html.str().size());
-    sess.lock.l_type = F_UNLCK;
-    fcntl(fd, F_SETLK, &sess.lock);
-    } else sess.showOrgMessage("Couldn't lock file");
-  } else sess.showOrgMessage("Couldn't open file");
-}
-*/
 
 // this is for local compilation and running
 /* PROBLEM: if no lsp activated should still be able to update code file for compilation */
@@ -448,117 +369,6 @@ void update_code_file(void) {
     if (it != lsp_v.end()) (*it)->code_changed = true;
   }
 }
-
-std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
-
-  std::stringstream query;
-  query << "SELECT keyword.name "
-           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
-           "WHERE " << tid << " =  task_keyword.task_id;";
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    sess.showOrgMessage("Problem in get_task_keywords_pg!");
-    PQclear(res);
-    return std::make_pair(std::string(), std::vector<std::string>());
-  }
-
-  int rows = PQntuples(res);
-  std::vector<std::string> task_keywords = {};
-  for(int i=0; i<rows; i++) {
-    task_keywords.push_back(PQgetvalue(res, i, 0));
-  }
-   std::string delim = "";
-   std::string s = "";
-   for (const auto &kw : task_keywords) {
-     s += delim += kw;
-     delim = ",";
-   }
-  PQclear(res);
-  return std::make_pair(s, task_keywords);
-  // PQfinish(conn);
-}
-
-void display_item_info_pg(int id) {
-
-  if (id ==-1) return;
-
-  std::stringstream query;
-  query << "SELECT * FROM task WHERE id = " << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    sess.showOrgMessage("Postgres Error: %s", PQerrorMessage(conn)); 
-    PQclear(res);
-    return;
-  }    
-
-  char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
-
-  std::string s;
-
-  //set background color to blue
-  s.append("\n\n");
-  s.append("\x1b[44m", 5);
-  char str[300];
-
-  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  s.append(str);
-  s.append(lf_ret);
-
-  int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(org.context_map), std::end(org.context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(org.folder_map), std::end(org.folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  s.append(str);
-  s.append(lf_ret);
-
-  std::string ss = get_task_keywords_pg(id).first;
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", ss.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  //sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
-  //s.append(str);
-  //s.append(lf_ret);
-
-  s.append("\x1b[0m");
-
-  write(STDOUT_FILENO, s.c_str(), s.size());
-
-  PQclear(res);
-}
-// end of pg functions
 
 std::string now(void) {
   std::time_t t = std::time(nullptr);
@@ -600,14 +410,6 @@ std::string time_delta(std::string t) {
 /********************Beginning sqlite************************************/
 
 /*
-void run_sql(void) {
-  if (!sess.db.run()) {
-    sess.showOrgMessage("SQL error: %s", sess.db.errmsg);
-    return;
-  }  
-}
-*/
-
 void db_open(void) { //needed for db_query to work
   int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
   if (rc != SQLITE_OK) {
@@ -621,7 +423,8 @@ void db_open(void) { //needed for db_query to work
     exit(1);
   }
 }
-
+*/
+/*
 bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
    int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
    if (rc != SQLITE_OK) {
@@ -641,9 +444,13 @@ bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *p
    }
    return true;
 }
+*/
 
 void F_copy_entry(int) {
 
+  copyEntry();
+
+  /*
   int id = org.rows.at(org.fr).id;
   Query q(sess.db, "SELECT * FROM task WHERE id={}", id);
   if (int res = q.step(); res != SQLITE_ROW) {
@@ -704,7 +511,7 @@ void F_copy_entry(int) {
     addTaskKeyword(k, new_id, false); //don't update fts
   }
 
-  /***************fts virtual table update*********************/
+  // ***************fts virtual table update*********************
   std::string tag = getTaskKeywords(new_id).first;
   Query q3(sess.fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
                title, note, tag, new_id); 
@@ -714,6 +521,7 @@ void F_copy_entry(int) {
     return;
   }
   getItems(MAX);
+  */
 }
 
 /*
@@ -1538,7 +1346,7 @@ void F_edit(int id) {
         p->linked_editor->linked_editor = p;
         p->left_margin_offset = LEFT_MARGIN_OFFSET;
       } 
-      readNoteIntoVec(id); //if id == -1 does not try to retrieve note
+      readNoteIntoEditor(id); //if id == -1 does not try to retrieve note
       
     } else {
       sess.p = *it;
@@ -1561,7 +1369,7 @@ void F_edit(int id) {
       p->linked_editor->linked_editor = p;
       p->left_margin_offset = LEFT_MARGIN_OFFSET;
     }
-    readNoteIntoVec(id); //if id == -1 does not try to retrieve note
+    readNoteIntoEditor(id); //if id == -1 does not try to retrieve note
  }
   sess.positionEditors();
   sess.eraseRightScreen(); //erases editor area + statusbar + msg
@@ -4220,9 +4028,9 @@ int main(int argc, char** argv) {
 
   if (argc > 1 && argv[1][0] == '-') sess.lm_browser = false;
 
-  db_open(); //for sqlite //needed for db_query to work
+  //db_open(); //for sqlite //needed for db_query to work
   //sess.db_open(); //for sqlite
-  dbOpen(); //seems to be needed by org.get_preview because initializes sess.S 
+  //dbOpen(); //seems to be needed by org.get_preview because initializes sess.S 
   get_conn(); //for pg
   load_meta(); //meta html for lm_browser 
 

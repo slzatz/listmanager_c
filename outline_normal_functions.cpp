@@ -489,7 +489,7 @@ std::string readNoteIntoString(int id) {
   return note;
 }
 
-void readNoteIntoVec(int id) {
+void readNoteIntoEditor(int id) {
   if (id ==-1) return; // id given to new and unsaved entries
 
   Query q(db, "SELECT note FROM task WHERE id = {}", id);
@@ -508,14 +508,33 @@ void readNoteIntoVec(int id) {
   if (!sess.p->linked_editor) return;
 
   sess.p->linked_editor->rows = std::vector<std::string>{" "};
+}
+void linkEntries(int id1, int id2) {
+  Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+              id1, id2);
 
-  /* below works but don't think we want to store output_window
-  db.query("SELECT subnote FROM task WHERE id = {}", id);
-  db.callback = note_callback;
-  db.pArg = p->linked_editor;
-  run_sql();
-  */
+  if (int res = q.step(); res != SQLITE_DONE) {
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    sess.showOrgMessage3("Problem in linkEntries: {}", res);
+    return;
+  }
 
+  Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", id1, id2);
+  if (int res = q1.step(); res != SQLITE_DONE) {
+    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
+    sess.showOrgMessage3("Problem in linkEntries: {}", res);
+    return;
+  }
+}
+
+std::pair<int, int> getLinkedEntry(int id) {
+  Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  if (int res = q.step(); res != SQLITE_ROW) {
+    sess.showOrgMessage3("Problem retrieving linked item: {}", res);
+    return std::make_pair(-1, -1);
+  }
+
+  return std::make_pair(q.column_int(0), q.column_int(1));
 }
 
 std::vector<std::vector<int>> getNoteSearchPositions(int id) {
@@ -1046,9 +1065,9 @@ void addTaskKeyword(std::string &kws, int id) {
     sess.showOrgMessage3("Problem inserting in fts; result code: {}", res);
 }
 
-void copyEntry(int) {
+void copyEntry(void) {
 
-  int id = org.rows.at(org.fr).id;
+  int id = getId();
   Query q(db, "SELECT * FROM task WHERE id={}", id);
   if (int res = q.step(); res != SQLITE_ROW) {
     sess.showOrgMessage3("Problem retrieving entry info in copy_entry: {}", res);
@@ -1104,9 +1123,8 @@ void copyEntry(int) {
   }
 
   for (const int &k : task_keyword_ids) {
-    addTaskKeyword(k, new_id, false); //don't update fts
+    addTaskKeyword(k, new_id, false); //don't update fts; done below
   }
-
   /***************fts virtual table update*********************/
   std::string tag = getTaskKeywords(new_id).first;
   Query q3(fts_db, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
@@ -1401,4 +1419,121 @@ void highlight_terms_string(std::string &text, std::vector<std::vector<int>> wor
     }
   }
 }
+/* postgres code not currently in use
+std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
+
+  std::stringstream query;
+  query << "SELECT keyword.name "
+           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
+           "WHERE " << tid << " =  task_keyword.task_id;";
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    sess.showOrgMessage("Problem in get_task_keywords_pg!");
+    PQclear(res);
+    return std::make_pair(std::string(), std::vector<std::string>());
+  }
+
+  int rows = PQntuples(res);
+  std::vector<std::string> task_keywords = {};
+  for(int i=0; i<rows; i++) {
+    task_keywords.push_back(PQgetvalue(res, i, 0));
+  }
+   std::string delim = "";
+   std::string s = "";
+   for (const auto &kw : task_keywords) {
+     s += delim += kw;
+     delim = ",";
+   }
+  PQclear(res);
+  return std::make_pair(s, task_keywords);
+  // PQfinish(conn);
+}
+
+void display_item_info_pg(int id) {
+
+  if (id ==-1) return;
+
+  std::stringstream query;
+  query << "SELECT * FROM task WHERE id = " << id;
+
+  PGresult *res = PQexec(conn, query.str().c_str());
+    
+  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
+    sess.showOrgMessage("Postgres Error: %s", PQerrorMessage(conn)); 
+    PQclear(res);
+    return;
+  }    
+
+  char lf_ret[10];
+  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
+
+  std::string s;
+
+  //set background color to blue
+  s.append("\n\n");
+  s.append("\x1b[44m", 5);
+  char str[300];
+
+  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
+  s.append(str);
+  s.append(lf_ret);
+
+  int context_tid = atoi(PQgetvalue(res, 0, 6));
+  auto it = std::find_if(std::begin(org.context_map), std::end(org.context_map),
+                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
+
+  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  int folder_tid = atoi(PQgetvalue(res, 0, 5));
+  auto it2 = std::find_if(std::begin(org.folder_map), std::end(org.folder_map),
+                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
+  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
+  s.append(str);
+  s.append(lf_ret);
+  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
+  s.append(str);
+  s.append(lf_ret);
+
+  std::string ss = get_task_keywords_pg(id).first;
+  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", ss.c_str());
+  s.append(str);
+  s.append(lf_ret);
+
+  //sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
+  //s.append(str);
+  //s.append(lf_ret);
+
+  s.append("\x1b[0m");
+
+  write(STDOUT_FILENO, s.c_str(), s.size());
+
+  PQclear(res);
+}
+// end of pg functions
+
+std::string now(void) {
+  std::time_t t = std::time(nullptr);
+  return fmt::format("{:%H:%M}", fmt::localtime(t));
+}
+*/
 #endif
