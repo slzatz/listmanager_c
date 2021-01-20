@@ -90,6 +90,8 @@ void updateNote(void);/////////////////////////////
 void dbOpen(void);
 void runSQL(void);
 
+int insertContainer(orow& row);
+void updateContainer(void);
 void deleteKeywords(int id);
 void addTaskKeyword(std::string &kws, int id);
 void addTaskKeyword(int keyword_id, int task_id, bool update_fts=true);
@@ -114,48 +116,12 @@ void getItems(int);
 void searchDB(const std::string & st, bool help=false);
 Container getContainerInfo(int id);
 Entry getEntryInfo(int id);
-
-void update_container(void);
-int insert_container(orow&);
+void display_item_info(void); //ctrl-i in NORMAL mode 0x9 //need this should be renamed
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 
-//void add_task_keyword(std::string &, int);
-//void add_task_keyword(int, int, bool update_fts=true);
-void display_item_info(int); 
-void display_item_info(void); //ctrl-i in NORMAL mode 0x9
-void display_item_info_pg(int);
-void display_container_info(int);
 std::string time_delta(std::string);
 std::string now(void);
-
-//sqlite callback functions
-typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
-
-int fts5_callback(void *, int, char **, char **);
-int data_callback(void *, int, char **, char **);
-int context_callback(void *, int, char **, char **);
-int folder_callback(void *, int, char **, char **);
-int keyword_callback(void *, int, char **, char **);
-int context_titles_callback(void *, int, char **, char **);
-int folder_titles_callback(void *, int, char **, char **);
-int by_id_data_callback(void *, int, char **, char **);
-int note_callback(void *, int, char **, char **);
-int display_item_info_callback(void *, int, char **, char **);
-int task_keywords_callback(void *, int, char **, char **);
-int keyword_id_callback(void *, int, char **, char **);//? not in use
-int container_id_callback(void *, int, char **, char **);
-int rowid_callback(void *, int, char **, char **);
-int title_callback(void *, int, char **, char **);
-int offset_callback(void *, int, char **, char **);
-int folder_tid_callback(void *, int, char **, char **); 
-int context_info_callback(void *, int, char **, char **); 
-int folder_info_callback(void *, int, char **, char **); 
-int keyword_info_callback(void *, int, char **, char **);
-int count_callback(void *, int, char **, char **);
-int unique_data_callback(void *, int, char **, char **);
-int preview_callback (void *, int, char **, char **);
-/* end here */
 
 void synchronize(int);
 

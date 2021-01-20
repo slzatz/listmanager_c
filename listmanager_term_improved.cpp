@@ -909,7 +909,7 @@ void display_item_info(void) {
   //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
 */
 }
-
+/*
 void update_container(void) {
 
   orow& row = org.rows.at(org.fr);
@@ -941,10 +941,10 @@ void update_container(void) {
   sess.showOrgMessage("Successfully updated row %d", row.id);
 }
 
-/*Inserting a new keyword should not require any fts_db update. Just like any keyword
- *added to an entry - the tag created is entered into fts_db when that keyword is
- *attached to an entry.
-*/
+//Inserting a new keyword should not require any fts_db update. Just like any keyword
+ //added to an entry - the tag created is entered into fts_db when that keyword is
+ //attached to an entry.
+ 
 int insert_container(orow& row) {
 
   std::string title = row.title;
@@ -980,13 +980,11 @@ int insert_container(orow& row) {
         << ");"; // RETURNING id;",
 
   sess.temporary_tid++;      
-  /*
-   * not used:
-     "default" (not sure why in quotes but may be system variable
-      tid,
-      icon (varchar 32)
-      image (blob)
-    */
+  //   not used:
+  //   "default" (not sure why in quotes but may be system variable
+  //    tid,
+  //    icon (varchar 32)
+  //    image (blob)
 
   sqlite3 *db;
   char *err_msg = nullptr; //0
@@ -1016,7 +1014,7 @@ int insert_container(orow& row) {
 
   return row.id;
 }
-
+*/
 /*
 void update_rows(void) {
   int n = 0; //number of updated rows
@@ -2160,7 +2158,7 @@ void return_N(void) {
         int folder_tid = getFolderTid(org.rows.at(org.fr).id);
         if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
       }
-    } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
+    } else if (org.view == CONTEXT || org.view == FOLDER) updateContainer();
     else if (org.view == KEYWORD) updateKeyword();
     org.command[0] = '\0'; //11-26-2019
     org.mode = NORMAL;
@@ -2690,7 +2688,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
               int folder_tid = getFolderTid(org.rows.at(org.fr).id);
               if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
             }
-          } else if (org.view == CONTEXT || org.view == FOLDER) update_container();
+          } else if (org.view == CONTEXT || org.view == FOLDER) updateContainer();
           else if (org.view == KEYWORD) updateKeyword();
           org.command[0] = '\0'; //11-26-2019
           org.mode = NORMAL;

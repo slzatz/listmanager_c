@@ -329,8 +329,8 @@ void Session::drawOrgStatusBar(void) {
     //if (p->dirty) truncated_title.append( "[+]"); /****this needs to be in editor class*******/
 
     // needs to be here because org.rows could be empty
-    //std::string keywords = (view == TASK) ? get_task_keywords(row.id).first : ""; // see before and in switch
-    std::string keywords = "Not Looking";
+    std::string keywords = (org.view == TASK) ? getTaskKeywords(row.id).first : ""; // see before and in switch
+    //std::string keywords = "Not Looking";
 
     // because video is reversted [42 sets text to green and 49 undoes it
     // also [0;35;7m -> because of 7m it reverses background and foreground

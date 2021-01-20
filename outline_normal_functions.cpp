@@ -1163,6 +1163,104 @@ Entry getEntryInfo(int id) {
 
   return e;
 }
+
+/*Inserting a new keyword should not require any fts_db update. Just like any keyword
+ *added to an entry - the tag created is entered into fts_db when that keyword is
+ *attached to an entry.
+*/
+int insertContainer(orow& row) {
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos)
+    {
+      title.replace(pos, 1, "''");
+      pos = title.find("'", pos + 2);
+    }
+  Query q(db, "INSERT INTO {} (title, deleted, created, modified, tid, {}, textcolor) "
+              "VALUES ({}, False, datetime('now', '-{} hours'), datetime('now'), {}, False, 10);",
+              (org.view == CONTEXT) ? "context" : "folder",
+              (org.view == CONTEXT) ? "\"default\"" : "private", //con-> "default"; fol-> private
+              title,
+              TZ_OFFSET,
+              sess.temporary_tid);
+
+  if (int res = q.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem in 'insertRow': {}", res);
+    return -1;
+  }
+
+  sess.temporary_tid++;      
+
+  row.id =  sqlite3_last_insert_rowid(db.db);
+  row.dirty = false;
+
+  sess.temporary_tid++;      
+  sess.showOrgMessage3("Successfully inserted new {} with id {}", 
+                      (org.view == CONTEXT) ? "context" : "folder", row.id);
+  return row.id;
+
+  /*
+  sqlite3 *db;
+  char *err_msg = nullptr; //0
+
+  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
+
+  if (rc != SQLITE_OK) {
+
+    sess.showOrgMessage("Cannot open database: %s", sqlite3_errmsg(db));
+    sqlite3_close(db);
+    return -1;
+    }
+
+  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
+
+  if (rc != SQLITE_OK ) {
+    sess.showOrgMessage("SQL error doing new item insert: %s", err_msg);
+    sqlite3_free(err_msg);
+    return -1;
+  }
+  row.id =  sqlite3_last_insert_rowid(db);
+  row.dirty = false;
+
+  sqlite3_close(db);
+
+  sess.showOrgMessage("Successfully inserted new context with id %d and indexed it", row.id);
+
+  return row.id;
+  */
+}
+void updateContainer(void) {
+
+  orow& row = org.rows.at(org.fr);
+
+  if (!row.dirty) {
+    sess.showOrgMessage("Row has not been changed");
+    return;
+  }
+
+  if (row.id == -1) {
+    insertContainer(row);
+    return;
+  }
+
+  std::string title = row.title;
+  size_t pos = title.find("'");
+  while(pos != std::string::npos) {
+    title.replace(pos, 1, "''");
+    pos = title.find("'", pos + 2);
+  }
+
+  Query q(db, "UPDATE {} SET title='{}', modified=datetime('now') WHERE id={}",
+              (org.view == CONTEXT) ? "context" : "folder", title, row.id);
+  if (int res = q.step(); res != SQLITE_DONE) {
+    sess.showOrgMessage3("Problem in 'updateConstainer' (fts): {}", res);
+    return;
+  }
+
+  row.dirty = false;
+  sess.showOrgMessage("Successfully updated row %d", row.id);
+}
 /*****************************Non-database-related utilities************************************/
 
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
