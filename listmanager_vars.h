@@ -116,7 +116,6 @@ void getItems(int);
 void searchDB(const std::string & st, bool help=false);
 Container getContainerInfo(int id);
 Entry getEntryInfo(int id);
-//void display_item_info(void); //ctrl-i in NORMAL mode 0x9 //need this should be renamed
 void copyEntry(void);
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string

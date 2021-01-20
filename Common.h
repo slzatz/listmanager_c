@@ -2,6 +2,7 @@
 #define COMMON_H
 
 #include <string>
+#include <thread>
 
 const std::string COLOR_1 = "\x1b[0;31m"; //red
 const std::string COLOR_2 = "\x1b[0;32m"; //green
@@ -117,6 +118,18 @@ struct Entry {
   bool deleted;
   std::string modified;
 };
+
+/*
+struct Lsp {
+  std::jthread thred;
+  std::string name{};
+  std::string file_name{};
+  std::string client_uri{};
+  std::string language{};
+  std::atomic<bool> code_changed = false;
+  std::atomic<bool> closed = true;
+};
+*/
 
 /* Task
 0: id = 1

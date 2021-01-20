@@ -6,6 +6,7 @@
 #include "Common.h"
 #include "session.h"
 #include "pstream.h"
+#include "LSP.h"
 #include <cstdarg> //va_start etc.
 #include <mkdio.h>
 #include <stop_token>
@@ -15,9 +16,9 @@
 #include <algorithm>
 #include <ranges>
 
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
-#include <spdlog/cfg/env.h>
+//#include <spdlog/spdlog.h>
+//#include <spdlog/sinks/basic_file_sink.h>
+//#include <spdlog/cfg/env.h>
 
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
@@ -29,7 +30,7 @@
 using namespace redi;
 using json = nlohmann::json;
 
-auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
+//auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
 
 zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
@@ -52,234 +53,6 @@ std::string prevfilename;
 std::vector<std::string> completions;
 std::string prefix;
 int completion_index;
-
-/******************lsp**********************************/
-
-struct Lsp {
-  std::jthread thred;
-  std::string name{};
-  std::string file_name{};
-  std::string client_uri{};
-  std::string language{};
-  std::atomic<bool> code_changed = false;
-  std::atomic<bool> closed = true;
-};
-
-// the vector that holds pointers to lsp structs
-std::vector<Lsp *> lsp_v;
-
-void readsome(pstream &ls, int i) {
-
-  //for logging purposes
-  std::size_t pos = ls.command().find(' ');
-  std::string_view cmd = ls.command();
-  cmd = cmd.substr(0, pos);
-  char buf[8192]={}; //char buf[1024]{};
-  std::streamsize n;
-  std::string s{}; //used for body of server message
-  std::string h{}; //used to log header of server message
-
-  while ((n = ls.out().readsome(buf, sizeof(buf))) > 0) {
-    // n will always be zero eventually
-     s += std::string{buf, static_cast<size_t>(n)};
-  }
-
-  if (s.empty()) return;
-  if (s.size() > 8000) {
-    logger->warn("Message {} returned is greater than 8000 chars!", cmd);
-    return;
-  }
-
-  //logger->info("Entering readsome's for loop: {}", i);
-  //There may be more than one message to read
-  int nn = 0;
-  //logger->info("RECEIVED (RAW): {}", s);
-  for (;;) {
-    nn++;
-    if (s.empty()) return;
-    size_t pos = s.find("\r\n\r\n");
-    if (pos == std::string::npos) return;
-    h = s.substr(0, pos + 4); //second param is length
-    pos = h.find(":");
-    std::string length = h.substr(pos + 2, h.size()-4 -2 - pos); //length 2 awat from colon
-    logger->info("Incoming messages - total length: {}", stoi(length));
-    std::string ss = s.substr(h.size(), stoi(length));
-    logger->info("read {} message {} nn {}:\n{}\n{}\n", cmd, i, nn, h, ss);
-
-    json js;
-    try {
-      js = json::parse(ss);
-    } catch(const json::parse_error &) {
-      logger->info("PARSE ERROR!");
-    return;
-    }
-
-    std::string sss;
-    std::string hhh;
-    if (js.contains("method")) {
-      if (js["method"] == "textDocument/publishDiagnostics") {
-        json diagnostics = js["params"]["diagnostics"];
-        if (sess.p) sess.p->decorate_errors(diagnostics); //not sure need if (p)
-      } else if (js["method"] == "workspace/configuration") {
-        //s = R"({"jsonrpc": "2.0", "result": [{"caseSensitiveCompletion": true}, null], "id": 1})";
-        //caseSensitiveCompletion is deprecated, use \"matcher\" instead
-        sss = R"({"jsonrpc": "2.0", "result": [], "id": 1})";
-        hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
-        sss = hhh + sss;
-        ls.write(sss.c_str(), sss.size()).flush();
-        logger->info("sent workspace/configuration message to {}:\n{}\n", cmd, sss);
-      } else if (js["method"] == "client/registerCapability") {
-        int id = js["id"];
-        sss = R"({"jsonrpc": "2.0", "result": {}, "id": 2})";
-        js = json::parse(sss);
-        js["id"] = id;
-        sss = js.dump();
-        hhh = fmt::format("Content-Length: {}\r\n\r\n", sss.size());
-        sss = hhh + sss;
-        ls.write(sss.c_str(), sss.size()).flush();
-        logger->info("sent client/registerCapability message to {}:\n{}\n", cmd, sss);
-      }
-    }
-    s = s.substr(h.size() + stoi(length));
-  }
-}
-
-/****************************************************/
-void lsp_thread(std::stop_token st) {
-  Lsp *lsp = lsp_v.back();
-  const pstreams::pmode mode = pstreams::pstdout|pstreams::pstdin;
-  pstream lang_server;
-  if (lsp->name == "clangd") lang_server = pstream("clangd --log=error", mode);
-  else lang_server = pstream("gopls serve -rpc.trace -logfile /home/slzatz/gopls_log", mode);
-
-  std::string s;
-  json js;
-  std::string header;
-  int pid = ::getpid();
-
-  s = R"({"jsonrpc": "2.0", "id": 0, "method": "initialize", "params": {"processId": 0, "rootPath": null, "rootUri": "file:///", "initializationOptions": null, "capabilities": {"offsetEncoding": ["utf-8"], "textDocument": {"codeAction": {"dynamicRegistration": true}, "codeLens": {"dynamicRegistration": true}, "colorProvider": {"dynamicRegistration": true}, "completion": {"completionItem": {"commitCharactersSupport": true, "documentationFormat": ["markdown", "plaintext"], "snippetSupport": true}, "completionItemKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25]}, "contextSupport": true, "dynamicRegistration": true}, "definition": {"dynamicRegistration": true}, "documentHighlight": {"dynamicRegistration": true}, "documentLink": {"dynamicRegistration": true}, "documentSymbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9,10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "formatting": {"dynamicRegistration": true}, "hover": {"contentFormat": ["markdown", "plaintext"], "dynamicRegistration": true}, "implementation": {"dynamicRegistration": true}, "onTypeFormatting": {"dynamicRegistration": true}, "publishDiagnostics": {"relatedInformation": true}, "rangeFormatting": {"dynamicRegistration": true}, "references": {"dynamicRegistration": true}, "rename": {"dynamicRegistration": true}, "signatureHelp": {"dynamicRegistration": true, "signatureInformation": {"documentationFormat": ["markdown", "plaintext"]}}, "synchronization": {"didSave": true, "dynamicRegistration": true, "willSave": true, "willSaveWaitUntil": true}, "typeDefinition": {"dynamicRegistration": true}}, "workspace": {"applyEdit": true, "configuration": true, "didChangeConfiguration": {"dynamicRegistration": true}, "didChangeWatchedFiles": {"dynamicRegistration": true}, "executeCommand": {"dynamicRegistration": true}, "symbol": {"dynamicRegistration": true, "symbolKind": {"valueSet": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26]}}, "workspaceEdit": {"documentChanges": true}, "workspaceFolders": true}}, "trace": "off", "workspaceFolders": [{"name": "listmanager", "uri": "file:///"}]}})";
-
-  js = json::parse(s);
-  js["params"]["processId"] = pid + 1;
-  js["params"]["rootUri"] = lsp->client_uri;
-  js["params"]["workspaceFolders"][0]["uri"] = lsp->client_uri;
-  s = js.dump();
-
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent initialization message to {}:\n{}\n", lsp->name, s);
-
-
-  //initialization from client produces a capabilities response
-  //from the server which is read below
-  readsome(lang_server, 1); //this could block
-  
-  //Client sends initialized response
-  s = R"({"jsonrpc": "2.0", "method": "initialized", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent initialized message to {}:\n{}\n", lsp->name, s);
-  
-  //client sends didOpen notification
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didOpen", "params": {"textDocument": {"uri": "file:///home/slzatz/clangd_examples/test.cpp", "languageId": "cpp", "version": 1, "text": ""}}})";
-  js = json::parse(s);
-  js["params"]["textDocument"]["text"] = " "; //text ? if it escapes automatically
-  js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
-  js["params"]["textDocument"]["languageId"] = lsp->language; //text ? if it escapes automatically
-  s = js.dump();
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent didOpen message to {}:\n{}\n", lsp->name, s);
-  
-  readsome(lang_server, 2); //reads initial diagnostics
-  
-  //int j = 2;
-
-  for (int i=3; i<6;i++) { 
-    logger->info("Reading response from {} - {}:\n", lsp->name, i);
-    readsome(lang_server, i);
-  }
-  int j = 5;
-  
-  s = R"({"jsonrpc": "2.0", "method": "textDocument/didChange", "params": {"textDocument": {"uri": "file:///", "version": 2}, "contentChanges": [{"text": ""}]}})";
-
-  js = json::parse(s);
-  
-  while (!st.stop_requested()) {
-    if (lsp->code_changed) {
-      js["params"]["contentChanges"][0]["text"] = sess.p->code; //text ? if it escapes automatically
-      js["params"]["textDocument"]["version"] = ++j; 
-      js["params"]["textDocument"]["uri"] = lsp->client_uri + lsp->file_name; //text ? if it escapes automatically
-      s = js.dump();
-      header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-      s = header + s;
-      lang_server.write(s.c_str(), s.size()).flush();
-      logger->info("sent didChange message to {}:\n{}\n", lsp->name, s);
-  
-      //readsome(lang_server, j);
-      lsp->code_changed = false;
-    }
-    readsome(lang_server, j);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-  s = R"({"jsonrpc": "2.0", "id": 1, "method": "shutdown", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent shutdown to {}:\n\n", lsp->name);
-  std::this_thread::sleep_for(std::chrono::seconds(1));
-  s = R"({"jsonrpc": "2.0", "method": "exit", "params": {}})";
-  header = fmt::format("Content-Length: {}\r\n\r\n", s.size());
-  s = header + s;
-  lang_server.write(s.c_str(), s.size()).flush();
-  logger->info("sent exit to {}:\n\n", lsp->name);
-
-  lang_server.close();
-  lsp->closed = true;
-}
-  
-void lsp_start(Lsp * lsp) {
-  /*
-  if (!lsp.empty) {
-    lsp.thred.request_stop();
-    //if lsp_thread crashed then lsp_closed will never become true and
-    //that's why there is also a timer below
-    time_t time0 = time(nullptr);
-    while (!lsp_closed) {
-      if (difftime(time(nullptr), time0) > 3.0) break;
-      continue;
-    }
-  }
-  */
-
-  lsp->closed = false;
-  lsp_v.push_back(lsp);
-  lsp->thred = std::jthread(lsp_thread);
-}
-
-void lsp_shutdown(const std::string s) {
-  //if (lsp_map.empty()) return;
-  if (lsp_v.empty()) return;
-
-  // assuming all for the moment
-  //for (auto & [k,lsp] : lsp_map) {
-  for (auto & lsp : lsp_v) {
-    lsp->thred.request_stop();
-    time_t time0 = time(nullptr);
-    while (!lsp->closed) {
-      if (difftime(time(nullptr), time0) > 3.0) break;
-      continue;
-    }
-    lsp->thred.join();
-    delete lsp;
-  //lsp.empty = true;
-  //should delete lsp_map item
-  //lsp_closed = true;//set to false when started
-  }
-}
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
@@ -364,9 +137,9 @@ void update_code_file(void) {
   myfile << sess.p->code;
   myfile.close();
 
-  if (!lsp_v.empty()) {
-    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
-    if (it != lsp_v.end()) (*it)->code_changed = true;
+  if (!sess.lsp_v.empty()) {
+    auto it = std::ranges::find_if(sess.lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+    if (it != sess.lsp_v.end()) (*it)->code_changed = true;
   }
 }
 
@@ -406,45 +179,6 @@ std::string time_delta(std::string t) {
  
   return s;
 }
-
-/********************Beginning sqlite************************************/
-
-/*
-void db_open(void) { //needed for db_query to work
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &S.db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.db);
-    exit(1);
-  }
-
-  rc = sqlite3_open(FTS_DB.c_str(), &S.fts_db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.fts_db);
-    exit(1);
-  }
-}
-*/
-/*
-bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     sess.showOrgMessage("SQL error: %s", errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}
-
-bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     sess.showOrgMessage("SQL error in %s: %s", func, errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}
-*/
 
 void F_copy_entry(int) {
 
@@ -623,280 +357,8 @@ void F_deletekeywords(int) {
   org.mode = org.last_mode;
 }
 
-void display_item_info(void) {
 
-  Entry e = getEntryInfo(getId());
-  sess.displayEntryInfo(e);
-  sess.drawPreviewBox();
 /*
-//  0: id = 1
-//  1: tid = 1
-//  2: priority = 3
-//  3: title = Parents refrigerator broken.
-//  4: tag = 
-//  5: folder_tid = 1
-//  6: context_tid = 1
-//  7: duetime = NULL
-//  8: star = 0
-//  9: added = 2009-07-04
-//  10: completed = 2009-12-20
-//  11: duedate = NULL
-//  12: note = new one coming on Monday, June 6, 2009.
-//  13: repeat = NULL
-//  14: deleted = 0
-//  15: created = 2016-08-05 23:05:16.256135
-//  16: modified = 2016-08-05 23:05:16.256135
-//  17: startdate = 2009-07-04
-//  18: remind = NULL
-
-  int id = org.rows.at(org.fr).id;
-  std::string s{};
-  int width = sess.totaleditorcols - 10;
-  int length = sess.textlines - 10;
-  Query q(sess.db, "SELECT * FROM task WHERE id={};", id);
-  q.step();
-
-  // \x1b[NC moves cursor forward by N columns
-  std::string lf_ret = fmt::format("\r\n\x1b[{}C", sess.divider + 6);
-  s.append(fmt::format("id: {}{}", q.column_int(0), lf_ret));
-
-  int tid = q.column_int(1);
-  //s.append(fmt::format("tid: {}{}", q.column_int(1), lf_ret));
-  s.append(fmt::format("tid: {}{}", tid, lf_ret));
-  
-  std::string title = fmt::format("title: {}", q.column_text(3));
-  if (title.size() > width) {
-    title = title.substr(0, width - 3).append("...");
-  }
-  //coloring labels will take some work b/o gray background
-  //s.append(fmt::format("{}title:{} {}{}", COLOR_1, "\x1b[m", title, lf_ret));
-  s.append(fmt::format("{}{}", title, lf_ret));
-
-
-  int context_tid = q.column_int(6);
-  auto it = std::ranges::find_if(org.context_map, [&context_tid](auto& z) {return z.second == context_tid;});
-  s.append(fmt::format("context: {}{}", it->first, lf_ret));
-
-  int folder_tid = q.column_int(5);
-  auto it2 = std::ranges::find_if(org.folder_map, [&folder_tid](auto& z) {return z.second == folder_tid;});
-  s.append(fmt::format("folder: {}{}", it2->first, lf_ret));
-
-  s.append(fmt::format("star: {}{}", q.column_bool(8), lf_ret));
-  s.append(fmt::format("deleted: {}{}", q.column_bool(14), lf_ret));
-  s.append(fmt::format("completed: {}{}", q.column_bool(10), lf_ret));
-
-  s.append(fmt::format("modified: {}{}", q.column_text(16), lf_ret));
-  s.append(fmt::format("added: {}{}", q.column_text(9), lf_ret));
-
-  s.append(fmt::format("keywords: {}", getTaskKeywords(id).first, lf_ret));
-
-  std::string ab{};
-  //hide the cursor
-  ab.append("\x1b[?25l");
-  //ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 6));
- 
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
-
-  //erase set number of chars on each line
-  std::string erase_chars = fmt::format("\x1b[{}X", sess.totaleditorcols - 10);
-  for (int i=0; i < length-1; i++) {
-    ab.append(erase_chars);
-    ab.append(lf_ret);
-  }
-
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
-
-  ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
-  ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
-  ab.append(s);
-  write(STDOUT_FILENO, ab.c_str(), ab.size());
-  sess.drawPreviewBox();
-  
-  // display_item_info_pg needs to be updated if it is going to be used
-  //if (tid) display_item_info_pg(tid); //// ***** remember to remove this guard
-*/
-}
-/*
-void update_container(void) {
-
-  orow& row = org.rows.at(org.fr);
-
-  if (!row.dirty) {
-    sess.showOrgMessage("Row has not been changed");
-    return;
-  }
-
-  if (row.id == -1) {
-    insert_container(row);
-    return;
-  }
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos) {
-    title.replace(pos, 1, "''");
-    pos = title.find("'", pos + 2);
-  }
-
-  std::string query = fmt::format("UPDATE {} SET title='{}', modified=datetime('now') WHERE id={}",
-                                   (org.view == CONTEXT) ? "context" : "folder",
-                                    title, row.id);
-
-  if (!db_query(S.db, query.c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  row.dirty = false;
-  sess.showOrgMessage("Successfully updated row %d", row.id);
-}
-
-//Inserting a new keyword should not require any fts_db update. Just like any keyword
- //added to an entry - the tag created is entered into fts_db when that keyword is
- //attached to an entry.
- 
-int insert_container(orow& row) {
-
-  std::string title = row.title;
-  size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find("'", pos + 2);
-    }
-
-  std::stringstream query;
-  query << "INSERT INTO "
-        //<< context
-        << ((org.view == CONTEXT) ? "context" : "folder")
-        << " ("
-        << "title, "
-        << "deleted, "
-        << "created, "
-        << "modified, "
-        << "tid, "
-        << ((org.view == CONTEXT) ? "\"default\", " : "private, ") //context -> "default"; folder -> private
-      //  << "\"default\", " //folder does not have default
-        << "textcolor "
-        << ") VALUES ("
-        << "'" << title << "'," //title
-        << " False," //deleted
-        << " datetime('now', '-" << TZ_OFFSET << " hours')," //created
-        << " datetime('now')," // modified
-        //<< " 99999," //tid
-        << " " << sess.temporary_tid << "," //tid originally 100 but that is a legit client tid server id
-        << " False," //default for context and private for folder
-        << " 10" //textcolor
-        << ");"; // RETURNING id;",
-
-  sess.temporary_tid++;      
-  //   not used:
-  //   "default" (not sure why in quotes but may be system variable
-  //    tid,
-  //    icon (varchar 32)
-  //    image (blob)
-
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    sess.showOrgMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    sess.showOrgMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-  sess.showOrgMessage("Successfully inserted new context with id %d and indexed it", row.id);
-
-  return row.id;
-}
-*/
-/*
-void update_rows(void) {
-  int n = 0; //number of updated rows
-  int updated_rows[20];
-
-  for (auto row: org.rows) {
-    if (!(row.dirty)) continue;
-    if (row.id != -1) {
-      std::string title = row.title;
-      size_t pos = title.find("'");
-      while(pos != std::string::npos)
-      {
-        title.replace(pos, 1, "''");
-        pos = title.find("'", pos + 2);
-      }
-
-      std::stringstream query;
-      query << "UPDATE task SET title='" << title << "', modified=datetime('now') WHERE id=" << row.id;
-
-      sqlite3 *db;
-      char *err_msg = 0;
-        
-      int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-        
-      if (rc != SQLITE_OK) {
-            
-        sess.showOrgMessage("Cannot open database: %s", sqlite3_errmsg(db));
-        sqlite3_close(db);
-        return;
-        }
-    
-      rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-      if (rc != SQLITE_OK ) {
-        sess.showOrgMessage("SQL error: %s", err_msg);
-        sqlite3_free(err_msg);
-        sqlite3_close(db);
-        return; // ? should we abort all other rows
-      } else {
-        row.dirty = false;
-        updated_rows[n] = row.id;
-        n++;
-        sqlite3_close(db);
-      }
-    
-    } else { 
-      int id  = insertRow(row);
-      updated_rows[n] = id;
-      if (id !=-1) n++;
-    }  
-  }
-
-  if (n == 0) {
-    sess.showOrgMessage("There were no rows to update");
-    return;
-  }
-
-  char msg[200];
-  strncpy(msg, "Rows successfully updated: ", sizeof(msg));
-  char *put;
-  put = &msg[strlen(msg)];
-
-  for (int j=0; j < n;j++) {
-    org.rows.at(updated_rows[j]).dirty = false; // 10-28-2019
-    put += snprintf(put, sizeof(msg) - (put - msg), "%d, ", updated_rows[j]);
-  }
-
-  int slen = strlen(msg);
-  msg[slen-2] = '\0'; //end of string has a trailing space and comma 
-  sess.showOrgMessage("%s",  msg);
-}
-*/
-/*************************end sql**************************************/
-
 void update_solr(void) {
 
   PyObject *pName, *pModule, *pFunc;
@@ -906,14 +368,14 @@ void update_solr(void) {
 
   Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
   pName = PyUnicode_DecodeFSDefault("update_solr"); //module
-  /* Error checking of pName left out */
+  // Error checking of pName left out
 
   pModule = PyImport_Import(pName);
   Py_DECREF(pName);
 
   if (pModule != NULL) {
       pFunc = PyObject_GetAttrString(pModule, "update_solr"); //function
-      /* pFunc is a new reference */
+      // pFunc is a new reference 
 
       if (pFunc && PyCallable_Check(pFunc)) {
           pArgs = PyTuple_New(0); //presumably PyTuple_New(x) creates a tuple with that many elements
@@ -955,6 +417,7 @@ void update_solr(void) {
 
   sess.showOrgMessage("%d items were added/updated to solr db", num);
 }
+*/
 
 [[ noreturn]] void die(const char *s) {
   // write is from <unistd.h> 
@@ -1869,13 +1332,14 @@ void F_lsp_start(int pos) {
   }
   */
 
-  std::string_view name = org.command_line;
+  std::string name = org.command_line;
   if (pos) name = name.substr(pos + 1);
   else {
     sess.showOrgMessage("Which lsp do you want?");
     return;
   }
 
+  /*
   Lsp *lsp = new Lsp;
   if (name.rfind("go", 0) == 0) {
     lsp->name = "gopls";
@@ -1895,6 +1359,8 @@ void F_lsp_start(int pos) {
 
   sess.showOrgMessage3("Starting {}", lsp->name);
   lsp_start(lsp);
+  */
+  lspStart(name);
   org.mode = NORMAL;
 }
 
@@ -1918,6 +1384,12 @@ void F_quit_lm_browser(int) {
 /* END OUTLINE COMMAND mode functions */
 
 /* OUTLINE NORMAL mode functions */
+void info_N(void) {
+  Entry e = getEntryInfo(getId());
+  sess.displayEntryInfo(e);
+  sess.drawPreviewBox();
+}
+
 void goto_editor_N(void) {
   if (sess.editors.empty()) {
     sess.showOrgMessage("There are no active editors");
@@ -4014,9 +3486,12 @@ void initOutline() {
 
 int main(int argc, char** argv) { 
 
+  /*
   spdlog::flush_every(std::chrono::seconds(5)); //////
   spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
   logger->info("********************** New Launch **************************");
+  */
+  initLogger();
 
   publisher.bind("tcp://*:5556");
   //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this

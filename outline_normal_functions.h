@@ -40,7 +40,7 @@ void de_N(void);
 void d$_N(void);
 void gg_N(void);
 void gt_N(void);
-void display_item_info(void); //ctrl-i in NORMAL mode 0x9
+void info_N(void); //ctrl-i in NORMAL mode 0x9
 
 /* OUTLINE NORMAL mode command lookup */
 const std::unordered_map<std::string, zfunc> n_lookup {
@@ -68,7 +68,7 @@ const std::unordered_map<std::string, zfunc> n_lookup {
 
   {"gt", gt_N},
 
-  {{CTRL_KEY('i')}, display_item_info}, //{{0x9}}
+  {{CTRL_KEY('i')}, info_N}, //{{0x9}}
   {"b", b_N},
   {"e", e_N},
   {"0", zero_N},

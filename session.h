@@ -1,5 +1,6 @@
 #ifndef SESSION_H
 #define SESSION_H
+
 #include "Editor.h"
 #include "Dbase.h"
 #include <vector>
@@ -9,6 +10,7 @@
 #include <fcntl.h> //file locking
 #include "Common.h"
 #include <thread>
+#include "LSP.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -56,6 +58,9 @@ struct Session {
 
   Sqlite db;
   Sqlite fts;
+
+
+  std::vector<Lsp *> lsp_v;
   //
   // the history of commands to make it easier to go back to earlier views
   // Not sure it is very helpful and I don't use it at all
