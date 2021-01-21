@@ -1,4 +1,4 @@
-#include "LSP.h"
+#include "lsp.h"
 //#include "pstream.h" //in header
 #include <nlohmann/json.hpp>
 #include <spdlog/spdlog.h>

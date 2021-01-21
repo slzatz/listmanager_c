@@ -10,7 +10,7 @@
 #include <fcntl.h> //file locking
 #include "Common.h"
 #include <thread>
-#include "LSP.h"
+#include "lsp.h"
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
@@ -128,6 +128,12 @@ struct Session {
 
   int get_folder_tid(int id);
   static int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName);
+  static void die(const char *s);
+  static void disableRawMode(void);
+  void enableRawMode();
+
+  void loadMeta(void);
+   
 
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };

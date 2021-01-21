@@ -1,12 +1,12 @@
 //#include "listmanager.h"
-#include "listmanager_vars.h"
+#include "listman.h"
 #include "Organizer.h"
 #include "Editor.h"
 #include "Dbase.h"
 #include "Common.h"
 #include "session.h"
 #include "pstream.h"
-#include "LSP.h"
+#include "lsp.h"
 #include <cstdarg> //va_start etc.
 #include <mkdio.h>
 #include <stop_token>
@@ -24,7 +24,7 @@
 
 #define TOP_MARGIN 1 // Editor.cpp
 
-using namespace redi;
+//using namespace redi;
 using json = nlohmann::json;
 
 //auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
@@ -33,8 +33,6 @@ zmq::context_t context(1);
 zmq::socket_t publisher(context, ZMQ_PUB);
 
 bool run = true; //main while loop
-void readsome(pstream &, int);
-std::string title_search_string; //word under cursor works with *, n, N etc.
 
 std::unordered_set<int> navigation = {
          ARROW_UP,
@@ -46,23 +44,15 @@ std::unordered_set<int> navigation = {
          'k',
          'l'
 };
-std::string prevfilename;
-std::vector<std::string> completions;
-std::string prefix;
-int completion_index;
+
+autocomplete ac;
 
 void do_exit(PGconn *conn) {
     PQfinish(conn);
     exit(1);
 }
 
-void signalHandler(int signum) {
-  sess.getWindowSize();
-  //that percentage should be in session
-  // so right now this reverts back if it was changed during session
-  sess.moveDivider(c.ed_pct);
-}
-
+config c;
 void parse_ini_file(std::string ini_name)
 {
   inipp::Ini<char> ini;
@@ -74,6 +64,13 @@ void parse_ini_file(std::string ini_name)
   inipp::extract(ini.sections["ini"]["hostaddr"], c.hostaddr);
   inipp::extract(ini.sections["ini"]["port"], c.port);
   inipp::extract(ini.sections["editor"]["ed_pct"], c.ed_pct);
+}
+
+void signalHandler(int signum) {
+  sess.getWindowSize();
+  //that percentage should be in session
+  // so right now this reverts back if it was changed during session
+  sess.moveDivider(c.ed_pct);
 }
 
 //pg ini stuff
@@ -95,49 +92,6 @@ void get_conn(void) {
   } 
 }
 
-void load_meta(void) {
-  std::ifstream f(META_FILE);
-  std::string line;
-  static std::stringstream text;
-
-  while (getline(f, line)) {
-    text << line << '\n';
-  }
-  sess.meta = text.str();
-  f.close();
-}
-
-
-[[ noreturn]] void die(const char *s) {
-  // write is from <unistd.h> 
-  //ssize_t write(int fildes, const void *buf, size_t nbytes);
-  write(STDOUT_FILENO, "\x1b[2J", 4);
-  write(STDOUT_FILENO, "\x1b[H", 3);
-
-  perror(s);
-  exit(1);
-}
-
-void disableRawMode() {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &sess.orig_termios) == -1)
-    die("tcsetattr");
-}
-
-void enableRawMode() {
-  if (tcgetattr(STDIN_FILENO, &sess.orig_termios) == -1) die("tcgetattr");
-  atexit(disableRawMode);
-
-  struct termios raw = sess.orig_termios;
-  raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
-  raw.c_oflag &= ~(OPOST);
-  raw.c_cflag |= (CS8);
-  raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
-  raw.c_cc[VMIN] = 0; // minimum data to receive?
-  raw.c_cc[VTIME] = 1; // timeout for read will return 0 if no bytes read
-
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
-}
-
 int readKey() {
   int nread;
   char c;
@@ -151,7 +105,7 @@ int readKey() {
    /*Note that ctrl-key maps to ctrl-a => 1, ctrl-b => 2 etc.*/
 
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
-    if (nread == -1 && errno != EAGAIN) die("read");
+    if (nread == -1 && errno != EAGAIN) sess.die("read");
   }
 
   /* if the character read was an escape, need to figure out if it was
@@ -2557,14 +2511,14 @@ bool editorProcessKeypress(void) {
 
           // finding new set of tab completions because user typed or deleted something  
           // which means we need a new set of completion possibilities
-          if (s != prevfilename) {
-            completions.clear();
-            completion_index = 0;
+          if (s != ac.prevfilename) {
+            ac.completions.clear();
+            ac.completion_index = 0;
             std::string path;
             if (s.front() == '/') {
               size_t pos = s.find_last_of('/');
-              prefix = s.substr(0, pos+1);
-              path = prefix;
+              ac.prefix = s.substr(0, pos+1);
+              path = ac.prefix;
               s = s.substr(pos+1);
               //assume below we want current_directory if what's typed isn't ~/.. or /..
             } else path = std::filesystem::current_path().string(); 
@@ -2574,17 +2528,17 @@ bool editorProcessKeypress(void) {
               const auto filename = entry.path().filename().string();
               if (cmd.starts_with("save") && !entry.is_directory()) continue; ///////////// 11-21-2020 
               if (filename.starts_with(s)) {
-                if (entry.is_directory()) completions.push_back(filename+'/');
-                else completions.push_back(filename);
+                if (entry.is_directory()) ac.completions.push_back(filename+'/');
+                else ac.completions.push_back(filename);
               }
             }  
           }  
           // below is where we present/cycle through completions  
-          if (!completions.empty())  {
-            if (completion_index == completions.size()) completion_index = 0;
-            prevfilename = prefix + completions.at(completion_index++);
+          if (!ac.completions.empty())  {
+            if (ac.completion_index == ac.completions.size()) ac.completion_index = 0;
+            ac.prevfilename = ac.prefix + ac.completions.at(ac.completion_index++);
             //p->command_line = "readfile " + prevfilename;
-            sess.p->command_line = fmt::format("{} {}", cmd, prevfilename);
+            sess.p->command_line = fmt::format("{} {}", cmd, ac.prevfilename);
             sess.p->editorSetMessage(":%s", sess.p->command_line.c_str());
           }
         } else {
@@ -3076,13 +3030,13 @@ int main(int argc, char** argv) {
   if (argc > 1 && argv[1][0] == '-') sess.lm_browser = false;
 
   get_conn(); //for pg
-  load_meta(); //meta html for lm_browser 
+  sess.loadMeta(); //meta html for lm_browser 
 
   generateContextMap();
   generateFolderMap();
 
   sess.getWindowSize();
-  enableRawMode();
+  sess.enableRawMode();
   initOutline();
   sess.eraseScreenRedrawLines();
   getItems(MAX);

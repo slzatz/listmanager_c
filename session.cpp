@@ -12,6 +12,7 @@
 #include <fstream>
 #include "pstream.h"
 #include "Organizer.h"
+#include <cstdlib>
 
 extern "C" {
 #include <mkdio.h>
@@ -998,6 +999,48 @@ void Session::drawPreviewBox(void) {
   ab.append("\x1b[?25h", 6); //shows the cursor
   write(STDOUT_FILENO, ab.c_str(), ab.size());
   //return ab;
+}
+
+  void Session::die(const char *s) {
+  // write is from <unistd.h> 
+  //ssize_t write(int fildes, const void *buf, size_t nbytes);
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  perror(s);
+  exit(1);
+}
+void Session::disableRawMode(void) {
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &sess.orig_termios) == -1)
+    die("tcsetattr");
+}
+
+void Session::enableRawMode(void) {
+  if (tcgetattr(STDIN_FILENO, &sess.orig_termios) == -1) die("tcgetattr");
+  std::atexit(disableRawMode);
+
+  struct termios raw = sess.orig_termios;
+  raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  raw.c_oflag &= ~(OPOST);
+  raw.c_cflag |= (CS8);
+  raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+  raw.c_cc[VMIN] = 0; // minimum data to receive?
+  raw.c_cc[VTIME] = 1; // timeout for read will return 0 if no bytes read
+
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
+}
+
+void Session::loadMeta(void) {
+  std::ifstream f(META_FILE);
+  std::string line;
+  //static std::stringstream text;
+  std::stringstream text;
+
+  while (getline(f, line)) {
+    text << line << '\n';
+  }
+  meta = text.str();
+  f.close();
 }
 /*
 void Session::updateCodeFile(void) {

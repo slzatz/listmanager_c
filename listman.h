@@ -53,7 +53,14 @@ struct config {
   int port;
   int ed_pct;
 };
-struct config c;
+
+struct autocomplete {
+  std::string prevfilename;
+  std::vector<std::string> completions;
+  std::string prefix;
+  int completion_index;
+};
+//struct config c;
 
 PGconn *conn = nullptr;
 
