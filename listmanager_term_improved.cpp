@@ -1,4 +1,4 @@
-#include "listmanager.h"
+//#include "listmanager.h"
 #include "listmanager_vars.h"
 #include "Organizer.h"
 #include "Editor.h"
@@ -15,17 +15,14 @@
 #include <thread>
 #include <algorithm>
 #include <ranges>
-
-//#include <spdlog/spdlog.h>
-//#include <spdlog/sinks/basic_file_sink.h>
-//#include <spdlog/cfg/env.h>
-
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
 #include "editor_function_map.h"
 
 #include <filesystem>
 #include <time.h>
+
+#define TOP_MARGIN 1 // Editor.cpp
 
 using namespace redi;
 using json = nlohmann::json;
@@ -110,314 +107,6 @@ void load_meta(void) {
   f.close();
 }
 
-// this is for local compilation and running
-/* PROBLEM: if no lsp activated should still be able to update code file for compilation */
-void update_code_file(void) {
-  std::ofstream myfile;
-  std::string file_path;
-  std::string lsp_name;
-  int tid = getFolderTid(sess.p->id);
-
-  //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
-  if (tid == 18) {
-    file_path  = "/home/slzatz/clangd_examples/test.cpp";
-    lsp_name = "clangd";
-  } else {
-    file_path = "/home/slzatz/go/src/example/main.go";
-    lsp_name = "gopls";
-  }
-
-  /*
-  if (!lsp_v.empty()) {
-    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
-    if (it != lsp_v.end()) (*it)->code_changed = true;
-  }
-  */
-  myfile.open(file_path); ///////////////////////////////////////////////////////
-  myfile << sess.p->code;
-  myfile.close();
-
-  if (!sess.lsp_v.empty()) {
-    auto it = std::ranges::find_if(sess.lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
-    if (it != sess.lsp_v.end()) (*it)->code_changed = true;
-  }
-}
-
-std::string now(void) {
-  std::time_t t = std::time(nullptr);
-  return fmt::format("{:%H:%M}", fmt::localtime(t));
-}
-
-std::string time_delta(std::string t) {
-  struct std::tm tm = {};
-  std::istringstream iss;
-  iss.str(t);
-  iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
-  auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
-
-  //auto now = std::chrono::utc_clock::now(); //unfortunately c++20 and not available yet
-  auto now = std::chrono::system_clock::now(); //this needs to be utc
-  std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
-
-  /* this didn't work as a kluge
-  //from https://stackoverflow.com/questions/63501664/current-utc-time-point-in-c
-  auto now =std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()); 
-  std::chrono::duration<double> elapsed_seconds = now.time_since_epoch()-tp.time_since_epoch(); //in seconds but with stuff to right of decimal
-  */
-
-  auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
-  int adj_secs = (int)int_secs.count() + 18000; //kluge that requires tz adjustment; need utc_clock
-
-  std::string s;
-
-  if (adj_secs <= 120) s = fmt::format("{} seconds ago", adj_secs);
-  else if (adj_secs <= 60*120) s = fmt::format("{} minutes ago", adj_secs/60); // <120 minutes we report minutes
-  else if (adj_secs <= 48*60*60) s = fmt::format("{} hours ago", adj_secs/3600); // <48 hours report hours
-  else if (adj_secs <= 24*60*60*60) s = fmt::format("{} days ago", adj_secs/3600/24); // <60 days report days
-  else if (adj_secs <= 24*30*24*60*60) s = fmt::format("{} months ago", adj_secs/3600/24/30); // <24 months report months
-  else s = fmt::format("{} years ago", adj_secs/3600/24/30/12);
- 
-  return s;
-}
-
-void F_copy_entry(int) {
-
-  copyEntry();
-
-  /*
-  int id = org.rows.at(org.fr).id;
-  Query q(sess.db, "SELECT * FROM task WHERE id={}", id);
-  if (int res = q.step(); res != SQLITE_ROW) {
-    sess.showOrgMessage3("Problem retrieving entry info in copy_entry: {}", res);
-    return;
-  }
-  int priority = q.column_int(2);
-  std::string title = "Copy of " + q.column_text(3);
-  int folder_tid = q.column_int(5);
-  int context_tid = q.column_int(6);
-  bool star = q.column_bool(8);
-
-  size_t pos;
-  pos = title.find('\'');
-  while(pos != std::string::npos)
-    {
-      title.replace(pos, 1, "''");
-      pos = title.find('\'', pos + 2);
-    }
-
-  std::string note = q.column_text(12);
-  pos = note.find("'");
-  while(pos != std::string::npos) {
-    note.replace(pos, 1, "''");
-    pos = note.find("'", pos + 2);
-  }
-
-  Query q1(sess.db, "INSERT INTO task (priority, title, folder_tid, context_tid, "
-                                   "star, added, note, deleted, created, modified) "
-                                   "VALUES ({0}, '{1}', {2}, {3}, {4}, date(), '{5}', False, "
-                                   "datetime('now', '-{6} hours'), "
-                                   "datetime('now'));", 
-                                   priority,
-                                   title,
-                                   folder_tid,
-                                   context_tid,
-                                   star,
-                                   note,
-                                   TZ_OFFSET);
-
-  if (int res = q1.step(); res != SQLITE_DONE) {
-    sess.showOrgMessage3("Problem inserting in copy_entry: {}", res);
-    return;
-  }
-
-  int new_id =  sqlite3_last_insert_rowid(sess.db.db);
-
-  Query q2(sess.db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
-              id);
-
-  std::vector<int> task_keyword_ids = {}; 
-  while (q2.step() == SQLITE_ROW) {
-    task_keyword_ids.push_back(q2.column_int(0));
-  }
-
-  for (const int &k : task_keyword_ids) {
-    //add_task_keyword(k, new_id, false); //don't update fts
-    addTaskKeyword(k, new_id, false); //don't update fts
-  }
-
-  // ***************fts virtual table update*********************
-  std::string tag = getTaskKeywords(new_id).first;
-  Query q3(sess.fts, "INSERT INTO fts (title, note, tag, lm_id) VALUES ('{}', '{}', '{}', {});", 
-               title, note, tag, new_id); 
-
-  if (int res = q3.step(); res != SQLITE_DONE) {
-    sess.showOrgMessage3("Problem inserting in fts in copy_entry: {}", res);
-    return;
-  }
-  getItems(MAX);
-  */
-}
-
-/*
-//overload that takes keyword_id and task_id
-void add_task_keyword(int keyword_id, int task_id, bool update_fts) {
-
-  Query q(sess.db, "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) VALUES ({}, {});",
-              //"SELECT {0}, keyword.id FROM keyword WHERE keyword.id={1};",
-              task_id, keyword_id);
-
-  if (int res = q.step(); res != SQLITE_DONE) {
-    std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
-    sess.showOrgMessage3("Problem in 'add_task_keyword': {}", error);
-    return;
-  }
-
-   Query q1(sess.db,"UPDATE task SET modified = datetime('now') WHERE id={};", task_id);
-   q1.step();
-  // *************fts virtual table update**********************
-  if (!update_fts) return;
-  std::string s = getTaskKeywords(task_id).first;
-  Query q2(sess.fts, "UPDATE fts SET tag='{}' WHERE lm_id={};", s, task_id);
-
-  if (int res = q2.step(); res != SQLITE_DONE)
-        sess.showOrgMessage3("Problem inserting in fts; result code: {}", res);
-}
-
-//overload that takes keyword name and task_id
-void add_task_keyword(std::string &kws, int id) {
-
-  std::stringstream temp(kws);
-  std::string phrase;
-  std::vector<std::string> keyword_list;
-  while(getline(temp, phrase, ',')) {
-    keyword_list.push_back(phrase);
-  }    
-
-  for (std::string kw : keyword_list) {
-
-    size_t pos = kw.find("'");
-    while(pos != std::string::npos)
-      {
-        kw.replace(pos, 1, "''");
-        pos = kw.find("'", pos + 2);
-      }
-
-    std::stringstream query;
-
-  //  *IF NOT EXISTS(SELECT 1 FROM keyword WHERE name = 'mango') INSERT INTO keyword (name) VALUES ('mango')
-  //   * <- doesn't work for sqlite
-  //   * note you don't have to do INSERT OR IGNORE but could just INSERT since unique constraint
-  //   * on keyword.name but you don't want to trigger an error either so probably best to retain
-  //   * INSERT OR IGNORE there is a default that tid = 0 but let's do it explicity*
-
-    query <<  "INSERT OR IGNORE INTO keyword (name, tid, star, modified, deleted) VALUES ('"
-          <<  kw << "', " << 0 << ", true, datetime('now'), false);"; 
-
-    if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-    std::stringstream query2;
-    query2 << "INSERT OR IGNORE INTO task_keyword (task_id, keyword_id) SELECT " << id << ", keyword.id FROM keyword WHERE keyword.name = '" << kw <<"';";
-    if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-    std::stringstream query3;
-    // updates task modified column so we know that something changed with the task
-    query3 << "UPDATE task SET modified = datetime('now') WHERE id =" << id << ";";
-    if (!db_query(S.db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-   // **************fts virtual table update**********************
-
-    std::string s = getTaskKeywords(id).first; // 11-10-2020
-    std::stringstream query4;
-    query4 << "UPDATE fts SET tag='" << s << "' WHERE lm_id=" << id << ";";
-    if (!db_query(S.fts_db, query4.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-  }
-}
-*/
-
-void F_deletekeywords(int) {
-  deleteKeywords(getId());
-
-  /*
-  std::stringstream query;
-  query << "DELETE FROM task_keyword WHERE task_id = " << org.rows.at(org.fr).id << ";";
-  if (!db_query(S.db, query.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  std::stringstream query2;
-  // updates task modified column so know that something changed with the task
-  query2 << "UPDATE task SET modified = datetime('now') WHERE id =" << org.rows.at(org.fr).id << ";";
-  if (!db_query(S.db, query2.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-
-  // **************fts virtual table update**********************x/
-  std::stringstream query3;
-  query3 << "UPDATE fts SET tag='' WHERE lm_id=" << org.rows.at(org.fr).id << ";";
-  if (!db_query(S.fts_db, query3.str().c_str(), 0, 0, &S.err_msg, __func__)) return;
-  */
-
-  sess.showOrgMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", org.rows.at(org.fr).id);
-  org.mode = org.last_mode;
-}
-
-
-/*
-void update_solr(void) {
-
-  PyObject *pName, *pModule, *pFunc;
-  PyObject *pArgs, *pValue;
-
-  int num = 0;
-
-  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
-  pName = PyUnicode_DecodeFSDefault("update_solr"); //module
-  // Error checking of pName left out
-
-  pModule = PyImport_Import(pName);
-  Py_DECREF(pName);
-
-  if (pModule != NULL) {
-      pFunc = PyObject_GetAttrString(pModule, "update_solr"); //function
-      // pFunc is a new reference 
-
-      if (pFunc && PyCallable_Check(pFunc)) {
-          pArgs = PyTuple_New(0); //presumably PyTuple_New(x) creates a tuple with that many elements
-          //pValue = PyLong_FromLong(1);
-          //pValue = Py_BuildValue("s", search_terms); // **************
-          //PyTuple_SetItem(pArgs, 0, pValue); // ***********
-          pValue = PyObject_CallObject(pFunc, pArgs);
-              if (!pValue) {
-                  Py_DECREF(pArgs);
-                  Py_DECREF(pModule);
-                  sess.showOrgMessage("Problem converting c variable for use in calling python function");
-          }
-          Py_DECREF(pArgs);
-          if (pValue != NULL) {
-              //Py_ssize_t size; 
-              //int len = PyList_Size(pValue);
-              num = PyLong_AsLong(pValue);
-              Py_DECREF(pValue); 
-          } else {
-              Py_DECREF(pFunc);
-              Py_DECREF(pModule);
-              PyErr_Print();
-              sess.showOrgMessage("Problem retrieving ids from solr!");
-          }
-      } else { if (PyErr_Occurred()) PyErr_Print();
-          sess.showOrgMessage("Was not able to find the function: update_solr!");
-      }
-
-      Py_XDECREF(pFunc);
-      Py_DECREF(pModule);
-
-  } else {
-      PyErr_Print();
-      sess.showOrgMessage("Was not able to find the module: update_solr!");
-  }
-
-  //if (Py_FinalizeEx() < 0) {
-  //}
-
-  sess.showOrgMessage("%d items were added/updated to solr db", num);
-}
-*/
 
 [[ noreturn]] void die(const char *s) {
   // write is from <unistd.h> 
@@ -529,21 +218,16 @@ void F_open(int pos) { //C_open - by context
     }
 
     if (!success) {
-      //outlineShowMessage2(fmt::format("{} is not a valid  context!", cl.substr(pos + 1)));
       sess.showOrgMessage2(fmt::format("{} is not a valid  context!", cl.substr(pos + 1)));
       org.mode = NORMAL;
       return;
     }
 
   } else {
-    //sess.showOrgMessage("You did not provide a context!");
-    //outlineShowMessage2("You did not provide a context!");
     sess.showOrgMessage2("You did not provide a context!");
     org.mode = NORMAL;
     return;
   }
-  //sess.showOrgMessage("\'%s\' will be opened", O.context.c_str());
-  //outlineShowMessage2(fmt::format("'{}' will be opened", O.context.c_str()));
   sess.showOrgMessage3("'{}' will be opened, Steve", org.context.c_str());
   sess.command_history.push_back(org.command_line);
   sess.page_hx_idx++;
@@ -553,7 +237,6 @@ void F_open(int pos) { //C_open - by context
   org.folder = "";
   org.taskview = BY_CONTEXT;
   getItems(MAX);
-  //O.mode = O.last_mode;
   org.mode = NORMAL;
   return;
 }
@@ -571,8 +254,6 @@ void F_openfolder(int pos) {
       }
     }
     if (!success) {
-      //sess.showOrgMessage("%s is not a valid  folder!", &O.command_line.c_str()[pos + 1]);
-      //outlineShowMessage2(fmt::format("{} is not a valid  folder!", cl.substr(pos + 1)));
       sess.showOrgMessage2(fmt::format("{} is not a valid  folder!", cl.substr(pos + 1)));
       org.mode = NORMAL;
       return;
@@ -643,26 +324,24 @@ void F_addkeyword(int pos) {
   // only do this if there was text after C_addkeyword
   if (org.last_mode == NO_ROWS) return;
 
-  {
+  //{
   std::string keyword = org.command_line.substr(pos+1);
   if (keywordExists(keyword) == -1) {
-      org.mode = org.last_mode;
-      sess.showOrgMessage("keyword '%s' does not exist!", keyword.c_str());
-      return;
+    org.mode = org.last_mode;
+    sess.showOrgMessage("keyword '%s' does not exist!", keyword.c_str());
+    return;
   }
 
   if (org.marked_entries.empty()) {
-    //add_task_keyword(keyword, org.rows.at(org.fr).id);
     addTaskKeyword(keyword, org.rows.at(org.fr).id);
     sess.showOrgMessage("No tasks were marked so added %s to current task", keyword.c_str());
   } else {
     for (const auto& id : org.marked_entries) {
-      //add_task_keyword(keyword, id);
       addTaskKeyword(keyword, id);
     }
     sess.showOrgMessage("Marked tasks had keyword %s added", keyword.c_str());
   }
-  }
+  //}
   org.mode = org.last_mode;
   return;
 }
@@ -750,7 +429,6 @@ void F_new(int) {
   sess.eraseRightScreen(); //erases the note area
   org.mode = INSERT;
 
-  //org.preview_rows.clear(); //10262020 - was pulling old preview rows when saving title (see NORMAL mode)
   int fd;
   std::string fn = "assets/" + CURRENT_NOTE_FILE;
   if ((fd = open(fn.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0666)) != -1) {
@@ -1072,6 +750,16 @@ void F_find(int pos) {
   searchDB(st);
 }
 
+void F_copy_entry(int) {
+  copyEntry();
+}
+
+void F_deletekeywords(int) {
+  deleteKeywords(getId());
+  sess.showOrgMessage("Keyword(s) for task %d will be deleted and fts searchdb updated", org.rows.at(org.fr).id);
+  org.mode = org.last_mode;
+}
+
 void F_sync(int) {
   synchronize(0); // do actual sync
   generateContextMap();
@@ -1197,7 +885,7 @@ void F_set(int pos) {
 
 // also should be only editor function
 void F_open_in_vim(int) {
-  open_in_vim(); //send you into editor mode
+  openInVim(); //send you into editor mode
   sess.p->mode = NORMAL;
   //O.command[0] = '\0';
   //O.repeat = 0;
@@ -1313,7 +1001,7 @@ void F_quit_app_ex(int) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
-  sqlite3_close(S.db);
+  //sqlite3_close(S.db); //something should probably be done here
   PQfinish(conn);
   //t0.join();
   //subscriber.close();
@@ -1323,14 +1011,6 @@ void F_quit_app_ex(int) {
 }
 
 void F_lsp_start(int pos) {
-  /*
-  if (!lsp.empty) {
-    lsp_shutdown();
-    O.mode = NORMAL;
-    outlineShowMessage3("Shutting down {}", lsp.name);
-    return;
-  }
-  */
 
   std::string name = org.command_line;
   if (pos) name = name.substr(pos + 1);
@@ -1339,27 +1019,6 @@ void F_lsp_start(int pos) {
     return;
   }
 
-  /*
-  Lsp *lsp = new Lsp;
-  if (name.rfind("go", 0) == 0) {
-    lsp->name = "gopls";
-    lsp->client_uri = R"(file:///home/slzatz/go/src/example/)";
-    lsp->file_name = "main.go";
-    lsp->language = "go";
-  } else if (name.rfind("cl", 0) == 0) {
-    lsp->name = "clangd";
-    lsp->client_uri = R"(file:///home/slzatz/clangd_examples/)";
-    lsp->file_name = "test.cpp";
-    lsp->language = "cpp";
-  } else {
-    sess.showOrgMessage3("There is no lsp named {}", name);
-    org.mode = NORMAL;
-    return;
-  }
-
-  sess.showOrgMessage3("Starting {}", lsp->name);
-  lsp_start(lsp);
-  */
   lspStart(name);
   org.mode = NORMAL;
 }
@@ -1652,13 +1311,6 @@ void gt_N(void) {
   getItems(MAX);
 }
 
-/*
-//case 'O': //Same as C_new in COMMAND_LINE mode
-void O_N(void) {
-  F_new(0); //zero means nothing but need b/o F_new(int)
-}
-*/
-
 //case ':':
 void colon_N(void) {
   sess.showOrgMessage(":");
@@ -1838,59 +1490,6 @@ void displayFile(void) {
   ab.append("\x1b[0m", 4);
   write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
 }
-
-// there is a ? identical editorGenerateWWString
-// used by draw_preview and draw_search_preview (it is used by this)
-/*
-std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
-  if (rows.empty()) return "";
-
-  std::string ab = "";
-  //int y = -line_offset; **set to zero because always starting previews at line 0**
-  int y = 0;
-  int filerow = 0;
-
-  for (;;) {
-    //if (filerow == rows.size()) {last_visible_row = filerow - 1; return ab;}
-    if (filerow == rows.size()) return ab;
-
-    std::string_view row = rows.at(filerow);
-    
-    if (row.empty()) {
-      if (y == length - 1) return ab;
-      ab.append(ret);
-      filerow++;
-      y++;
-      continue;
-    }
-
-    size_t pos;
-    size_t prev_pos = 0; //this should really be called prev_pos_plus_one
-    for (;;) {
-      // if remainder of line is less than screen width
-      if (prev_pos + width > row.size() - 1) {
-        ab.append(row.substr(prev_pos));
-
-        if (y == length - 1) return ab;
-        ab.append(ret);
-        y++;
-        filerow++;
-        break;
-      }
-
-      pos = row.find_last_of(' ', prev_pos + width - 1);
-      if (pos == std::string::npos || pos == prev_pos - 1) {
-        pos = prev_pos + width - 1;
-      }
-      ab.append(row.substr(prev_pos, pos - prev_pos + 1));
-      if (y == length - 1) return ab; //{last_visible_row = filerow - 1; return ab;}
-      ab.append(ret);
-      y++;
-      prev_pos = pos + 1;
-    }
-  }
-}
-*/
 
 // should also just be editor command
 void open_in_vim(void){
@@ -2446,11 +2045,7 @@ void synchronize(int report_only) { //using 1 or 0
   if (report_only) sess.showOrgMessage("Number of tasks/items that would be affected is %d", num);
   else sess.showOrgMessage("Number of tasks/items that were affected is %d", num);
 }
-
-int get_id(void) { 
-  return org.rows.at(org.fr).id;
-}
-
+//
 //void outlineMoveNextWord() {
 void w_N(void) {
   int j;
@@ -3040,24 +2635,6 @@ bool editorProcessKeypress(void) {
           if (!sess.editors.empty()) {
 
             sess.p = sess.editors[0]; //kluge should move in some logical fashion
-
-            /*
-            std::unordered_set<int> temp;
-            for (auto z : sess.editors) {
-              temp.insert(z->id);
-            }
-
-            int s_cols = -1 + (sess.screencols - sess.divider)/temp.size();
-            temp.clear();
-            int i = -1;
-            for (auto z : sess.editors) {
-              auto ret = temp.insert(z->id);
-              if (ret.second == true) i++;
-              z->left_margin = sess.divider + i*s_cols + i;
-              z->screencols = s_cols;
-              z->setLinesMargins(); //also sets top margin
-            }
-            */
             sess.positionEditors();
             sess.eraseRightScreen(); //moved down here on 10-24-2020
             sess.drawEditors();
@@ -3486,11 +3063,6 @@ void initOutline() {
 
 int main(int argc, char** argv) { 
 
-  /*
-  spdlog::flush_every(std::chrono::seconds(5)); //////
-  spdlog::set_level(spdlog::level::info); //warn, error, info, off, debug
-  logger->info("********************** New Launch **************************");
-  */
   initLogger();
 
   publisher.bind("tcp://*:5556");
@@ -3503,13 +3075,8 @@ int main(int argc, char** argv) {
 
   if (argc > 1 && argv[1][0] == '-') sess.lm_browser = false;
 
-  //db_open(); //for sqlite //needed for db_query to work
-  //sess.db_open(); //for sqlite
-  //dbOpen(); //seems to be needed by org.get_preview because initializes sess.S 
   get_conn(); //for pg
   load_meta(); //meta html for lm_browser 
-
-  //which_db = SQLITE; //this can go since not using postgres on client
 
   generateContextMap();
   generateFolderMap();
@@ -3518,17 +3085,12 @@ int main(int argc, char** argv) {
   enableRawMode();
   initOutline();
   sess.eraseScreenRedrawLines();
-  //Editor::origin = sess.divider + 1; //only used in Editor.cpp
   getItems(MAX);
   sess.command_history.push_back("of todo"); //klugy - this could be read from config and generalized
   sess.page_history.push_back("of todo"); //klugy - this could be read from config and generalized
   
   signal(SIGWINCH, signalHandler);
-  //bool text_change;
-  //bool scroll;
-  //bool redraw;
 
-  //org.outlineRefreshScreen(); 
   sess.refreshOrgScreen();
   sess.drawOrgStatusBar();
   sess.showOrgMessage3("rows: {}  columns: {}", sess.screenlines, sess.screencols);
@@ -3574,7 +3136,7 @@ int main(int argc, char** argv) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
-  sqlite3_close(S.db);
+  //sqlite3_close(S.db); //something should probably be done here
   PQfinish(conn);
 
   return 0;

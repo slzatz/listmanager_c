@@ -3,8 +3,9 @@
 //typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 //using sq_callback = int (*)(void *, int, char **, char **);
 
-Sqlite db = Sqlite(SQLITE_DB__); //global; extern Session sess in session.h
-Sqlite fts_db = Sqlite(FTS_DB__); //global; extern Session sess in session.h
+Sqlite db = Sqlite(SQLITE_DB); //global; extern Session sess in session.h
+Sqlite fts_db = Sqlite(FTS_DB); //global; extern Session sess in session.h
+Sqlite Query2::db = Sqlite(SQLITE_DB);
 
 Sqlite::Sqlite(std::string db_path) {
   int rc = sqlite3_open(db_path.c_str(), &db);

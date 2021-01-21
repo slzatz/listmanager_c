@@ -741,23 +741,6 @@ void Session::showOrgMessage2(const std::string &s) {
   write(STDOUT_FILENO, buf.c_str(), buf.size());
 }
 
-int Session::get_folder_tid(int id) {
-
-  std::stringstream query;
-  query << "SELECT folder_tid FROM task WHERE id = " << id;
-
-  int folder_tid = -1;
-  //int rc = sqlite3_exec(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg);
-  if (!db_query(S.db, query.str().c_str(), folder_tid_callback, &folder_tid, &S.err_msg, __func__)) return -1;
-  return folder_tid;
-}
-
-int Session::folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName) {
-  int *f_tid = static_cast<int*>(folder_tid);
-  *f_tid = atoi(argv[0]);
-  return 0;
-}
-
 /* this version of update_html_file uses mkd_document
  * and only writes to the file once
  */
@@ -822,7 +805,7 @@ void Session::updateHTMLCodeFile(std::string &&fn) {
 
   std::stringstream html;
   std::string line;
-  int tid = get_folder_tid(org.rows.at(org.fr).id);
+  int tid = getFolderTid(org.rows.at(org.fr).id);
   ipstream highlight(fmt::format("highlight code_file --out-format=html "
                              "--style=gruvbox-dark-hard-slz --syntax={}",
                              (tid == 18) ? "cpp" : "go"));
@@ -847,7 +830,7 @@ void Session::drawPreviewWindow(int id) { //get_preview
   drawPreviewBox();
 
   if (lm_browser) {
-    int folder_tid = get_folder_tid(org.rows.at(org.fr).id);
+    int folder_tid = getFolderTid(org.rows.at(org.fr).id);
     if (!(folder_tid == 18 || folder_tid == 14)) updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
     else updateHTMLCodeFile("assets/" + CURRENT_NOTE_FILE);
   }   
@@ -1090,44 +1073,3 @@ void update_html_zmq(std::string &&fn) {
 }
 */
 
-/************************************db stuff *************************************/
-void Session::run_sql(void) {
-  if (!db.run()) {
-    showOrgMessage("SQL error: %s", db.errmsg);
-    return;
-  }  
-}
-
-void Session::db_open(void) {
-  int rc = sqlite3_open(SQLITE_DB_.c_str(), &S.db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.db);
-    exit(1);
-  }
-
-  rc = sqlite3_open(FTS_DB_.c_str(), &S.fts_db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(S.fts_db);
-    exit(1);
-  }
-}
-
-bool Session::db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     showOrgMessage("SQL error: %s", errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}
-
-bool Session::db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     showOrgMessage("SQL error in %s: %s", func, errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}

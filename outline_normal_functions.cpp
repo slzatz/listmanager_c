@@ -9,58 +9,12 @@
 #include <string>
 #include <iomanip>
 #include <chrono>
+#include <fstream>
+#include <fmt/chrono.h>
 
 int insertRow(orow& row);
 int insertKeyword(orow& row);
-std::string time_delta_(std::string t);
-void get_items_by_id(std::string query);
-//void searchDB(const std::string & st, bool help=false) {
-
-/********************Beginning sqlite************************************/
-/*I think these all go away eventually*/
-
-void runSQL(void) {
-  if (!sess.db.run()) {
-    sess.showOrgMessage("SQL error: %s", sess.db.errmsg);
-    return;
-  }  
-}
-
-void dbOpen(void) {
-  int rc = sqlite3_open(SQLITE_DB_.c_str(), &sess.S.db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(sess.S.db);
-    exit(1);
-  }
-
-  rc = sqlite3_open(FTS_DB_.c_str(), &sess.S.fts_db);
-  if (rc != SQLITE_OK) {
-    sqlite3_close(sess.S.fts_db);
-    exit(1);
-  }
-}
-
-bool dbQuery(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     sess.showOrgMessage("SQL error: %s", errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}
-
-bool dbQuery(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func) {
-   int rc = sqlite3_exec(db, sql.c_str(), callback, pArg, errmsg);
-   if (rc != SQLITE_OK) {
-     sess.showOrgMessage("SQL error in %s: %s", func, errmsg);
-     sqlite3_free(errmsg);
-     return false;
-   }
-   return true;
-}
-
-/********************Beginning sqlite************************************/
+std::string timeDelta(std::string t);
 
 int getId(void) { 
   return org.rows.at(org.fr).id;
@@ -649,7 +603,7 @@ void getContainers(void) {
         row.title = q.column_text(2);
         row.star = q.column_bool(3);
         row.deleted = q.column_bool(5);
-        row.modified = time_delta_(q.column_text(9));
+        row.modified = timeDelta(q.column_text(9));
 
         row.completed = false;
         row.dirty = false;
@@ -665,7 +619,7 @@ void getContainers(void) {
         row.title = q.column_text(2);
         row.star = q.column_bool(3);
         row.deleted = q.column_bool(7);
-        row.modified = time_delta_(q.column_text(11));
+        row.modified = timeDelta(q.column_text(11));
 
         row.completed = false;
         row.dirty = false;
@@ -681,7 +635,7 @@ void getContainers(void) {
         row.title = q.column_text(1);
         row.star = q.column_bool(3);
         row.deleted = q.column_bool(5);
-        row.modified = time_delta_(q.column_text(4));
+        row.modified = timeDelta(q.column_text(4));
 
         row.completed = false;
         row.dirty = false;
@@ -699,39 +653,6 @@ void getContainers(void) {
  
   // below should be somewhere else
   org.context = org.folder = org.keyword = ""; // this makes sense if you are not in an O.view == TASK
-}
-
-
-std::string time_delta_(std::string t) {
-  struct std::tm tm = {};
-  std::istringstream iss;
-  iss.str(t);
-  iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
-  auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
-
-  //auto now = std::chrono::utc_clock::now(); //unfortunately c++20 and not available yet
-  auto now = std::chrono::system_clock::now(); //this needs to be utc
-  std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
-
-  /* this didn't work as a kluge
-  //from https://stackoverflow.com/questions/63501664/current-utc-time-point-in-c
-  auto now =std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()); 
-  std::chrono::duration<double> elapsed_seconds = now.time_since_epoch()-tp.time_since_epoch(); //in seconds but with stuff to right of decimal
-  */
-
-  auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
-  int adj_secs = (int)int_secs.count() + 18000; //kluge that requires tz adjustment; need utc_clock
-
-  std::string s;
-
-  if (adj_secs <= 120) s = fmt::format("{} seconds ago", adj_secs);
-  else if (adj_secs <= 60*120) s = fmt::format("{} minutes ago", adj_secs/60); // <120 minutes we report minutes
-  else if (adj_secs <= 48*60*60) s = fmt::format("{} hours ago", adj_secs/3600); // <48 hours report hours
-  else if (adj_secs <= 24*60*60*60) s = fmt::format("{} days ago", adj_secs/3600/24); // <60 days report days
-  else if (adj_secs <= 24*30*24*60*60) s = fmt::format("{} months ago", adj_secs/3600/24/30); // <24 months report months
-  else s = fmt::format("{} years ago", adj_secs/3600/24/30/12);
- 
-  return s;
 }
 
 void searchDB(const std::string & st, bool help) {
@@ -806,7 +727,7 @@ void searchDB(const std::string & st, bool help) {
     row.completed = (q1.column_text(10) != "") ? true: false;
 
     // we're not giving user choice of time column here but could 
-    if (q1.column_text(16) != "") row.modified = time_delta_(q1.column_text(16));
+    if (q1.column_text(16) != "") row.modified = timeDelta(q1.column_text(16));
     else row.modified.assign(15, ' ');
 
     row.dirty = false;
@@ -889,7 +810,7 @@ void getItems(int max) {
     row.deleted = q.column_bool(14);
     row.completed = (q.column_text(10) != "") ? true: false;
 
-    if (q.column_text(sortcolnum) != "") row.modified = time_delta_(q.column_text(sortcolnum));
+    if (q.column_text(sortcolnum) != "") row.modified = timeDelta(q.column_text(sortcolnum));
     else row.modified.assign(15, ' ');
 
     row.dirty = false;
@@ -1280,6 +1201,42 @@ void updateContainer(void) {
   sess.showOrgMessage("Successfully updated row %d", row.id);
 }
 /*****************************Non-database-related utilities************************************/
+std::string now(void) {
+  std::time_t t = std::time(nullptr);
+  return fmt::format("{:%H:%M}", fmt::localtime(t));
+}
+
+std::string timeDelta(std::string t) {
+  struct std::tm tm = {};
+  std::istringstream iss;
+  iss.str(t);
+  iss >> std::get_time(&tm, "%Y-%m-%d %H:%M");
+  auto tp = std::chrono::system_clock::from_time_t(std::mktime(&tm));
+
+  //auto now = std::chrono::utc_clock::now(); //unfortunately c++20 and not available yet
+  auto now = std::chrono::system_clock::now(); //this needs to be utc
+  std::chrono::duration<double> elapsed_seconds = now-tp; //in seconds but with stuff to right of decimal
+
+  /* this didn't work as a kluge
+  //from https://stackoverflow.com/questions/63501664/current-utc-time-point-in-c
+  auto now =std::chrono::time_point_cast<std::chrono::milliseconds>(std::chrono::system_clock::now()); 
+  std::chrono::duration<double> elapsed_seconds = now.time_since_epoch()-tp.time_since_epoch(); //in seconds but with stuff to right of decimal
+  */
+
+  auto int_secs = std::chrono::duration_cast<std::chrono::seconds>(elapsed_seconds);
+  int adj_secs = (int)int_secs.count() + 18000; //kluge that requires tz adjustment; need utc_clock
+
+  std::string s;
+
+  if (adj_secs <= 120) s = fmt::format("{} seconds ago", adj_secs);
+  else if (adj_secs <= 60*120) s = fmt::format("{} minutes ago", adj_secs/60); // <120 minutes we report minutes
+  else if (adj_secs <= 48*60*60) s = fmt::format("{} hours ago", adj_secs/3600); // <48 hours report hours
+  else if (adj_secs <= 24*60*60*60) s = fmt::format("{} days ago", adj_secs/3600/24); // <60 days report days
+  else if (adj_secs <= 24*30*24*60*60) s = fmt::format("{} months ago", adj_secs/3600/24/30); // <24 months report months
+  else s = fmt::format("{} years ago", adj_secs/3600/24/30/12);
+ 
+  return s;
+}
 
 std::string generateWWString(std::vector<std::string> &rows, int width, int length, std::string ret) {
   if (rows.empty()) return "";
@@ -1419,121 +1376,38 @@ void highlight_terms_string(std::string &text, std::vector<std::vector<int>> wor
     }
   }
 }
-/* postgres code not currently in use
-std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int tid) {
+void updateCodeFile(void) {
+  std::ofstream myfile;
+  std::string file_path;
+  std::string lsp_name;
+  int tid = getFolderTid(sess.p->id);
 
-  std::stringstream query;
-  query << "SELECT keyword.name "
-           "FROM task_keyword LEFT OUTER JOIN keyword ON keyword.id = task_keyword.keyword_id "
-           "WHERE " << tid << " =  task_keyword.task_id;";
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    sess.showOrgMessage("Problem in get_task_keywords_pg!");
-    PQclear(res);
-    return std::make_pair(std::string(), std::vector<std::string>());
+  if (tid == 18) {
+    file_path  = "/home/slzatz/clangd_examples/test.cpp";
+    lsp_name = "clangd";
+  } else {
+    file_path = "/home/slzatz/go/src/example/main.go";
+    lsp_name = "gopls";
   }
 
-  int rows = PQntuples(res);
-  std::vector<std::string> task_keywords = {};
-  for(int i=0; i<rows; i++) {
-    task_keywords.push_back(PQgetvalue(res, i, 0));
+  myfile.open(file_path);
+  myfile << sess.p->code;
+  myfile.close();
+
+  if (!sess.lsp_v.empty()) {
+    auto it = std::ranges::find_if(sess.lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
+    if (it != sess.lsp_v.end()) (*it)->code_changed = true;
   }
-   std::string delim = "";
-   std::string s = "";
-   for (const auto &kw : task_keywords) {
-     s += delim += kw;
-     delim = ",";
-   }
-  PQclear(res);
-  return std::make_pair(s, task_keywords);
-  // PQfinish(conn);
 }
 
-void display_item_info_pg(int id) {
-
-  if (id ==-1) return;
-
-  std::stringstream query;
-  query << "SELECT * FROM task WHERE id = " << id;
-
-  PGresult *res = PQexec(conn, query.str().c_str());
-    
-  if (PQresultStatus(res) != PGRES_TUPLES_OK) {
-    sess.showOrgMessage("Postgres Error: %s", PQerrorMessage(conn)); 
-    PQclear(res);
-    return;
-  }    
-
-  char lf_ret[10];
-  snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1);
-
-  std::string s;
-
-  //set background color to blue
-  s.append("\n\n");
-  s.append("\x1b[44m", 5);
-  char str[300];
-
-  sprintf(str,"\x1b[1mid:\x1b[0;44m %s", PQgetvalue(res, 0, 0));
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mtitle:\x1b[0;44m %s", PQgetvalue(res, 0, 3));
-  s.append(str);
-  s.append(lf_ret);
-
-  int context_tid = atoi(PQgetvalue(res, 0, 6));
-  auto it = std::find_if(std::begin(org.context_map), std::end(org.context_map),
-                         [&context_tid](auto& p) { return p.second == context_tid; }); //auto&& also works
-
-  sprintf(str,"\x1b[1mcontext:\x1b[0;44m %s", it->first.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  int folder_tid = atoi(PQgetvalue(res, 0, 5));
-  auto it2 = std::find_if(std::begin(org.folder_map), std::end(org.folder_map),
-                         [&folder_tid](auto& p) { return p.second == folder_tid; }); //auto&& also works
-  sprintf(str,"\x1b[1mfolder:\x1b[0;44m %s", it2->first.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  sprintf(str,"\x1b[1mstar:\x1b[0;44m %s", (*PQgetvalue(res, 0, 8) == 't') ? "true" : "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mdeleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 14) == 't') ? "true" : "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mcompleted:\x1b[0;44m %s", (*PQgetvalue(res, 0, 10)) ? "true": "false");
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1mmodified:\x1b[0;44m %s", PQgetvalue(res, 0, 16));
-  s.append(str);
-  s.append(lf_ret);
-  sprintf(str,"\x1b[1madded:\x1b[0;44m %s", PQgetvalue(res, 0, 9));
-  s.append(str);
-  s.append(lf_ret);
-
-  std::string ss = get_task_keywords_pg(id).first;
-  sprintf(str,"\x1b[1mkeywords:\x1b[0;44m %s", ss.c_str());
-  s.append(str);
-  s.append(lf_ret);
-
-  //sprintf(str,"\x1b[1mtag:\x1b[0;44m %s", PQgetvalue(res, 0, 4));
-  //s.append(str);
-  //s.append(lf_ret);
-
-  s.append("\x1b[0m");
-
-  write(STDOUT_FILENO, s.c_str(), s.size());
-
-  PQclear(res);
+void openInVim(void){
+  std::string filename;
+  if (getFolderTid(org.rows.at(org.fr).id) != 18) filename = "vim_file.txt";
+  else filename = "vim_file.cpp";
+  sess.p->editorSaveNoteToFile(filename);
+  std::stringstream s;
+  s << "vim " << filename << " >/dev/tty";
+  system(s.str().c_str());
+  sess.p->editorReadFileIntoNote(filename);
 }
-// end of pg functions
-
-std::string now(void) {
-  std::time_t t = std::time(nullptr);
-  return fmt::format("{:%H:%M}", fmt::localtime(t));
-}
-*/
 #endif

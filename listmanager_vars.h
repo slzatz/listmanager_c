@@ -33,22 +33,9 @@
 #include "Common.h"
 #include "Organizer.h"
 
-const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 const std::string DB_INI = "db.ini";
 const int SMARTINDENT = 4; //should be in config
 constexpr char BASE_DATE[] = "1970-01-01 00:00";
-
-std::vector<std::pair<int, int>> pos_mispelled_words; //row, col
-int link_id = 0;
-char link_text[20];
-
-struct sqlite_db {
-  sqlite3 *db;
-  char *err_msg;
-  sqlite3 *fts_db;
-};
-struct sqlite_db S;
 
 const std::unordered_set<std::string> quit_cmds = {"quit", "q", "quit!", "q!", "x"};
 const std::unordered_set<std::string> insert_cmds = {"I", "i", "A", "a", "o", "O", "s", "cw", "caw"};
@@ -72,6 +59,7 @@ PGconn *conn = nullptr;
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
+void openInVim(void);
 
 void lsp_start(void);
 void lsp_shutdown(void);
@@ -85,10 +73,6 @@ std::string readNoteIntoString(int id);
 void generateContextMap(void);
 void generateFolderMap(void);
 void updateNote(void);/////////////////////////////
-
-//void db_open(void);
-void dbOpen(void);
-void runSQL(void);
 
 int insertContainer(orow& row);
 void updateContainer(void);
@@ -120,7 +104,6 @@ void copyEntry(void);
 
 std::pair<std::string, std::vector<std::string>> get_task_keywords_pg(int); // puts them in comma delimited string
 
-std::string time_delta(std::string);
 std::string now(void);
 
 void synchronize(int);

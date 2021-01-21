@@ -1,4 +1,4 @@
-#include "listmanager.h"
+//#include "listmanager.h"
 #include "Editor.h"
 #include "session.h"
 #include "Dbase.h"
@@ -15,16 +15,34 @@
 #include "base64.hpp"
 #include "pstream.h"
 
+#if __has_include (<nuspell/dictionary.hxx>)
+  #include <nuspell/dictionary.hxx>
+  #include <nuspell/finder.hxx>
+  #define NUSPELL
+#endif
+
 #define UNUSED(x) (void)(x)
 #define LEFT_MARGIN_OFFSET 4
+#define SCROLL_UP 1 // in Editor.cpp  not in list...improved.cpp
+#define DEBUG 0
+#define TOP_MARGIN 1 // Editor.cpp
+#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 using namespace redi;
+
+// I think these are all in outline_normal ...
+int getFolderTid(int); 
+void updateNote(void); //used by Editor class 
+std::string getTitle(int id);
+void openInVim(void);
+void readNoteIntoEditor(int id);
+void linkEntries(int id1, int id2);
+std::pair<int, int> getLinkedEntry(int id);
+void updateCodeFile(void);
 
 // static members of Editor class
 std::vector<std::string> Editor::line_buffer = {}; 
 std::string Editor::string_buffer = {}; 
-//int Editor::total_screenlines = 0; 
-//int Editor::origin = 0;
 char Editor::message[120]{};
 
 std::unordered_set<std::string> line_commands = {"I", "i", "A", "a", "s", "cw", "caw", "x", "d$", "daw", "dw", "r", "~"};
@@ -2254,7 +2272,7 @@ void Editor::E_write_C(void) {
   //if (!lsp.empty && !is_subnote && !closing_editor && get_folder_tid(O.rows.at(O.fr).id) == 18) {
   if (folder_tid == 18 || folder_tid == 14) {
     code = editorRowsToString();
-    update_code_file();
+    updateCodeFile();
   }
   //problem - can't have dirty apply to both note and subnote
   dirty = 0; //is in update_note but dirty = 0 is probably better here.
@@ -2305,7 +2323,7 @@ void Editor::E_quit0_C(void) {
 */
 
 void Editor::E_open_in_vim_C(void) {
-  open_in_vim(); //send you into editor mode
+  openInVim(); //send you into editor mode
   mode = NORMAL;
 }
 
@@ -2316,7 +2334,7 @@ void Editor::E_spellcheck_C(void) {
   editorSetMessage("Spellcheck %s", (spellcheck) ? "on" : "off");
 }
 #else
-void E_spellcheck_C(void) {
+void Editor::E_spellcheck_C(void) {
   editorSetMessage("Nuspell is not available in this build");
 }
 #endif

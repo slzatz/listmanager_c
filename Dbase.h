@@ -5,8 +5,8 @@
 #include <string>
 #include <fmt/core.h>
 
-const std::string SQLITE_DB__ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
-const std::string FTS_DB__ = "/home/slzatz/listmanager_cpp/fts5.db";
+const std::string SQLITE_DB = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
+const std::string FTS_DB = "/home/slzatz/listmanager_cpp/fts5.db";
 
 //typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 using sq_callback = int (*)(void *, int, char **, char **);
@@ -71,7 +71,7 @@ class Query2 {
     //note the constructor must take a reference to db
     //if not you construct a copy
     template<typename... Args>
-    Query2(fmt::string_view format_str, const Args & ... args) : db(SQLITE_DB__) {
+    Query2(fmt::string_view format_str, const Args & ... args) {
       fmt::format_args argspack = fmt::make_format_args(args...);
       sql = fmt::vformat(format_str, argspack);
       result = sqlite3_prepare_v2(db.db, sql.c_str(), -1, &res, 0);
@@ -91,6 +91,6 @@ class Query2 {
     std::string sql;
     int result;
     sqlite3_stmt *res;
-    Sqlite db;
+    static Sqlite db;
 };
 #endif
