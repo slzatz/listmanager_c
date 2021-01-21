@@ -92,5 +92,6 @@ class Query2 {
     int result;
     sqlite3_stmt *res;
     static Sqlite db;
+    static Sqlite fts_db;
 };
 #endif

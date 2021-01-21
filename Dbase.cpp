@@ -6,6 +6,7 @@
 Sqlite db = Sqlite(SQLITE_DB); //global; extern Session sess in session.h
 Sqlite fts_db = Sqlite(FTS_DB); //global; extern Session sess in session.h
 Sqlite Query2::db = Sqlite(SQLITE_DB);
+Sqlite Query2::fts_db = Sqlite(FTS_DB);
 
 Sqlite::Sqlite(std::string db_path) {
   int rc = sqlite3_open(db_path.c_str(), &db);
@@ -54,6 +55,7 @@ int Query2::step(void) {
   return sqlite3_step(res);
  }
 std::string Query2::column_text(int col) {
+  if (sqlite3_column_text(res, col) == nullptr) return "";
   return std::string(reinterpret_cast<const char *>(sqlite3_column_text(res, col)));
 }
 
