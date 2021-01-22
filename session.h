@@ -15,24 +15,6 @@
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
 
-/*
-struct Lsp {
-  std::jthread thred;
-  std::string name{};
-  std::string file_name{};
-  std::string client_uri{};
-  std::string language{};
-  std::atomic<bool> code_changed = false;
-  std::atomic<bool> closed = true;
-};
-*/
-
-struct sqlite_db_ {
-  sqlite3 *db;
-  char *err_msg;
-  sqlite3 *fts_db;
-};
-
 struct Session {
   int screencols;
   int screenlines;
@@ -58,7 +40,6 @@ struct Session {
 
   Sqlite db;
   Sqlite fts;
-
 
   std::vector<Lsp *> lsp_v;
   //
@@ -87,18 +68,11 @@ struct Session {
 
   // same function as outlineDrawStatusBar
   void drawOrgStatusBar(void);
-
   void drawPreviewWindow(int id); //used to be get_preview
   void drawPreviewText(void); //used to be draw_preview
   //std::string drawPreviewBox(int width, int length);
   void drawPreviewBox(void);
   void drawSearchPreview(void);
-  /*
-  void getNote(int id);
-  void generateContextMap(void);
-  void generateFolderMap(void);
-  */
-
   void drawOrgRows(std::string& ab); //-> outlineDrawRows
   void drawOrgFilters(std::string& ab); //-> outlineDrawFilters
   void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
@@ -120,7 +94,6 @@ struct Session {
   void updateHTMLCodeFile(std::string &&fn);
   static char * (url_callback)(const char *x, const int y, void *z);
 
-  struct sqlite_db_ S;
   void run_sql(void);
   void db_open(void);
   bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg);
@@ -133,7 +106,6 @@ struct Session {
   void enableRawMode();
 
   void loadMeta(void);
-   
 
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };

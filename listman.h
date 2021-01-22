@@ -14,23 +14,13 @@
 #include <Python.h>
 #include <sys/ioctl.h>
 #include <csignal>
-//#include <termios.h>
 #include <libpq-fe.h>
-#include <sqlite3.h>
-#include "inipp.h" // https://github.com/mcmtroffaes/inipp
-
 #include <string>
 #include <vector> // doesn't seem necessary ? why
-#include <map>
-#include <unordered_map>
 #include <unordered_set>
 #include <fstream>
 #include <set>
 #include <chrono>
-#include <iomanip>  //provides get_time used in time_delta function
-#include <fmt/format.h>
-//#include <fcntl.h> //file locking
-#include "Common.h"
 #include "Organizer.h"
 
 const std::string DB_INI = "db.ini";
@@ -67,9 +57,6 @@ PGconn *conn = nullptr;
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);
 void openInVim(void);
-
-void lsp_start(void);
-void lsp_shutdown(void);
 
 void navigate_page_hx(int direction);
 void navigate_cmd_hx(int direction);

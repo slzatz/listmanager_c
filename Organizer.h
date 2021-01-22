@@ -2,10 +2,9 @@
 #define ORGANIZER_H
 
 #include <string>
-#include <vector> // doesn't seem necessary ? why
+#include <vector>
 #include <map>
 #include <unordered_set>
-#include <fmt/format.h>
 #include "Common.h"
 
 Container getContainerInfo(int id);

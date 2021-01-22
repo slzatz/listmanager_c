@@ -5,10 +5,10 @@
 using zfunc = void (*)(void);
 
 /* OUTLINE mode NORMAL functions */
+void insert_N(void);
 void goto_editor_N(void); //should this be in case NORMAL as ctrl_key('l')?
 void return_N(void);
 void w_N(void);
-void insert_N(void);
 void s_N(void);
 void x_N(void);
 void r_N(void);

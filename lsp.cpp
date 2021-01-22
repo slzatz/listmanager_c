@@ -4,10 +4,8 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/cfg/env.h>
-//#include "Common.h"
 #include "session.h"
 
-//using namespace redi; in header!
 using json = nlohmann::json;
 using namespace redi;
 

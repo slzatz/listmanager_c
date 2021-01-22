@@ -1,31 +1,22 @@
 //#include "listmanager.h"
 #include "listman.h"
-#include "Organizer.h"
-#include "Editor.h"
-#include "Dbase.h"
+//#include "Organizer.h" //in listman.h
 #include "Common.h"
 #include "session.h"
-#include "pstream.h"
-#include "lsp.h"
-#include <cstdarg> //va_start etc.
-#include <mkdio.h>
-#include <stop_token>
 #include <string_view>
 #include <zmq.hpp>
-#include <thread>
 #include <algorithm>
 #include <ranges>
 #include "outline_commandline_functions.h"
 #include "outline_normal_functions.h"
 #include "editor_function_map.h"
-
 #include <filesystem>
-#include <time.h>
+#include "inipp.h" // https://github.com/mcmtroffaes/inipp
 
 #define TOP_MARGIN 1 // Editor.cpp
 
 //using namespace redi;
-using json = nlohmann::json;
+//using json = nlohmann::json;
 
 //auto logger = spdlog::basic_logger_mt("lm_logger", "lm_log"); //logger name, file name
 
@@ -996,25 +987,6 @@ void F_quit_lm_browser(int) {
 }
 /* END OUTLINE COMMAND mode functions */
 
-/* OUTLINE NORMAL mode functions */
-void info_N(void) {
-  Entry e = getEntryInfo(getId());
-  sess.displayEntryInfo(e);
-  sess.drawPreviewBox();
-}
-
-void goto_editor_N(void) {
-  if (sess.editors.empty()) {
-    sess.showOrgMessage("There are no active editors");
-    return;
-  }
-
-  sess.eraseRightScreen();
-  sess.drawEditors();
-
-  sess.editor_mode = true;
-}
-
 void F_resize(int pos) {
   std::string s = org.command_line;
   if (pos) {
@@ -1039,6 +1011,26 @@ void F_resize(int pos) {
   }
   org.mode = NORMAL;
   signalHandler(0);
+}
+
+/* OUTLINE NORMAL mode functions */
+/*
+void info_N(void) {
+  Entry e = getEntryInfo(getId());
+  sess.displayEntryInfo(e);
+  sess.drawPreviewBox();
+}
+
+void goto_editor_N(void) {
+  if (sess.editors.empty()) {
+    sess.showOrgMessage("There are no active editors");
+    return;
+  }
+
+  sess.eraseRightScreen();
+  sess.drawEditors();
+
+  sess.editor_mode = true;
 }
 
 void return_N(void) {
@@ -1097,7 +1089,7 @@ void insert_N(void){
   sess.showOrgMessage("\x1b[1m-- INSERT --\x1b[0m");
 }
 
-//case 's':
+//se 's':
 void s_N(void){
   orow& row = org.rows.at(org.fr);
   row.title.erase(org.fc, org.repeat);
@@ -1326,7 +1318,7 @@ void star_N(void) {
 void completed_N(void) {
   toggleCompleted();
 }
-
+*/
 void navigate_page_hx(int direction) {
   if (sess.page_history.size() == 1 && org.view == TASK) return;
 
@@ -1999,7 +1991,7 @@ void synchronize(int report_only) { //using 1 or 0
   if (report_only) sess.showOrgMessage("Number of tasks/items that would be affected is %d", num);
   else sess.showOrgMessage("Number of tasks/items that were affected is %d", num);
 }
-//
+/*
 //void outlineMoveNextWord() {
 void w_N(void) {
   int j;
@@ -2019,6 +2011,7 @@ void w_N(void) {
   org.command[0] = '\0';
   org.repeat = 0;
 }
+*/
 
 // calls readKey()
 bool editorProcessKeypress(void) {

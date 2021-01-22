@@ -5,15 +5,12 @@
 #define TOSTRING(x) STRINGIFY(x)
 #define UNUSED(x) (void)(x)
 
-#include <unistd.h>
 #include "session.h"
 #include "Organizer.h"
-#include "Common.h"
+//#include "Common.h" //in Organizer.h
 #include <sstream>
 #include <fstream>
 
-//std::vector<std::string> Organizer::preview_rows = {};//static
-//std::vector<std::vector<int>> Organizer::word_positions = {};//static
 std::map<std::string, int> Organizer::folder_map = {}; //static - filled in by map_folder_titles_[db]
 std::map<std::string, int> Organizer::context_map = {}; //static filled in by map_context_titles_[db]
 

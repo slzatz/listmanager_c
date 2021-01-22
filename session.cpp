@@ -1043,37 +1043,6 @@ void Session::loadMeta(void) {
   f.close();
 }
 /*
-void Session::updateCodeFile(void) {
-  std::ofstream myfile;
-  std::string file_path;
-  std::string lsp_name;
-  int tid = getFolderTid(p->id);
-
-  //if (!lsp.empty) file_path = lsp.client_uri.substr(7) + lsp.file_name;
-  if (tid == 18) {
-    file_path  = "/home/slzatz/clangd_examples/test.cpp";
-    lsp_name = "clangd";
-  } else {
-    file_path = "/home/slzatz/go/src/example/main.go";
-    lsp_name = "gopls";
-  }
-
-  //if (!lsp_v.empty()) {
-  //  auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
-  //  if (it != lsp_v.end()) (*it)->code_changed = true;
-  //}
-
-  myfile.open(file_path); ///////////////////////////////////////////////////////
-  myfile << sess.p->code;
-  myfile.close();
-
-  if (!lsp_v.empty()) {
-    auto it = std::ranges::find_if(lsp_v, [&lsp_name](auto & lsp){return lsp->name == lsp_name;});
-    if (it != lsp_v.end()) (*it)->code_changed = true;
-  }
-}
-*/
-/*
 //  this zeromq version works but there is a problem on the ultralight
 //  side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack
 //  if this is my mistake or intentional
