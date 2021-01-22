@@ -1410,4 +1410,11 @@ void openInVim(void){
   system(s.str().c_str());
   sess.p->editorReadFileIntoNote(filename);
 }
+
+void signalHandler(int signum) {
+  sess.getWindowSize();
+  //that percentage should be in session
+  // so right now this reverts back if it was changed during session
+  sess.moveDivider(sess.cfg.ed_pct);
+}
 #endif

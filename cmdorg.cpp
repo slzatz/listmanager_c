@@ -1,21 +1,15 @@
 #include "outline_commandline_functions.h"
 #include "Organizer.h"
 #include "session.h"
+#include <Python.h>
+#include <zmq.hpp>
 
 #define MAX 500
 #define TOP_MARGIN 1
 #define LEFT_MARGIN_OFFSET 4
 
-//void updateTitle(void);
-//int getFolderTid(int id);
-//void updateContainer(void);
-//void updateKeyword(void);
 void getItems(int);
-//void toggleDeleted(void);
-//void toggleStar(void);
-//void toggleCompleted(void);
 int getId(void);
-//Entry getEntryInfo(int id);
 int keywordExists(const std::string &);
 void getContainers(void);
 void addTaskKeyword(std::string &kws, int id);
@@ -24,8 +18,21 @@ void searchDB(const std::string & st, bool help=false);
 int getFolderTid(int id);
 void readNoteIntoEditor(int id); //if id == -1 does not try to retrieve note
 void updateTaskContext(std::string &new_context, int id);
+void updateTaskFolder(std::string &new_folder, int id);
+void copyEntry(void);
+void deleteKeywords(int id);
+void synchronize(int);
+void generateContextMap(void);
+void generateFolderMap(void);
+void readFile(const std::string &);
+void displayFile(void);
+void openInVim(void);
+void signalHandler(int signum);
 
 std::string now(void);
+
+//zmq::context_t context(1);
+//zmq::socket_t publisher(context, ZMQ_PUB);
 
 /**** Outline COMMAND mode functions ****/
 void F_open(int pos) { //C_open - by context
@@ -810,7 +817,7 @@ void F_quit_app(int) {
     org.mode = NORMAL;
     sess.showOrgMessage("No db write since last change");
   } else {
-    run = false;
+    sess.run = false;
 
     /* need to figure out if need any of the below
     context.close();
@@ -827,11 +834,11 @@ void F_quit_app_ex(int) {
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
   Py_FinalizeEx();
   //sqlite3_close(S.db); //something should probably be done here
-  PQfinish(conn);
+  PQfinish(sess.conn);
   //t0.join();
   //subscriber.close();
-  context.close();
-  publisher.close();
+  sess.context.close();
+  sess.publisher.close();
   exit(0);
 }
 
@@ -861,7 +868,7 @@ void F_launch_lm_browser(int) {
 void F_quit_lm_browser(int) {
   zmq::message_t message(20);
   snprintf ((char *) message.data(), 20, "%s", "quit"); //25 - complete hack but works ok
-  publisher.send(message, zmq::send_flags::dontwait);
+  sess.publisher.send(message, zmq::send_flags::dontwait);
   sess.lm_browser = false;
   org.mode = NORMAL;
 }
@@ -883,7 +890,7 @@ void F_resize(int pos) {
       org.mode = NORMAL;
       return;
     }
-    c.ed_pct = pct;
+    sess.cfg.ed_pct = pct;
   } else {
       sess.showOrgMessage("You need to provide a number between 10 and 90");
       org.mode = NORMAL;

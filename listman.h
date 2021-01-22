@@ -35,24 +35,12 @@ const std::unordered_set<std::string> file_cmds = {"savefile", "save", "readfile
 //better name something like no_edit_cmds or non_edit_cmds
 const std::unordered_set<std::string> move_only = {"w", "e", "b", "0", "$", ":", "*", "n", "[s","]s", "z=", "gg", "G", "yy"}; //could put 'u' ctrl-r here
 
-struct config {
-  std::string user;
-  std::string password;
-  std::string dbname;
-  std::string hostaddr;
-  int port;
-  int ed_pct;
-};
-
 struct autocomplete {
   std::string prevfilename;
   std::vector<std::string> completions;
   std::string prefix;
   int completion_index;
 };
-//struct config c;
-
-PGconn *conn = nullptr;
 
 void outlineProcessKeypress(int = 0);
 bool editorProcessKeypress(void);

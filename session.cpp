@@ -13,6 +13,7 @@
 #include "pstream.h"
 #include "Organizer.h"
 #include <cstdlib>
+#include "inipp.h" // https://github.com/mcmtroffaes/inipp
 
 extern "C" {
 #include <mkdio.h>
@@ -20,6 +21,9 @@ extern "C" {
 
 #define TOP_MARGIN 1
 #define LEFT_MARGIN 2
+
+const std::string DB_INI = "db.ini";
+zmq::context_t Session::context = zmq::context_t(1);
 
 using namespace redi; //pstream
 
@@ -35,6 +39,43 @@ int Session::link_id = 0;
 char Session::link_text[20] = {};
 
 Session sess = Session(); //global; extern Session sess in session.h
+
+void Session::parseIniFile(std::string ini_name) {
+  inipp::Ini<char> ini;
+  std::ifstream is(ini_name);
+  ini.parse(is);
+  inipp::extract(ini.sections["ini"]["user"], cfg.user);
+  inipp::extract(ini.sections["ini"]["password"], cfg.password);
+  inipp::extract(ini.sections["ini"]["dbname"], cfg.dbname);
+  inipp::extract(ini.sections["ini"]["hostaddr"], cfg.hostaddr);
+  inipp::extract(ini.sections["ini"]["port"], cfg.port);
+  inipp::extract(ini.sections["editor"]["ed_pct"], cfg.ed_pct);
+}
+
+void Session::doExit(PGconn *conn) {
+    PQfinish(conn);
+    exit(1);
+}
+
+//pg ini stuff
+void Session::getConn(void) {
+  char conninfo[250];
+  parseIniFile(DB_INI);
+  
+  sprintf(conninfo, "user=%s password=%s dbname=%s hostaddr=%s port=%d", 
+          cfg.user.c_str(), cfg.password.c_str(), cfg.dbname.c_str(), cfg.hostaddr.c_str(), cfg.port);
+
+  conn = PQconnectdb(conninfo);
+
+  if (PQstatus(conn) != CONNECTION_OK){
+    if (PQstatus(conn) == CONNECTION_BAD) {
+      fprintf(stderr, "Connection to database failed: %s\n",
+      PQerrorMessage(conn));
+      doExit(conn);
+    }
+  } 
+}
+
 
 void Session::eraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); // Erase the screen
@@ -169,6 +210,15 @@ void Session::drawEditors(void) {
   ab.append("\x1b[0m"); //or else subsequent editors are bold
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
+
+/*
+void Session::signalHandler(int signum) {
+  getWindowSize();
+  //that percentage should be in session
+  // so right now this reverts back if it was changed during session
+  moveDivider(cfg.ed_pct);
+}
+*/
 
 int Session::getWindowSize(void) {
 

@@ -11,9 +11,20 @@
 #include "Common.h"
 #include <thread>
 #include "lsp.h"
+#include <libpq-fe.h>
+#include <zmq.hpp>
 
 const std::string SQLITE_DB_ = "/home/slzatz/mylistmanager3/lmdb_s/mylistmanager_s.db";
 const std::string FTS_DB_ = "/home/slzatz/listmanager_cpp/fts5.db";
+
+struct config {
+  std::string user;
+  std::string password;
+  std::string dbname;
+  std::string hostaddr;
+  int port;
+  int ed_pct;
+};
 
 struct Session {
   int screencols;
@@ -29,6 +40,7 @@ struct Session {
   //int divider_pct
   //
   bool lm_browser = false;
+  bool run = true;
   //std::vector<Lsp *> lsp_v;
 
   static int link_id;
@@ -37,6 +49,10 @@ struct Session {
   std::vector<Editor*> editors;
   Editor *p;
   //Organizer O;
+  static zmq::context_t context; //= zmq::context_t(1);
+  //zmq::context_t context(1);
+  //zmq::socket_t publisher(context, ZMQ_PUB);
+  zmq::socket_t publisher = zmq::socket_t(context, ZMQ_PUB);
 
   Sqlite db;
   Sqlite fts;
@@ -58,12 +74,19 @@ struct Session {
   struct termios orig_termios;
   std::string meta; // meta content for html for ultralight browser
 
+  config cfg;
+  void parseIniFile(std::string ini_name);
+  PGconn *conn = nullptr;
+  void getConn(void);
+  void doExit(PGconn *conn);
+
   void eraseScreenRedrawLines(void);
   void eraseRightScreen(void);
   void drawEditors(void);
   void positionEditors(void);
   void returnCursor(void);
   int getWindowSize(void);
+  //static void signalHandler(int signum);
   void moveDivider(int pct);
 
   // same function as outlineDrawStatusBar
