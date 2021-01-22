@@ -13,7 +13,7 @@
 #include <filesystem>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
 
-#define TOP_MARGIN 1 // Editor.cpp
+#define TOP_MARGIN 1
 
 //using namespace redi;
 //using json = nlohmann::json;
