@@ -6,7 +6,7 @@
 #include <string_view>
 #include <algorithm>
 #include <ranges>
-#include "outline_commandline_functions.h" //cmd_lookup
+#include "cmdorg.h" //cmd_lookup
 #include "outline_normal_functions.h" //n_lookup
 #include "editor_function_map.h"
 #include <filesystem>
@@ -27,6 +27,52 @@ std::unordered_set<int> navigation = {
 };
 
 autocomplete ac;
+
+/* these should move*/
+void navigate_page_hx(int direction) {
+  if (sess.page_history.size() == 1 && org.view == TASK) return;
+
+  if (direction == PAGE_UP) {
+
+    // if O.view!=TASK and PAGE_UP - moves back to last page
+    if (org.view == TASK) { //if in a container viewa - fall through to previous TASK view page
+
+      if (sess.page_hx_idx == 0) sess.page_hx_idx = sess.page_history.size() - 1;
+      else sess.page_hx_idx--;
+    }
+
+  } else {
+    if (sess.page_hx_idx == (sess.page_history.size() - 1)) sess.page_hx_idx = 0;
+    else sess.page_hx_idx++;
+  }
+
+  // go into COMMAND_LINE mode
+  org.mode = COMMAND_LINE;
+  org.command_line = sess.page_history.at(sess.page_hx_idx);
+  outlineProcessKeypress('\r');
+  org.command_line.clear();
+
+  // return to NORMAL mode 
+  org.mode = NORMAL;
+  sess.page_history.erase(sess.page_history.begin() + sess.page_hx_idx);
+  sess.page_hx_idx--;
+  sess.showOrgMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
+}
+
+void navigate_cmd_hx(int direction) {
+  if (sess.command_history.empty()) return;
+
+  if (direction == ARROW_UP) {
+    if (sess.cmd_hx_idx == 0) sess.cmd_hx_idx = sess.command_history.size() - 1;
+    else sess.cmd_hx_idx--;
+  } else {
+    if (sess.cmd_hx_idx == (sess.command_history.size() - 1)) sess.cmd_hx_idx = 0;
+    else sess.cmd_hx_idx++;
+  }
+  sess.showOrgMessage(":%s", sess.command_history.at(sess.cmd_hx_idx).c_str());
+  org.command_line = sess.command_history.at(sess.cmd_hx_idx);
+}
+/* these should move*/
 
 int readKey() {
   int nread;
@@ -90,136 +136,6 @@ int readKey() {
     //sess.showOrgMessage("You pressed %d", c); //slz
     return c;
   }
-}
-
-void navigate_page_hx(int direction) {
-  if (sess.page_history.size() == 1 && org.view == TASK) return;
-
-  if (direction == PAGE_UP) {
-
-    // if O.view!=TASK and PAGE_UP - moves back to last page
-    if (org.view == TASK) { //if in a container viewa - fall through to previous TASK view page
-
-      if (sess.page_hx_idx == 0) sess.page_hx_idx = sess.page_history.size() - 1;
-      else sess.page_hx_idx--;
-    }
-
-  } else {
-    if (sess.page_hx_idx == (sess.page_history.size() - 1)) sess.page_hx_idx = 0;
-    else sess.page_hx_idx++;
-  }
-
-  /* go into COMMAND_LINE mode */
-  org.mode = COMMAND_LINE;
-  org.command_line = sess.page_history.at(sess.page_hx_idx);
-  outlineProcessKeypress('\r');
-  org.command_line.clear();
-
-  /* return to NORMAL mode */
-  org.mode = NORMAL;
-  sess.page_history.erase(sess.page_history.begin() + sess.page_hx_idx);
-  sess.page_hx_idx--;
-  sess.showOrgMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
-}
-
-void navigate_cmd_hx(int direction) {
-  if (sess.command_history.empty()) return;
-
-  if (direction == ARROW_UP) {
-    if (sess.cmd_hx_idx == 0) sess.cmd_hx_idx = sess.command_history.size() - 1;
-    else sess.cmd_hx_idx--;
-  } else {
-    if (sess.cmd_hx_idx == (sess.command_history.size() - 1)) sess.cmd_hx_idx = 0;
-    else sess.cmd_hx_idx++;
-  }
-  sess.showOrgMessage(":%s", sess.command_history.at(sess.cmd_hx_idx).c_str());
-  org.command_line = sess.command_history.at(sess.cmd_hx_idx);
-}
-
-/*** outline operations ***/
-
-// currently used for sync log
-void readFile(const std::string &filename) {
-
-  std::ifstream f(filename);
-  std::string line;
-
-  sess.display_text.str(std::string());
-  sess.display_text.clear();
-
-  while (getline(f, line)) {
-    sess.display_text << line << '\n';
-  }
-  f.close();
-}
-
-void displayFile(void) {
-
-  std::string ab;
-
-  ab.append("\x1b[?25l", 6); //hides the cursor
-
-  char lf_ret[20];
-  int lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider); //note no + 1
-
-  char buf[20];
-  //position cursor prior to erase
-  int bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 1);
-  ab.append(buf, bufchars); //don't need to give length but will if change to memory_buffer
-
-  //erase the right half of the screen
-  for (int i=0; i < sess.textlines; i++) {
-    ab.append("\x1b[K", 3);
-    ab.append(lf_ret, lf_chars);
-  }
-
-  bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2);
-  ab.append(buf, bufchars);
-
-  ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
-
-  std::string row;
-  std::string line;
-  int row_num = -1;
-  int line_num = 0;
-  sess.display_text.clear();
-  sess.display_text.seekg(0, std::ios::beg);
-  while(std::getline(sess.display_text, row, '\n')) {
-    if (line_num > sess.textlines - 2) break;
-    row_num++;
-    if (row_num < sess.initial_file_row) continue;
-    if (static_cast<int>(row.size()) < sess.totaleditorcols) {
-      ab.append(row);
-      ab.append(lf_ret);
-      line_num++;
-      continue;
-    }
-    //int n = 0;
-    lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 2); //indent text extra space
-    int n = row.size()/(sess.totaleditorcols - 1) + ((row.size()%(sess.totaleditorcols - 1)) ? 1 : 0);
-    for(int i=0; i<n; i++) {
-      line_num++;
-      if (line_num > sess.textlines - 2) break;
-      line = row.substr(0, sess.totaleditorcols - 1);
-      row.erase(0, sess.totaleditorcols - 1);
-      ab.append(line);
-      ab.append(lf_ret, lf_chars);
-    }
-  }
-  ab.append("\x1b[0m", 4);
-  write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
-}
-
-// should also just be editor command
-void open_in_vim(void){
-  std::string filename;
-  if (getFolderTid(org.rows.at(org.fr).id) != 18) filename = "vim_file.txt";
-  else filename = "vim_file.cpp";
-  sess.p->editorSaveNoteToFile(filename);
-  std::stringstream s;
-  s << "vim " << filename << " >/dev/tty";
-  system(s.str().c_str());
-  sess.p->editorReadFileIntoNote(filename);
 }
 
 // depends on readKey()
@@ -700,7 +616,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           return;
       }
 
-      displayFile();
+      sess.displayFile();
 
       return;
   } //end of outer switch(O.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
@@ -764,27 +680,6 @@ void synchronize(int report_only) { //using 1 or 0
   if (report_only) sess.showOrgMessage("Number of tasks/items that would be affected is %d", num);
   else sess.showOrgMessage("Number of tasks/items that were affected is %d", num);
 }
-/*
-//void outlineMoveNextWord() {
-void w_N(void) {
-  int j;
-  orow& row = org.rows.at(org.fr);
-
-  for (j = org.fc + 1; j < row.title.size(); j++) {
-    if (row.title[j] < 48) break;
-  }
-
-  org.fc = j - 1;
-
-  for (j = org.fc + 1; j < row.title.size() ; j++) { //+1
-    if (row.title[j] > 48) break;
-  }
-  org.fc = j;
-
-  org.command[0] = '\0';
-  org.repeat = 0;
-}
-*/
 
 // calls readKey()
 bool editorProcessKeypress(void) {
@@ -1186,8 +1081,8 @@ bool editorProcessKeypress(void) {
        * them given CTRL('w') above
        */
 
-      //if (std::string_view(p->command) == std::string({0x17,'='})) {
-      //if (p->command == std::string({0x17,'='})) {
+      //if (std::string_view(p->command) == std::string({0x17,'='})) 
+      //if (p->command == std::string({0x17,'='})) 
       if (sess.p->command == std::string_view("\x17" "=")) {
         sess.p->E_resize(0);
         sess.p->command[0] = '\0';
@@ -1195,8 +1090,8 @@ bool editorProcessKeypress(void) {
         return false;
       }
 
-      //if (std::string_view(p->command) == std::string({0x17,'_'})) {
-      //if (p->command == std::string({0x17,'_'})) {
+      //if (std::string_view(p->command) == std::string({0x17,'_'})) 
+      //if (p->command == std::string({0x17,'_'})) 
       if (sess.p->command == std::string_view("\x17" "_")) {
         sess.p->E_resize(0);
         sess.p->command[0] = '\0';
@@ -1850,14 +1745,9 @@ int main(int argc, char** argv) {
     sess.returnCursor();
   }
   
-  lsp_shutdown("all");
+  //lsp_shutdown("all");
 
-
-  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-  Py_FinalizeEx();
-  //sqlite3_close(S.db); //something should probably be done here
-  PQfinish(sess.conn);
+  sess.quitApp();
 
   return 0;
 }

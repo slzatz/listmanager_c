@@ -71,7 +71,7 @@ struct Session {
   bool editor_mode = false;
   std::string fts_search_terms;
 
-  struct termios orig_termios;
+  termios orig_termios;
   std::string meta; // meta content for html for ultralight browser
 
   config cfg;
@@ -129,6 +129,10 @@ struct Session {
   void enableRawMode();
 
   void loadMeta(void);
+  void displayFile(void);
+  void synchronize(int report_only); //using 1 or 0
+
+  void quitApp(void);
 
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };

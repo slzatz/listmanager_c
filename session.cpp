@@ -2,6 +2,7 @@
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
 
+#include <Python.h>
 #include "session.h"
 #include "Common.h"
 #include <string>
@@ -595,7 +596,7 @@ void Session::drawOrgSearchRows(std::string& ab) {
 void Session::refreshOrgScreen(void) {
 
   std::string ab;
-  int titlecols = sess.divider - TIME_COL_WIDTH - LEFT_MARGIN;
+  int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
 
@@ -605,7 +606,7 @@ void Session::refreshOrgScreen(void) {
   //Now erases time/sort column (+ 17 in line below)
   //if (org.view != KEYWORD) {
   if (org.mode != ADD_CHANGE_FILTER) {
-    for (unsigned int j=TOP_MARGIN; j < sess.textlines + 1; j++) {
+    for (unsigned int j=TOP_MARGIN; j < textlines + 1; j++) {
       snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
       titlecols + LEFT_MARGIN + 17); 
       ab.append(buf, strlen(buf));
@@ -623,11 +624,11 @@ void Session::refreshOrgScreen(void) {
 }
 void Session::displayEntryInfo(Entry &e) {
   std::string s{};
-  int width = sess.totaleditorcols - 10;
-  int length = sess.textlines - 10;
+  int width = totaleditorcols - 10;
+  int length = textlines - 10;
 
   // \x1b[NC moves cursor forward by N columns
-  std::string lf_ret = fmt::format("\r\n\x1b[{}C", sess.divider + 6);
+  std::string lf_ret = fmt::format("\r\n\x1b[{}C", divider + 6);
   s.append(fmt::format("id: {}{}", e.id, lf_ret));
 
   s.append(fmt::format("tid: {}{}", e.tid, lf_ret));
@@ -660,19 +661,19 @@ void Session::displayEntryInfo(Entry &e) {
   ab.append("\x1b[?25l");
   //ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, O.divider + 6));
  
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, divider + 7));
 
   //erase set number of chars on each line
-  std::string erase_chars = fmt::format("\x1b[{}X", sess.totaleditorcols - 10);
+  std::string erase_chars = fmt::format("\x1b[{}X", totaleditorcols - 10);
   for (int i=0; i < length-1; i++) {
     ab.append(erase_chars);
     ab.append(lf_ret);
   }
 
-  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, sess.divider + 7));
+  ab.append(fmt::format("\x1b[{};{}H", TOP_MARGIN + 6, divider + 7));
 
   ab.append(fmt::format("\x1b[2*x\x1b[{};{};{};{};48;5;235$r\x1b[*x", 
-               TOP_MARGIN+6, sess.divider+7, TOP_MARGIN+4+length, sess.divider+7+width));
+               TOP_MARGIN+6, divider+7, TOP_MARGIN+4+length, divider+7+width));
   ab.append("\x1b[48;5;235m"); //draws the box lines with same background as above rectangle
   ab.append(s);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
@@ -683,22 +684,22 @@ void Session::displayEntryInfo(Entry &e) {
 void Session::displayContainerInfo(Container &c) {
 
   char lf_ret[10];
-  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", sess.divider + 1); 
+  int nchars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 1); 
 
   std::string ab;
 
   ab.append("\x1b[?25l", 6); //hides the cursor
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, divider + 2); 
   ab.append(buf, strlen(buf));
 
   //need to erase the screen
-  for (int i=0; i < sess.textlines; i++) {
+  for (int i=0; i < textlines; i++) {
     ab.append("\x1b[K", 3);
     ab.append(lf_ret, nchars);
   }
 
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, sess.divider + 2); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, divider + 2); 
   ab.append(buf, strlen(buf));
 
   ab.append(COLOR_6); // Blue depending on theme
@@ -765,28 +766,28 @@ void Session::showOrgMessage(const char *fmt, ...) {
   std::stringstream buf;
 
   // Erase from mid-screen to the left and then place cursor all the way left
-  buf << "\x1b[" << sess.textlines + 2 + TOP_MARGIN << ";"
+  buf << "\x1b[" << textlines + 2 + TOP_MARGIN << ";"
       //<< screencols/2 << "H" << "\x1b[1K\x1b["
-      << sess.divider << "H" << "\x1b[1K\x1b["
-      << sess.textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
+      << divider << "H" << "\x1b[1K\x1b["
+      << textlines + 2 + TOP_MARGIN << ";" << 1 << "H";
 
   ab = buf.str();
   //ab.append("\x1b[0m"); //checking if necessary
 
   int msglen = strlen(message);
   //if (msglen > screencols/2) msglen = screencols/2;
-  if (msglen > sess.divider) msglen = sess.divider;
+  if (msglen > divider) msglen = divider;
   ab.append(message, msglen);
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
 void Session::showOrgMessage2(const std::string &s) {
   std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
-                                 sess.textlines + 2 + TOP_MARGIN,
-                                 sess.divider,
-                                 sess.textlines + 2 + TOP_MARGIN);
+                                 textlines + 2 + TOP_MARGIN,
+                                 divider,
+                                 textlines + 2 + TOP_MARGIN);
 
-  if (s.length() > sess.divider) buf.append(s, sess.divider) ;
+  if (s.length() > divider) buf.append(s, divider) ;
   else buf.append(s);
 
   write(STDOUT_FILENO, buf.c_str(), buf.size());
@@ -1066,10 +1067,10 @@ void Session::disableRawMode(void) {
 }
 
 void Session::enableRawMode(void) {
-  if (tcgetattr(STDIN_FILENO, &sess.orig_termios) == -1) die("tcgetattr");
+  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");
   std::atexit(disableRawMode);
 
-  struct termios raw = sess.orig_termios;
+  termios raw = orig_termios;
   raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
   raw.c_oflag &= ~(OPOST);
   raw.c_cflag |= (CS8);
@@ -1091,6 +1092,134 @@ void Session::loadMeta(void) {
   }
   meta = text.str();
   f.close();
+}
+void Session::displayFile(void) {
+
+  std::string ab;
+
+  ab.append("\x1b[?25l", 6); //hides the cursor
+
+  char lf_ret[20];
+  int lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider); //note no + 1
+
+  char buf[20];
+  //position cursor prior to erase
+  int bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, divider + 1);
+  ab.append(buf, bufchars); //don't need to give length but will if change to memory_buffer
+
+  //erase the right half of the screen
+  for (int i=0; i < textlines; i++) {
+    ab.append("\x1b[K", 3);
+    ab.append(lf_ret, lf_chars);
+  }
+
+  bufchars = snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1, divider + 2);
+  ab.append(buf, bufchars);
+
+  ab.append("\x1b[36m", 5); //this is foreground cyan - we'll see
+
+  std::string row;
+  std::string line;
+  int row_num = -1;
+  int line_num = 0;
+  display_text.clear();
+  display_text.seekg(0, std::ios::beg);
+  while(std::getline(display_text, row, '\n')) {
+    if (line_num > textlines - 2) break;
+    row_num++;
+    if (row_num < initial_file_row) continue;
+    if (static_cast<int>(row.size()) < totaleditorcols) {
+      ab.append(row);
+      ab.append(lf_ret);
+      line_num++;
+      continue;
+    }
+    //int n = 0;
+    lf_chars = snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 2); //indent text extra space
+    int n = row.size()/(totaleditorcols - 1) + ((row.size()%(totaleditorcols - 1)) ? 1 : 0);
+    for(int i=0; i<n; i++) {
+      line_num++;
+      if (line_num > textlines - 2) break;
+      line = row.substr(0, totaleditorcols - 1);
+      row.erase(0, totaleditorcols - 1);
+      ab.append(line);
+      ab.append(lf_ret, lf_chars);
+    }
+  }
+  ab.append("\x1b[0m", 4);
+  write(STDOUT_FILENO, ab.c_str(), ab.size()); //01012020
+}
+
+void Session::synchronize(int report_only) { //using 1 or 0
+
+  PyObject *pName, *pModule, *pFunc;
+  PyObject *pArgs, *pValue;
+
+  int num = 0;
+
+  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
+  pName = PyUnicode_DecodeFSDefault("synchronize"); //module
+  /* Error checking of pName left out */
+
+  pModule = PyImport_Import(pName);
+  Py_DECREF(pName);
+
+  if (pModule != NULL) {
+      pFunc = PyObject_GetAttrString(pModule, "synchronize"); //function
+      /* pFunc is a new reference */
+
+      if (pFunc && PyCallable_Check(pFunc)) {
+          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
+          pValue = PyLong_FromLong(report_only);
+          //pValue = Py_BuildValue("s", search_terms); // **************
+          PyTuple_SetItem(pArgs, 0, pValue); // ***********
+          pValue = PyObject_CallObject(pFunc, pArgs);
+              if (!pValue) {
+                  Py_DECREF(pArgs);
+                  Py_DECREF(pModule);
+                  showOrgMessage("Problem converting c variable for use in calling python function");
+          }
+          Py_DECREF(pArgs);
+          if (pValue != NULL) {
+              //Py_ssize_t size; 
+              //int len = PyList_Size(pValue);
+              num = PyLong_AsLong(pValue);
+              Py_DECREF(pValue); 
+          } else {
+              Py_DECREF(pFunc);
+              Py_DECREF(pModule);
+              PyErr_Print();
+              showOrgMessage("Received a NULL value from synchronize!");
+          }
+      } else { if (PyErr_Occurred()) PyErr_Print();
+          showOrgMessage("Was not able to find the function: synchronize!");
+      }
+
+      Py_XDECREF(pFunc);
+      Py_DECREF(pModule);
+
+  } else {
+      //PyErr_Print();
+      showOrgMessage("Was not able to find the module: synchronize!");
+  }
+
+  //if (Py_FinalizeEx() < 0) {
+  //}
+  if (report_only) showOrgMessage("Number of tasks/items that would be affected is %d", num);
+  else showOrgMessage("Number of tasks/items that were affected is %d", num);
+}
+void Session::quitApp(void) {
+  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
+  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
+  Py_FinalizeEx();
+  //sqlite3_close(S.db); //something should probably be done here
+  PQfinish(conn);
+  //t0.join();
+  //subscriber.close();
+  //context.close(); // doesn't shut down properly if uncommented
+  publisher.close(); 
+  lsp_shutdown("all");
+  //exit(0);
 }
 /*
 //  this zeromq version works but there is a problem on the ultralight

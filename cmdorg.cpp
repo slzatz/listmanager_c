@@ -1,4 +1,4 @@
-#include "outline_commandline_functions.h"
+#include "cmdorg.h"
 #include "Organizer.h"
 #include "session.h"
 #include <Python.h>
@@ -25,16 +25,12 @@ void synchronize(int);
 void generateContextMap(void);
 void generateFolderMap(void);
 void readFile(const std::string &);
-void displayFile(void);
+//void displayFile(void);
 void openInVim(void);
 void signalHandler(int signum);
 
 std::string now(void);
 
-//zmq::context_t context(1);
-//zmq::socket_t publisher(context, ZMQ_PUB);
-
-/**** Outline COMMAND mode functions ****/
 void F_open(int pos) { //C_open - by context
   std::string_view cl = org.command_line;
   if (pos) {
@@ -42,7 +38,6 @@ void F_open(int pos) { //C_open - by context
     //structured bindings
     for (const auto & [k,v] : org.context_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
-      //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         org.context = k;
         success = true;
         break;
@@ -79,7 +74,6 @@ void F_openfolder(int pos) {
     bool success = false;
     for (const auto & [k,v] : org.folder_map) {
       if (k.rfind(cl.substr(pos + 1), 0) == 0) {
-      //if (strncmp(&O.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
         org.folder = k;
         success = true;
         break;
@@ -145,8 +139,6 @@ void F_addkeyword(int pos) {
     sess.command_history.push_back(org.command_line);
     getContainers(); //O.mode = NORMAL is in get_containers
     if (org.mode != NO_ROWS) {
-      //Container c = getContainerInfo(org.rows.at(org.fr).id);
-      //sess.displayContainerInfo(c);
       org.mode = ADD_CHANGE_FILTER;
       sess.showOrgMessage("Select keyword to add to marked or current entry!");
     }
@@ -600,7 +592,7 @@ void F_sync(int) {
   org.mode = FILE_DISPLAY; // needs to appear before displayFile
   sess.showOrgMessage("Synching local db and server and displaying results");
   readFile("log");
-  displayFile();//put them in the command mode case synch
+  sess.displayFile();//put them in the command mode case synch
 }
 
 void F_sync_test(int) {
@@ -609,7 +601,7 @@ void F_sync_test(int) {
   org.mode = FILE_DISPLAY; // needs to appear before displayFile
   sess.showOrgMessage("Testing synching local db and server and displaying results");
   readFile("log");
-  displayFile();//put them in the command mode case synch
+  sess.displayFile();//put them in the command mode case synch
 }
 
 void F_updatecontext(int) {
@@ -619,8 +611,6 @@ void F_updatecontext(int) {
   sess.command_history.push_back(org.command_line); 
   getContainers(); //O.mode = NORMAL is in get_containers
   if (org.mode != NO_ROWS) {
-    //Container c = getContainerInfo(org.rows.at(org.fr).id);
-    //sess.displayContainerInfo(c);
     org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
     sess.showOrgMessage("Select context to add to marked or current entry");
   }
@@ -633,8 +623,6 @@ void F_updatefolder(int) {
   sess.command_history.push_back(org.command_line); 
   getContainers(); //O.mode = NORMAL is in get_containers
   if (org.mode != NO_ROWS) {
-    //Container c = getContainerInfo(org.rows.at(org.fr).id);
-    //sess.displayContainerInfo(c);
     org.mode = ADD_CHANGE_FILTER; //this needs to change to somthing like UPDATE_TASK_MODIFIERS
     sess.showOrgMessage("Select folder to add to marked or current entry");
   }
@@ -776,7 +764,7 @@ void F_saveoutline(int pos) {
 void F_valgrind(int) {
   sess.initial_file_row = 0; //for arrowing or displaying files
   readFile("valgrind_log_file");
-  displayFile();//put them in the command mode case synch
+  sess.displayFile();//put them in the command mode case synch
   org.last_mode = org.mode;
   org.mode = FILE_DISPLAY;
 }
@@ -789,7 +777,7 @@ void F_help(int pos) {
     org.mode = FILE_DISPLAY;
     sess.showOrgMessage("Displaying help file");
     readFile("listmanager_commands");
-    displayFile();
+    sess.displayFile();
   } else {
     std::string st = org.command_line.substr(pos+1);
     org.context = "";
@@ -830,16 +818,7 @@ void F_quit_app(int) {
 }
 
 void F_quit_app_ex(int) {
-  write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
-  write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
-  Py_FinalizeEx();
-  //sqlite3_close(S.db); //something should probably be done here
-  PQfinish(sess.conn);
-  //t0.join();
-  //subscriber.close();
-  sess.context.close();
-  sess.publisher.close();
-  exit(0);
+  sess.run = false;
 }
 
 void F_lsp_start(int pos) {
@@ -872,12 +851,10 @@ void F_quit_lm_browser(int) {
   sess.lm_browser = false;
   org.mode = NORMAL;
 }
-/* END OUTLINE COMMAND mode functions */
 
 void F_resize(int pos) {
   std::string s = org.command_line;
   if (pos) {
-    //s = O.command_line.substr(pos + 1);
     size_t p = s.find_first_of("0123456789");
     if (p != pos + 1) {
       sess.showOrgMessage("You need to provide a number between 10 and 90");

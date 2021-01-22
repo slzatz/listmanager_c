@@ -16,11 +16,9 @@ void F_x(int); // pos not used
 void F_refresh(int); // pos not used
 void F_new(int); // pos not used
 void F_edit(int id=-1); // can be called with an id
-//void F_edit2(int); // pos not used
 void F_folders(int); 
 void F_contexts(int); 
 void F_recent(int); // pos not used
-//void F_linked(int); // pos not used
 void F_find(int); 
 void F_sync(int); // pos not used
 void F_sync_test(int); // pos not used
@@ -40,10 +38,7 @@ void F_valgrind(int pos); // pos not used
 void F_quit_app(int pos); // pos not used
 void F_quit_app_ex(int pos); // pos not used
 void F_help(int pos);
-//void F_persist(int pos); // pos not used
 void F_copy_entry(int);
-//void F_restart_lsp(int);
-//void F_shutdown_lsp(int);
 void F_lsp_start(int);
 void F_launch_lm_browser(int);
 void F_quit_lm_browser(int);

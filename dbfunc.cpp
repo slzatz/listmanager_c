@@ -1417,4 +1417,18 @@ void signalHandler(int signum) {
   // so right now this reverts back if it was changed during session
   sess.moveDivider(sess.cfg.ed_pct);
 }
+// currently used for sync log
+void readFile(const std::string &filename) {
+
+  std::ifstream f(filename);
+  std::string line;
+
+  sess.display_text.str(std::string());
+  sess.display_text.clear();
+
+  while (getline(f, line)) {
+    sess.display_text << line << '\n';
+  }
+  f.close();
+}
 #endif
