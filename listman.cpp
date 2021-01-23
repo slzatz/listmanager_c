@@ -28,52 +28,6 @@ std::unordered_set<int> navigation = {
 
 autocomplete ac;
 
-/* these should move*/
-void navigate_page_hx(int direction) {
-  if (sess.page_history.size() == 1 && org.view == TASK) return;
-
-  if (direction == PAGE_UP) {
-
-    // if O.view!=TASK and PAGE_UP - moves back to last page
-    if (org.view == TASK) { //if in a container viewa - fall through to previous TASK view page
-
-      if (sess.page_hx_idx == 0) sess.page_hx_idx = sess.page_history.size() - 1;
-      else sess.page_hx_idx--;
-    }
-
-  } else {
-    if (sess.page_hx_idx == (sess.page_history.size() - 1)) sess.page_hx_idx = 0;
-    else sess.page_hx_idx++;
-  }
-
-  // go into COMMAND_LINE mode
-  org.mode = COMMAND_LINE;
-  org.command_line = sess.page_history.at(sess.page_hx_idx);
-  outlineProcessKeypress('\r');
-  org.command_line.clear();
-
-  // return to NORMAL mode 
-  org.mode = NORMAL;
-  sess.page_history.erase(sess.page_history.begin() + sess.page_hx_idx);
-  sess.page_hx_idx--;
-  sess.showOrgMessage(":%s", sess.page_history.at(sess.page_hx_idx).c_str());
-}
-
-void navigate_cmd_hx(int direction) {
-  if (sess.command_history.empty()) return;
-
-  if (direction == ARROW_UP) {
-    if (sess.cmd_hx_idx == 0) sess.cmd_hx_idx = sess.command_history.size() - 1;
-    else sess.cmd_hx_idx--;
-  } else {
-    if (sess.cmd_hx_idx == (sess.command_history.size() - 1)) sess.cmd_hx_idx = 0;
-    else sess.cmd_hx_idx++;
-  }
-  sess.showOrgMessage(":%s", sess.command_history.at(sess.cmd_hx_idx).c_str());
-  org.command_line = sess.command_history.at(sess.cmd_hx_idx);
-}
-/* these should move*/
-
 int readKey() {
   int nread;
   char c;
@@ -139,14 +93,13 @@ int readKey() {
 }
 
 // depends on readKey()
-//void outlineProcessKeypress(void) {
 void outlineProcessKeypress(int c) { //prototype has int = 0  
 
   /* readKey brings back one processed character that handles
      escape sequences for things like navigation keys */
 
   //int c = readKey();
-  c = (!c) ? readKey() : c;
+  c = (!c) ? readKey() : c; // not sure smart since 99.99% want the char that user typed
   switch (org.mode) {
   size_t n;
   //switch (int c = readKey(); O.mode)  //init statement for if/switch
@@ -311,7 +264,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       }
 
       if ((c == PAGE_UP) || (c == PAGE_DOWN)) {
-        navigate_page_hx(c);
+        sess.navigatePageHx(c);
         org.command[0] = '\0';
         org.repeat = 0;
         return;
@@ -328,7 +281,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       }
 
       if ((c == ARROW_UP) || (c == ARROW_DOWN)) {
-        navigate_cmd_hx(c);
+        sess.navigateCmdHx(c);
         return;
       }  
 
@@ -389,6 +342,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         default:
           org.mode = NORMAL;
           org.command[0] = '\0'; 
+
+          // Using outlineProcessKeypress here means almost any key puts you into NORMAL
+          // mode and processes that key
           outlineProcessKeypress(c); 
           //if (c < 33 || c > 127) sess.showOrgMessage("<%d> doesn't do anything in FIND mode", c);
           //else sess.showOrgMessage("<%c> doesn't do anything in FIND mode", c);

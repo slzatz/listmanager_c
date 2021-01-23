@@ -1111,13 +1111,13 @@ int insertContainer(orow& row) {
 
   std::string title = row.title;
   size_t pos = title.find("'");
-  while(pos != std::string::npos)
-    {
+  while(pos != std::string::npos) {
       title.replace(pos, 1, "''");
       pos = title.find("'", pos + 2);
-    }
+  }
+
   Query q(db, "INSERT INTO {} (title, deleted, created, modified, tid, {}, textcolor) "
-              "VALUES ({}, False, datetime('now', '-{} hours'), datetime('now'), {}, False, 10);",
+              "VALUES ('{}', False, datetime('now', '-{} hours'), datetime('now'), {}, False, 10);",
               (org.view == CONTEXT) ? "context" : "folder",
               (org.view == CONTEXT) ? "\"default\"" : "private", //con-> "default"; fol-> private
               title,
@@ -1125,7 +1125,7 @@ int insertContainer(orow& row) {
               sess.temporary_tid);
 
   if (int res = q.step(); res != SQLITE_DONE) {
-    sess.showOrgMessage3("Problem in 'insertRow': {}", res);
+    sess.showOrgMessage3("Problem in 'insertContainer': {}", res);
     return -1;
   }
 

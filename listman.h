@@ -42,7 +42,7 @@ struct autocomplete {
   int completion_index;
 };
 
-void outlineProcessKeypress(int = 0);
+void outlineProcessKeypress(int c = 0);
 bool editorProcessKeypress(void);
 void openInVim(void);
 

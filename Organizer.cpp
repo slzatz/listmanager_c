@@ -65,7 +65,7 @@ void Organizer::outlineMoveCursor(int key) {
         sess.drawPreviewWindow(rows.at(fr).id); //if id == -1 does not try to retrieve note
       } else {
         Container c = getContainerInfo(rows.at(fr).id);
-        if (c.id != 0) 
+        if (c.id != 0)
           sess.displayContainerInfo(c);
       }
       break;

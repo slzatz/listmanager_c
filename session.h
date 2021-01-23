@@ -134,6 +134,9 @@ struct Session {
 
   void quitApp(void);
 
+  void navigatePageHx(int direction);
+  void navigateCmdHx(int direction);
+
   Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };
 

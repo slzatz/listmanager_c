@@ -35,6 +35,7 @@ std::vector<std::vector<int>> getNoteSearchPositions(int id);
 int getFolderTid(int id);
 int getId(void);
 std::pair<std::string, std::vector<std::string>> getTaskKeywords(int id);
+void outlineProcessKeypress(int c);
 
 int Session::link_id = 0;
 char Session::link_text[20] = {};
@@ -718,10 +719,16 @@ void Session::displayContainerInfo(Container &c) {
   if (org.view == CONTEXT || org.view == FOLDER) {
     if (org.view == CONTEXT) {
       auto it = std::ranges::find_if(org.context_map, [&c](auto& z) {return z.second == c.tid;});
-      sprintf(str,"context: %s", it->first.c_str());
+      if (it != org.context_map.end()) //happens if new and not synced yet
+        sprintf(str,"context: %s", it->first.c_str());
+      else
+        sprintf(str,"context: %s", "(not synced yet)");
     } else if (org.view == FOLDER) {
       auto it = std::ranges::find_if(org.folder_map, [&c](auto& z) {return z.second == c.tid;});
-      sprintf(str,"folder: %s", it->first.c_str());
+      if (it != org.folder_map.end()) //happens if new and not synced yet
+        sprintf(str,"folder: %s", it->first.c_str());
+      else
+        sprintf(str,"folder: %s", "(not synced yet)");
     }
     ab.append(str, strlen(str));
     ab.append(lf_ret, nchars);
@@ -751,7 +758,7 @@ void Session::displayContainerInfo(Container &c) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 void Session::showOrgMessage(const char *fmt, ...) {
-  char message[100];  
+  char message[200];  
   std::string ab;
   va_list ap; //type for iterating arguments
   va_start(ap, fmt); // start iterating arguments with a va_list
@@ -1208,6 +1215,7 @@ void Session::synchronize(int report_only) { //using 1 or 0
   if (report_only) showOrgMessage("Number of tasks/items that would be affected is %d", num);
   else showOrgMessage("Number of tasks/items that were affected is %d", num);
 }
+
 void Session::quitApp(void) {
   write(STDOUT_FILENO, "\x1b[2J", 4); //clears the screen
   write(STDOUT_FILENO, "\x1b[H", 3); //send cursor home
@@ -1221,6 +1229,51 @@ void Session::quitApp(void) {
   lsp_shutdown("all");
   //exit(0);
 }
+
+void Session::navigatePageHx(int direction) {
+  if (page_history.size() == 1 && org.view == TASK) return;
+
+  if (direction == PAGE_UP) {
+
+    // if O.view!=TASK and PAGE_UP - moves back to last page
+    if (org.view == TASK) { //if in a container viewa - fall through to previous TASK view page
+
+      if (page_hx_idx == 0) page_hx_idx = page_history.size() - 1;
+      else page_hx_idx--;
+    }
+
+  } else {
+    if (page_hx_idx == (page_history.size() - 1)) page_hx_idx = 0;
+    else page_hx_idx++;
+  }
+
+  // go into COMMAND_LINE mode
+  org.mode = COMMAND_LINE;
+  org.command_line = page_history.at(page_hx_idx);
+  outlineProcessKeypress('\r');
+  org.command_line.clear();
+
+  // return to NORMAL mode 
+  org.mode = NORMAL;
+  page_history.erase(page_history.begin() + page_hx_idx);
+  page_hx_idx--;
+  showOrgMessage(":%s", page_history.at(page_hx_idx).c_str());
+}
+
+void Session::navigateCmdHx(int direction) {
+  if (command_history.empty()) return;
+
+  if (direction == ARROW_UP) {
+    if (cmd_hx_idx == 0) cmd_hx_idx = command_history.size() - 1;
+    else cmd_hx_idx--;
+  } else {
+    if (cmd_hx_idx == (command_history.size() - 1)) cmd_hx_idx = 0;
+    else cmd_hx_idx++;
+  }
+  showOrgMessage(":%s", command_history.at(cmd_hx_idx).c_str());
+  org.command_line = command_history.at(cmd_hx_idx);
+}
+
 /*
 //  this zeromq version works but there is a problem on the ultralight
 //  side -- LoadHTML doesn't seem to use the style sheet.  Will check on slack

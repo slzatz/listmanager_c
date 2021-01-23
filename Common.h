@@ -96,7 +96,7 @@ enum TaskView {
 };
 
 struct Container {
-  int id;
+  int id = 0;
   int tid;
   std::string title;
   bool star;
