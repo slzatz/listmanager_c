@@ -1,5 +1,5 @@
 #include "cmdorg.h"
-#include "Organizer.h"
+#include "organizer.h"
 #include "session.h"
 #include <Python.h>
 #include <zmq.hpp>

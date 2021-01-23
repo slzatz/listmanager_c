@@ -1,3 +1,6 @@
+#ifndef CMDORG_H
+#define CMDORG_H
+
 #include <unordered_map>
 #include <string>
 
@@ -126,3 +129,4 @@ const std::unordered_map<std::string, pfunc> cmd_lookup {
   {"resize", F_resize}
 
 };
+#endif

@@ -6,7 +6,7 @@
 #define UNUSED(x) (void)(x)
 
 #include "session.h"
-#include "Organizer.h"
+#include "organizer.h"
 //#include "Common.h" //in Organizer.h
 #include <sstream>
 #include <fstream>

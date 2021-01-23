@@ -1,5 +1,5 @@
-#include "outline_normal_functions.h"
-#include "Organizer.h"
+#include "normalorg.h"
+#include "organizer.h"
 #include "session.h"
 
 #define MAX 500

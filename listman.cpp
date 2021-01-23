@@ -7,8 +7,8 @@
 #include <algorithm>
 #include <ranges>
 #include "cmdorg.h" //cmd_lookup
-#include "outline_normal_functions.h" //n_lookup
-#include "editor_function_map.h"
+#include "normalorg.h" //n_lookup
+#include "editorfuncmap.h" //e_lookup and E_lookup_C
 #include <filesystem>
 
 #define TOP_MARGIN 1

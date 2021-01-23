@@ -1,3 +1,6 @@
+#ifndef NORMALORG_H
+#define NORMALORG_H
+
 #include <unordered_map>
 #include <string>
 #define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
@@ -88,3 +91,4 @@ const std::unordered_map<std::string, zfunc> n_lookup {
   {{0x2}, star_N}, //ctrl-b -probably want this go backwards (unimplemented) and use ctrl-e for this
   {{0x18}, completed_N} //ctrl-x
 };
+#endif

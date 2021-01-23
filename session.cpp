@@ -12,7 +12,7 @@
 #include <sys/ioctl.h>
 #include <fstream>
 #include "pstream.h"
-#include "Organizer.h"
+#include "organizer.h"
 #include <cstdlib>
 #include "inipp.h" // https://github.com/mcmtroffaes/inipp
 

@@ -4,7 +4,7 @@
 #define MAX 500 // max rows to bring back
 #include "session.h"
 #include "Common.h"
-#include "Organizer.h"
+#include "organizer.h"
 #include "Dbase.h"
 #include <string>
 #include <iomanip>

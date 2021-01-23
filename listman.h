@@ -21,7 +21,7 @@
 #include <fstream>
 #include <set>
 #include <chrono>
-#include "Organizer.h"
+#include "organizer.h"
 
 const std::string DB_INI = "db.ini";
 const int SMARTINDENT = 4; //should be in config
