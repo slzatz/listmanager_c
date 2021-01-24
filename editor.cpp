@@ -1,5 +1,5 @@
 //#include "listmanager.h"
-#include "Editor.h"
+#include "editor.h"
 #include "session.h"
 #include "Dbase.h"
 #include "Common.h"

@@ -2,14 +2,13 @@
 #define EDITOR_H
 
 #include <nuspell/dictionary.hxx>
+#include <nuspell/finder.hxx>
 #define LINKED_NOTE_HEIGHT 10 //height of subnote
 #include <vector>
 #include <string>
 #include <unordered_map>
 #include <deque>
 #include <nlohmann/json.hpp>
-#include <nuspell/finder.hxx>
-//#include "listmanager.h" //////
 
 
 struct Diff {

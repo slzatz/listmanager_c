@@ -1,7 +1,7 @@
 #ifndef SESSION_H
 #define SESSION_H
 
-#include "Editor.h"
+#include "editor.h"
 #include "Dbase.h"
 #include <vector>
 #include <string>
