@@ -21,7 +21,7 @@ void updateTaskContext(std::string &new_context, int id);
 void updateTaskFolder(std::string &new_folder, int id);
 void copyEntry(void);
 void deleteKeywords(int id);
-void synchronize(int);
+//void synchronize(int);
 void generateContextMap(void);
 void generateFolderMap(void);
 void readFile(const std::string &);
@@ -585,7 +585,7 @@ void F_deletekeywords(int) {
 }
 
 void F_sync(int) {
-  synchronize(0); // do actual sync
+  sess.synchronize(0); // do actual sync
   generateContextMap();
   generateFolderMap();
   sess.initial_file_row = 0; //for arrowing or displaying files
@@ -596,7 +596,7 @@ void F_sync(int) {
 }
 
 void F_sync_test(int) {
-  synchronize(1); //1 -> report_only
+  sess.synchronize(1); //1 -> report_only
   sess.initial_file_row = 0; //for arrowing or displaying files
   org.mode = FILE_DISPLAY; // needs to appear before displayFile
   sess.showOrgMessage("Testing synching local db and server and displaying results");

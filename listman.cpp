@@ -12,6 +12,8 @@
 #include <filesystem>
 
 #define TOP_MARGIN 1
+#define MAX 500 // max rows to bring back
+#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 void signalHandler(int signum);
 
@@ -108,10 +110,13 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
 
       switch(c) {
         case ':':
-          org.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
-          org.command_line.clear();
-          sess.showOrgMessage(":");
-          org.mode = COMMAND_LINE;
+          colon_N();
+
+          //org.command[0] = '\0'; // uncommented on 10212019 but probably unnecessary
+          //org.command_line.clear();
+          //sess.showOrgMessage(":");
+          //org.mode = COMMAND_LINE;
+
           return;
 
         case '\x1b':
@@ -131,18 +136,14 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           sess.showOrgMessage("\x1b[1m-- INSERT --\x1b[0m");
           return;
 
-        case 'O': //Same as C_new in COMMAND_LINE mode
-          org.outlineInsertRow(0, "", true, false, false, BASE_DATE);
-          org.fc = org.fr = org.rowoff = 0;
+        default:
+          if (c < 33 || c > 127) sess.showOrgMessage("<%d> doesn't do anything in NO_ROWS mode", c);
+          else sess.showOrgMessage("<%c> doesn't do anything in NO_ROWS mode", c);
           org.command[0] = '\0';
           org.repeat = 0;
-          sess.showOrgMessage("\x1b[1m-- INSERT --\x1b[0m");
-          sess.eraseRightScreen(); //erases the note area
-          org.mode = INSERT;
           return;
       }
-
-      return; //in NO_ROWS - do nothing if no command match
+      return; //end swith in NO_ROWS
 
     case INSERT:  
 
@@ -157,10 +158,9 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
             }
           } else if (org.view == CONTEXT || org.view == FOLDER) updateContainer();
           else if (org.view == KEYWORD) updateKeyword();
-          org.command[0] = '\0'; //11-26-2019
+          org.command[0] = '\0'; 
           org.mode = NORMAL;
           if (org.fc > 0) org.fc--;
-          //sess.showOrgMessage("");
           return;
 
         case HOME_KEY:
@@ -450,10 +450,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
           }
           return;
 
-        // could be generalized for folders and contexts too  
-        // update_task_folder and update_task_context
-        // update_task_context(std::string &, int)
-        // maybe make update_task_context(int, int)
         case '\r':
           {
           orow& row = org.rows.at(org.fr); //currently highlighted keyword
@@ -578,65 +574,6 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
   } //end of outer switch(O.mode) that contains additional switches for sub-modes like NORMAL, INSERT etc.
 } //end outlineProcessKeypress
 
-void synchronize(int report_only) { //using 1 or 0
-
-  PyObject *pName, *pModule, *pFunc;
-  PyObject *pArgs, *pValue;
-
-  int num = 0;
-
-  Py_Initialize(); //getting valgrind invalid read error but not sure it's meaningful
-  pName = PyUnicode_DecodeFSDefault("synchronize"); //module
-  /* Error checking of pName left out */
-
-  pModule = PyImport_Import(pName);
-  Py_DECREF(pName);
-
-  if (pModule != NULL) {
-      pFunc = PyObject_GetAttrString(pModule, "synchronize"); //function
-      /* pFunc is a new reference */
-
-      if (pFunc && PyCallable_Check(pFunc)) {
-          pArgs = PyTuple_New(1); //presumably PyTuple_New(x) creates a tuple with that many elements
-          pValue = PyLong_FromLong(report_only);
-          //pValue = Py_BuildValue("s", search_terms); // **************
-          PyTuple_SetItem(pArgs, 0, pValue); // ***********
-          pValue = PyObject_CallObject(pFunc, pArgs);
-              if (!pValue) {
-                  Py_DECREF(pArgs);
-                  Py_DECREF(pModule);
-                  sess.showOrgMessage("Problem converting c variable for use in calling python function");
-          }
-          Py_DECREF(pArgs);
-          if (pValue != NULL) {
-              //Py_ssize_t size; 
-              //int len = PyList_Size(pValue);
-              num = PyLong_AsLong(pValue);
-              Py_DECREF(pValue); 
-          } else {
-              Py_DECREF(pFunc);
-              Py_DECREF(pModule);
-              PyErr_Print();
-              sess.showOrgMessage("Received a NULL value from synchronize!");
-          }
-      } else { if (PyErr_Occurred()) PyErr_Print();
-          sess.showOrgMessage("Was not able to find the function: synchronize!");
-      }
-
-      Py_XDECREF(pFunc);
-      Py_DECREF(pModule);
-
-  } else {
-      //PyErr_Print();
-      sess.showOrgMessage("Was not able to find the module: synchronize!");
-  }
-
-  //if (Py_FinalizeEx() < 0) {
-  //}
-  if (report_only) sess.showOrgMessage("Number of tasks/items that would be affected is %d", num);
-  else sess.showOrgMessage("Number of tasks/items that were affected is %d", num);
-}
-
 // calls readKey()
 bool editorProcessKeypress(void) {
   //int start, end;
@@ -683,14 +620,6 @@ bool editorProcessKeypress(void) {
           //p->repeat = 0;
           // ? p->redraw = true;
           return true;
-
-          /*
-        case CTRL_KEY('w'):  
-          p->E_resize(1);
-          p->command[0] = '\0';
-          p->repeat = 0;
-          return false;
-         */
 
         case CTRL_KEY('h'):
           sess.p->command[0] = '\0';
@@ -1600,8 +1529,6 @@ bool editorProcessKeypress(void) {
   return true; // this should not be reachable but was getting an error
 } //end of editorProcessKeyPress
 
-/*** init ***/
-
 void initOutline() {
   org.cx = 0; //cursor x position
   org.cy = 0; //cursor y position
@@ -1609,7 +1536,7 @@ void initOutline() {
   org.fr = 0; //file y position
   org.rowoff = 0;  //number of rows scrolled off the screen
   org.coloff = 0;  //col the user is currently scrolled to  
-  org.sort = "modified";
+  org.sort = "modified"; //Entry sort column
   org.show_deleted = false; //not treating these separately right now
   org.show_completed = true;
   org.message[0] = '\0'; //very bottom of screen; ex. -- INSERT --
@@ -1637,7 +1564,6 @@ int main(int argc, char** argv) {
   initLogger();
 
   sess.publisher.bind("tcp://*:5556");
-  //publisher.bind("ipc://scroll.ipc"); //10132020 -> not sure why I thought I needed this
 
   sess.lock.l_whence = SEEK_SET;
   sess.lock.l_start = 0;
@@ -1673,35 +1599,29 @@ int main(int argc, char** argv) {
     // just refresh what has changed
     if (sess.editor_mode) {
       bool text_change = editorProcessKeypress(); 
-      //
+
       // editorProcessKeypress can take you out of editor mode (either ctrl-H or closing last editor
       if (!sess.editor_mode) continue;
-      //if (!p) continue; // commented out in favor of the above on 10-24-2020
-      //
+
       bool scroll = sess.p->editorScroll();
       bool redraw = (text_change || scroll || sess.p->redraw); //instead of p->redraw => clear_highlights
       sess.p->editorRefreshScreen(redraw);
 
-      ////////////////////
       if (sess.lm_browser && scroll) {
         zmq::message_t message(20);
         snprintf ((char *) message.data(), 20, "%d", sess.p->line_offset*25); //25 - complete hack but works ok
         sess.publisher.send(message, zmq::send_flags::dontwait);
       }
-      ////////////////////
 
     } else if (org.mode != FILE_DISPLAY) { 
       outlineProcessKeypress();
       org.outlineScroll();
-      //org.outlineRefreshScreen(); // now just draws rows
       sess.refreshOrgScreen();
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
     sess.drawOrgStatusBar();
     sess.returnCursor();
   }
-  
-  //lsp_shutdown("all");
 
   sess.quitApp();
 
