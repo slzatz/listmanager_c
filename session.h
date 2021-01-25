@@ -2,13 +2,13 @@
 #define SESSION_H
 
 #include "editor.h"
-#include "Dbase.h"
+#include "dbase.h"
 #include <vector>
 #include <string>
 #include <termios.h>
 #include <sstream>
 #include <fcntl.h> //file locking
-#include "Common.h"
+#include "common.h"
 #include <thread>
 #include "lsp.h"
 #include <libpq-fe.h>

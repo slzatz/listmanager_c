@@ -1,4 +1,4 @@
-#include "Dbase.h"
+#include "dbase.h"
 
 //typedef int (*sq_callback)(void *, int, char **, char **); //sqlite callback type
 //using sq_callback = int (*)(void *, int, char **, char **);

@@ -3,9 +3,9 @@
 #define TZ_OFFSET 5 // time zone offset - either 4 or 5
 #define MAX 500 // max rows to bring back
 #include "session.h"
-#include "Common.h"
+#include "common.h"
 #include "organizer.h"
-#include "Dbase.h"
+#include "dbase.h"
 #include <string>
 #include <iomanip>
 #include <chrono>

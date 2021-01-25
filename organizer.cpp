@@ -7,7 +7,7 @@
 
 #include "session.h"
 #include "organizer.h"
-//#include "Common.h" //in Organizer.h
+//#include "common.h" //in organizer.h
 #include <sstream>
 #include <fstream>
 

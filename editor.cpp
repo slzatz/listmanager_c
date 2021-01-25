@@ -1,8 +1,8 @@
 //#include "listmanager.h"
 #include "editor.h"
 #include "session.h"
-#include "Dbase.h"
-#include "Common.h"
+#include "dbase.h"
+#include "common.h"
 #include <fstream>
 #include <cstdarg> //va_start etc
 #include <nuspell/finder.hxx>
