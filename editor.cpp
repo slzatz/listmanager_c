@@ -3465,6 +3465,7 @@ void Editor::moveDivider(void) {
     mode = NORMAL;
     return;
   }
+  sess.cfg.ed_pct = pct;
   sess.moveDivider(pct);
   mode = NORMAL;
 }

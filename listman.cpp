@@ -152,6 +152,7 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
         case '\r': //also does escape into NORMAL mode
           if (org.view == TASK)  {
             updateTitle();
+            org.rows.at(org.fr).dirty = false;
             if (sess.lm_browser) {
               int folder_tid = getFolderTid(org.rows.at(org.fr).id);
               if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);

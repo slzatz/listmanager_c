@@ -285,8 +285,7 @@ void F_edit(int id) {
   }
 
   sess.showOrgMessage("Edit note %d", id);
-  //org.outlineRefreshScreen();
-  sess.refreshOrgScreen();
+  //sess.refreshOrgScreen(); //does not appear necessary
   sess.editor_mode = true;
 
   if (!sess.editors.empty()){
@@ -853,27 +852,27 @@ void F_quit_lm_browser(int) {
 }
 
 void F_resize(int pos) {
+  if (!pos) {
+      sess.showOrgMessage("You need to provide a number between 10 and 90");
+      org.mode = NORMAL;
+      return;
+  }    
   std::string s = org.command_line;
-  if (pos) {
-    size_t p = s.find_first_of("0123456789");
-    if (p != pos + 1) {
-      sess.showOrgMessage("You need to provide a number between 10 and 90");
-      org.mode = NORMAL;
-      return;
-    }
-    int pct = stoi(s.substr(p));
-    if (pct > 90 || pct < 10) { 
-      sess.showOrgMessage("You need to provide a number between 10 and 90");
-      org.mode = NORMAL;
-      return;
-    }
-    sess.cfg.ed_pct = pct;
-  } else {
+  size_t p = s.find_first_of("0123456789");
+  if (p != pos + 1) {
       sess.showOrgMessage("You need to provide a number between 10 and 90");
       org.mode = NORMAL;
       return;
   }
+  int pct = stoi(s.substr(p));
+  if (pct > 90 || pct < 10) { 
+    sess.showOrgMessage("You need to provide a number between 10 and 90");
+    org.mode = NORMAL;
+    return;
+  }
   org.mode = NORMAL;
-  signalHandler(0);
+  //signalHandler(0);
+  sess.cfg.ed_pct = pct;
+  sess.moveDivider(pct);
 }
 

@@ -146,14 +146,11 @@ void Session::eraseRightScreen(void) {
   // ? if the individual editors draw top lines do we need to just
   // erase but not draw
   ab.append("\x1b(0"); // Enter line drawing mode
-  //for (int j=1; j<screencols/2; j++) {
-  //for (int j=1; j<org.divider; j++) {
   for (int j=1; j<totaleditorcols+1; j++) { //added +1 0906/2020
-    //fmt::format_to(buf, "\x1b[{};{}H", TOP_MARGIN, org.divider + j);
     std::string buf2 = fmt::format("\x1b[{};{}H", TOP_MARGIN, divider + j);
     ab.append(buf2);
-    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
-    // only need one 'm'
+    // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white;
+    // 1m = bold (note only need one 'm'
     ab.append("\x1b[37;1mq");
   }
   //exit line drawing mode
@@ -213,15 +210,6 @@ void Session::drawEditors(void) {
   write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-/*
-void Session::signalHandler(int signum) {
-  getWindowSize();
-  //that percentage should be in session
-  // so right now this reverts back if it was changed during session
-  moveDivider(cfg.ed_pct);
-}
-*/
-
 int Session::getWindowSize(void) {
 
   // ioctl(), TIOCGWINXZ and struct windsize come from <sys/ioctl.h>
@@ -248,25 +236,21 @@ void Session::moveDivider(int pct) {
 
   eraseScreenRedrawLines();
 
+  //if (divider > 0)
+  refreshOrgScreen();
+  drawOrgStatusBar();
+
+
   if (editor_mode) {
     positionEditors();
     eraseRightScreen(); //erases editor area + statusbar + msg
     drawEditors();
-  }
+    Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
+  } else 
+    showOrgMessage("rows: %d  cols: %d ", screenlines, screencols);
 
-  refreshOrgScreen();
-  //org.outlineDrawStatusBar();
-  drawOrgStatusBar();
-
-  if (editor_mode)
-      Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
-  else 
-      showOrgMessage("rows: %d  cols: %d ", screenlines, screencols);
-
-  /* need to think about this
   if (org.view == TASK && org.mode != NO_ROWS && !editor_mode)
-    get_preview(org.rows.at(org.fr).id);
-  */
+    drawPreviewWindow(org.rows.at(org.fr).id); //get_preview
 
   returnCursor();
 }

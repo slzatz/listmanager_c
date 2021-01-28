@@ -178,7 +178,7 @@ void updateNote(void) {
   }
 
   sess.showOrgMessage3("Updated note and fts entry for item {} (new version)", sess.p->id);
-  sess.refreshOrgScreen();
+  //sess.refreshOrgScreen(); commented out 01282021
 }
 
 int getFolderTid(int id) {
