@@ -15,6 +15,8 @@
 #include "base64.hpp"
 #include "pstream.h"
 
+#include "utf8.h"
+
 #if __has_include (<nuspell/dictionary.hxx>)
   #include <nuspell/dictionary.hxx>
   #include <nuspell/finder.hxx>
@@ -3419,6 +3421,7 @@ void Editor::getLinked(void) {
   mode = NORMAL;
 }
 
+/*
 int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
 
   //UNUSED(NotUsed);
@@ -3440,6 +3443,7 @@ int editor_note_callback (void *e, int argc, char **argv, char **azColName) {
   editor->dirty = 0; //assume editorInsertRow increments dirty so this needed
   return 0;
 }
+*/
 
 // should change name to avoid confustion with sess.moveDivider
 void Editor::moveDivider(void) {
@@ -3463,4 +3467,11 @@ void Editor::moveDivider(void) {
   }
   sess.moveDivider(pct);
   mode = NORMAL;
+}
+
+void Editor::test(int) {
+  std::u32string s32{U"\u20ac\u2318\u0020"};
+  std::string s = utf8::utf32to8(s32);
+  rows.push_back(s);
+
 }

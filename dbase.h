@@ -61,8 +61,6 @@ class Query {
     sqlite3_stmt *res;
 };
 
-// don't think it makes sense to open and close the database for each
-// use of Query but this would do that with the advantage that
 // a Query would just be Query2("SELECT * FROM task WHERE id={};")
 // Another disadvantage would be you would need a Query_fts(
 // So not currently in use
