@@ -1,19 +1,18 @@
-//#include "listmanager.h"
-#include "listman.h"
-//#include "Organizer.h" //in listman.h
-#include "common.h"
-#include "session.h"
 #include <string_view>
 #include <algorithm>
 #include <ranges>
+#include <filesystem>
+#include "listman.h"
+#include "organizer.h"
+//#include "common.h" //in listman.h
+#include "session.h"
 #include "cmdorg.h" //cmd_lookup
 #include "normalorg.h" //n_lookup
 #include "editorfuncmap.h" //e_lookup and E_lookup_C
-#include <filesystem>
 
-#define TOP_MARGIN 1
-#define MAX 500 // max rows to bring back
-#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
+//#define TOP_MARGIN 1
+//#define MAX 500 // max rows to bring back
+//#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 void signalHandler(int signum);
 

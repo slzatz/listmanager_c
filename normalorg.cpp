@@ -2,7 +2,7 @@
 #include "organizer.h"
 #include "session.h"
 
-#define MAX 500
+//#define MAX 500
 
 void updateTitle(void);
 int getFolderTid(int id);

@@ -23,12 +23,12 @@
   #define NUSPELL
 #endif
 
-#define UNUSED(x) (void)(x)
+//#define UNUSED(x) (void)(x)
 #define LEFT_MARGIN_OFFSET 4
 #define SCROLL_UP 1 // in Editor.cpp  not in list...improved.cpp
-#define DEBUG 0
-#define TOP_MARGIN 1 // Editor.cpp
-#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
+//#define DEBUG 0
+//#define TOP_MARGIN 1 // Editor.cpp
+//#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 using namespace redi;
 

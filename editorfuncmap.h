@@ -1,5 +1,6 @@
 #include "editor.h"
-#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
+#include "common.h"
+//#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
 
 using eefunc = void (Editor::*)(int);
 using efunc = void (Editor::*)(void);

@@ -20,8 +20,8 @@ extern "C" {
 #include <mkdio.h>
 }
 
-#define TOP_MARGIN 1
-#define LEFT_MARGIN 2
+//#define TOP_MARGIN 1
+//#define LEFT_MARGIN 2
 
 const std::string DB_INI = "db.ini";
 zmq::context_t Session::context = zmq::context_t(1);
@@ -295,7 +295,7 @@ void Session::returnCursor() {
       //ab.append("\x1b[?25h", 6); // show cursor 
   // no 'caret' if in COMMAND_LINE and want to move the cursor to the message line
     } else { //org.mode == COMMAND_LINE
-      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + 2 + TOP_MARGIN, org.command_line.size() + LEFT_MARGIN); /// ****
+      snprintf(buf, sizeof(buf), "\x1b[%d;%ldH", textlines + 2 + TOP_MARGIN, org.command_line.size() + LEFT_MARGIN + 1); /// ****
       ab.append(buf, strlen(buf));
       //ab.append("\x1b[?25h", 6); // show cursor 
     }

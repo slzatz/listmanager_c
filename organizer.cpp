@@ -1,9 +1,9 @@
-#define LEFT_MARGIN 2
-#define TOP_MARGIN 1 // Editor.cpp
+//#define LEFT_MARGIN 2
+//#define TOP_MARGIN 1 // Editor.cpp
 #define TIME_COL_WIDTH 18 // need this if going to have modified col
 #define STRINGIFY(x) #x
 #define TOSTRING(x) STRINGIFY(x)
-#define UNUSED(x) (void)(x)
+//#define UNUSED(x) (void)(x)
 
 #include "session.h"
 #include "organizer.h"

@@ -4,6 +4,14 @@
 #include <string>
 #include <thread>
 
+#define DEBUG 0
+#define LEFT_MARGIN 1
+#define TOP_MARGIN 1
+#define MAX 500 // max rows to bring back
+#define CTRL_KEY(k) ((k) & 0x1f) // 0x1f is 31; first ascii is 32 space anding removes all higher bits Editor.cpp needs this
+#define TZ_OFFSET 5 // time zone offset - either 4 or 5
+#define LEFT_MARGIN_OFFSET 4 //for line numbers
+
 const std::string COLOR_1 = "\x1b[0;31m"; //red
 const std::string COLOR_2 = "\x1b[0;32m"; //green
 const std::string COLOR_3 = "\x1b[0;33m"; //yellow

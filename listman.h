@@ -1,8 +1,7 @@
 #include <string>
 #include <vector>
 #include <unordered_set>
-#include "organizer.h"
-//#include common.h
+#include "common.h"
 
 const std::string DB_INI = "db.ini";
 const int SMARTINDENT = 4; //should be in config
@@ -27,13 +26,12 @@ void outlineProcessKeypress(int c = 0);
 bool editorProcessKeypress(void);
 void openInVim(void);
 
-
 //Database-related Prototypes
 void readNoteIntoEditor(int id);
 std::string readNoteIntoString(int id);
 void generateContextMap(void);
 void generateFolderMap(void);
-void updateNote(void);/////////////////////////////
+void updateNote(void);
 
 int insertContainer(orow& row);
 void updateContainerTitle(void);
@@ -47,7 +45,7 @@ int getId(void);
 void updateTitle(void);
 void updateRows(void);
 void toggleDeleted(void);
-void toggleStar(void);////////////////////////////////////////////////////////////////////////////////////
+void toggleStar(void);
 void toggleCompleted(void);
 void touch(void);
 int insertRow(orow&);

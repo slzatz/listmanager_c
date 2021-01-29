@@ -1,7 +1,7 @@
 #ifndef OUTLINE_NORMAL_FUNCTIONS_H
 #define OUTLINE_NORMAL_FUNCTIONS_H
-#define TZ_OFFSET 5 // time zone offset - either 4 or 5
-#define MAX 500 // max rows to bring back
+//#define TZ_OFFSET 5 // time zone offset - either 4 or 5
+//#define MAX 500 // max rows to bring back
 #include "session.h"
 #include "common.h"
 #include "organizer.h"

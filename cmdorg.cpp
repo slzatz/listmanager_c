@@ -4,9 +4,9 @@
 #include <Python.h>
 #include <zmq.hpp>
 
-#define MAX 500
-#define TOP_MARGIN 1
-#define LEFT_MARGIN_OFFSET 4
+//#define MAX 500
+//#define TOP_MARGIN 1
+//#define LEFT_MARGIN_OFFSET 4
 
 void getItems(int);
 int getId(void);
