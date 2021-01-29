@@ -229,8 +229,8 @@ void updateTitle(void) {
     return;
   }
 
-  sess.showOrgMessage3("Updated title and fts entry for item {} (new version)", row.id);
-  sess.refreshOrgScreen();
+  //sess.showOrgMessage3("Updated title and fts entry for item {} (new version)", row.id);
+  //sess.refreshOrgScreen();
 }
 
 int insertRow(orow& row) {
@@ -318,7 +318,7 @@ std::string getTitle(int id) {
 /* note that after changing a keyword's name would really have to update every entry
  * in the fts_db that had a tag that included that keyword
  */
-void updateKeyword(void) {
+void updateKeywordTitle(void) {
   orow& row = org.rows.at(org.fr);
 
   if (!row.dirty) {
@@ -342,12 +342,12 @@ void updateKeyword(void) {
 
   if (int res = q.step(); res != SQLITE_DONE) {
     std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
-    sess.showOrgMessage3("Problem in 'updateKeyword': {}", error);
+    sess.showOrgMessage3("Problem in 'updateKeywordTitle': {}", error);
     return;
   }
 
-  row.dirty = false;
-  sess.showOrgMessage3("Successfully updated keyword {} in row {}", title, row.id);
+  //row.dirty = false;
+  //sess.showOrgMessage3("Successfully updated keyword {} in row {}", title, row.id);
 }
 
 int insertKeyword(orow& row) {
@@ -1138,38 +1138,9 @@ int insertContainer(orow& row) {
   sess.showOrgMessage3("Successfully inserted new {} with id {}", 
                       (org.view == CONTEXT) ? "context" : "folder", row.id);
   return row.id;
-
-  /*
-  sqlite3 *db;
-  char *err_msg = nullptr; //0
-
-  int rc = sqlite3_open(SQLITE_DB.c_str(), &db);
-
-  if (rc != SQLITE_OK) {
-
-    sess.showOrgMessage("Cannot open database: %s", sqlite3_errmsg(db));
-    sqlite3_close(db);
-    return -1;
-    }
-
-  rc = sqlite3_exec(db, query.str().c_str(), 0, 0, &err_msg);
-
-  if (rc != SQLITE_OK ) {
-    sess.showOrgMessage("SQL error doing new item insert: %s", err_msg);
-    sqlite3_free(err_msg);
-    return -1;
-  }
-  row.id =  sqlite3_last_insert_rowid(db);
-  row.dirty = false;
-
-  sqlite3_close(db);
-
-  sess.showOrgMessage("Successfully inserted new context with id %d and indexed it", row.id);
-
-  return row.id;
-  */
 }
-void updateContainer(void) {
+
+void updateContainerTitle(void) {
 
   orow& row = org.rows.at(org.fr);
 
@@ -1193,13 +1164,14 @@ void updateContainer(void) {
   Query q(db, "UPDATE {} SET title='{}', modified=datetime('now') WHERE id={}",
               (org.view == CONTEXT) ? "context" : "folder", title, row.id);
   if (int res = q.step(); res != SQLITE_DONE) {
-    sess.showOrgMessage3("Problem in 'updateConstainer' (fts): {}", res);
+    sess.showOrgMessage3("Problem in 'updateConstainerTitle' (fts): {}", res);
     return;
   }
 
   row.dirty = false;
   sess.showOrgMessage("Successfully updated row %d", row.id);
 }
+
 /*****************************Non-database-related utilities************************************/
 std::string now(void) {
   std::time_t t = std::time(nullptr);

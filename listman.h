@@ -36,7 +36,7 @@ void generateFolderMap(void);
 void updateNote(void);/////////////////////////////
 
 int insertContainer(orow& row);
-void updateContainer(void);
+void updateContainerTitle(void);
 void deleteKeywords(int id);
 void addTaskKeyword(std::string &kws, int id);
 void addTaskKeyword(int keyword_id, int task_id, bool update_fts=true);
@@ -53,7 +53,7 @@ void touch(void);
 int insertRow(orow&);
 void getContainers(void); //has an if that determines callback: context_callback or folder_callback
 int insertKeyword(orow &);
-void updateKeyword(void);
+void updateKeywordTitle(void);
 int getFolderTid(int); 
 std::pair<std::string, std::vector<std::string>> getTaskKeywords(int); // used in F_copy_entry
 int keywordExists(const std::string &);  

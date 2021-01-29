@@ -150,17 +150,31 @@ void outlineProcessKeypress(int c) { //prototype has int = 0
       switch (c) {
 
         case '\r': //also does escape into NORMAL mode
+         {
+          orow & row = org.rows.at(org.fr);
+          std::string msg;
           if (org.view == TASK)  {
             updateTitle();
-            org.rows.at(org.fr).dirty = false;
+            msg = "Updated id {} to {} (+fts)";
+
             if (sess.lm_browser) {
               int folder_tid = getFolderTid(org.rows.at(org.fr).id);
               if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
             }
-          } else if (org.view == CONTEXT || org.view == FOLDER) updateContainer();
-          else if (org.view == KEYWORD) updateKeyword();
+
+          } else if (org.view == CONTEXT || org.view == FOLDER) {
+            updateContainerTitle();
+            msg = "Updated id {} to {}";
+          } else if (org.view == KEYWORD) {
+            updateKeywordTitle();
+            msg = "Updated id {} to {}";
+          }
           org.command[0] = '\0'; 
           org.mode = NORMAL;
+          row.dirty = false;
+          sess.showOrgMessage3(msg, row.id, row.title);
+         }    
+          sess.refreshOrgScreen();
           if (org.fc > 0) org.fc--;
           return;
 
@@ -881,7 +895,15 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('h'):
           sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
-            sess.editor_mode = false;
+            //sess.editor_mode = false;
+
+            if (sess.divider < 10) {
+              sess.cfg.ed_pct = 80;
+              sess.moveDivider(80);
+            }  
+
+            sess.editor_mode = false; //needs to be here
+
             sess.drawPreviewWindow(org.rows.at(org.fr).id);
             org.mode = NORMAL;
             sess.returnCursor(); 
@@ -899,7 +921,16 @@ bool editorProcessKeypress(void) {
               if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
               else sess.p->mode = NORMAL;
               return false;
-            } else {sess.editor_mode = false;
+            } else {
+              //sess.editor_mode = false;
+
+            if (sess.divider < 10) {
+              sess.cfg.ed_pct = 80;
+              sess.moveDivider(80);
+            }  
+
+              sess.editor_mode = false; //needs to be here
+
               sess.drawPreviewWindow(org.rows.at(org.fr).id);
               org.mode = NORMAL;
               sess.returnCursor(); 
@@ -1144,6 +1175,12 @@ bool editorProcessKeypress(void) {
             sess.p = nullptr;
             sess.editor_mode = false;
             sess.eraseRightScreen();
+
+            if (sess.divider < 10) {
+              sess.cfg.ed_pct = 80;
+              sess.moveDivider(80);
+            }  
+
             sess.drawPreviewWindow(org.rows.at(org.fr).id);
             sess.returnCursor(); //because main while loop if started in editor_mode -- need this 09302020
           }
@@ -1620,7 +1657,7 @@ int main(int argc, char** argv) {
       sess.refreshOrgScreen();
     } else outlineProcessKeypress(); // only do this if in FILE_DISPLAY mode
 
-    sess.drawOrgStatusBar();
+    if (sess.divider > 10) sess.drawOrgStatusBar();
     sess.returnCursor();
   }
 

@@ -6,8 +6,8 @@
 
 void updateTitle(void);
 int getFolderTid(int id);
-void updateContainer(void);
-void updateKeyword(void);
+void updateContainerTitle(void);
+void updateKeywordTitle(void);
 void getItems(int);
 void toggleDeleted(void);
 void toggleStar(void);
@@ -37,22 +37,30 @@ void s_N(void){
 
 void return_N(void) {
   orow& row = org.rows.at(org.fr);
+  std::string msg;
 
   if(row.dirty){
     if (org.view == TASK) {
       updateTitle();
+      msg = "Updated id {} to {} (+fts)";
+
       if (sess.lm_browser) {
         int folder_tid = getFolderTid(org.rows.at(org.fr).id);
         if (!(folder_tid == 18 || folder_tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
       }
-    } else if (org.view == CONTEXT || org.view == FOLDER) updateContainer();
-    else if (org.view == KEYWORD) updateKeyword();
+    } else if (org.view == CONTEXT || org.view == FOLDER) {
+      updateContainerTitle();
+      msg = "Updated id {} to {}";
+    } else if (org.view == KEYWORD) {
+      updateKeywordTitle();
+      msg = "Updated id {} to {}";
+    }  
     org.command[0] = '\0'; //11-26-2019
     org.mode = NORMAL;
     if (org.fc > 0) org.fc--;
-    row.dirty = false; ////////
+    row.dirty = false; 
+    sess.showOrgMessage3(msg, row.id, row.title);
     return;
-    //sess.showOrgMessage("");
   }
 
   // return means retrieve items by context or folder

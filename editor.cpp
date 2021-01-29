@@ -3476,3 +3476,7 @@ void Editor::test(int) {
   rows.push_back(s);
 
 }
+void Editor::hide(void) {
+  sess.cfg.ed_pct = 100;
+  sess.moveDivider(100);
+}    

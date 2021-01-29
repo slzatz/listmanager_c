@@ -267,6 +267,7 @@ class Editor {
     int editorGetLinesInRowWW(int);
     int editorGetLineCharCountWW(int, int);
     void test(int);
+    void hide(void);
 };
 //int editor_note_callback (void *, int, char **, char **);
 

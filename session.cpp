@@ -85,14 +85,16 @@ void Session::eraseScreenRedrawLines(void) {
   write(STDOUT_FILENO, "\x1b(0", 3); // Enter line drawing mode
   for (int j = 1; j < screenlines + 1; j++) {
 
+    /* this was getting overwritten and really just need the "T"
     // First vertical line
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, divider - TIME_COL_WIDTH + 1); //don't think need offset
     write(STDOUT_FILENO, buf, strlen(buf));
     // below x = 0x78 vertical line (q = 0x71 is horizontal) 37 = white; 1m = bold (note
     // only need one 'm'
     write(STDOUT_FILENO, "\x1b[37;1mx", 8);
+    */
 
-    // Second vertical line
+    // Second vertical line - the divider
     snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + j, divider);
     write(STDOUT_FILENO, buf, strlen(buf));
     write(STDOUT_FILENO, "\x1b[37;1mx", 8); 
@@ -105,12 +107,14 @@ void Session::eraseScreenRedrawLines(void) {
     write(STDOUT_FILENO, "\x1b[37;1mq", 8); //horizontal line
   }
 
-  // draw first column's 'T' corner
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, divider - TIME_COL_WIDTH + 1); //may not need offset
-  write(STDOUT_FILENO, buf, strlen(buf));
-  write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+  // draw first column's 'T' corner - time column "T"
+  if (divider > 10) {
+    snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, divider - TIME_COL_WIDTH + 1); //may not need offset
+    write(STDOUT_FILENO, buf, strlen(buf));
+    write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
+  }
 
-  // draw next column's 'T' corner
+  // draw next column's 'T' corner - divider
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN, divider);
   write(STDOUT_FILENO, buf, strlen(buf));
   write(STDOUT_FILENO, "\x1b[37;1mw", 8); //'T' corner
@@ -231,26 +235,31 @@ void Session::moveDivider(int pct) {
   // note below only necessary if window resized or font size changed
   textlines = screenlines - 2 - TOP_MARGIN;
 
-  divider = screencols - pct * screencols/100;
+  if (pct == 100) divider = 1;
+  else divider = screencols - pct * screencols/100;
   totaleditorcols = screencols - divider - 2; //? OUTLINE MARGINS?
 
   eraseScreenRedrawLines();
 
-  //if (divider > 0)
-  refreshOrgScreen();
-  drawOrgStatusBar();
-
+  if (divider > 10) {   //////////////////////////////////////////////////////
+    refreshOrgScreen();
+    drawOrgStatusBar();
+  }
 
   if (editor_mode) {
     positionEditors();
     eraseRightScreen(); //erases editor area + statusbar + msg
     drawEditors();
-    Editor::editorSetMessage("rows: %d  cols: %d ", screenlines, screencols);
-  } else 
-    showOrgMessage("rows: %d  cols: %d ", screenlines, screencols);
-
+    Editor::editorSetMessage("rows: %d  cols: %d  divider: %d", screenlines, screencols, divider);
+  } else {
+    showOrgMessage("rows: %d  cols: %d  divider: %d", screenlines, screencols, divider);
+    if (org.view == TASK && org.mode != NO_ROWS)
+      drawPreviewWindow(org.rows.at(org.fr).id); //get_preview
+  }
+  /*
   if (org.view == TASK && org.mode != NO_ROWS && !editor_mode)
     drawPreviewWindow(org.rows.at(org.fr).id); //get_preview
+  */
 
   returnCursor();
 }
@@ -773,6 +782,9 @@ void Session::showOrgMessage(const char *fmt, ...) {
 }
 
 void Session::showOrgMessage2(const std::string &s) {
+
+  if (sess.divider < 10) return;
+
   std::string buf = fmt::format("\x1b[{};{}H\x1b[1K\x1b[{}1H",
                                  textlines + 2 + TOP_MARGIN,
                                  divider,
