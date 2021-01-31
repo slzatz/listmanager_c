@@ -894,7 +894,6 @@ bool editorProcessKeypress(void) {
         case CTRL_KEY('h'):
           sess.p->command[0] = '\0';
           if (sess.editors.size() == 1) {
-            //sess.editor_mode = false;
 
             if (sess.divider < 10) {
               sess.cfg.ed_pct = 80;
@@ -908,63 +907,68 @@ bool editorProcessKeypress(void) {
             sess.returnCursor(); 
             return false;
           }
+
           {
-            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
-            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
-            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), sess.p);
-            int index = std::distance(temp.begin(), it);
-            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
-            if (index) {
-              sess.p = temp[index - 1];
-              if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
-              else sess.p->mode = NORMAL;
-              return false;
-            } else {
-              //sess.editor_mode = false;
+          if (sess.p->is_below) sess.p = sess.p->linked_editor;
+          auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_below;});
+          std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+          auto it = std::find(temp.begin(), temp.end(), sess.p);
+          int index = std::distance(temp.begin(), it);
+          Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
+          if (index) {
+            sess.p = temp[index - 1];
+            if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+            else sess.p->mode = NORMAL;
+            return false;
+          } else {
 
             if (sess.divider < 10) {
               sess.cfg.ed_pct = 80;
               sess.moveDivider(80);
             }  
 
-              sess.editor_mode = false; //needs to be here
+            sess.editor_mode = false; //needs to be here
 
-              sess.drawPreviewWindow(org.rows.at(org.fr).id);
-              org.mode = NORMAL;
-              sess.returnCursor(); 
-              return false;
-            }
+            sess.drawPreviewWindow(org.rows.at(org.fr).id);
+            org.mode = NORMAL;
+            sess.returnCursor(); 
+            return false;
+          }
+
           }
       
         case  CTRL_KEY('l'):
           sess.p->command[0] = '\0';
           {
-            if (sess.p->is_subeditor) sess.p = sess.p->linked_editor;
-            auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_subeditor;});
-            std::vector<Editor *> temp{std::begin(v), std::end(v)};    
-            auto it = std::find(temp.begin(), temp.end(), sess.p);
-            int index = std::distance(temp.begin(), it);
-            Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
-            //p->editorSetMessage("index: %d", index);
-            //p->editorRefreshScreen(false); // needs to be here because p moves!
-            if (index < temp.size() - 1) sess.p = temp[index + 1];
+          if (sess.p->is_below) sess.p = sess.p->linked_editor;
+          auto v = sess.editors | std::ranges::views::filter([](auto e){return !e->is_below;});
+          std::vector<Editor *> temp{std::begin(v), std::end(v)};    
+          auto it = std::find(temp.begin(), temp.end(), sess.p);
+          int index = std::distance(temp.begin(), it);
+          Editor::editorSetMessage("index: %d; length: %d", index, temp.size());
+          if (index < temp.size() - 1) {
+            sess.p = temp[index + 1];
             if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
             else sess.p->mode = NORMAL;
+          }    
+
           }
           return false;
 
-        case  CTRL_KEY('k'):
         case  CTRL_KEY('j'):
-          Editor::editorSetMessage("Editor <-> subEditor");
-          sess.p->command[0] = '\0';
-          if (sess.p->linked_editor) sess.p=sess.p->linked_editor;
-          else return false;
-
+          if (sess.p->linked_editor->is_below) sess.p = sess.p->linked_editor;
           if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
           else sess.p->mode = NORMAL;
-
+          sess.p->command[0] = '\0';
           return false;
+
+        case  CTRL_KEY('k'):
+          if (sess.p->is_below) sess.p = sess.p->linked_editor;
+          if (sess.p->rows.empty()) sess.p->mode = NO_ROWS;
+          else sess.p->mode = NORMAL;
+          sess.p->command[0] = '\0';
+          return false;
+
 
       } //end switch
 
