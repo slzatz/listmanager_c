@@ -8,6 +8,7 @@
 #include <string>
 #include <fmt/core.h>
 #include <fmt/format.h>
+#include <fmt/printf.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <fstream>
@@ -429,7 +430,8 @@ void Session::drawOrgStatusBar(void) {
 }
 
 //this is Organizer::outlinedrawRows
-void Session::drawOrgRows(std::string& ab) {
+void Session::drawOrgRows() {
+  std::string ab;
   int j, k; //to swap highlight if org.highlight[1] < org.highlight[0]
   char buf[32];
   int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
@@ -442,7 +444,7 @@ void Session::drawOrgRows(std::string& ab) {
 
   for (y = 0; y < textlines; y++) {
     int frr = y + org.rowoff;
-    if (frr > org.rows.size() - 1) return;
+    if (frr > org.rows.size() - 1) break;
     orow& row = org.rows[frr];
 
     // if a line is long you only draw what fits on the screen
@@ -494,11 +496,14 @@ void Session::drawOrgRows(std::string& ab) {
     ab.append("\x1b[0m"); // return background to normal ////////////////////////////////
     ab.append(lf_ret, nchars);
   }
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
-void Session::drawOrgFilters(std::string& ab) {
+void Session::drawOrgFilters() {
 
   if (org.rows.empty()) return;
+
+  std::string ab;
 
   char lf_ret[16];
   snprintf(lf_ret, sizeof(lf_ret), "\r\n\x1b[%dC", divider + 1);
@@ -510,7 +515,7 @@ void Session::drawOrgFilters(std::string& ab) {
 
   for (int y = 0; y < textlines; y++) {
     int frr = y + org.rowoff;
-    if (frr > org.rows.size() - 1) return;
+    if (frr > org.rows.size() - 1) break;
 
     orow& row = org.rows[frr];
 
@@ -530,8 +535,11 @@ void Session::drawOrgFilters(std::string& ab) {
     ab.append("\x1b[0m"); // return background to normal /////
     ab.append(lf_ret);
   }
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
-void Session::drawOrgSearchRows(std::string& ab) {
+void Session::drawOrgSearchRows(void) {
+
+  std::string ab;
 
   if (org.rows.empty()) return;
 
@@ -545,7 +553,7 @@ void Session::drawOrgSearchRows(std::string& ab) {
 
   for (y = 0; y < textlines; y++) {
     int frr = y + org.rowoff;
-    if (frr > static_cast<int>(org.rows.size()) - 1) return;
+    if (frr > static_cast<int>(org.rows.size()) - 1) break;
     orow& row = org.rows[frr];
     int len;
 
@@ -573,7 +581,7 @@ void Session::drawOrgSearchRows(std::string& ab) {
         ab.append(row.fts_title.c_str(), titlecols + 15); // length of highlight escape + remove formatting escape
       else
         ab.append(row.title.c_str(), titlecols);
-}
+    }
     len = (row.title.size() <= titlecols) ? row.title.size() : titlecols;
     spaces = titlecols - len;
     for (int i=0; i < spaces; i++) ab.append(" ", 1);
@@ -585,6 +593,7 @@ void Session::drawOrgSearchRows(std::string& ab) {
     ab.append(lf_ret, nchars);
     //abAppend(ab, "\x1b[0m", 4); // return background to normal
   }
+  write(STDOUT_FILENO, ab.c_str(), ab.size());
 }
 
 void Session::refreshOrgScreen(void) {
@@ -592,30 +601,33 @@ void Session::refreshOrgScreen(void) {
   std::string ab;
   int titlecols = divider - TIME_COL_WIDTH - LEFT_MARGIN;
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
 
-  char buf[20];
+  //char buf[20];
 
   //Below erase screen from middle to left - `1K` below is cursor to left erasing
   //Now erases time/sort column (+ 17 in line below)
   //if (org.view != KEYWORD) {
   if (org.mode != ADD_CHANGE_FILTER) {
     for (unsigned int j=TOP_MARGIN; j < textlines + 1; j++) {
-      snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
-      titlecols + LEFT_MARGIN + 17); 
-      ab.append(buf, strlen(buf));
+      //snprintf(buf, sizeof(buf), "\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN,
+      //titlecols + LEFT_MARGIN + 17); 
+      //ab.append(buf, strlen(buf));
+      ab.append(fmt::sprintf("\x1b[%d;%dH\x1b[1K", j + TOP_MARGIN, titlecols + LEFT_MARGIN + 17));
     }
   }
   // put cursor at upper left after erasing
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
-  ab.append(buf, strlen(buf));
-
-  if (org.mode == FIND) drawOrgSearchRows(ab);
-  else if (org.mode == ADD_CHANGE_FILTER) drawOrgFilters(ab);
-  else  drawOrgRows(ab);
-
+  //snprintf(buf, sizeof(buf), "\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1); // *****************
+  //ab.append(buf, strlen(buf));
+  ab.append(fmt::sprintf("\x1b[%d;%dH", TOP_MARGIN + 1 , LEFT_MARGIN + 1));
   write(STDOUT_FILENO, ab.c_str(), ab.size());
+
+  if (org.mode == FIND) drawOrgSearchRows();
+  else if (org.mode == ADD_CHANGE_FILTER) drawOrgFilters();
+  else  drawOrgRows();
+
 }
+
 void Session::displayEntryInfo(Entry &e) {
   std::string s{};
   int width = totaleditorcols - 10;

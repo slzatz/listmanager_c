@@ -54,8 +54,8 @@ struct Session {
   //zmq::socket_t publisher(context, ZMQ_PUB);
   zmq::socket_t publisher = zmq::socket_t(context, ZMQ_PUB);
 
-  Sqlite db;
-  Sqlite fts;
+  //Sqlite db;
+  //Sqlite fts;
 
   std::vector<Lsp *> lsp_v;
   //
@@ -96,9 +96,9 @@ struct Session {
   //std::string drawPreviewBox(int width, int length);
   void drawPreviewBox(void);
   void drawSearchPreview(void);
-  void drawOrgRows(std::string& ab); //-> outlineDrawRows
-  void drawOrgFilters(std::string& ab); //-> outlineDrawFilters
-  void drawOrgSearchRows(std::string& ab); // ->outlineDrawSearchRows
+  void drawOrgRows(void); //-> outlineDrawRows
+  void drawOrgFilters(void); //-> outlineDrawFilters
+  void drawOrgSearchRows(void); // ->outlineDrawSearchRows
   void refreshOrgScreen(void); //-> outlineRefreshScreen
   void displayContainerInfo(Container &c);
   void displayEntryInfo(Entry &e);
@@ -117,13 +117,15 @@ struct Session {
   void updateHTMLCodeFile(std::string &&fn);
   static char * (url_callback)(const char *x, const int y, void *z);
 
+  /*
   void run_sql(void);
   void db_open(void);
   bool db_query(sqlite3 *db, std::string sql, sq_callback callback, void *pArg, char **errmsg);
   bool db_query(sqlite3 *db, const std::string& sql, sq_callback callback, void *pArg, char **errmsg, const char *func);
+  */
 
-  int get_folder_tid(int id);
-  static int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName);
+  //int get_folder_tid(int id);
+  //static int folder_tid_callback(void *folder_tid, int argc, char **argv, char **azColName);
   static void die(const char *s);
   static void disableRawMode(void);
   void enableRawMode();
@@ -137,7 +139,7 @@ struct Session {
   void navigatePageHx(int direction);
   void navigateCmdHx(int direction);
 
-  Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
+  //Session () : db(SQLITE_DB_), fts(FTS_DB_) {}
 };
 
 //inline Session sess;
