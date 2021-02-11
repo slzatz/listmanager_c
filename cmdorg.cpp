@@ -55,7 +55,7 @@ void F_open(int pos) { //C_open - by context
     org.mode = NORMAL;
     return;
   }
-  sess.showOrgMessage3("'{}' will be opened, Steve", org.context.c_str());
+  sess.showOrgMessage3("'{}' will be opened", org.context);
   sess.command_history.push_back(org.command_line);
   sess.page_hx_idx++;
   sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, org.command_line);
@@ -90,7 +90,7 @@ void F_openfolder(int pos) {
     org.mode = NORMAL;
     return;
   }
-  sess.showOrgMessage("\'%s\' will be opened", org.folder.c_str());
+  sess.showOrgMessage3("'{}' will be opened", org.folder);
   sess.command_history.push_back(org.command_line);
   sess.page_hx_idx++;
   sess.page_history.insert(sess.page_history.begin() + sess.page_hx_idx, org.command_line);
@@ -376,7 +376,8 @@ void F_contexts(int pos) {
 
     std::string new_context;
     bool success = false;
-    if (org.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
+    if (org.command_line.size() - pos > 3) {//means that you've typed 3 or more chars
+    //if (org.command_line.size() > 5) { //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
       for (const auto & [k,v] : org.context_map) {
         if (strncmp(&org.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
@@ -437,7 +438,8 @@ void F_folders(int pos) {
 
     std::string new_folder;
     bool success = false;
-    if (org.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
+    if (org.command_line.size() - pos > 3) {//means that you've typed 3 or more chars
+    //if (org.command_line.size() > 5) {  //this needs work - it's really that pos+1 to end needs to be > 2
       // structured bindings
       for (const auto & [k,v] : org.folder_map) {
         if (strncmp(&org.command_line.c_str()[pos + 1], k.c_str(), 3) == 0) {
@@ -522,7 +524,7 @@ void F_createLink(int) {
     task_ids[1] = t;
   }
 
-  Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+  Query q(db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
               task_ids[0], task_ids[1]);
 
   if (int res = q.step(); res != SQLITE_DONE) {
@@ -532,7 +534,7 @@ void F_createLink(int) {
     return;
   }
 
-   Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
+   Query q1(db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", task_ids[0], task_ids[1]);
    q1.step();
 
    org.mode = NORMAL;
@@ -543,7 +545,7 @@ void F_getLinked(int) {
 
   int id = sess.p->id;
 
-  Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  Query q(db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
   if (int res = q.step(); res != SQLITE_ROW) {
     sess.showOrgMessage3("Problem retrieving linked item: {}", res);
     return;

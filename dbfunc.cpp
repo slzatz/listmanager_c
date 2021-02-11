@@ -464,7 +464,7 @@ void readNoteIntoEditor(int id) {
   sess.p->linked_editor->rows = std::vector<std::string>{" "};
 }
 void linkEntries(int id1, int id2) {
-  Query q(sess.db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
+  Query q(db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
               id1, id2);
 
   if (int res = q.step(); res != SQLITE_DONE) {
@@ -473,7 +473,7 @@ void linkEntries(int id1, int id2) {
     return;
   }
 
-  Query q1(sess.db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", id1, id2);
+  Query q1(db,"UPDATE link SET modified = datetime('now') WHERE task_id0={} AND task_id1={};", id1, id2);
   if (int res = q1.step(); res != SQLITE_DONE) {
     std::string error = (res == 19) ? "SQLITE_CONSTRAINT" : "OTHER SQLITE ERROR";
     sess.showOrgMessage3("Problem in linkEntries: {}", res);
@@ -482,7 +482,7 @@ void linkEntries(int id1, int id2) {
 }
 
 std::pair<int, int> getLinkedEntry(int id) {
-  Query q(sess.db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
+  Query q(db, "SELECT task_id0, task_id1 FROM link WHERE task_id0={} OR task_id1={}", id, id);
   if (int res = q.step(); res != SQLITE_ROW) {
     sess.showOrgMessage3("Problem retrieving linked item: {}", res);
     return std::make_pair(-1, -1);
@@ -1033,7 +1033,7 @@ void copyEntry(void) {
     return;
   }
 
-  int new_id =  sqlite3_last_insert_rowid(sess.db.db);
+  int new_id =  sqlite3_last_insert_rowid(db.db);
 
   Query q2(db, "SELECT task_keyword.keyword_id FROM task_keyword WHERE task_keyword.task_id={};",
               id);
@@ -1082,7 +1082,7 @@ Entry getEntryInfo(int id) {
   Entry e = {};
   if (id ==-1) return e;
 
-  Query q(sess.db, "SELECT * FROM task WHERE id={};", id);
+  Query q(db, "SELECT * FROM task WHERE id={};", id);
   if (int res = q.step(); res != SQLITE_ROW) {
     sess.showOrgMessage3("Problem retrieving container info in getEntryInfo: {}", res);
     return e;
