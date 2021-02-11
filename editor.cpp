@@ -3030,6 +3030,7 @@ void Editor::E_compile_C(void) {
   if (text.str().empty())   text << "Go build successful";
   std::vector<std::string> zz = str2vecWW(text.str(), false); //ascii_only = false
 
+  fr = fc = cy = cx = line_offset = prev_line_offset = first_visible_row = last_visible_row = 0;
   auto & s_rows = linked_editor->rows; //s_rows -> subnote_rows output_window
   s_rows.clear();
   s_rows.push_back("----------------");;
@@ -3038,6 +3039,16 @@ void Editor::E_compile_C(void) {
 
   linked_editor->fr = 0;
   linked_editor->fc = 0;
+
+  // added 02092021
+  linked_editor->cy = 0;
+  linked_editor->cx = 0;
+  linked_editor->line_offset = 0;
+  linked_editor->prev_line_offset = 0;
+  linked_editor->first_visible_row = 0;
+  linked_editor->last_visible_row = 0;
+  // added 02092021
+
   linked_editor->editorRefreshScreen(true);
   linked_editor->dirty++;
   chdir("/home/slzatz/listmanager_cpp/");
