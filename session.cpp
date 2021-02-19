@@ -414,7 +414,7 @@ void Session::drawOrgStatusBar(void) {
   int rlen = snprintf(rstatus, sizeof(rstatus), " %s",  TOSTRING(GIT_BRANCH));
 
   if (len > divider) {
-    ab.append(status0, divider);
+    ab.append(status, divider);
   } else if (len + rlen > divider) {
     ab.append(status);
     ab.append(rstatus, divider - len);
