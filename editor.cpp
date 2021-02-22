@@ -1264,7 +1264,7 @@ void Editor::editorRefreshScreen(bool draw) {
   std::string ab;
   int tid{0};
 
-  ab.append("\x1b[?25l", 6); //hides the cursor
+  ab.append("\x1b[?25l"); //hides the cursor
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", top_margin, left_margin + 1); //03022019 added len
   ab.append(buf, strlen(buf));
 
@@ -1405,8 +1405,8 @@ void Editor::editorDrawRows(std::string &ab) {
     for (;;) {
       /* this is needed because it deals where the end of the line doesn't have a space*/
       if (row.substr(pos+1).size() <= screencols - left_margin_offset) {
-        ab.append(row, pos+1, screencols - left_margin_offset);
-        abs.append(row, pos+1, screencols - left_margin_offset);
+        ab.append(row, pos+1, screencols - left_margin_offset); //last param should be std::string::npos
+        //abs.append(row, pos+1, screencols - left_margin_offset);
         if (y == screenlines - 1) {flag=true; break;}
         ab.append(lf_ret);
         y++;
@@ -1427,7 +1427,7 @@ void Editor::editorDrawRows(std::string &ab) {
       }
 
       ab.append(row, prev_pos+1, pos-prev_pos);
-      abs.append(row, prev_pos+1, pos-prev_pos);
+      //abs.append(row, prev_pos+1, pos-prev_pos);
       if (y == screenlines - 1) {flag=true; break;}
       ab.append(lf_ret);
       y++;
