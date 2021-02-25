@@ -268,7 +268,7 @@ void F_new(int) {
 //this is the main event - right now only way to initiate editing an entry
 void F_edit(int id) {
   
-  if (!(org.view == TASK)) {
+  if (org.view != TASK) {
     org.command[0] = '\0';
     org.mode = NORMAL;
     sess.showOrgMessage("Only tasks have notes to edit!");

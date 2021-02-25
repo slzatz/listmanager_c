@@ -1091,7 +1091,7 @@ void Editor::editorReadFileIntoNote(const std::string &filename) {
   f.close();
 
   dirty = true;
-  sess.editor_mode = true;
+  //sess.editor_mode = true;
   editorRefreshScreen(true);
   return;
 }
@@ -2275,15 +2275,12 @@ void Editor::E_write_C(void) {
   if (folder_tid == 18 || folder_tid == 14) {
     code = editorRowsToString();
     updateCodeFile();
+  } else if (sess.lm_browser) {
+    sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
   }
   //problem - can't have dirty apply to both note and subnote
   dirty = 0; //is in update_note but dirty = 0 is probably better here.
   editorSetMessage("");
-
-  if (is_subeditor) return;
-
-  int tid = getFolderTid(id);
-  if (sess.lm_browser && !(tid == 18 || tid == 14)) sess.updateHTMLFile("assets/" + CURRENT_NOTE_FILE);
 }
 
 /* the following are not being called and were written for single editor

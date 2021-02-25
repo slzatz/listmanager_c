@@ -463,6 +463,7 @@ void readNoteIntoEditor(int id) {
 
   sess.p->linked_editor->rows = std::vector<std::string>{" "};
 }
+
 void linkEntries(int id1, int id2) {
   Query q(db, "INSERT OR IGNORE INTO link (task_id0, task_id1) VALUES ({}, {});",
               id1, id2);
